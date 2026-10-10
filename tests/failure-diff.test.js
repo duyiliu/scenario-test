@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { failureDiffLines, firstDifferenceLines, SHORT_VALUE_LIMIT } from "../src/utils/failure-diff.js";
+import { failureDiffLines, firstDifferenceLines, formatFailureValue, SHORT_VALUE_LIMIT } from "../src/utils/failure-diff.js";
 
 test("短值返回空数组（保持既有单行 expected=... actual=... 格式）", () => {
     // 标量短值：不应产生任何分块行，调用方继续走单行输出
@@ -121,4 +121,53 @@ test("对象/数组超过 MAX_LINES 时截断", () => {
     const deepArray = Array.from({ length: 30 }, (_, i) => ({ index: i, padding: "x".repeat(10) }));
     const lines = failureDiffLines(deepArray, []);
     assert.ok(lines.some((line) => line.includes("共") && line.includes("行，已截断")), "应显示截断提示");
+});
+
+test("formatFailureValue：短值保持旧输出，长值降级固定占位", () => {
+    assert.equal(formatFailureValue("ok"), '"ok"');
+    assert.equal(formatFailureValue(5), "5");
+    assert.equal(formatFailureValue(null), "null");
+    assert.equal(formatFailureValue(undefined), "undefined");
+    const boundary = "x".repeat(SHORT_VALUE_LIMIT - 2);
+    assert.equal(formatFailureValue(boundary), JSON.stringify(boundary));
+    assert.equal(formatFailureValue("x".repeat(SHORT_VALUE_LIMIT - 1)), "（长值，见下方）");
+    const circular = { a: 1 };
+    circular.self = circular;
+    assert.equal(formatFailureValue(circular), "（长值，见下方）");
+    assert.equal(formatFailureValue(10n), "（长值，见下方）");
+    assert.equal(formatFailureValue(Symbol("s")), "Symbol(s)");
+    assert.equal(formatFailureValue(function fn() {}), "function fn() {}");
+});
+
+test("超长单行内容按 240 字符截断（不计调用方 prefix），截断标记占宽", () => {
+    const long = "a".repeat(20000);
+    const lines = failureDiffLines("no", long, "    ");
+    const contentLines = lines.filter((line) => line.includes("| "));
+    assert.ok(contentLines.length >= 1, "应有字符串分块内容行");
+    for (const line of contentLines) {
+        assert.ok(line.length <= 240 + 4, `内容行（不计 prefix）应 ≤240，实际 ${line.length}`);
+        assert.ok(line.includes("（本行已截断）"), "截断行应带截断标记");
+    }
+    assert.ok(!lines.some((line) => line.includes(long)), "完整 20k 值不得出现在任何输出行");
+});
+
+test("对象内超长字段同样限宽 240，截断标记可见", () => {
+    const big = { id: 1, text: "a".repeat(20000) };
+    const lines = failureDiffLines("no", big, "");
+    const wide = lines.filter((line) => line.includes("aaaa"));
+    assert.ok(wide.length >= 1, "应有含长字段内容的行");
+    for (const line of wide) {
+        assert.ok(line.length <= 240, `pretty JSON 行应 ≤240，实际 ${line.length}`);
+    }
+    assert.ok(wide.some((line) => line.includes("（本行已截断）")), "被截断的长字段行应带截断标记");
+    assert.ok(lines.some((line) => line.includes('"id": 1')), "短字段行保持原样");
+});
+
+test("首差异在长字符串尾部时仍按原文定位真实索引与字符", () => {
+    const expected = "a".repeat(20000);
+    const actual = "a".repeat(19999) + "b";
+    const lines = failureDiffLines(expected, actual, "");
+    assert.ok(lines.some((line) => line.includes("首个差异在第 20000 个字符")), "差异索引应按未截断原文计算");
+    assert.ok(lines.some((line) => line.includes("«b»")), "差异字符应高亮");
+    assert.ok(lines.some((line) => line.includes("长度 20000 vs 20000")), "长度信息应按原文呈现");
 });

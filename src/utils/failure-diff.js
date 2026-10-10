@@ -9,6 +9,8 @@ export const SHORT_VALUE_LIMIT = 80;
 const MAX_LINES = 20;
 // 字符串差异定位的上下文窗口：首个差异字符前后各保留的字符数
 const CONTEXT_RADIUS = 40;
+const MAX_LINE_WIDTH = 240;
+const LINE_TRUNCATED_MARK = "…（本行已截断）";
 
 function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -17,13 +19,18 @@ function isPlainObject(value) {
 // 单值是否适合单行展示：undefined/null/标量/短序列化均算短；超长字符串与复杂结构走分块
 function isShortValue(value) {
     if (value === undefined) return true;
-    if (value === null || typeof value !== "object") return JSON.stringify(value ?? null).length <= SHORT_VALUE_LIMIT;
     try {
-        return JSON.stringify(value).length <= SHORT_VALUE_LIMIT;
+        const serialized = JSON.stringify(value ?? null) ?? String(value);
+        return serialized.length <= SHORT_VALUE_LIMIT;
     } catch {
         // 循环引用等无法序列化的值视为长值，走分块路径（prettyLines 的 catch 会回落 String）
         return false;
     }
+}
+
+export function formatFailureValue(value) {
+    if (!isShortValue(value)) return "（长值，见下方）";
+    return JSON.stringify(value) ?? String(value);
 }
 
 // 字符串值分块：按真实换行拆行（含转义字符的 JSON 形态），行号 1 基右侧对齐
@@ -92,11 +99,11 @@ export function failureDiffLines(expected, actual, prefix = "") {
     const lines = [];
     if (!isShortValue(expected)) {
         lines.push(`${prefix}  期望值（expected）:`);
-        lines.push(...expandValueLines(expected, `${prefix}    `));
+        lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
     }
     if (!isShortValue(actual)) {
         lines.push(`${prefix}  实际值（actual）:`);
-        lines.push(...expandValueLines(actual, `${prefix}    `));
+        lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
     }
     // 仅当 expected/actual 均为字符串（最常见：bodyText/长文案比对）时给首个差异定位
     lines.push(...firstDifferenceLines(
@@ -108,9 +115,9 @@ export function failureDiffLines(expected, actual, prefix = "") {
 }
 
 // 值展开为行：多行字符串用 | 前缀逐行，其余 pretty JSON；行数超限截断
-function expandValueLines(value, prefix) {
+function expandValueLines(value, prefix, baseLength) {
     if (typeof value === "string") {
-        const lines = splitStringLines(value, `${prefix}| `);
+        const lines = splitStringLines(value, `${prefix}| `).map((line) => capContentLine(line, baseLength));
         if (lines.length > MAX_LINES) {
             return [
                 ...lines.slice(0, MAX_LINES),
@@ -119,5 +126,10 @@ function expandValueLines(value, prefix) {
         }
         return lines;
     }
-    return prettyLines(value).map((line) => `${prefix}${line}`);
+    return prettyLines(value).map((line) => capContentLine(`${prefix}${line}`, baseLength));
+}
+
+function capContentLine(line, baseLength) {
+    if (line.length <= baseLength + MAX_LINE_WIDTH) return line;
+    return `${line.slice(0, baseLength + MAX_LINE_WIDTH - LINE_TRUNCATED_MARK.length)}${LINE_TRUNCATED_MARK}`;
 }

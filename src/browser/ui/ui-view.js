@@ -14,7 +14,17 @@ const workbenchView = (function () {
     function mdInline(value) {
         var text = typeof value === 'string' ? value : JSON.stringify(value);
         if (text === undefined || text === null || text === '') return '';
-        return text.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n');
+        return text.replace(/\\/g, '\\\\').replace(/\r\n|\r|\n/g, '\\n');
+    }
+
+    function mdCode(value) {
+        var text = String(value).replace(/\r\n|\r|\n/g, '\\n');
+        var runs = text.match(/`+/g) || [];
+        var maxRun = runs.reduce(function (max, run) { return run.length > max ? run.length : max; }, 0);
+        var fence = '`'.repeat(Math.max(1, maxRun + 1));
+        var pad = /^`|`$/.test(text) || (text[0] === ' ' && text[text.length - 1] === ' ' && /[^ ]/.test(text));
+        var sp = pad ? ' ' : '';
+        return fence + sp + text + sp + fence;
     }
 
     // each 失败明细行（断言表）：失败断言下逐行列出失败元素（序号 1 基，与断言报错口径一致）
@@ -1116,11 +1126,11 @@ const workbenchView = (function () {
         if (!report) return '';
         var summary = report.summary || {};
         var lines = [];
-        lines.push('# ' + (report.title || '测试报告'));
+        lines.push('# ' + mdInline(report.title || '测试报告'));
         lines.push('');
-        lines.push('- **场景文件**: `' + (report.scenarioFile || '-') + '`');
-        lines.push('- **测试环境**: ' + (report.environment || '-'));
-        lines.push('- **执行模式**: ' + (report.executionMode || '-'));
+        lines.push('- **场景文件**: ' + mdCode(report.scenarioFile || '-'));
+        lines.push('- **测试环境**: ' + mdInline(report.environment || '-'));
+        lines.push('- **执行模式**: ' + mdInline(report.executionMode || '-'));
         var resultText = report.status === 'CANCELLED' ? '🚫 已取消' : summary.failedSteps ? '❌ 存在失败' : (summary.skippedSteps && summary.executedSteps === 0 ? '⏭️ 全部跳过' : '✅ 全部通过');
         lines.push('- **结果**: ' + resultText + ' (' + summary.passedSteps + '/' + summary.executedSteps + ')');
         lines.push('- **通过率**: ' + summary.passRate);
@@ -1133,7 +1143,7 @@ const workbenchView = (function () {
         (report.steps || []).forEach(function (step) {
             var icon = step.skipped ? '⏭️' : (step.passed ? '✅' : '❌');
             lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + mdInline(step.name));
-            lines.push('- **请求**: `' + step.method + ' ' + step.path + '`');
+            lines.push('- **请求**: ' + mdCode(step.method + ' ' + step.path));
             lines.push('- **状态**: ' + step.status + ' | **耗时**: ' + step.durationFmt);
             if (step.error) lines.push('- **失败原因**: ' + mdInline(step.error));
             (step.warnings || []).forEach(function (warning) {

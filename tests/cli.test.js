@@ -615,3 +615,63 @@ test("CLI SCENARIO_GLOBALS 项缺少必需字段时报错", async () => {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI 失败输出有界：20k 原值不整行打印，顶层与嵌套 each 长值走占位+分块", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-bound-"));
+    const bigText = "a".repeat(20000);
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        if (request.url === "/list") {
+            response.end(JSON.stringify({ list: [{ text: bigText }], status: "UP" }));
+            return;
+        }
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[
+                {id:"bigfail",name:"BigFail",url:"scenarios/bigfail.js"},
+                {id:"eachfail",name:"EachFail",url:"scenarios/eachfail.js"}
+            ]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/bigfail.js"),
+            `ScenarioTest.registerScenario("bigfail",ScenarioTest.defineScenario({name:"BigFail",steps:[{name:"大文本",path:"list",status:200,assertions:[{name:"正文",from:"bodyText",equals:"no"},{name:"短值对照",path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/eachfail.js"),
+            `ScenarioTest.registerScenario("eachfail",ScenarioTest.defineScenario({name:"EachFail",steps:[{name:"批量",path:"list",status:200,assertions:[{name:"逐项",path:"list",each:{path:"text",equals:"no"}}]}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--all"]);
+        assert.equal(result.code, 1, result.stderr);
+        assert.ok(!result.stdout.includes(bigText), "完整 20000 字符原值不得出现在 stdout");
+        const valueLines = result.stdout.split("\n").filter((line) => line.includes("actual=") || line.includes("| "));
+        assert.ok(valueLines.length >= 2, "应存在长值相关输出行");
+        for (const line of valueLines) {
+            assert.ok(line.length <= 280, `值相关行宽度应 ≤280（含缩进），实际 ${line.length}`);
+        }
+        assert.match(result.stdout, /- 正文: expected="no" actual=（长值，见下方）/);
+        assert.match(result.stdout, /实际值（actual）:/);
+        assert.match(result.stdout, /（本行已截断）/);
+        assert.match(result.stdout, /↳ 第 1 项 text: expected="no" actual=（长值，见下方）/);
+        assert.match(result.stdout, /- 短值对照: expected="DOWN" actual="UP"/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI --config 缺值拒绝 -h/--help 占位，单独 -h 正常输出帮助", () => {
+    const missingH = spawnSync(process.execPath, [cliSrc, "run", "--config", "-h"], { encoding: "utf8" });
+    assert.equal(missingH.status, 1);
+    assert.match(missingH.stderr, /错误：--config 缺少参数值/);
+    assert.match(missingH.stderr, /请为 --config 提供一个值/);
+    assert.doesNotMatch(missingH.stderr, /配置文件不存在/);
+    const missingHelp = spawnSync(process.execPath, [cliSrc, "run", "--config", "--help"], { encoding: "utf8" });
+    assert.equal(missingHelp.status, 1);
+    assert.match(missingHelp.stderr, /错误：--config 缺少参数值/);
+    const dashH = spawnSync(process.execPath, [cliSrc, "-h"], { encoding: "utf8" });
+    assert.equal(dashH.status, 0);
+    assert.match(dashH.stdout, /Commands:/);
+    const runH = spawnSync(process.execPath, [cliSrc, "run", "-h"], { encoding: "utf8" });
+    assert.equal(runH.status, 0);
+    assert.match(runH.stdout, /Commands:/);
+});

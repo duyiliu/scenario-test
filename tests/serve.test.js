@@ -145,8 +145,10 @@ test("serve：端口占用时友好退出，不输出未处理异常", async () 
             child.on("close", (code) => resolve({ code, stderr }));
         });
         assert.equal(result.code, 1);
-        assert.match(result.stderr, new RegExp(`端口 ${port} 已被占用`));
-        assert.doesNotMatch(result.stderr, /Unhandled 'error' event/);
+        assert.match(result.stderr, new RegExp(`错误：端口 ${port} 已被占用`));
+        assert.match(result.stderr, /提示：请使用 --port <其他空闲端口> 指定端口后重试；或双击 start-scenario-test\.cmd 重新申请空闲端口。/);
+        assert.doesNotMatch(result.stderr, /请重新启动以获取新的随机端口/);
+        assert.doesNotMatch(result.stderr, /Unhandled/);
     } finally {
         await new Promise((resolve) => occupied.close(resolve));
         fs.rmSync(project, { recursive: true, force: true });

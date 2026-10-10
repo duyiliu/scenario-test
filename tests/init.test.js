@@ -17,15 +17,24 @@ function runInit(project, ...args) {
 }
 
 // 异步运行 CLI：不阻塞本进程事件循环，供"同进程 HTTP server 提供下载源"的测试使用
-function runCliAsync(cliPath, args) {
+function runCliAsync(cliPath, args, nodeArgs = []) {
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [cliPath, ...args], { encoding: "utf8" });
+        const child = spawn(process.execPath, [...nodeArgs, cliPath, ...args], { encoding: "utf8" });
         let stdout = "";
         let stderr = "";
+        let watchdogError = null;
+        const watchdog = setTimeout(() => {
+            watchdogError = new Error(`看门狗：子进程 10 秒未退出，已终止 ${cliPath}`);
+            child.kill("SIGKILL");
+        }, 10000);
         child.stdout.on("data", (chunk) => { stdout += chunk; });
         child.stderr.on("data", (chunk) => { stderr += chunk; });
-        child.on("error", reject);
-        child.on("close", (code, signal) => resolve({ status: code, signal, stdout, stderr }));
+        child.on("error", (error) => { clearTimeout(watchdog); reject(error); });
+        child.on("close", (code, signal) => {
+            clearTimeout(watchdog);
+            if (watchdogError) reject(watchdogError);
+            else resolve({ status: code, signal, stdout, stderr });
+        });
     });
 }
 
@@ -282,6 +291,288 @@ test("init 免 npm 模式：--library-url 下载全部运行时副本", async ()
         // 等待 server 完全关闭（先断开 keep-alive 空闲连接，再等待 close 回调），避免端口与句柄残留
         server.closeAllConnections?.();
         await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+const REMOTE_FILES = {
+    "scenario-test-cli.cjs": "#!/usr/bin/env node\nconsole.log('mock cli');\n",
+    "scenario-test.umd.js": `/*! scenario-test v${VERSION} */\nvar ScenarioTest = {};\n`,
+    "scenario-test.d.ts": `// scenario-test v${VERSION}\nexport {};\n`,
+    "scenario-test-capabilities.json": JSON.stringify({ schema: "scenario-test-capabilities", version: VERSION, contractVersion: CONTRACT_VERSION })
+};
+
+function writeRemotePreload(directory, recordFile, speedup) {
+    const srcDir = path.dirname(cli);
+    const candidates = [];
+    for (const fileName of Object.keys(REMOTE_FILES)) {
+        candidates.push(path.resolve(srcDir, fileName));
+        candidates.push(path.resolve(srcDir, "../dist", fileName));
+    }
+    const preloadPath = path.join(directory, "preload.cjs");
+    fs.writeFileSync(preloadPath, [
+        'const fs = require("node:fs");',
+        `const candidates = new Set(${JSON.stringify(candidates)});`,
+        "const origExistsSync = fs.existsSync;",
+        "fs.existsSync = function (target) {",
+        "    if (candidates.has(String(target))) return false;",
+        "    return origExistsSync.apply(fs, arguments);",
+        "};",
+        "const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);",
+        "AbortSignal.timeout = function (ms) {",
+        `    fs.appendFileSync(${JSON.stringify(recordFile)}, String(ms) + "\\n");`,
+        `    return nativeTimeout(${speedup ? "1000" : "ms"});`,
+        "};",
+        ""
+    ].join("\n"), "utf8");
+    return preloadPath;
+}
+
+async function closeServer(server) {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+}
+
+test("init 源码远程下载成功：全部 4 个运行时文件落盘且版本锁匹配", async () => {
+    const counts = {};
+    const server = http.createServer((request, response) => {
+        const name = decodeURIComponent(request.url).replace(/^\//, "");
+        counts[name] = (counts[name] || 0) + 1;
+        if (REMOTE_FILES[name]) {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.end(REMOTE_FILES[name]);
+        } else {
+            response.writeHead(404);
+            response.end();
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-remote-ok-"));
+    try {
+        const recordFile = path.join(project, "signals.txt");
+        fs.writeFileSync(recordFile, "", "utf8");
+        const preloadPath = writeRemotePreload(project, recordFile, false);
+        const result = await runCliAsync(cli, [
+            "init", "--project", project, "--dir", "scenario-test",
+            "--library-url", `http://127.0.0.1:${server.address().port}/`, "--no-input"
+        ], ["--require", preloadPath]);
+        assert.equal(result.status, 0, result.stderr + result.stdout);
+        const frameworkDir = path.join(project, "scenario-test", ".scenario-test");
+        for (const [fileName, content] of Object.entries(REMOTE_FILES)) {
+            assert.equal(fs.readFileSync(path.join(frameworkDir, fileName), "utf8"), content, `${fileName} 落盘内容应等于 mock`);
+            assert.equal(counts[fileName], 1, `${fileName} 应实际请求一次`);
+        }
+        const lock = JSON.parse(fs.readFileSync(path.join(frameworkDir, ".scenario-test-version.json"), "utf8"));
+        assert.equal(lock.runtimeVersion, VERSION);
+        for (const fileName of Object.keys(REMOTE_FILES)) {
+            const realSha = crypto.createHash("sha256").update(REMOTE_FILES[fileName]).digest("hex");
+            assert.equal(lock.sha256[fileName], realSha, `${fileName} 的锁 sha 应为下载内容哈希`);
+        }
+        const recorded = fs.readFileSync(recordFile, "utf8").trim().split("\n");
+        assert.deepEqual(recorded, ["30000", "30000", "30000", "30000"], "4 次下载的超时预算均应为 30000ms");
+    } finally {
+        await closeServer(server);
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 源码远程下载响应头超时：FAIL 退出、不误落版本锁", async () => {
+    const counts = {};
+    const server = http.createServer((request, response) => {
+        const name = decodeURIComponent(request.url).replace(/^\//, "");
+        counts[name] = (counts[name] || 0) + 1;
+        if (name === "scenario-test.umd.js") return;
+        if (REMOTE_FILES[name]) {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.end(REMOTE_FILES[name]);
+        } else {
+            response.writeHead(404);
+            response.end();
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-remote-stallh-"));
+    try {
+        const recordFile = path.join(project, "signals.txt");
+        fs.writeFileSync(recordFile, "", "utf8");
+        const preloadPath = writeRemotePreload(project, recordFile, true);
+        const result = await runCliAsync(cli, [
+            "init", "--project", project, "--dir", "scenario-test",
+            "--library-url", `http://127.0.0.1:${server.address().port}/`, "--no-input"
+        ], ["--require", preloadPath]);
+        assert.equal(result.status, 1, result.stdout + result.stderr);
+        assert.match(result.stderr, /scenario-test\.umd\.js 下载失败（下载超时（30 秒）/);
+        assert.doesNotMatch(result.stdout, /已初始化项目/);
+        const frameworkDir = path.join(project, "scenario-test", ".scenario-test");
+        assert.equal(fs.existsSync(path.join(frameworkDir, "scenario-test.umd.js")), false, "超时文件不得落盘");
+        assert.equal(fs.existsSync(path.join(frameworkDir, ".scenario-test-version.json")), false, "副本不完整不得落版本锁");
+        assert.ok((counts["scenario-test.umd.js"] || 0) >= 1, "请求应实际到达本地 mock");
+        const recorded = fs.readFileSync(recordFile, "utf8").trim().split("\n");
+        assert.deepEqual(recorded, ["30000", "30000", "30000", "30000"], "4 次下载的超时预算均应为 30000ms");
+    } finally {
+        await closeServer(server);
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 源码远程下载响应体超时：收到头与部分 body 但不 end 同样中止", async () => {
+    const counts = {};
+    const server = http.createServer((request, response) => {
+        const name = decodeURIComponent(request.url).replace(/^\//, "");
+        counts[name] = (counts[name] || 0) + 1;
+        if (name === "scenario-test.umd.js") {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.write("partial-body");
+            response.flushHeaders();
+            return;
+        }
+        if (REMOTE_FILES[name]) {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.end(REMOTE_FILES[name]);
+        } else {
+            response.writeHead(404);
+            response.end();
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-remote-stallb-"));
+    try {
+        const recordFile = path.join(project, "signals.txt");
+        fs.writeFileSync(recordFile, "", "utf8");
+        const preloadPath = writeRemotePreload(project, recordFile, true);
+        const result = await runCliAsync(cli, [
+            "init", "--project", project, "--dir", "scenario-test",
+            "--library-url", `http://127.0.0.1:${server.address().port}/`, "--no-input"
+        ], ["--require", preloadPath]);
+        assert.equal(result.status, 1, result.stdout + result.stderr);
+        assert.match(result.stderr, /scenario-test\.umd\.js 下载失败（下载超时（30 秒）/);
+        assert.doesNotMatch(result.stdout, /已初始化项目/);
+        const frameworkDir = path.join(project, "scenario-test", ".scenario-test");
+        assert.equal(fs.existsSync(path.join(frameworkDir, "scenario-test.umd.js")), false, "超时文件不得落盘");
+        assert.equal(fs.existsSync(path.join(frameworkDir, ".scenario-test-version.json")), false, "副本不完整不得落版本锁");
+        assert.ok((counts["scenario-test.umd.js"] || 0) >= 1, "请求应实际到达本地 mock");
+        const recorded = fs.readFileSync(recordFile, "utf8").trim().split("\n");
+        assert.deepEqual(recorded, ["30000", "30000", "30000", "30000"], "4 次下载的超时预算均应为 30000ms");
+    } finally {
+        await closeServer(server);
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+function seedStaleRuntime(dir) {
+    const publicDir = path.join(dir, "scenario-test");
+    const frameworkDir = path.join(publicDir, ".scenario-test");
+    fs.mkdirSync(frameworkDir, { recursive: true });
+    const staleFiles = {};
+    for (const fileName of Object.keys(REMOTE_FILES)) {
+        const content = `stale ${fileName} v0.0.1`;
+        staleFiles[fileName] = content;
+        fs.writeFileSync(path.join(frameworkDir, fileName), content, "utf8");
+    }
+    const sha256 = {};
+    for (const [fileName, content] of Object.entries(staleFiles)) {
+        sha256[fileName] = crypto.createHash("sha256").update(content).digest("hex");
+    }
+    const lockPath = path.join(frameworkDir, ".scenario-test-version.json");
+    const lockText = JSON.stringify({
+        runtimeVersion: "0.0.1",
+        contractVersion: CONTRACT_VERSION,
+        files: { cli: "scenario-test-cli.cjs", umd: "scenario-test.umd.js", dts: "scenario-test.d.ts", capabilities: "scenario-test-capabilities.json" },
+        sha256
+    }, null, 2);
+    fs.writeFileSync(lockPath, lockText, "utf8");
+    const configPath = path.join(publicDir, "scenario.config.js");
+    const configText = "ScenarioTest.registerConfig(ScenarioTest.defineConfig({baseUrl:'http://localhost:9999',scenarios:[]}));\n";
+    fs.writeFileSync(configPath, configText, "utf8");
+    return { frameworkDir, lockPath, lockText, configPath, configText, staleFiles };
+}
+
+function startRemoteServer(failName) {
+    const counts = {};
+    const server = http.createServer((request, response) => {
+        const name = decodeURIComponent(request.url).replace(/^\//, "");
+        counts[name] = (counts[name] || 0) + 1;
+        if (name === failName) {
+            response.writeHead(503);
+            response.end();
+            return;
+        }
+        if (REMOTE_FILES[name]) {
+            response.writeHead(200, { "Content-Type": "application/octet-stream" });
+            response.end(REMOTE_FILES[name]);
+        } else {
+            response.writeHead(404);
+            response.end();
+        }
+    });
+    return { counts, server };
+}
+
+test("init 源码远程升级：部分文件下载失败时退出 1，旧副本与旧版本锁原样保留", async () => {
+    const { counts, server } = startRemoteServer("scenario-test.umd.js");
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-remote-upfail-"));
+    try {
+        const dir = path.join(project, "work");
+        fs.mkdirSync(dir, { recursive: true });
+        const seeded = seedStaleRuntime(dir);
+        const recordFile = path.join(project, "signals.txt");
+        fs.writeFileSync(recordFile, "", "utf8");
+        const preloadPath = writeRemotePreload(project, recordFile, false);
+        const result = await runCliAsync(cli, [
+            "init", "--project", dir, "--dir", "scenario-test",
+            "--library-url", `http://127.0.0.1:${server.address().port}/`, "--no-input"
+        ], ["--require", preloadPath]);
+        assert.equal(result.status, 1, `应退出 1，stdout: ${result.stdout} stderr: ${result.stderr}`);
+        assert.match(result.stderr, /运行时副本更新失败/);
+        assert.match(result.stderr, /umd/);
+        assert.doesNotMatch(result.stdout, /已初始化项目/);
+        assert.equal(fs.readFileSync(path.join(seeded.frameworkDir, "scenario-test.umd.js"), "utf8"), seeded.staleFiles["scenario-test.umd.js"], "失败时旧 UMD 字节不得被删除或覆盖");
+        assert.equal(fs.readFileSync(seeded.lockPath, "utf8"), seeded.lockText, "失败时旧版本锁文本不得被改写");
+        assert.equal(fs.readFileSync(seeded.configPath, "utf8"), seeded.configText, "用户配置不得被覆盖");
+        for (const fileName of Object.keys(REMOTE_FILES)) {
+            assert.equal(counts[fileName], 1, `${fileName} 应实际请求一次`);
+        }
+        const recorded = fs.readFileSync(recordFile, "utf8").trim().split("\n");
+        assert.deepEqual(recorded, ["30000", "30000", "30000", "30000"], "4 次下载的超时预算均应为 30000ms");
+    } finally {
+        await closeServer(server);
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("init 源码远程升级：全部下载成功时刷新副本并重写版本锁", async () => {
+    const { counts, server } = startRemoteServer(null);
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-remote-upok-"));
+    try {
+        const dir = path.join(project, "work");
+        fs.mkdirSync(dir, { recursive: true });
+        const seeded = seedStaleRuntime(dir);
+        const recordFile = path.join(project, "signals.txt");
+        fs.writeFileSync(recordFile, "", "utf8");
+        const preloadPath = writeRemotePreload(project, recordFile, false);
+        const result = await runCliAsync(cli, [
+            "init", "--project", dir, "--dir", "scenario-test",
+            "--library-url", `http://127.0.0.1:${server.address().port}/`, "--no-input"
+        ], ["--require", preloadPath]);
+        assert.equal(result.status, 0, result.stderr + result.stdout);
+        for (const [fileName, content] of Object.entries(REMOTE_FILES)) {
+            assert.equal(fs.readFileSync(path.join(seeded.frameworkDir, fileName), "utf8"), content, `${fileName} 应刷新为下载内容`);
+            assert.equal(counts[fileName], 1, `${fileName} 应实际请求一次`);
+        }
+        const lock = JSON.parse(fs.readFileSync(seeded.lockPath, "utf8"));
+        assert.equal(lock.runtimeVersion, VERSION);
+        assert.equal(lock.contractVersion, CONTRACT_VERSION);
+        for (const fileName of Object.keys(REMOTE_FILES)) {
+            const realSha = crypto.createHash("sha256").update(REMOTE_FILES[fileName]).digest("hex");
+            assert.equal(lock.sha256[fileName], realSha, `${fileName} 的锁 sha 应更新为新内容哈希`);
+        }
+        assert.equal(fs.readFileSync(seeded.configPath, "utf8"), seeded.configText, "用户配置不得被覆盖");
+        const recorded = fs.readFileSync(recordFile, "utf8").trim().split("\n");
+        assert.deepEqual(recorded, ["30000", "30000", "30000", "30000"], "4 次下载的超时预算均应为 30000ms");
+    } finally {
+        await closeServer(server);
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

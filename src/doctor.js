@@ -11,7 +11,7 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { loadConfigFile, loadScenarioFile } from "./node/loader.js";
-import { FRAMEWORK_FILES, resolveLayoutFromConfigDir } from "./project-layout.js";
+import { FRAMEWORK_FILES, createProjectLayout, resolveLayoutFromConfigDir } from "./project-layout.js";
 
 const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
 const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
@@ -35,21 +35,33 @@ function checkRuntimeArtifact(filePath, fileName, key, pattern) {
             fix: "运行 init 补齐（不传 --force 不会覆盖项目文件）"
         };
     }
-    const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
-    if (version !== null && version !== VERSION) {
+    try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) throw new Error("路径不是普通文件");
+        const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
+        if (pattern === null) fs.accessSync(filePath, fs.constants.R_OK);
+        if (version !== null && version !== VERSION) {
+            return {
+                name: key,
+                status: "FAIL",
+                message: `版本不一致：${fileName} 是 v${version}，当前 CLI 是 v${VERSION}`,
+                fix: `用 v${VERSION} 的 CLI 重新 init 刷新运行时副本`
+            };
+        }
+        return {
+            name: key,
+            status: "PASS",
+            message: `运行时副本就绪: ${fileName}${version ? `（v${version}）` : ""}`,
+            fix: ""
+        };
+    } catch (error) {
         return {
             name: key,
             status: "FAIL",
-            message: `版本不一致：${fileName} 是 v${version}，当前 CLI 是 v${VERSION}`,
-            fix: `用 v${VERSION} 的 CLI 重新 init 刷新运行时副本`
+            message: `运行时副本不可读取: ${fileName}（${filePath}，原因: ${error.message}）`,
+            fix: "移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init"
         };
     }
-    return {
-        name: key,
-        status: "PASS",
-        message: `运行时副本就绪: ${fileName}${version ? `（v${version}）` : ""}`,
-        fix: ""
-    };
 }
 
 function checkCapabilitiesFile(filePath) {
@@ -110,6 +122,14 @@ function checkVersionLock(filePath) {
             fix: "修复或删除版本锁后用当前版本 CLI 重新 init 生成"
         };
     }
+    if (!lock || typeof lock !== "object" || Array.isArray(lock)) {
+        return {
+            name: "version-lock",
+            status: "FAIL",
+            message: "版本锁必须是 JSON 对象",
+            fix: "修复版本锁后用当前版本 CLI 重新 init 生成"
+        };
+    }
     if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) {
         return {
             name: "version-lock",
@@ -157,7 +177,20 @@ function checkVersionLock(filePath) {
             if (declaredFiles && !declaredFiles.has(fileName)) continue;
             const target = path.join(path.dirname(filePath), fileName);
             if (!fs.existsSync(target)) continue;
-            if (sha256Of(target) !== expected) {
+            let actual;
+            try {
+                if (!fs.statSync(target).isFile()) throw new Error("路径不是普通文件");
+                actual = sha256Of(target);
+            } catch (error) {
+                extras.push({
+                    name: "version-lock",
+                    status: "FAIL",
+                    message: `${fileName} 无法校验 SHA256（原因: ${error.message}）`,
+                    fix: "移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init"
+                });
+                continue;
+            }
+            if (actual !== expected) {
                 // 内容被替换是最强可疑信号：文件缺失可由 init 修复，内容被替换意味着来源不明，
                 // 必须 FAIL（退出码 1）拦下，避免 CI/安装脚本把被篡改的运行时当健康放行
                 extras.push({
@@ -352,7 +385,18 @@ export function buildDoctorReport(options) {
     }
 
     // 6. AI 规则就绪检查（不依赖 config，可继续检查）
-    const layout = resolveLayoutFromConfigDir(configDir);
+    let layout;
+    try {
+        layout = resolveLayoutFromConfigDir(configDir);
+    } catch (error) {
+        layout = createProjectLayout(path.dirname(configDir), path.basename(configDir));
+        checks.push({
+            name: "framework-directory",
+            status: "FAIL",
+            message: error.message,
+            fix: "移走无效路径或修复读取权限后重新运行 init"
+        });
+    }
     checks.push({
         name: "cli",
         status: "PASS",

@@ -374,3 +374,91 @@ test("doctor：场景 url 越界时 scenario-list FAIL（缺 id/url 在 defineCo
         cleanup(project);
     }
 });
+
+test("doctor --json：运行时副本被同名目录占位时汇总不丢失，逐项 FAIL 不崩溃", () => {
+    const { project, dir } = initProject();
+    try {
+        const frameworkDir = path.join(dir, ".scenario-test");
+        for (const fileName of ["scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-cli.cjs"]) {
+            fs.rmSync(path.join(frameworkDir, fileName));
+            fs.mkdirSync(path.join(frameworkDir, fileName));
+        }
+        const result = runDoctor(dir, ["--json"]);
+        assert.equal(result.status, 1);
+        assert.equal(result.stderr, "");
+        const parsed = JSON.parse(result.stdout);
+        const umd = parsed.checks.find((check) => check.name === "umd");
+        assert.equal(umd.status, "FAIL");
+        assert.match(umd.message, /运行时副本不可读取/);
+        assert.match(umd.message, /路径不是普通文件/);
+        const dts = parsed.checks.find((check) => check.name === "dts");
+        assert.equal(dts.status, "FAIL");
+        assert.match(dts.message, /运行时副本不可读取/);
+        const runtimeCli = parsed.checks.find((check) => check.name === "runtime-cli");
+        assert.equal(runtimeCli.status, "FAIL");
+        assert.match(runtimeCli.message, /运行时副本不可读取/);
+        const lockFailures = parsed.checks.filter((check) => check.name === "version-lock" && check.status === "FAIL");
+        assert.ok(lockFailures.some((check) => check.message.includes("无法校验 SHA256")), "被目录占位的文件应报无法校验 SHA256");
+        assert.ok(parsed.checks.some((check) => check.name === "capabilities" && check.status === "PASS"));
+        assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
+        assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
+        assert.ok(parsed.checks.some((check) => check.name === "scenario-register" && check.status === "PASS"));
+        const text = runDoctor(dir);
+        assert.equal(text.status, 1);
+        assert.equal(text.stderr, "");
+        assert.match(text.stdout, /\[FAIL\] umd/);
+        assert.match(text.stdout, /如何修: 移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init/);
+        assert.match(text.stdout, /结果: FAILED（退出码 1）/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor --json：版本锁内容非 JSON 对象时 version-lock FAIL，其余检查继续", () => {
+    const { project, dir } = initProject();
+    try {
+        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
+        for (const content of ["null", "[]", "\"bad\"", "17"]) {
+            fs.writeFileSync(lockPath, content, "utf8");
+            const result = runDoctor(dir, ["--json"]);
+            assert.equal(result.status, 1, `锁内容 ${content} 应退出 1`);
+            assert.equal(result.stderr, "");
+            const parsed = JSON.parse(result.stdout);
+            const lock = parsed.checks.find((check) => check.name === "version-lock");
+            assert.equal(lock.status, "FAIL", `锁内容 ${content}`);
+            assert.match(lock.message, /JSON 对象/);
+            assert.match(lock.fix, /重新 init/);
+            assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
+            assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
+        }
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor --json：.scenario-test 被同名文件占位时 framework-directory FAIL，其余检查继续", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-fwfile-"));
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+            defaultEnvKey: "local",
+            scenarios: []
+        }));`, "utf8");
+        const blocker = path.join(dir, ".scenario-test");
+        fs.writeFileSync(blocker, "not-a-directory", "utf8");
+        const result = runDoctor(dir, ["--json"]);
+        assert.equal(result.status, 1);
+        assert.equal(result.stderr, "");
+        const parsed = JSON.parse(result.stdout);
+        const framework = parsed.checks.find((check) => check.name === "framework-directory");
+        assert.ok(framework, "应输出 framework-directory 检查项");
+        assert.equal(framework.status, "FAIL");
+        assert.match(framework.message, /必须是目录/);
+        assert.match(framework.fix, /移走无效路径/);
+        assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
+        assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
+        assert.equal(fs.readFileSync(blocker, "utf8"), "not-a-directory");
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});

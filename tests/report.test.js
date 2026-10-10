@@ -150,3 +150,112 @@ test("Markdown 报告代码围栏自适应：响应头含反引号时 json 围�
     assert.ok(md.includes("````json\n"), "带 json 标记的围栏应升级为 4 个反引号");
     assert.ok(md.includes("\n````\n"), "闭合围栏同为 4 个反引号");
 });
+
+test("Markdown 报告代码 span：普通场景文件与请求保持单反引号，Windows 路径反斜杠原样", () => {
+    const md = buildMarkdownReport({ scenarioFile: "scenarios/a.js", steps: [failedStep()] });
+    assert.ok(md.includes("- **场景文件**: `scenarios/a.js`\n"), "普通场景文件应为单反引号");
+    assert.ok(md.includes("- **请求**: `GET /list`\n"), "普通请求应为单反引号");
+    const win = buildMarkdownReport({ scenarioFile: "D:\\suite\\a.js", steps: [failedStep()] });
+    assert.ok(win.includes("- **场景文件**: `D:\\suite\\a.js`\n"), "Windows 路径反斜杠不得加倍");
+});
+
+[
+    ["a`b", "``a`b``"],
+    ["a```b", "````a```b````"],
+    ["a`````b", "``````a`````b``````"]
+].forEach(([content, span]) => {
+    test(`Markdown 报告代码 span 定界符随最长反引号序列自适应：${JSON.stringify(content)}`, () => {
+        const md = buildMarkdownReport({ scenarioFile: content, steps: [failedStep()] });
+        assert.ok(md.includes("- **场景文件**: " + span + "\n"), "定界符应为最长连续反引号 + 1");
+    });
+});
+
+[
+    ["`x", "`` `x ``"],
+    ["x`", "`` x` ``"],
+    ["``", "``` `` ```"],
+    [" a ", "`  a  `"],
+    [" a", "` a`"],
+    ["a ", "`a `"],
+    ["   ", "`   `"]
+].forEach(([content, span]) => {
+    test(`Markdown 报告代码 span 首尾反引号与空格按 CommonMark 边界补空格：${JSON.stringify(content)}`, () => {
+        const md = buildMarkdownReport({ scenarioFile: content, steps: [failedStep()] });
+        assert.ok(md.includes("- **场景文件**: " + span + "\n"), "补空格规则应与设计一致");
+    });
+});
+
+[
+    ["a\r\nb", "a\\nb"],
+    ["a\rb", "a\\nb"],
+    ["a\nb", "a\\nb"]
+].forEach(([raw, shown]) => {
+    test(`Markdown 报告场景文件与请求的换行折叠为字面量 \\n：${JSON.stringify(raw)}`, () => {
+        const md = buildMarkdownReport({ scenarioFile: raw, steps: [failedStep({ path: "/x" + raw })] });
+        const lines = md.split("\n");
+        assert.ok(lines.includes("- **场景文件**: `" + shown + "`"), "场景文件应单行且为字面量 \\n");
+        assert.ok(lines.includes("- **请求**: `GET /x" + shown + "`"), "请求应单行且为字面量 \\n");
+        assert.ok(!md.includes("\r"), "不得残留真实回车");
+    });
+});
+
+test("Markdown 报告元数据（标题/环境/模式）换行与伪标题列表保持单行", () => {
+    const md = buildMarkdownReport({
+        title: "T\r\n## 伪标题\n- 伪列表",
+        environment: "dev\r- 伪",
+        executionMode: "a\n- b",
+        steps: []
+    });
+    const lines = md.split("\n");
+    assert.equal(lines[0], "# T\\n## 伪标题\\n- 伪列表", "标题应单行");
+    assert.ok(lines.includes("- **测试环境**: dev\\n- 伪"), "环境应单行");
+    assert.ok(lines.includes("- **执行模式**: a\\n- b"), "执行模式应单行");
+});
+
+test("Markdown 报告步骤名/错误/警告/each 明细的单 CR 折叠为字面量 \\n", () => {
+    const md = buildMarkdownReport({
+        steps: [failedStep({
+            name: "n\rx",
+            error: "e\rx",
+            warnings: ["w\rx"],
+            assertions: [{
+                name: "an\rx",
+                passed: false,
+                expected: 1,
+                actual: "a\rb",
+                detail: [{ index: 0, actual: "a\rb", assertions: [{ name: "eq", passed: false, expected: 1, actual: "a\rb" }] }]
+            }]
+        })]
+    });
+    assert.ok(md.includes("步骤 1: n\\nx"), "步骤名应折叠");
+    assert.ok(md.includes("失败原因**: e\\nx"), "失败原因应折叠");
+    assert.ok(md.includes("警告**: w\\nx"), "警告应折叠");
+    assert.ok(md.includes("  - [ ] an\\nx"), "断言名应折叠");
+    assert.ok(md.includes("期望 1,实得 a\\nb"), "each 明细应折叠");
+    assert.ok(!md.includes("\r"), "不得残留真实回车");
+});
+
+[
+    ["/a`b", "``GET /a`b``"],
+    ["/a```b", "````GET /a```b````"],
+    ["/a`````b", "``````GET /a`````b``````"],
+    ["/a`", "`` GET /a` ``"]
+].forEach(([path, span]) => {
+    test(`Markdown 报告请求行代码 span 随 path 反引号自适应：${JSON.stringify(path)}`, () => {
+        const md = buildMarkdownReport({ steps: [failedStep({ path })] });
+        assert.ok(md.includes("- **请求**: " + span + "\n"), "请求行定界与补空格应与设计一致");
+    });
+});
+
+test("Markdown 报告元数据同时含字面 \\n 与真实换行：字面反斜杠双写，换行为单反斜杠 n", () => {
+    const md = buildMarkdownReport({
+        title: "T\\n\nX",
+        environment: "dev\\n\n- 伪",
+        executionMode: "a\\n\n- b",
+        steps: []
+    });
+    const lines = md.split("\n");
+    assert.equal(lines[0], "# T\\\\n\\nX", "标题字面反斜杠双写、真实换行单反斜杠 n");
+    assert.ok(lines.includes("- **测试环境**: dev\\\\n\\n- 伪"), "环境字面反斜杠双写、真实换行单反斜杠 n");
+    assert.ok(lines.includes("- **执行模式**: a\\\\n\\n- b"), "模式字面反斜杠双写、真实换行单反斜杠 n");
+});

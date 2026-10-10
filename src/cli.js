@@ -14,7 +14,7 @@ import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
-import { failureDiffLines } from "./utils/failure-diff.js";
+import { failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -26,7 +26,7 @@ class CliUsageError extends Error {
 
 function argumentValue(argv, index, option) {
     const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
+    if (!value || value === "-h" || value.startsWith("--")) {
         throw new CliUsageError(`${option} 缺少参数值`, `请为 ${option} 提供一个值，再重新运行。`);
     }
     return value;
@@ -290,13 +290,14 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
     }
     if (!libraryUrl) return null;
     const base = libraryUrl.replace(/\/+$/, "") + "/";
+    const downloadSignal = AbortSignal.timeout(30000);
     try {
-        const response = await fetch(`${base}${fileName}`);
+        const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
         return true;
     } catch (error) {
-        console.warn(`警告: ${fileName} 下载失败（${error.message}）`);
+        console.warn(`警告: ${fileName} 下载失败（${downloadSignal.aborted ? "下载超时（30 秒）" : error.message}）`);
         return null;
     }
 }
@@ -349,9 +350,10 @@ function shouldRefreshFramework(layout, force) {
     });
 }
 
-function recordRuntimeResult(created, skipped, relativePath, status) {
+function recordRuntimeResult(created, skipped, relativePath, status, failed) {
     if (status === true) created.push(relativePath);
     else if (status === false) skipped.push(relativePath);
+    else if (failed) failed.push(relativePath);
 }
 
 async function initCommand(args) {
@@ -383,17 +385,24 @@ async function initCommand(args) {
     ]);
     const created = [];
     const skipped = [];
+    const failedRuntimeFiles = [];
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
         const overwrite = force || frameworkTemplatePaths.has(relativePath);
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
     }
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework));
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework));
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework), failedRuntimeFiles);
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework), failedRuntimeFiles);
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework), failedRuntimeFiles);
+    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework), failedRuntimeFiles);
     // 运行时副本必须齐全才能写版本锁：任一文件缺失即明确失败（退出码 1），
     // 避免下载失败后仍落锁、init 假成功导致不完整安装
+    if (failedRuntimeFiles.length) {
+        throw new Error(
+            `运行时副本更新失败: ${failedRuntimeFiles.join(", ")}\n` +
+            "请检查下载源或网络后重跑 init；现有版本锁未更新。"
+        );
+    }
     const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
     const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
     if (missingRuntimeFiles.length) {
@@ -589,7 +598,7 @@ async function runCommand(args) {
                         const label = `${prefix}第 ${item.index + 1} 项`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            console.log(`      ↳ ${label} ${sub.name}: expected=${JSON.stringify(sub.expected)} actual=${JSON.stringify(sub.actual)}`);
+                            console.log(`      ↳ ${label} ${sub.name}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
                                 console.log(line);
@@ -599,7 +608,7 @@ async function runCommand(args) {
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
-                    console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
+                    console.log(`  - ${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
@@ -847,7 +856,8 @@ async function serveCommand(args) {
     });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
-            console.error(`端口 ${args.port} 已被占用，请重新启动以获取新的随机端口`);
+            console.error(`错误：端口 ${args.port} 已被占用`);
+            console.error("提示：请使用 --port <其他空闲端口> 指定端口后重试；或双击 start-scenario-test.cmd 重新申请空闲端口。");
             process.exitCode = 1;
             return;
         }
