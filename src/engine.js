@@ -640,6 +640,16 @@ export function createEngine(engineOptions = {}) {
 
                 // ✅ 确保最小重试间隔
                 const intervalMs = Math.max(100, Number(retry.intervalMs || 2000));
+                // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
+                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死
+                await options.onAttempt?.({
+                    step,
+                    attempt,
+                    totalAttempts,
+                    intervalMs,
+                    status: lastExecution.response?.status ?? null,
+                    failedAssertion: assertions.find((item) => !item.passed)?.name || ""
+                });
                 await delay(intervalMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);

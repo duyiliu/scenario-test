@@ -282,12 +282,28 @@ export interface EngineOptions {
     verboseErrors?: boolean;
 }
 
+/** 重试进度回调参数：每次未通过且将重试前发出（最终一次尝试或通过时不发） */
+export interface RetryAttemptInfo {
+    step: Step;
+    /** 刚失败且将重试的尝试序号（1 基） */
+    attempt: number;
+    /** 最大尝试总次数（含首次） */
+    totalAttempts: number;
+    /** 距下次尝试的等待毫秒数 */
+    intervalMs: number;
+    /** 本次响应状态码（适配器响应可为非 number） */
+    status: unknown;
+    /** 首个未通过断言名 */
+    failedAssertion: string;
+}
+
 export interface RunOptions {
     config?: ScenarioConfig;
     vars?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
+    onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
 }
 
 export interface Engine {

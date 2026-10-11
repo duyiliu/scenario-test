@@ -182,6 +182,42 @@ test("CLI run 失败步骤输出截断响应体原文（saveResponseAs 提示保
     }
 });
 
+test("CLI run 重试轮询输出 [RETRY] 进度行（防长时间静默）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-retry-"));
+    let calls = 0;
+    const server = http.createServer((request, response) => {
+        calls += 1;
+        // 前 2 次未就绪、第 3 次就绪：retryUntil 在第 3 次尝试通过
+        const ready = calls >= 3;
+        response.writeHead(ready ? 200 : 202, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ ready }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"poll",name:"Poll",url:"scenarios/poll.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/poll.js"), `ScenarioTest.registerScenario("poll",ScenarioTest.defineScenario({name:"Poll",steps:[{name:"轮询任务",path:"job",retryUntil:{maxAttempts:5,intervalMs:120},assertions:[{name:"就绪",path:"ready",equals:true}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            child.stdout.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.on("close", (code) => resolve({ code, stdout }));
+        });
+        assert.equal(result.code, 0, result.stdout);
+        // 前 2 次未通过各一行进度；第 3 次通过不再输出
+        assert.match(result.stdout, /\[RETRY\] 第 1\/5 次未通过（status 202，就绪），.*后重试/);
+        assert.match(result.stdout, /\[RETRY\] 第 2\/5 次未通过（status 202，就绪），.*后重试/);
+        assert.equal(result.stdout.split("[RETRY]").length - 1, 2, "只有未通过且将重试的尝试才输出进度行");
+        assert.match(result.stdout, /\[PASS\] 轮询任务/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
     const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");

@@ -223,6 +223,37 @@ test("retryUntil maxAttempts 语义 = 最大尝试总次数（含首次），不
     assert.equal(report.results[0].passed, false);
 });
 
+test("retryUntil 每次失败重试前发出 onAttempt（序号/总数/间隔/状态/首个失败断言）", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => jsonResponse({ ready: ++calls >= 3 }, calls < 3 ? 202 : 200)
+    });
+    const attempts = [];
+    const step = { name: "等待", path: "job", retryUntil: { maxAttempts: 4, intervalMs: 120 }, assertions: [{ name: "就绪", path: "ready", equals: true }] };
+    const report = await engine.runScenario(defineScenario({ name: "重试进度", steps: [step] }), {
+        onAttempt: async (info) => { attempts.push(info); }
+    });
+    assert.equal(report.failed, 0);
+    assert.equal(calls, 3);
+    // 前两次未通过各触发一次（第 3 次通过、第 4 次不存在均不触发）
+    assert.equal(attempts.length, 2);
+    assert.deepEqual(attempts.map((info) => info.attempt), [1, 2]);
+    assert.deepEqual(attempts.map((info) => info.status), [202, 202]);
+    for (const info of attempts) {
+        assert.equal(info.totalAttempts, 4);
+        assert.equal(info.intervalMs, 120);
+        assert.equal(info.step, step);
+        assert.equal(info.failedAssertion, "就绪");
+    }
+    // 无 retryUntil 的步骤不发出 onAttempt
+    const plain = [];
+    await engine.runScenario(defineScenario({ name: "无重试", steps: [{ name: "s", path: "x" }] }), {
+        onAttempt: (info) => { plain.push(info); }
+    });
+    assert.equal(plain.length, 0);
+});
+
 test("取消落在两步之间：报告状态 CANCELLED，不再出现 status=PASSED 且 passed=false 的矛盾", async () => {
     const controller = new AbortController();
     const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ ok: 1 }) });

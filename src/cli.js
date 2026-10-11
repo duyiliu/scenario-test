@@ -598,6 +598,11 @@ async function runCommand(args) {
         console.log(`\n# ${scenario.name} (${entry.id})`);
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
+            // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感
+            async onAttempt(info) {
+                const detail = `status ${info.status}${info.failedAssertion ? `，${info.failedAssertion}` : ""}`;
+                console.log(`  [RETRY] 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+            },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
                 console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${ScenarioTest.formatDuration(result.duration)})`);

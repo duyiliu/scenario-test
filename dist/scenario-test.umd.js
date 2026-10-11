@@ -1689,6 +1689,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
           if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
           const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
+          await options.onAttempt?.({
+            step,
+            attempt,
+            totalAttempts,
+            intervalMs,
+            status: lastExecution.response?.status ?? null,
+            failedAssertion: assertions.find((item) => !item.passed)?.name || ""
+          });
           await delay(intervalMs, options.signal);
         }
         const failed = assertions.find((item) => !item.passed);

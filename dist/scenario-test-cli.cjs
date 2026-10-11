@@ -1701,6 +1701,14 @@ function createEngine(engineOptions = {}) {
         if (extractResult.failures.length) assertions.push(...extractResult.failures);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
         const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
+        await options.onAttempt?.({
+          step,
+          attempt,
+          totalAttempts,
+          intervalMs,
+          status: lastExecution.response?.status ?? null,
+          failedAssertion: assertions.find((item) => !item.passed)?.name || ""
+        });
         await delay(intervalMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
@@ -7900,6 +7908,11 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
 # ${scenario.name} (${entry.id})`);
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
+      // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感
+      async onAttempt(info) {
+        const detail = `status ${info.status}${info.failedAssertion ? `\uFF0C${info.failedAssertion}` : ""}`;
+        console.log(`  [RETRY] \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+      },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
         console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${formatDuration(result.duration)})`);
