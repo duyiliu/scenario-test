@@ -502,7 +502,12 @@ function getByPath(source, valuePath) {
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
-    const key = token.startsWith("[") ? token.slice(1, -1).replace(/^['"]|['"]$/g, "") : token;
+    const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+    if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+      cursor = cursor[cursor.length + Number(inner)];
+      continue;
+    }
+    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "");
     cursor = cursor[key];
   }
   return cursor;

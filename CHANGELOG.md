@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### DSL
+
+- 数组路径下标支持负索引：`records[-1]` 取数组末项、`records[-N]` 取倒数第 N 项，extract、断言 path、模板 `{{vars.*}}`/`{{lastResponse.*}}` 与 `from: "headers"` 子路径同口径生效。此前 `[-1]` 能被分词却按字面属性名取值，静默得到 `undefined`（表现为提取 warning 或断言失败）。越界负索引按路径不存在处理；引号键（`a["-1"]`）与非数组上的 `a[-1]` 维持属性名语义不变。
+
 ## [0.6.0] - 2026-10-11
 
 ### DSL

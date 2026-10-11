@@ -10,6 +10,7 @@ import {
     formatDuration,
     gb11643Checksum,
     generateSignature,
+    getByPath,
     isGlobalParam,
     joinUrl,
     luhnCheckDigit,
@@ -271,6 +272,28 @@ test("extract 不允许覆盖保留变量 runId/runNo", () => {
     const response = responseWith({ id: "1" });
     assert.throws(() => applyExtract({ extract: [{ name: "runId", path: "id" }] }, response, runtime), /保留变量/);
     assert.throws(() => applyExtract({ extract: [{ name: "runNo", path: "id" }] }, response, runtime), /保留变量/);
+});
+
+test("数组负索引路径：[-N] 取倒数第 N 项，引号键与非数组维持属性名语义", () => {
+    const body = {
+        records: [{ id: "a" }, { id: "b" }, { id: "c" }],
+        plain: { "-1": "字面键" }
+    };
+    assert.equal(getByPath(body, "records[-1].id"), "c");
+    assert.equal(getByPath(body, "records[-3].id"), "a");
+    assert.equal(getByPath(body, "records[-4]"), undefined, "越界负索引按路径不存在处理");
+    // 非数组光标与引号键维持既有属性名语义（{ "-1": ... } 字面键不受影响）
+    assert.equal(getByPath(body, 'plain["-1"]'), "字面键");
+    assert.equal(getByPath(body, "plain[-1]"), "字面键");
+
+    // extract / 断言 / 模板插值与 getByPath 同口径
+    const runtime = runtimeWith({ list: [10, 20, 30] });
+    assert.equal(resolve("{{vars.list[-1]}}", runtime), 30);
+    const response = responseWith(body);
+    assert.equal(evaluateAssertion({ path: "records[-1].id", equals: "c" }, response, runtime).passed, true);
+    const result = applyExtract({ extract: [{ name: "lastId", path: "records[-1].id" }] }, response, runtime);
+    assert.equal(result.warnings.length, 0);
+    assert.equal(runtime.vars.lastId, "c");
 });
 
 test("全局参数：isGlobalParam 校验、normalize 转字符串、mergeGlobals 按 type:name 去重且后者覆盖", () => {
