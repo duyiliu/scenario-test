@@ -1,5 +1,31 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 第 12 轮（2026-10-11，goal-improve 连续迭代：5 个功能点 + 1 个构建修复）
+
+### 本轮完成（6 个原子提交，全部留本地未 push）
+
+1. **`fd9dc7e` feat(dsl) 数组负索引路径 `[-N]`**：`records[-1]` 取末项、`[-N]` 取倒数第 N 项。此前 `[-1]` 能被分词（`-?\d+`）却按字面属性名取值 → 静默 `undefined`。extract/断言 path/模板 `{{vars.*}}`/`{{lastResponse.*}}`/`from:"headers"` 子路径同口径（双端共用 `core.js getByPath`，无镜像成本）。越界按路径不存在；引号键 `["-1"]` 与非数组 `[-1]` 维持属性名语义。契约不投射路径语法 → 未 bump。core.test +1。
+2. **`657b347` feat(cli) `run --scenario` 逗号多选**：`--scenario a,b` 按 id/name/url 逐项匹配，执行顺序保持配置清单序；任一未命中即整体报错点名缺失项 + 可选清单（all-or-error，防 CI 拼写静默少跑）；空白值报「值为空」。contract 选项 kind/description 不变 → 未 bump；help 自由文本段补说明。cli.test +1。
+3. **`044a77f` feat(dsl) `extract.default` 兜底值（contract 6→7）**：路径缺失取声明 `default`（`resolve` 模板、可引用先提取变量），不产生 warning；仅 `undefined` 判缺失（JSON `null` 是真实值不兜底）；`required:true` 与 `default` 互斥即抛。契约 `extract` 段加 `default: "any"` + note 更新（note 旧文"默认缺失产生 warning，变量为 undefined"已不完整 → 触发 bump）；dts 投射 `default?: unknown`；AI Prompt/README 模板同步。core.test +2。
+4. **`2df36c1` fix(dsl) `retryUntil.assertions` 定义期拒绝**：该字段此前被校验但引擎从不读（重试判定只用步骤顶层 assertions）→ 误写者静默"一次即停"。现 `defineScenario` 报错并指引迁移。engine.test 既有效验用例改写（含合法子断言也拒的判别用例）。
+5. **`902f9a3` feat(dsl) `matches` 静态正则定义期校验**：非法正则在执行期被 catch 成 `passed=false`（呈现为值不匹配而非正则写错）；现 `validateAssertion` 对不含 `{{` 的期望值提前编译，each 子断言同口径。parity.test 移除「`matches:"("` → passed=false」旧行为锁定并改注。core.test +1。
+6. **`1b1acd3` fix(build) staging 换 dist 抗 Windows 瞬时锁**：`rename` EPERM（杀毒/索引器/编辑器瞬时占用）按 250ms 重试 3 次，仍败回退 `cpSync` 目录拷贝；启动时按目录名 pid 存活检测清理 `dist.staging-*` 孤儿（pid 不存活才删，pid 复用宁可不删）。本轮实遇一次 EPERM 后立项。
+
+- **验证**：`npm run check` **264/264 全绿**（259 基线 + 1 负索引 + 1 多选 + 2 default + 1 matches；retryUntil 为改写）；`npm run test:browser` 桌面视口通过（静默成功）。
+- **contractVersion 现为 7**（仅 extract.default 一处触发 bump；负索引/--scenario 多选/matches 校验/retryUntil 拒绝均不触契约字段）。版本号仍 0.6.0 未发版。
+
+### 本轮遗留事项
+
+1. **contract v7 未发版**：如需对外提供 default/负索引，走发版流程（版本号 + CHANGELOG Unreleased→版本 + install 脚本/README URL + 三方验证）。
+2. **下轮候选（按价值排序，均带决策点）**：
+   - `run --json` 机器可读结果输出（CI 集成）：`--json` 选项已存在但限 capabilities/doctor；扩展到 run 需定输出形状与 stdout 纯净策略（进度行走 stderr 还是抑制）→ 建议先确认消费方格式需求。
+   - `when` 对象形式扩展来源（lastResponse/status）：契约 `when.sources` 现仅 vars（对象形模板可曲线表达，扩展属契约设计变更）→ 需设计。
+   - `includes` 对对象实际值语义：现在非数组走 `String(actual).includes`，对象实际值恒 false（`[object Object]`）→ 是否做对象子集包含需改 contract description（再 bump）。
+   - `retryUntil` 退避参数（intervalFactor/maxIntervalMs）：固定间隔对轮询已够用，价值中低。
+   - build rename EPERM 重试逻辑无确定性复现手段（瞬时 OS 锁），逻辑经 review + 实测清理路径验证；如再发 EPERM 需记录。
+3. 其余历史遗留不变：npm audit 7 漏洞（devDependencies 传递链，待 tailwind 4）、2 个开发辅助脚本保留。
+4. 硬边界提醒不变：`dist/` 与 `*.generated.js` 勿手改；contract 投射文本不能含 `}`；types 名单锁第二份副本在 `tests/cli.test.js`；提交留本地不 push；中文文案。
+
 ## 发版记录：v0.6.0（2026-10-11，用户指示）
 
 - 覆盖第 11 轮 enum 造数实现与行内反引号修复（`9701548`、`15bb476`），contractVersion 5→6，测试 252→259。
