@@ -10,11 +10,13 @@ const workbenchView = (function () {
 
     // Markdown 报告内的值拼接转义：反斜杠先行转义、换行折叠为字面量 \n，
     // 防止含换行/列表标记的响应值把列表项拆行、伪造嵌套列表破坏报告排版
-    // （非字符串值用紧凑 JSON 单行呈现，完整多行内容仍在响应代码块中）
+    // （非字符串值用紧凑 JSON 单行呈现，完整多行内容仍在响应代码块中）。
+    // 反引号转义为字面量：这些值位于行内正文（非代码 span），裸反引号会被 Markdown
+    // 当作行内代码定界符，奇数个时把后续文本整段吞进代码 span，破坏报告结构
     function mdInline(value) {
         var text = typeof value === 'string' ? value : JSON.stringify(value);
         if (text === undefined || text === null || text === '') return '';
-        return text.replace(/\\/g, '\\\\').replace(/\r\n|\r|\n/g, '\\n');
+        return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\r\n|\r|\n/g, '\\n');
     }
 
     function mdCode(value) {

@@ -3204,7 +3204,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function mdInline(value) {
       var text = typeof value === "string" ? value : JSON.stringify(value);
       if (text === void 0 || text === null || text === "") return "";
-      return text.replace(/\\/g, "\\\\").replace(/\r\n|\r|\n/g, "\\n");
+      return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\r\n|\r|\n/g, "\\n");
     }
     function mdCode(value) {
       var text = String(value).replace(/\r\n|\r|\n/g, "\\n");

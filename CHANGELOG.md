@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 - 新增 `generatedVars` 类型 `enum`（contract v5 → v6）：从 `values` 候选集中按可选 `weights` 非负权重抽取一个值。权重缺省等权，权重为 0 的候选永不被选中，至少一项必须大于 0；候选值保留原始类型（数字/布尔/字符串原样）。抽取按 `runId` 与变量名确定性派生（`seedToUnit`/`pickWeightedIndex`，md5 前 12 位十六进制），同轮稳定可复现、跨轮变化、Node/浏览器双端一致。非法定义（values 非非空数组 / weights 形状或长度不符 / 含负数或非有限值 / 全零）在使用前报错。适配渠道、状态等枚举类参数需要"随机但可复现"取值的场景。
 
+### 报告
+
+- 修复浏览器 Markdown 报告行内正文的反引号：步骤名、失败原因、警告、断言名等经 `mdInline` 输出的值中，裸反引号会被 Markdown 当作行内代码定界符，奇数个时把后续文本整段吞进代码 span 破坏报告结构；现转义为字面量（`\``）。`mdCode` 生成的行内代码 span 与代码围栏行为不变，无反引号输入输出不变。
+
 ## [0.5.26] - 2026-10-10
 
 ### CLI

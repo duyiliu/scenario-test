@@ -247,6 +247,50 @@ test("Markdown 报告步骤名/错误/警告/each 明细的单 CR 折叠为字�
     });
 });
 
+test("Markdown 报告行内正文的反引号转义为字面量：奇数个不再吞掉后续文本", () => {
+    // 奇数个反引号在行内正文中会被当作未闭合代码 span 起点，把后续文本整段吞进代码
+    // （判别用例：未转义实现输出 "- **警告**: 变量 `a 缺失"，奇数定界符破坏报告结构）
+    const md = buildMarkdownReport({
+        steps: [failedStep({
+            name: "步骤 `A",
+            error: "错误 `B",
+            warnings: ["变量 `a 缺失"],
+            assertions: [{ name: "字段 `x 存在", passed: false, expected: "e`1", actual: "a`2",
+                detail: [{ index: 0, actual: "a`2", assertions: [{ name: "eq", passed: false, expected: "e`1", actual: "a`2" }] }] }]
+        })]
+    });
+    assert.ok(md.includes("步骤 1: 步骤 \\`A"), "步骤名反引号应转义");
+    assert.ok(md.includes("失败原因**: 错误 \\`B"), "失败原因反引号应转义");
+    assert.ok(md.includes("警告**: 变量 \\`a 缺失"), "警告反引号应转义");
+    assert.ok(md.includes("  - [ ] 字段 \\`x 存在"), "断言名反引号应转义");
+    assert.ok(md.includes("期望 e\\`1,实得 a\\`2"), "each 明细值反引号应转义");
+    // 承载用户值的行不得残留裸反引号（mdCode 生成的行内代码 span 是报告里合法使用反引号的位置）
+    const valueLines = md.split("\n").filter((line) => /步骤 \\`A|错误 \\`B|变量 \\`a|字段 \\`x|e\\`1/.test(line));
+    assert.equal(valueLines.length, 5, "五处承载用户值的行都应存在");
+    for (const line of valueLines) {
+        const bare = (line.match(/(^|[^\\])`/g) || []).length;
+        assert.equal(bare, 0, `承载用户值的行不得残留裸反引号: ${line}`);
+    }
+});
+
+test("Markdown 报告行内正文反引号转义：多连反引号与已有反斜杠不互相干扰", () => {
+    const md = buildMarkdownReport({
+        steps: [failedStep({ warnings: ["路径 C:\\a\\b 与 ``` 片段"] })]
+    });
+    // 反斜杠先双写，反引号各自独立转义，互不干扰
+    assert.ok(md.includes("警告**: 路径 C:\\\\a\\\\b 与 \\`\\`\\` 片段"), "反斜杠双写与反引号转义可共存");
+});
+
+test("Markdown 报告行内正文无反引号时输出不变（既有格式锁定）", () => {
+    const md = buildMarkdownReport({
+        steps: [failedStep({ name: "查列表", error: "错误A", warnings: ["警告B"] })]
+    });
+    assert.ok(md.includes("步骤 1: 查列表"), "普通步骤名不变");
+    assert.ok(md.includes("失败原因**: 错误A"), "普通失败原因不变");
+    assert.ok(md.includes("警告**: 警告B"), "普通警告不变");
+    assert.ok(!md.includes("\\`"), "无反引号输入不得产出转义序列");
+});
+
 test("Markdown 报告元数据同时含字面 \\n 与真实换行：字面反斜杠双写，换行为单反斜杠 n", () => {
     const md = buildMarkdownReport({
         title: "T\\n\nX",
