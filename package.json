@@ -1,6 +1,6 @@
 {
   "name": "@yc_yzkj/scenario-test",
-  "version": "0.5.26",
+  "version": "0.6.0",
   "description": "Reusable browser and Node.js scenario testing library",
   "type": "module",
   "main": "dist/scenario-test.cjs",
