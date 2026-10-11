@@ -9,3 +9,5 @@ examples/**/temp/
 *.log
 tmp-*/
 dist.staging-*/
+.tmp/
+.playwright-mcp/
