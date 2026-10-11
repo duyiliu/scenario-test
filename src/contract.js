@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 6;
+export const CONTRACT_VERSION = 7;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -99,7 +99,9 @@ export const contract = Object.freeze({
         from: Object.freeze(["body", "headers", "bodyText", "response"]),
         // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
         required: "boolean",
-        note: "required: true 且路径不存在时当前步骤失败；默认缺失产生 warning（不含响应内容），变量为 undefined"
+        // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
+        default: "any",
+        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一"
     }),
 
     // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖

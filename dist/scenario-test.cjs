@@ -319,7 +319,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.6.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 6;
+var CONTRACT_VERSION = 7;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -403,7 +403,9 @@ var contract = Object.freeze({
     from: Object.freeze(["body", "headers", "bodyText", "response"]),
     // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
     required: "boolean",
-    note: "required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u9ED8\u8BA4\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined"
+    // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
+    default: "any",
+    note: "required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00"
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
   reservedVars: Object.freeze(["runId", "runNo"]),
@@ -783,6 +785,10 @@ function applyExtract(step, response, runtime) {
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
     assertNotReservedVar(definition.name, "extract \u53D8\u91CF");
+    const hasDefault = definition.default !== void 0;
+    if (definition.required === true && hasDefault) {
+      throw new TypeError(`extract \u53D8\u91CF ${definition.name}: required: true \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00`);
+    }
     let source = response.body;
     if (definition.target === "status") source = response.status;
     else if (definition.header) source = headerValue(response.headers, definition.header);
@@ -791,6 +797,10 @@ function applyExtract(step, response, runtime) {
     else if (definition.from === "response") source = response;
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
+      if (hasDefault) {
+        runtime.vars[definition.name] = resolve(definition.default, runtime);
+        continue;
+      }
       if (definition.required === true) {
         failures.push({
           name: `\u63D0\u53D6 ${definition.name}\uFF08\u8DEF\u5F84\u4E0D\u5B58\u5728\uFF09`,

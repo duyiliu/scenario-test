@@ -274,6 +274,42 @@ test("extract 不允许覆盖保留变量 runId/runNo", () => {
     assert.throws(() => applyExtract({ extract: [{ name: "runNo", path: "id" }] }, response, runtime), /保留变量/);
 });
 
+test("extract default：路径缺失时按声明默认值兜底（支持模板），不产生 warning", () => {
+    const runtime = runtimeWith({ pageSize: 20 });
+    const response = responseWith({ code: 200, data: null });
+    const step = {
+        extract: [
+            { name: "total", path: "data.total", default: 0 },
+            { name: "pageSize", path: "data.pageSize", default: "{{vars.pageSize}}" },
+            { name: "code", path: "code", default: -1 },
+            { name: "nil", path: "data", default: "fallback" },
+            { name: "missed", path: "data.id" }
+        ]
+    };
+    const result = applyExtract(step, response, runtime);
+    // 缺失 + default：取声明值（模板照常解析），无 warning
+    assert.equal(runtime.vars.total, 0);
+    assert.equal(runtime.vars.pageSize, 20);
+    // 路径存在时实际值优先，default 不参与
+    assert.equal(runtime.vars.code, 200);
+    // JSON null 是真实值而非缺失，不触发兜底
+    assert.equal(runtime.vars.nil, null);
+    // 未声明 default 的缺失仍按既有口径产生 warning
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0], /missed/);
+    assert.equal(runtime.vars.missed, undefined);
+    assert.equal(result.failures.length, 0);
+});
+
+test("extract required:true 与 default 互斥即抛错", () => {
+    const runtime = runtimeWith({});
+    const response = responseWith({ code: 200 });
+    assert.throws(
+        () => applyExtract({ extract: [{ name: "x", path: "data.id", required: true, default: 1 }] }, response, runtime),
+        /required: true 与 default 互斥/
+    );
+});
+
 test("数组负索引路径：[-N] 取倒数第 N 项，引号键与非数组维持属性名语义", () => {
     const body = {
         records: [{ id: "a" }, { id: "b" }, { id: "c" }],

@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.6.0",
-  "contractVersion": 6,
+  "contractVersion": 7,
   "assertions": {
     "operators": {
       "exists": {
@@ -94,7 +94,7 @@
       "response"
     ],
     "required": "boolean",
-    "note": "required: true 且路径不存在时当前步骤失败；默认缺失产生 warning（不含响应内容），变量为 undefined"
+    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一"
   },
   "reservedVars": [
     "runId",

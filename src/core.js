@@ -383,6 +383,11 @@ export function applyExtract(step, response, runtime) {
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
         assertNotReservedVar(definition.name, "extract 变量");
+        // required 与 default 语义互斥（一个要缺失即失败、一个要缺失即兜底），同声明即定义错误
+        const hasDefault = definition.default !== undefined;
+        if (definition.required === true && hasDefault) {
+            throw new TypeError(`extract 变量 ${definition.name}: required: true 与 default 互斥，只能声明其一`);
+        }
         // 与浏览器端完全同语义的提取来源解析：
         //   target:'status' / header 为简写（优先级最高）
         //   from: 'headers' | 'bodyText' | 'response'（默认 body）
@@ -397,6 +402,12 @@ export function applyExtract(step, response, runtime) {
             ? (definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path))
             : source;
         if (value === undefined) {
+            if (hasDefault) {
+                // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
+                // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
+                runtime.vars[definition.name] = resolve(definition.default, runtime);
+                continue;
+            }
             if (definition.required === true) {
                 failures.push({
                     name: `提取 ${definition.name}（路径不存在）`,

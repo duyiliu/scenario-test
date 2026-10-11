@@ -111,6 +111,8 @@ export interface ExtractDefinition {
     from?: ExtractSource;
     /** required: true 且路径不存在时当前步骤失败；默认缺失产生 warning */
     required?: boolean;
+    /** 路径不存在时的兜底值（支持模板；与 required 互斥，声明后缺失不产生 warning） */
+    default?: unknown;
 }
 
 /** when 对象形式：from 只能取 vars（来自 contract.when.sources） */
