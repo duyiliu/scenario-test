@@ -1,5 +1,24 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 发版记录：v0.5.26（2026-10-11，用户指示）
+
+- 覆盖提交 `053c35a`（CLI 收敛失败路径 + 限排错输出长度）与浏览器 Markdown 报告代码 span 修复；contractVersion 仍为 5（无 DSL 能力变化），测试 217→252。
+- 改动摘要：`run` 失败值超 80 字符改占位、分块行 240 字符限宽；`--config -h` 误判修复；`serve` 端口占用两段式提示；`doctor` 单点文件异常逐项 FAIL 不中断汇总（含 `--json`）；`init` 下载加 30 秒总超时、副本缺失不再假成功写锁；浏览器 Markdown 报告代码 span 反引号自适应定界符 + CR/LF 折叠为字面量。
+- 版本号同步：package.json/lock、CHANGELOG（Unreleased→0.5.26）、install.ps1/install.sh、README jsDelivr URL；build 再生 version.generated.js + dist。
+- 验证：`npm test` **252/252 全绿**；`npm run test:browser` 桌面视口通过（含 `?scenario=` 白名单安全用例）；`npm run build` 后 dist 与源码一致。
+- 发版：提交 `468b7f6`（chore .gitignore）→ `05eab10`（release v0.5.26）；tag `v0.5.26` 推送 `github` 与内网 `origin` 双远端。
+- 三方验证一致：GitHub Release `v0.5.26`（Latest、非 Draft/Prerelease）、npm Registry `dist-tags.latest=0.5.26`（shasum `c7aa8053…` 与本地 pack 一致；npm 新发布管道传播约 4 分钟，期间 `npm view` 短暂 404 属正常）、远端 Tag `v0.5.26`。
+- npm publish 成功：`npm_` granular token 直接可用（RELEASING.md 所述 403 未出现）。
+- 磁盘清理：删除 5 个 `dist.staging-*`、`tmp-demo-project`/`tmp-java-demo`/`tmp-java-scenario-demo`（约 50MB）、`.tmp`、`.playwright-mcp`、`test-results`（合计约 75MB）；`.gitignore` 补入 `.tmp/` 与 `.playwright-mcp/`。
+- 内网 `origin` 此前落后 33 提交、缺 5 个历史 tag（v0.5.20/21/23/24/25），本轮一并补齐，双远端 master 与 tag 全集对齐。
+
+### 发版后待决策
+
+1. **`npm audit` 7 个漏洞**（6 high / 1 moderate，较 v0.5.25 记录的 8 个少 1）：全部在 devDependencies 传递链（tailwindcss 3.x 的 braces/chokidar/micromatch/postcss-* 等），运行时依赖干净。默认建议暂缓，待 tailwind 4 生态稳定后一次性升级（破坏性，需改构建配置并重测 UI）。
+2. **枚举随机（带权重）造数**（队列最久项）：属新增 DSL 能力，需递增 contractVersion 5→6 + 浏览器镜像 + dts/提示词投射 + 名单锁同步；建议先出 design.md 确认类型名/参数形状/权重语义/确定性派生 vs 真随机。
+3. **Markdown 报告行内代码边界小修**：行内单反引号包裹在 path/scenarioFile 含反引号时失真（影响极小），是否处理待定。
+4. **2 个开发辅助脚本去留**：`scripts/ui-visual-check.mjs`、`scripts/ui-debug-rule.mjs`（手动工具，不进 CI），建议保留。
+
 ## 发版记录：v0.5.25（2026-10-10，用户指示）
 
 - 覆盖第 5~10 轮全部迭代（断言深比较键序稳定化、CLI 失败 diff/报错两段式/结论行、工作台交互反馈与 Markdown 围栏、工程 .gitattributes/dist.staging 忽略等），contractVersion 仍为 5，测试 195→217。
