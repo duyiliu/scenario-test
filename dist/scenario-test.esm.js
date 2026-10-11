@@ -920,6 +920,33 @@ function assertUnique(items, field, label) {
     seen.add(value);
   }
 }
+var TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+var BRACKET_SEGMENT = /\[[^\]]*\]/g;
+var TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
+function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value === "string") {
+    if (!value.includes("{{")) return;
+    for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
+      const expression = match[1];
+      invariant(
+        !TEMPLATE_OPERATOR_CHARS.test(expression.replace(BRACKET_SEGMENT, "")),
+        `${trail} \u7684\u6A21\u677F {{${expression.trim()}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]`
+      );
+    }
+    return;
+  }
+  if (value === null || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertTemplatePathsOnly(item, `${trail}[${index}]`, seen));
+    return;
+  }
+  if (isPlainObject(value)) {
+    for (const [key, item] of Object.entries(value)) {
+      assertTemplatePathsOnly(item, `${trail}.${key}`, seen);
+    }
+  }
+}
 function normalizeGlobals(globals, label) {
   const types = contract.globals.types;
   const result = Array.isArray(globals) ? globals.map((item, index) => {
@@ -941,6 +968,7 @@ function defineScenario(input) {
   invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
   invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
   for (const definition of input.generatedVars || []) {
     invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
@@ -953,12 +981,16 @@ function defineScenario(input) {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
     if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
+    if (typeof step.method === "string" && step.method.includes("{{")) {
+      invariant(false, `\u6B65\u9AA4 ${step.name} \u7684 method \u4E0D\u652F\u6301\u6A21\u677F\u5199\u6CD5\uFF08step.method \u4E0D\u505A {{ }} \u89E3\u6790\uFF0C\u4F1A\u6309\u5B57\u9762\u91CF\u53D1\u9001\uFF09\uFF0C\u8BF7\u5199\u5177\u4F53\u65B9\u6CD5\u540D\u6216\u6539\u7528 request.method \u6A21\u677F`);
+    }
     const requestDef = isPlainObject(step.request) ? step.request : {};
     const rawMethod = String(step.method || requestDef.method || "GET");
     const effectiveMethod = rawMethod.toUpperCase();
-    if (step.adapter === void 0 && !rawMethod.includes("{{") && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+    const methodIsTemplate = step.method === void 0 && String(requestDef.method || "").includes("{{");
+    if (step.adapter === void 0 && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
       invariant(
-        (requestDef.body === void 0 || requestDef.body === null) && requestDef.fileUpload === void 0,
+        (requestDef.body === void 0 || requestDef.body === null) && (requestDef.fileUpload === void 0 || requestDef.fileUpload === null),
         `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\uFF0C\u6216\u628A\u53C2\u6570\u653E\u8FDB params`
       );
     }
@@ -1000,6 +1032,7 @@ function defineScenario(input) {
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+  assertTemplatePathsOnly(input, "\u914D\u7F6E");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
   const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
     ...env,
@@ -1676,7 +1709,7 @@ function createEngine(engineOptions = {}) {
       const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
       result.stepNo = index + 1;
       results.push(result);
-      await runOptions.onStep?.(result, index, runtime);
+      await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
       if (!result.passed && scenario.failurePolicy !== "continue") break;
       if (runOptions.signal?.aborted) break;
     }
@@ -4993,7 +5026,15 @@ function createWorkbenchRuntime(options) {
       baseUrl: runtime.baseUrl,
       authorization: runtime.authorization,
       globals: runtime.globals,
-      requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4)
+      requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4),
+      // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
+      onAttempt: function(info) {
+        var detail = "status " + info.status + (info.failedAssertion ? "\uFF0C" + info.failedAssertion : "");
+        uiView.setRunState(
+          "running",
+          "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21\u672A\u901A\u8FC7\uFF08" + detail + "\uFF09\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5"
+        );
+      }
     });
   }
   function createExecutionRuntime() {

@@ -598,10 +598,11 @@ async function runCommand(args) {
         console.log(`\n# ${scenario.name} (${entry.id})`);
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
-            // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感
+            // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
+            // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
                 const detail = `status ${info.status}${info.failedAssertion ? `，${info.failedAssertion}` : ""}`;
-                console.log(`  [RETRY] 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                console.log(`  [RETRY] ${info.step?.name || "未命名步骤"} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
@@ -637,8 +638,10 @@ async function runCommand(args) {
                 }
                 // 失败步骤补打响应体原文（截断）：断言层只有 expected/actual，
                 // 服务端错误 payload 才是 CI/AI 诊断的关键上下文。
-                // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志
-                if (!result.passed && !result.skipped) printFailedStepBody(result);
+                // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志；
+                // 响应体可能回显 token（登录步骤断言失败时），日志合规敏感的团队可设
+                // SCENARIO_NO_BODY_PRINT=1 关闭本输出
+                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result);
             }
         });
         for (const plugin of plugins) {
@@ -677,22 +680,44 @@ async function runCommand(args) {
 // 失败诊断响应体截断上限（字符）：防巨型 HTML 错误页刷爆 CI 日志
 const FAILURE_BODY_LIMIT = 2000;
 
+// 响应体是服务端可控内容：含控制字符的行经 JSON 转义透出（ESC→\u001b 等），
+// 防 ANSI 注入（清屏覆写/伪链接/OSC 52 写剪贴板）与裸 \r 打乱终端对齐；
+// JSON.stringify 只转义 C0/引号/反斜杠——C1 控制字符（\x7f-\x9f，含 8 位 CSI U+009B）手动补转义；
+// 纯可打印行保持原文不转义（JSON 转义会给引号/反斜杠加噪）
+function escapeBodyLine(line) {
+    if (!/[\x00-\x1f\x7f-\x9f]/.test(line)) return line;
+    return JSON.stringify(line).slice(1, -1)
+        .replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
 function printFailedStepBody(result) {
     const response = result?.response;
     if (!response || typeof response !== "object") return;
-    const raw = typeof response.bodyText === "string" ? response.bodyText : "";
-    if (raw.trim() === "") {
-        // saveResponseAs 时 bodyText 为 null、body 是保存信息，提示落盘位置而非静默
-        const saved = response.body && typeof response.body === "object" ? response.body.savedTo : null;
-        if (saved) console.log(`  响应体已保存至 ${saved}`);
+    const body = response.body;
+    const bodyText = typeof response.bodyText === "string" ? response.bodyText : null;
+    // saveResponseAs 时 bodyText 恒为 null、body 是保存信息，提示落盘位置而非静默。
+    // 限定 bodyText 为空才命中：业务 JSON 响应恰好含 savedTo 字段时不吞原文、
+    // 不被服务端伪造的 {"savedTo":"..."} 带偏；savedTo 可能经模板混入服务端可控
+    // 字节（extract 提取值进路径），同样过控制字符转义
+    if (bodyText === null && body && typeof body === "object" && typeof body.savedTo === "string") {
+        console.log(`  响应体已保存至 ${escapeBodyLine(body.savedTo)}`);
         return;
     }
+    let raw = bodyText ?? "";
+    if (raw.trim() === "" && body !== null && body !== undefined) {
+        // 适配器响应 bodyText 可为 null，结构化 body 序列化展示（同样截断/转义）
+        if (typeof body === "string") raw = body;
+        else {
+            try { raw = JSON.stringify(body) ?? String(body); } catch { raw = String(body); }
+        }
+    }
     const text = raw.replace(/\r\n/g, "\n").trimEnd();
+    if (text === "") return;
     const truncated = text.length > FAILURE_BODY_LIMIT;
     const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
     const note = truncated ? `（共 ${text.length} 字符，截断显示前 ${FAILURE_BODY_LIMIT}）` : "";
     console.log(`  响应体${note}:`);
-    for (const line of shown.split("\n")) console.log(`    ${line}`);
+    for (const line of shown.split("\n")) console.log(`    ${escapeBodyLine(line)}`);
 }
 
 function safeFile(root, relativePath) {

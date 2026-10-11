@@ -11,13 +11,14 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
-- `run` 重试轮询输出 `[RETRY]` 进度行：`retryUntil` 步骤每次未通过且将重试前打印 `第 N/M 次未通过（status X，首个失败断言名），间隔后重试`——此前轮询在间隔内完全静默（10 次 × 数秒的步骤看起来像挂死）。引擎新增 `onAttempt` 运行回调（payload：`step`/`attempt`/`totalAttempts`/`intervalMs`/`status`/`failedAssertion`），工作台与 Node API 消费方可同样接入；最终一次尝试或通过时不发。
-- `run` 失败步骤自动输出截断的响应体原文：断言明细（expected/actual）之外补打 `响应体:` 分块，服务端错误 payload（业务错误码/错误消息）直接进 CI 日志，无需重跑或加 `saveResponseAs` 才能诊断。超过 2000 字符截断并标注「共 N 字符，截断显示前 2000」，防巨型 HTML 错误页刷爆日志；`saveResponseAs` 步骤的响应体已落盘（`bodyText` 为空），改打「响应体已保存至 <路径>」提示。请求体与请求头刻意不输出——注入后的 `Authorization`、登录密码类字段不应进 CI 日志；通过/跳过步骤不输出。
+- `run` 重试轮询输出 `[RETRY] <步骤名> 第 N/M 次未通过（status X，首个失败断言名），间隔后重试` 进度行——此前轮询在间隔内完全静默（10 次 × 数秒的步骤看起来像挂死）。引擎新增 `onAttempt` 运行回调（payload：`step`/`attempt`/`totalAttempts`/`intervalMs`/`status`/`failedAssertion`），`createEngine({ onAttempt })` 与 `createEngine({ onStep })` 引擎级默认回调同样生效（`RunOptions` 传入优先）；工作台轮询期间同步更新运行状态位。最终一次尝试或通过时不发。
+- `run` 失败步骤自动输出截断的响应体原文：断言明细（expected/actual）之外补打 `响应体:` 分块，服务端错误 payload（业务错误码/错误消息）直接进 CI 日志，无需重跑或加 `saveResponseAs` 才能诊断。超过 2000 字符截断并标注「共 N 字符，截断显示前 2000」，防巨型 HTML 错误页刷爆日志；含控制字符（ANSI 转义序列、`\r` 等）的行经 JSON 转义输出，服务端可控内容无法在 CI 终端执行转义注入；`bodyText` 为空但适配器返回结构化 `body` 时以 JSON 兜底输出；`saveResponseAs` 步骤改打「响应体已保存至 <路径>」提示。请求体与请求头刻意不输出——注入后的 `Authorization`、登录密码类字段不应进 CI 日志；通过/跳过步骤不输出。响应体本身含 token 等敏感信息时可设环境变量 `SCENARIO_NO_BODY_PRINT`（非空即生效）整体关闭输出。
 - `run --scenario` 支持逗号分隔多选（如 `--scenario login,order`），按场景 id/name/url 逐项匹配，执行顺序保持配置清单顺序，manual:true 场景显式点名即可执行。任一选择项未命中即整体报错并点名缺失项与可选清单（all-or-error，避免 CI 拼写错误静默少跑）；`--scenario` 值为空白时报「值为空」而非回落默认场景。
 
 ### DSL
 
-- `GET`/`HEAD` 步骤声明请求体（`request.body` / `request.fileUpload`）定义期即拒绝：此前 `request.body` 被 `executeHttp` 静默丢弃（以为发了其实没发），`fileUpload` 则交给 fetch 抛底层英文错。报错指引改用 `POST`/`PUT`/`PATCH` 或把参数放进 `params`。模板方法名（`{{...}}`）定义期无法确定最终值跳过校验，`adapter` 步骤的 request 语义由适配器定义不约束，`body: null` 视为无体放行。
+- 模板 `{{ }}` 内的表达式写法定义期即拒绝：模板只做路径取值，`{{vars.a > 0}}`、`{{!vars.x}}`、`{{vars.a ? b : c}}`、`{{vars.fn()}}` 等按 jinja 习惯写出的比较/逻辑/三元/函数调用会被当成键名查找并静默得到空串——`when` 静默跳过、断言静默失败、`extract` 静默 `undefined`。现 `defineScenario`/`defineConfig` 遍历全部字符串值，剥去 `[...]` 下标段后仍含 `>` `<` `=` `!` `&` `|` `?` `:` `(` `)` 即报错并指引改用断言/when 对象形式；引号键（`vars["a>b"]`）、连字符键、普通文本中的运算符字符不受影响。
+- `GET`/`HEAD` 步骤声明请求体（`request.body` / `request.fileUpload`）定义期即拒绝：此前 `request.body` 被 `executeHttp` 静默丢弃（以为发了其实没发），`fileUpload` 则交给 fetch 抛底层英文错。报错指引改用 `POST`/`PUT`/`PATCH` 或把参数放进 `params`。`step.method` 的模板写法（`method: "{{vars.m}}"`）定义期直接拒绝——`step.method` 不经 `{{ }}` 解析会按字面方法名发送，恒为死写法；动态方法应写在 `request.method`（运行期解析，定义期跳过相容校验）。`adapter` 步骤的 request 语义由适配器定义不约束，`body: null` / `fileUpload: null` 视为无体放行。
 - `matches` 断言的静态期望值定义期即编译校验：非法正则（如 `([`、`*bad`）此前在执行期被吞成断言失败，呈现为"值不匹配"而非"正则写错"；现 `defineScenario`/运行时校验即报错并给出正则与解析错误。含 `{{` 模板的期望值跳过（运行时解析后再判），`each` 子断言内的 `matches` 同口径校验。
 - `retryUntil` 内的 `assertions` 字段定义期即拒绝（此前会被校验但从不在重试判定中执行——重试只用步骤顶层 `assertions`，误写者得到"一次即停"的静默错误行为）。报错信息指引把断言移到步骤的 `assertions`。
 

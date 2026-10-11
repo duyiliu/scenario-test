@@ -640,7 +640,14 @@ export function createWorkbenchRuntime(options) {
             baseUrl: runtime.baseUrl,
             authorization: runtime.authorization,
             globals: runtime.globals,
-            requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000)
+            requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
+            // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
+            onAttempt: function (info) {
+                var detail = 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
+                uiView.setRunState('running',
+                    '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
+                    + ' 次未通过（' + detail + '），' + info.intervalMs + 'ms 后重试');
+            }
         });
     }
 

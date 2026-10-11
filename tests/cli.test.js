@@ -208,10 +208,59 @@ test("CLI run 重试轮询输出 [RETRY] 进度行（防长时间静默）", asy
         });
         assert.equal(result.code, 0, result.stdout);
         // 前 2 次未通过各一行进度；第 3 次通过不再输出
-        assert.match(result.stdout, /\[RETRY\] 第 1\/5 次未通过（status 202，就绪），.*后重试/);
-        assert.match(result.stdout, /\[RETRY\] 第 2\/5 次未通过（status 202，就绪），.*后重试/);
+        assert.match(result.stdout, /\[RETRY\] 轮询任务 第 1\/5 次未通过（status 202，就绪），.*后重试/);
+        assert.match(result.stdout, /\[RETRY\] 轮询任务 第 2\/5 次未通过（status 202，就绪），.*后重试/);
         assert.equal(result.stdout.split("[RETRY]").length - 1, 2, "只有未通过且将重试的尝试才输出进度行");
         assert.match(result.stdout, /\[PASS\] 轮询任务/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI run 响应体控制字符转义（防 ANSI 注入），SCENARIO_NO_BODY_PRINT 关闭输出", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-esc-"));
+    const server = http.createServer((request, response) => {
+        if (request.url === "/forge") {
+            // 服务端伪造 {"savedTo": ...} 试图命中「已保存至」分支吞掉真实 bodyText——
+            // bodyText 非空时不得走保存提示，伪造内容同样过控制字符转义
+            response.writeHead(500, { "Content-Type": "application/json" });
+            response.end(JSON.stringify({ savedTo: "fake\u001b[31mpath\u001b[0m", error: "boom" }));
+            return;
+        }
+        response.writeHead(500, { "Content-Type": "text/plain" });
+        // 服务端可控内容混入 ESC 序列与裸 \r：转义后以字面量透出而非终端执行
+        response.end("ok\u001b[31mred\u001b[0m\nline\rtwo");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"esc",name:"Esc",url:"scenarios/esc.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/esc.js"), `ScenarioTest.registerScenario("esc",ScenarioTest.defineScenario({name:"Esc",failurePolicy:"continue",steps:[{name:"失败步骤",path:"x",status:200},{name:"伪造保存提示",path:"forge",status:200}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const run = (env) => new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            child.stdout.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.on("close", (code) => resolve({ code, stdout }));
+        });
+        const result = await run({});
+        assert.notEqual(result.code, 0);
+        // ESC 被 JSON 转义为字面 \u001b，stdout 不含裸 ESC 字节；行内 \r 同样转义
+        assert.ok(!result.stdout.includes("\u001b"), "stdout 不应含裸 ESC 控制字符");
+        assert.match(result.stdout, /\\u001b\[31mred\\u001b\[0m/);
+        assert.match(result.stdout, /line\\rtwo/);
+        // 伪造 savedTo 的 JSON 响应：输出 bodyText 原文（转义后）而非「已保存至」提示
+        assert.match(result.stdout, /\[FAIL\] 伪造保存提示/);
+        assert.ok(!result.stdout.includes("响应体已保存至"), "bodyText 非空时不得被伪造 savedTo 吞掉原文");
+        assert.match(result.stdout, /fake\\u001b\[31mpath\\u001b\[0m/);
+        // SCENARIO_NO_BODY_PRINT 关闭响应体输出
+        const hidden = await run({ SCENARIO_NO_BODY_PRINT: "1" });
+        assert.notEqual(hidden.code, 0);
+        assert.match(hidden.stdout, /\[FAIL\] 失败步骤/);
+        assert.ok(!hidden.stdout.includes("响应体"), "关闭后不应输出响应体分块");
     } finally {
         server.close();
         fs.rmSync(directory, { recursive: true, force: true });

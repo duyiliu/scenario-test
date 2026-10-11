@@ -280,6 +280,10 @@ export interface EngineOptions {
     isolateAdapters?: boolean;
     signal?: AbortSignal;
     verboseErrors?: boolean;
+    /** 引擎级步骤完成回调（runOptions.onStep 优先） */
+    onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
+    /** 引擎级重试进度回调（runOptions.onAttempt 优先） */
+    onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
 }
 
 /** 重试进度回调参数：每次未通过且将重试前发出（最终一次尝试或通过时不发） */

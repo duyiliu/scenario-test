@@ -23,6 +23,43 @@ function assertUnique(items, field, label) {
     }
 }
 
+// 注意：共享 /g 正则仅可用于 matchAll（克隆 lastIndex）；若改为 .exec/.test 会从
+// 上次 lastIndex 继续导致静默漏检——届时需在函数内 new RegExp 或重置 lastIndex。
+const TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+const BRACKET_SEGMENT = /\[[^\]]*\]/g;
+const TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
+
+// 模板只做路径取值（vars.* / lastResponse.* / lastResponseBody.*），不支持表达式。
+// {{vars.a > 0}} 这类表达式会被当成键名查找并静默得到空串/undefined——when 静默跳过、
+// 断言静默失败、extract 静默取 undefined。定义期遍历全部字符串值拒绝运算符；
+// 剥掉 [...] 段后判断：引号键（vars["a>b"]）不误伤，无 {{}} 的普通文本不查。
+function assertTemplatePathsOnly(value, trail, seen = new WeakSet()) {
+    if (typeof value === "string") {
+        if (!value.includes("{{")) return;
+        for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
+            const expression = match[1];
+            invariant(
+                !TEMPLATE_OPERATOR_CHARS.test(expression.replace(BRACKET_SEGMENT, "")),
+                `${trail} 的模板 {{${expression.trim()}}} 不允许使用运算符：模板只做路径取值（vars.* / lastResponse.* / lastResponseBody.*），比较/三元/逻辑判断请改用断言或 when 对象形式；若键名本身含运算符字符，请改用引号键写法 vars["a:b"]`
+            );
+        }
+        return;
+    }
+    // 循环引用输入（vars.x = input 等）直接返回：执行期 clone 会以 TypeError 报错，
+    // 此处只保证不递归爆栈
+    if (value === null || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => assertTemplatePathsOnly(item, `${trail}[${index}]`, seen));
+        return;
+    }
+    if (isPlainObject(value)) {
+        for (const [key, item] of Object.entries(value)) {
+            assertTemplatePathsOnly(item, `${trail}.${key}`, seen);
+        }
+    }
+}
+
 function normalizeGlobals(globals, label) {
     const types = contract.globals.types;
     const result = Array.isArray(globals) ? globals.map((item, index) => {
@@ -46,6 +83,7 @@ export function defineScenario(input) {
     invariant(Array.isArray(input.steps), `场景 ${input.name} 缺少 steps 数组`);
     // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
+    assertTemplatePathsOnly(input, `场景 ${input.name}`);
     // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）；
     // 保留变量与字段完整性仍由运行时（engine）校验，保持 0.4.0 报错时机不变
     for (const definition of input.generatedVars || []) {
@@ -60,16 +98,24 @@ export function defineScenario(input) {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
         if (step.method !== undefined) invariant(nonEmptyString(step.method), `步骤 ${step.name} 的 method 无效`);
+        // step.method 不经 {{ }} 解析（executeHttp 用原始值），模板写法会按字面方法名
+        // 发送——恒为死写法，定义期直接拒绝；request.method 在 request 对象内会解析，
+        // 动态方法应写在那里。
+        if (typeof step.method === "string" && step.method.includes("{{")) {
+            invariant(false, `步骤 ${step.name} 的 method 不支持模板写法（step.method 不做 {{ }} 解析，会按字面量发送），请写具体方法名或改用 request.method 模板`);
+        }
         // GET/HEAD 不能携带请求体：executeHttp 对这两种方法静默丢弃 request.body，
         // fileUpload 则交给 fetch 抛底层英文错——两种静默失败定义期即拒。
-        // 模板方法（{{...}}）定义期无法确定最终值，跳过；adapter 步骤的 request 语义
-        // 由适配器自行定义，不约束。
+        // request.method 模板在运行期解析、定义期无法确定最终方法，跳过相容校验；
+        // adapter 步骤的 request 语义由适配器自行定义，不约束。
         const requestDef = isPlainObject(step.request) ? step.request : {};
         const rawMethod = String(step.method || requestDef.method || "GET");
         const effectiveMethod = rawMethod.toUpperCase();
-        if (step.adapter === undefined && !rawMethod.includes("{{") && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+        const methodIsTemplate = step.method === undefined && String(requestDef.method || "").includes("{{");
+        if (step.adapter === undefined && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
             invariant(
-                (requestDef.body === undefined || requestDef.body === null) && requestDef.fileUpload === undefined,
+                (requestDef.body === undefined || requestDef.body === null)
+                    && (requestDef.fileUpload === undefined || requestDef.fileUpload === null),
                 `步骤 ${step.name} 的 ${effectiveMethod} 请求不能携带请求体（request.body / request.fileUpload 会被丢弃），请改用 POST/PUT/PATCH 等方法，或把参数放进 params`
             );
         }
@@ -119,6 +165,7 @@ export function defineScenario(input) {
 
 export function defineConfig(input) {
     invariant(isPlainObject(input), "配置必须是对象");
+    assertTemplatePathsOnly(input, "配置");
     const globals = normalizeGlobals(input.globals, "全局");
     const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
         ...env,

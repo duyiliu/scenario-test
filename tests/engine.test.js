@@ -254,6 +254,36 @@ test("retryUntil 每次失败重试前发出 onAttempt（序号/总数/间隔/�
     assert.equal(plain.length, 0);
 });
 
+test("createEngine 引擎级 onAttempt/onStep 默认回调生效，RunOptions 传入优先", async () => {
+    let calls = 0;
+    const engineAttempts = [];
+    const engineSteps = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => jsonResponse({ ready: ++calls >= 3 }, calls < 3 ? 202 : 200),
+        onAttempt: (info) => { engineAttempts.push(info); },
+        onStep: (result) => { engineSteps.push(result); }
+    });
+    const step = { name: "等待", path: "job", retryUntil: { maxAttempts: 4, intervalMs: 10 }, assertions: [{ name: "就绪", path: "ready", equals: true }] };
+    // 不传 runOptions 回调：引擎级默认生效
+    const report = await engine.runScenario(defineScenario({ name: "引擎级", steps: [step] }));
+    assert.equal(report.failed, 0);
+    assert.equal(engineAttempts.length, 2);
+    assert.equal(engineSteps.length, 1);
+    // runOptions 传入优先于引擎级
+    calls = 0;
+    const runAttempts = [];
+    const runSteps = [];
+    await engine.runScenario(defineScenario({ name: "覆盖", steps: [step] }), {
+        onAttempt: (info) => { runAttempts.push(info); },
+        onStep: (result) => { runSteps.push(result); }
+    });
+    assert.equal(runAttempts.length, 2);
+    assert.equal(runSteps.length, 1);
+    assert.equal(engineAttempts.length, 2, "runOptions 提供后引擎级 onAttempt 不再触发");
+    assert.equal(engineSteps.length, 1, "runOptions 提供后引擎级 onStep 不再触发");
+});
+
 test("取消落在两步之间：报告状态 CANCELLED，不再出现 status=PASSED 且 passed=false 的矛盾", async () => {
     const controller = new AbortController();
     const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ ok: 1 }) });
@@ -401,6 +431,14 @@ test("旧 authorization 配置兜底注入且全局 header 优先", async () => 
     assert.equal(captured.Authorization, "Bearer global-token");
 });
 
+test("defineConfig 同样拒绝模板运算符（globals/vars 值内）", async () => {
+    const { defineConfig } = await import("../src/index.js");
+    assert.throws(() => defineConfig({ vars: { t: "{{vars.a ? 1 : 0}}" } }), /配置.*不允许使用运算符/);
+    assert.throws(() => defineConfig({ globals: [{ type: "header", name: "X", value: "{{vars.a && vars.b}}" }] }), /配置.*不允许使用运算符/);
+    // 合法路径与引号键放行
+    defineConfig({ vars: { t: "{{vars.user.name}}", u: "{{vars[\"a:b\"]}}" }, globals: [{ type: "header", name: "X", value: "{{vars.token}}" }] });
+});
+
 test("defineConfig 拒绝非法全局参数", async () => {
     const { defineConfig } = await import("../src/index.js");
     assert.throws(() => defineConfig({ envs: [{ key: "a", name: "A" }], globals: [{ type: "body", name: "x", value: "1" }] }), /type 必须是 header\/cookie\/query/);
@@ -459,7 +497,7 @@ test("定义期拒绝非法 retryUntil 数值（maxAttempts/intervalMs/maxElapse
     withRetry({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 5000 });
 });
 
-test("定义期拒绝 GET/HEAD 携带请求体（body/fileUpload），带体方法与模板方法放行", () => {
+test("定义期拒绝 GET/HEAD 携带请求体（body/fileUpload）；step.method 模板拒绝，request.method 模板放行", () => {
     // GET + request.body：执行期 body 被静默丢弃，定义期即拒
     assert.throws(() => defineScenario({
         name: "A",
@@ -479,11 +517,62 @@ test("定义期拒绝 GET/HEAD 携带请求体（body/fileUpload），带体方�
         name: "A",
         steps: [{ name: "s", path: "x", request: { body: { a: 1 } } }]
     }), /GET 请求不能携带请求体/);
-    // 放行：带体方法、空 body、模板方法（定义期无法确定）、adapter 步骤
+    // step.method 模板是死写法（不做 {{ }} 解析会按字面发送）——直接拒绝
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", method: "{{vars.m}}", request: { body: { a: 1 } } }]
+    }), /method 不支持模板写法/);
+    // 放行：带体方法、空 body/fileUpload、request.method 模板（运行期解析）、adapter 步骤
     defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "POST", request: { body: { a: 1 } } }] });
-    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "GET", request: { body: null } }] });
-    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "{{vars.m}}", request: { body: { a: 1 } } }] });
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "GET", request: { body: null, fileUpload: null } }] });
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", request: { method: "{{vars.m}}", body: { a: 1 } } }] });
     defineScenario({ name: "A", steps: [{ name: "s", path: "x", adapter: "custom", method: "GET", request: { body: { a: 1 } } }] });
+});
+
+test("定义期拒绝模板内运算符（{{vars.a > 0}} 会静默解析为空，引号键与普通字符串放行）", () => {
+    // when / headers / params / extract default 任一位置的表达式都拒绝
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.count > 0}}" }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", request: { headers: { "X-F": "{{vars.a == vars.b}}" } } }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.done ? vars.a : vars.b}}" }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{!vars.ready}}" }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.fn()}}" }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        vars: { x: "{{vars.y > 1}}" },
+        steps: [{ name: "s", path: "x" }]
+    }), /不允许使用运算符/);
+    // 循环引用输入不递归爆栈（执行期 clone 会另行报错）
+    const circular = { name: "A", vars: {}, steps: [{ name: "s", path: "x" }] };
+    circular.vars.self = circular;
+    defineScenario(circular);
+    // 放行：负索引/数字下标、引号键内的运算符字符、连字符键、模板默认值、无 {{}} 的普通文本
+    defineScenario({
+        name: "A",
+        vars: { x: "{{vars.y}}-suffix" },
+        steps: [{
+            name: "s",
+            path: "items/{{vars.list[-1].id}}",
+            params: { q: "score > 5" },
+            request: { headers: { "X-F": "{{vars[\"a>b\"]}}" } },
+            extract: [{ name: "n", path: "n", default: "{{vars.fallback}}" }],
+            assertions: [{ path: "name-with-dash", equals: "{{vars.expected-value}}" }]
+        }]
+    });
 });
 
 test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars 中声明", async () => {
@@ -1243,7 +1332,7 @@ test("generatedVars enum：值取自候选集、权重 0 的候选永不被选�
     assert.equal(typeof report.vars.level, "number");
 });
 
-test("generatedVars enum：同轮内不同名变量互异、跨轮变化（runId 派生）", async () => {
+test("generatedVars enum：取值在候选集内、跨轮变化（runId 派生）", async () => {
     const scenario = defineScenario({
         name: "enum 确定性",
         generatedVars: [
@@ -1253,15 +1342,19 @@ test("generatedVars enum：同轮内不同名变量互异、跨轮变化（runId
         steps: [{ name: "s", path: "x" }]
     });
     const first = await generatedVarEngine().runScenario(scenario);
-    const second = await generatedVarEngine().runScenario(scenario);
     assert.equal(first.status, "PASSED");
-    assert.equal(second.status, "PASSED");
-    assert.equal(first.vars.a, first.vars.a, "同轮重复读取应稳定");
-    // 跨轮至少一个变量变化（36 组组合下同轮全同概率极低，但不作为唯一判别）
-    assert.ok(
-        first.vars.a !== second.vars.a || first.vars.b !== second.vars.b,
-        `两轮 runId 不同应有变化: ${first.vars.a}/${first.vars.b} vs ${second.vars.a}/${second.vars.b}`
-    );
+    // 不同名变量种子不同但可落到同一候选——只断言取值合法，不断言互异
+    assert.ok(["x", "y", "z"].includes(first.vars.a));
+    assert.ok(["x", "y", "z"].includes(first.vars.b));
+    // 跨轮变化：单次对比两轮全同概率 (1/3)²≈11%（曾概率性失败），
+    // 改为多轮重试——10 轮全同概率 ~3e-10，事实确定
+    let differ = false;
+    for (let round = 0; round < 10 && !differ; round += 1) {
+        const next = await generatedVarEngine().runScenario(scenario);
+        assert.equal(next.status, "PASSED");
+        differ = next.vars.a !== first.vars.a || next.vars.b !== first.vars.b;
+    }
+    assert.ok(differ, `多轮 runId 派生应产生取值变化（首轮 ${first.vars.a}/${first.vars.b}）`);
 });
 
 test("generatedVars enum：权重分布与权重之比一致（大样本判别）", async () => {

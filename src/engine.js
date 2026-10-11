@@ -708,7 +708,8 @@ export function createEngine(engineOptions = {}) {
             const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
             result.stepNo = index + 1;
             results.push(result);
-            await runOptions.onStep?.(result, index, runtime);
+            // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）
+            await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
             if (!result.passed && scenario.failurePolicy !== "continue") break;
             if (runOptions.signal?.aborted) break;
         }
