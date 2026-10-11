@@ -1,5 +1,21 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 发版记录：v0.6.0（2026-10-11，用户指示）
+
+- 覆盖第 11 轮 enum 造数实现与行内反引号修复（`9701548`、`15bb476`），contractVersion 5→6，测试 252→259。
+- 版本号同步：package.json/lock、CHANGELOG（Unreleased→0.6.0）、install.ps1/install.sh、README jsDelivr URL；build 再生 version.generated.js + dist。选 minor（0.6.0）而非 patch——契约新增能力按语义化版本。
+- 验证：`npm run check` **259/259 全绿**；`npm run test:browser` 桌面视口通过；`npm pack` 11 文件含完整 dist。
+- 发版：`fa34125`（release）→ tag `v0.6.0`；github 与内网 origin 双远端 master/tag 同步。
+- 三方验证一致：GitHub Release `v0.6.0`（Latest、非 Draft/Prerelease）、npm Registry `dist-tags.latest=0.6.0`（npm 新管道传播约 3 分钟）、远端 Tag `v0.6.0`。
+- npm publish 成功（granular token 直接可用）。**验证注记**：curl 对 npm tarball CDN 域名持续返回 `HTTP 000`（本机到该 CDN 不通），改用 `npm pack @yc_yzkj/scenario-test@0.6.0` 实拉发布包验证——shasum `116c49a6…` 一致、UMD 头部 v0.6.0、capabilities contractVersion 6、`pickWeightedIndex`/`enum` 已进产物。registry 元数据可达但 tarball CDN 不通是本机网络限制，非发版问题。
+- 升级说明：contract 5→6 向后兼容，旧项目重跑 init 刷新运行时副本即可；doctor 会提示 contract 版本不一致的项目重新 init。
+
+### 发版后遗留（维持既有决策）
+
+1. **`npm audit` 7 个漏洞**：devDependencies 传递链，运行时干净；按第 11 轮决策暂缓，待 tailwind 4 稳定后一次性升级。
+2. **enum 权重语义为确定性派生**：同 runId+变量名恒得同值；如需"同轮同变量多次抽取得不同值"属新契约扩展（`pick: N` 等），当前未做。
+3. **报告行内正文边界**：新增报告行时用户值走 `mdInline`、代码 span 走 `mdCode`，勿裸拼反引号。
+
 ## 第 11 轮（2026-10-11，用户指示：①暂缓 ②实现 ③修复 ④保留）
 
 ### 本轮完成
