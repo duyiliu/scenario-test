@@ -117,6 +117,27 @@ test("断言 schema：未知键与缺少操作符立即抛错，错误含定位�
     validateAssertion({ name: "ok", path: "data.total", gte: 5, implicit: false }, context);
 });
 
+test("matches 静态期望值定义期校验：非法正则 fail-fast，模板期望值跳过", () => {
+    const context = { scenarioName: "S1", stepNo: 1, stepName: "步骤A", assertionNo: 1 };
+    // 非法静态正则：定义期即报"正则写错"，不再拖到执行期吞成"值不匹配"
+    assert.throws(
+        () => validateAssertion({ path: "code", matches: "([" }, context),
+        /matches 期望值不是合法正则表达式/
+    );
+    assert.throws(
+        () => validateAssertion({ path: "code", matches: "*bad" }, context),
+        /matches 期望值不是合法正则表达式/
+    );
+    // 合法静态正则与含模板的期望值照常通过（模板待运行时解析）
+    validateAssertion({ path: "code", matches: "^\\d+$" }, context);
+    validateAssertion({ path: "code", matches: "^{{vars.pattern}}$" }, context);
+    // each 子断言内的非法 matches 同样定义期拒绝
+    assert.throws(
+        () => validateAssertion({ path: "items", each: { path: "code", matches: "([" } }, context),
+        /matches 期望值不是合法正则表达式/
+    );
+});
+
 test("五个新增操作符 pass/fail", () => {
     const runtime = runtimeWith();
     const response = responseWith({ total: 10, items: ["a", "b"], obj: { x: 1 } });

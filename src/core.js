@@ -202,6 +202,14 @@ export function validateAssertion(definition, context) {
     if (!operators.length) {
         throw new TypeError(`${prefix}: 必须至少包含一个操作符（${ASSERTION_OPERATORS.join("/")}）`);
     }
+    // matches 静态期望值定义期即编译校验：非法正则此前在执行期被吞成断言失败，
+    // 呈现为"值不匹配"而非"正则写错"。含 {{ 模板的期望值跳过（运行时解析后再判）
+    if (definition.matches !== undefined && !String(definition.matches).includes("{{")) {
+        try { new RegExp(String(definition.matches)); }
+        catch (error) {
+            throw new TypeError(`${prefix}: matches 期望值不是合法正则表达式（${definition.matches}）: ${error.message}`);
+        }
+    }
     // each：期望值为子断言定义对象或其数组，递归复用同一 schema 校验，
     // 让非法子断言（缺操作符/未知键/非对象项）在定义期 fail-fast 并定位到具体项
     if (definition.each !== undefined) {

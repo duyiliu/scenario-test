@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### DSL
 
+- `matches` 断言的静态期望值定义期即编译校验：非法正则（如 `([`、`*bad`）此前在执行期被吞成断言失败，呈现为"值不匹配"而非"正则写错"；现 `defineScenario`/运行时校验即报错并给出正则与解析错误。含 `{{` 模板的期望值跳过（运行时解析后再判），`each` 子断言内的 `matches` 同口径校验。
 - `retryUntil` 内的 `assertions` 字段定义期即拒绝（此前会被校验但从不在重试判定中执行——重试只用步骤顶层 `assertions`，误写者得到"一次即停"的静默错误行为）。报错信息指引把断言移到步骤的 `assertions`。
 
 - `extract` 新增 `default` 兜底值（contract v6 → v7）：路径不存在时变量取声明的 `default`（支持模板、可引用先提取的变量），不再产生 warning；仅 `undefined` 判定缺失，JSON `null` 是真实响应值不触发兜底。`required: true` 与 `default` 互斥，同声明即报错。适配可选字段需要默认值的场景（如缺省分页参数、可选总数）。

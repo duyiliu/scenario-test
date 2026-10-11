@@ -643,6 +643,13 @@ function validateAssertion(definition, context) {
   if (!operators.length) {
     throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
   }
+  if (definition.matches !== void 0 && !String(definition.matches).includes("{{")) {
+    try {
+      new RegExp(String(definition.matches));
+    } catch (error) {
+      throw new TypeError(`${prefix}: matches \u671F\u671B\u503C\u4E0D\u662F\u5408\u6CD5\u6B63\u5219\u8868\u8FBE\u5F0F\uFF08${definition.matches}\uFF09: ${error.message}`);
+    }
+  }
   if (definition.each !== void 0) {
     const eachLabel = `${prefix}: each \u7684\u671F\u671B\u503C\u5FC5\u987B\u662F\u5B50\u65AD\u8A00\u5BF9\u8C61\u6216\u5176\u6570\u7EC4`;
     if (Array.isArray(definition.each)) {

@@ -64,10 +64,9 @@ const assertionCases = [
     { path: "empty", includes: "" },
     { path: "total", includes: "1" },
     { path: "total", includes: 10 },
-    // matches（含无效正则不抛异常）
+    // matches（无效正则已在 validateAssertion 定义期/执行期校验被拒，不在本表锁定）
     { path: "total", matches: "^10$" },
     { path: "total", matches: "^9$" },
-    { path: "total", matches: "(" },
     // oneOf：字面数组 / 模板变量 / 非数组 expected（假绿回归：必须 FAIL 而非跳过）
     { path: "code", oneOf: [200, 201] },
     { path: "code", oneOf: [201, 202] },
@@ -161,7 +160,6 @@ const expectedPassed = [
     true,  // includes: 非数组 10 含 10
     true,  // matches ^10$
     false, // matches ^9$
-    false, // matches "(" 无效正则 → 失败而非抛异常
     true,  // oneOf [200,201]
     false, // oneOf [201,202]
     true,  // oneOf {{candidates}}
