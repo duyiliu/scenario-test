@@ -127,6 +127,61 @@ test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定�
     }
 });
 
+test("CLI run 失败步骤输出截断响应体原文（saveResponseAs 提示保存路径，通过步骤不输出）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-body-"));
+    const longBody = "x".repeat(3000);
+    const server = http.createServer((request, response) => {
+        if (request.url === "/ok") {
+            // 通过步骤的响应体含敏感字样：若被打印会抬高「响应体」出现计数，充当极性判别
+            response.writeHead(200, { "Content-Type": "application/json" });
+            response.end(JSON.stringify({ status: "UP", note: "通过步骤响应体不该出现在输出" }));
+            return;
+        }
+        if (request.url === "/long") {
+            response.writeHead(500, { "Content-Type": "text/plain" });
+            response.end(longBody);
+            return;
+        }
+        response.writeHead(500, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ code: "BIZ_001", message: "库存不足" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"errstep",name:"ErrStep",url:"scenarios/errstep.js"},{id:"longstep",name:"LongStep",url:"scenarios/longstep.js"},{id:"savestep",name:"SaveStep",url:"scenarios/savestep.js"},{id:"passstep",name:"PassStep",url:"scenarios/passstep.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/errstep.js"), `ScenarioTest.registerScenario("errstep",ScenarioTest.defineScenario({name:"ErrStep",steps:[{name:"失败步骤",path:"err",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/longstep.js"), `ScenarioTest.registerScenario("longstep",ScenarioTest.defineScenario({name:"LongStep",steps:[{name:"超长响应",path:"long",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/savestep.js"), `ScenarioTest.registerScenario("savestep",ScenarioTest.defineScenario({name:"SaveStep",steps:[{name:"落盘步骤",path:"err",status:200,saveResponseAs:"responses/err.bin"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/passstep.js"), `ScenarioTest.registerScenario("passstep",ScenarioTest.defineScenario({name:"PassStep",steps:[{name:"通过步骤",path:"ok",status:200}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            child.stdout.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.on("close", (code) => resolve({ code, stdout }));
+        });
+        assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
+        // 失败步骤：响应体原文透出服务端错误 payload（断言层只有 status 500，看不到业务错误码）
+        assert.match(result.stdout, /\[FAIL\] 失败步骤/);
+        assert.match(result.stdout, /响应体:/);
+        assert.match(result.stdout, /库存不足/);
+        // 超长响应体：截断标注 + 不输出完整 3000 字符
+        assert.match(result.stdout, /\[FAIL\] 超长响应/);
+        assert.match(result.stdout, /共 3000 字符，截断显示前 2000/);
+        assert.ok(!result.stdout.includes(longBody), "超长响应体不应完整输出");
+        // saveResponseAs：bodyText 为空时提示保存路径而非静默
+        assert.match(result.stdout, /\[FAIL\] 落盘步骤/);
+        assert.match(result.stdout, /响应体已保存至 .*err\.bin/);
+        // 极性守卫：通过步骤不输出响应体——「响应体」标签共出现 3 次（errstep/longstep/savestep）
+        assert.equal(result.stdout.split("响应体").length - 1, 3, "只有失败步骤才应输出响应体相关行");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
     const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");

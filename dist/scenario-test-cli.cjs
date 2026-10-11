@@ -7917,6 +7917,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           }
           printEachDetail(assertion.detail, "");
         }
+        if (!result.passed && !result.skipped) printFailedStepBody(result);
       }
     });
     for (const plugin of plugins) {
@@ -7954,6 +7955,23 @@ Overall: ${passedTotal}/${total} passed`);
     console.log(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5B8C\u6210\u3002${countSummary}${skippedTotal > 0 ? "\uFF1B\u6761\u4EF6\u8DF3\u8FC7\u7684\u6B65\u9AA4\u672A\u53D1\u8D77\u8BF7\u6C42" : ""}\u3002`);
   }
+}
+var FAILURE_BODY_LIMIT = 2e3;
+function printFailedStepBody(result) {
+  const response = result?.response;
+  if (!response || typeof response !== "object") return;
+  const raw = typeof response.bodyText === "string" ? response.bodyText : "";
+  if (raw.trim() === "") {
+    const saved = response.body && typeof response.body === "object" ? response.body.savedTo : null;
+    if (saved) console.log(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${saved}`);
+    return;
+  }
+  const text = raw.replace(/\r\n/g, "\n").trimEnd();
+  const truncated = text.length > FAILURE_BODY_LIMIT;
+  const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
+  const note = truncated ? `\uFF08\u5171 ${text.length} \u5B57\u7B26\uFF0C\u622A\u65AD\u663E\u793A\u524D ${FAILURE_BODY_LIMIT}\uFF09` : "";
+  console.log(`  \u54CD\u5E94\u4F53${note}:`);
+  for (const line of shown.split("\n")) console.log(`    ${line}`);
 }
 function safeFile(root, relativePath) {
   const candidate = import_node_path6.default.resolve(root, relativePath);

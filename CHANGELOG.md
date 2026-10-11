@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
+- `run` 失败步骤自动输出截断的响应体原文：断言明细（expected/actual）之外补打 `响应体:` 分块，服务端错误 payload（业务错误码/错误消息）直接进 CI 日志，无需重跑或加 `saveResponseAs` 才能诊断。超过 2000 字符截断并标注「共 N 字符，截断显示前 2000」，防巨型 HTML 错误页刷爆日志；`saveResponseAs` 步骤的响应体已落盘（`bodyText` 为空），改打「响应体已保存至 <路径>」提示。请求体与请求头刻意不输出——注入后的 `Authorization`、登录密码类字段不应进 CI 日志；通过/跳过步骤不输出。
 - `run --scenario` 支持逗号分隔多选（如 `--scenario login,order`），按场景 id/name/url 逐项匹配，执行顺序保持配置清单顺序，manual:true 场景显式点名即可执行。任一选择项未命中即整体报错并点名缺失项与可选清单（all-or-error，避免 CI 拼写错误静默少跑）；`--scenario` 值为空白时报「值为空」而非回落默认场景。
 
 ### DSL

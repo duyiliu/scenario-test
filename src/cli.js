@@ -630,6 +630,10 @@ async function runCommand(args) {
                     }
                     printEachDetail(assertion.detail, "");
                 }
+                // 失败步骤补打响应体原文（截断）：断言层只有 expected/actual，
+                // 服务端错误 payload 才是 CI/AI 诊断的关键上下文。
+                // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志
+                if (!result.passed && !result.skipped) printFailedStepBody(result);
             }
         });
         for (const plugin of plugins) {
@@ -663,6 +667,27 @@ async function runCommand(args) {
     } else {
         console.log(`\n结论：执行完成。${countSummary}${skippedTotal > 0 ? "；条件跳过的步骤未发起请求" : ""}。`);
     }
+}
+
+// 失败诊断响应体截断上限（字符）：防巨型 HTML 错误页刷爆 CI 日志
+const FAILURE_BODY_LIMIT = 2000;
+
+function printFailedStepBody(result) {
+    const response = result?.response;
+    if (!response || typeof response !== "object") return;
+    const raw = typeof response.bodyText === "string" ? response.bodyText : "";
+    if (raw.trim() === "") {
+        // saveResponseAs 时 bodyText 为 null、body 是保存信息，提示落盘位置而非静默
+        const saved = response.body && typeof response.body === "object" ? response.body.savedTo : null;
+        if (saved) console.log(`  响应体已保存至 ${saved}`);
+        return;
+    }
+    const text = raw.replace(/\r\n/g, "\n").trimEnd();
+    const truncated = text.length > FAILURE_BODY_LIMIT;
+    const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
+    const note = truncated ? `（共 ${text.length} 字符，截断显示前 ${FAILURE_BODY_LIMIT}）` : "";
+    console.log(`  响应体${note}:`);
+    for (const line of shown.split("\n")) console.log(`    ${line}`);
 }
 
 function safeFile(root, relativePath) {
