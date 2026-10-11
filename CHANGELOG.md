@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.5.26] - 2026-10-10
 
 ### CLI
 
@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 - 修复 `doctor` 单点文件异常导致整份汇总（含 `--json`）丢失：运行时副本被同名目录/不可读路径占位时该检查 FAIL「运行时副本不可读取」并继续；版本锁内容非 JSON 对象（null/数组/字符串/数字）FAIL「版本锁必须是 JSON 对象」；锁内声明文件无法计算 SHA256 时逐项 FAIL「无法校验 SHA256」而非中断或静默跳过；`.scenario-test` 被同名文件占位时输出 `framework-directory` FAIL，node-version/config-load 等其余检查均继续执行。
 - `init` 远程下载运行时副本增加每个文件 30 秒总超时（覆盖请求与完整读体）：响应头或响应体停滞不再让 init 长时间等待，超时按失败处理并提示「下载超时（30 秒）」，副本不完整时仍退出 1 且不写版本锁；本机 dist 拷贝与已存在跳过路径不变。
 - 修复 `init` 升级刷新假成功：运行时副本下载/拷贝失败（返回 null）但磁盘上仍有旧文件时，旧逻辑照常重写版本锁为当前版本并提示「已初始化项目」。现改为收集全部失败文件后报错退出（「运行时副本更新失败」+ 重跑指引），不输出成功摘要、不改写旧版本锁、不删除旧副本；版本锁仅在副本齐备后写入。
+
+### 报告
+
+- 修复浏览器 Markdown 报告的代码 span：场景文件与请求路径含反引号时自适应定界符，保留 Windows 路径反斜杠；标题、环境、执行模式及明细中的 CR/LF 折叠为字面量，避免拆行。
 
 ## [0.5.25] - 2026-10-10
 

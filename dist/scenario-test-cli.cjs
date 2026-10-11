@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.5.25 */
+/*! scenario-test v0.5.26 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -322,7 +322,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.25";
+var VERSION = "0.5.26";
 
 // src/contract.js
 var CONTRACT_VERSION = 5;
@@ -3174,7 +3174,18 @@ var workbenchView = function() {
   function mdInline(value) {
     var text = typeof value === "string" ? value : JSON.stringify(value);
     if (text === void 0 || text === null || text === "") return "";
-    return text.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n");
+    return text.replace(/\\/g, "\\\\").replace(/\r\n|\r|\n/g, "\\n");
+  }
+  function mdCode(value) {
+    var text = String(value).replace(/\r\n|\r|\n/g, "\\n");
+    var runs = text.match(/`+/g) || [];
+    var maxRun = runs.reduce(function(max, run) {
+      return run.length > max ? run.length : max;
+    }, 0);
+    var fence = "`".repeat(Math.max(1, maxRun + 1));
+    var pad = /^`|`$/.test(text) || text[0] === " " && text[text.length - 1] === " " && /[^ ]/.test(text);
+    var sp = pad ? " " : "";
+    return fence + sp + text + sp + fence;
   }
   function eachDetailRows2(detail, prefix) {
     var html = "";
@@ -3970,11 +3981,11 @@ var workbenchView = function() {
     if (!report) return "";
     var summary = report.summary || {};
     var lines = [];
-    lines.push("# " + (report.title || "\u6D4B\u8BD5\u62A5\u544A"));
+    lines.push("# " + mdInline(report.title || "\u6D4B\u8BD5\u62A5\u544A"));
     lines.push("");
-    lines.push("- **\u573A\u666F\u6587\u4EF6**: `" + (report.scenarioFile || "-") + "`");
-    lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + (report.environment || "-"));
-    lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + (report.executionMode || "-"));
+    lines.push("- **\u573A\u666F\u6587\u4EF6**: " + mdCode(report.scenarioFile || "-"));
+    lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + mdInline(report.environment || "-"));
+    lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + mdInline(report.executionMode || "-"));
     var resultText = report.status === "CANCELLED" ? "\u{1F6AB} \u5DF2\u53D6\u6D88" : summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
     lines.push("- **\u7ED3\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
     lines.push("- **\u901A\u8FC7\u7387**: " + summary.passRate);
@@ -3986,7 +3997,7 @@ var workbenchView = function() {
     (report.steps || []).forEach(function(step) {
       var icon = step.skipped ? "\u23ED\uFE0F" : step.passed ? "\u2705" : "\u274C";
       lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + mdInline(step.name));
-      lines.push("- **\u8BF7\u6C42**: `" + step.method + " " + step.path + "`");
+      lines.push("- **\u8BF7\u6C42**: " + mdCode(step.method + " " + step.path));
       lines.push("- **\u72B6\u6001**: " + step.status + " | **\u8017\u65F6**: " + step.durationFmt);
       if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + mdInline(step.error));
       (step.warnings || []).forEach(function(warning) {
@@ -6781,21 +6792,33 @@ function checkRuntimeArtifact(filePath, fileName, key, pattern) {
       fix: "\u8FD0\u884C init \u8865\u9F50\uFF08\u4E0D\u4F20 --force \u4E0D\u4F1A\u8986\u76D6\u9879\u76EE\u6587\u4EF6\uFF09"
     };
   }
-  const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
-  if (version !== null && version !== VERSION) {
+  try {
+    const stat = import_node_fs4.default.statSync(filePath);
+    if (!stat.isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
+    const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
+    if (pattern === null) import_node_fs4.default.accessSync(filePath, import_node_fs4.default.constants.R_OK);
+    if (version !== null && version !== VERSION) {
+      return {
+        name: key,
+        status: "FAIL",
+        message: `\u7248\u672C\u4E0D\u4E00\u81F4\uFF1A${fileName} \u662F v${version}\uFF0C\u5F53\u524D CLI \u662F v${VERSION}`,
+        fix: `\u7528 v${VERSION} \u7684 CLI \u91CD\u65B0 init \u5237\u65B0\u8FD0\u884C\u65F6\u526F\u672C`
+      };
+    }
+    return {
+      name: key,
+      status: "PASS",
+      message: `\u8FD0\u884C\u65F6\u526F\u672C\u5C31\u7EEA: ${fileName}${version ? `\uFF08v${version}\uFF09` : ""}`,
+      fix: ""
+    };
+  } catch (error) {
     return {
       name: key,
       status: "FAIL",
-      message: `\u7248\u672C\u4E0D\u4E00\u81F4\uFF1A${fileName} \u662F v${version}\uFF0C\u5F53\u524D CLI \u662F v${VERSION}`,
-      fix: `\u7528 v${VERSION} \u7684 CLI \u91CD\u65B0 init \u5237\u65B0\u8FD0\u884C\u65F6\u526F\u672C`
+      message: `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u53EF\u8BFB\u53D6: ${fileName}\uFF08${filePath}\uFF0C\u539F\u56E0: ${error.message}\uFF09`,
+      fix: "\u79FB\u8D70\u65E0\u6548\u8DEF\u5F84\u6216\u4FEE\u590D\u6587\u4EF6\u8BFB\u53D6\u6743\u9650\u540E\uFF0C\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init"
     };
   }
-  return {
-    name: key,
-    status: "PASS",
-    message: `\u8FD0\u884C\u65F6\u526F\u672C\u5C31\u7EEA: ${fileName}${version ? `\uFF08v${version}\uFF09` : ""}`,
-    fix: ""
-  };
 }
 function checkCapabilitiesFile(filePath) {
   if (!import_node_fs4.default.existsSync(filePath)) {
@@ -6854,6 +6877,14 @@ function checkVersionLock(filePath) {
       fix: "\u4FEE\u590D\u6216\u5220\u9664\u7248\u672C\u9501\u540E\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u751F\u6210"
     };
   }
+  if (!lock || typeof lock !== "object" || Array.isArray(lock)) {
+    return {
+      name: "version-lock",
+      status: "FAIL",
+      message: "\u7248\u672C\u9501\u5FC5\u987B\u662F JSON \u5BF9\u8C61",
+      fix: "\u4FEE\u590D\u7248\u672C\u9501\u540E\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init \u751F\u6210"
+    };
+  }
   if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) {
     return {
       name: "version-lock",
@@ -6898,7 +6929,20 @@ function checkVersionLock(filePath) {
       if (declaredFiles && !declaredFiles.has(fileName)) continue;
       const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), fileName);
       if (!import_node_fs4.default.existsSync(target)) continue;
-      if (sha256Of(target) !== expected) {
+      let actual;
+      try {
+        if (!import_node_fs4.default.statSync(target).isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
+        actual = sha256Of(target);
+      } catch (error) {
+        extras.push({
+          name: "version-lock",
+          status: "FAIL",
+          message: `${fileName} \u65E0\u6CD5\u6821\u9A8C SHA256\uFF08\u539F\u56E0: ${error.message}\uFF09`,
+          fix: "\u79FB\u8D70\u65E0\u6548\u8DEF\u5F84\u6216\u4FEE\u590D\u6587\u4EF6\u8BFB\u53D6\u6743\u9650\u540E\uFF0C\u7528\u5F53\u524D\u7248\u672C CLI \u91CD\u65B0 init"
+        });
+        continue;
+      }
+      if (actual !== expected) {
         extras.push({
           name: "version-lock",
           status: "FAIL",
@@ -7073,7 +7117,18 @@ function buildDoctorReport(options) {
       }
     }
   }
-  const layout = resolveLayoutFromConfigDir(configDir);
+  let layout;
+  try {
+    layout = resolveLayoutFromConfigDir(configDir);
+  } catch (error) {
+    layout = createProjectLayout(import_node_path5.default.dirname(configDir), import_node_path5.default.basename(configDir));
+    checks.push({
+      name: "framework-directory",
+      status: "FAIL",
+      message: error.message,
+      fix: "\u79FB\u8D70\u65E0\u6548\u8DEF\u5F84\u6216\u4FEE\u590D\u8BFB\u53D6\u6743\u9650\u540E\u91CD\u65B0\u8FD0\u884C init"
+    });
+  }
   checks.push({
     name: "cli",
     status: "PASS",
@@ -7131,14 +7186,20 @@ function renderDoctorText(report) {
 var SHORT_VALUE_LIMIT = 80;
 var MAX_LINES = 20;
 var CONTEXT_RADIUS = 40;
+var MAX_LINE_WIDTH = 240;
+var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
 function isShortValue(value) {
   if (value === void 0) return true;
-  if (value === null || typeof value !== "object") return JSON.stringify(value ?? null).length <= SHORT_VALUE_LIMIT;
   try {
-    return JSON.stringify(value).length <= SHORT_VALUE_LIMIT;
+    const serialized = JSON.stringify(value ?? null) ?? String(value);
+    return serialized.length <= SHORT_VALUE_LIMIT;
   } catch {
     return false;
   }
+}
+function formatFailureValue(value) {
+  if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
+  return JSON.stringify(value) ?? String(value);
 }
 function splitStringLines(text, prefix) {
   const raw = String(text).split(/\r\n|\n|\r/);
@@ -7187,11 +7248,11 @@ function failureDiffLines(expected, actual, prefix = "") {
   const lines = [];
   if (!isShortValue(expected)) {
     lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
-    lines.push(...expandValueLines(expected, `${prefix}    `));
+    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
   }
   if (!isShortValue(actual)) {
     lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
-    lines.push(...expandValueLines(actual, `${prefix}    `));
+    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
   }
   lines.push(...firstDifferenceLines(
     typeof expected === "string" ? expected : void 0,
@@ -7200,9 +7261,9 @@ function failureDiffLines(expected, actual, prefix = "") {
   ));
   return lines;
 }
-function expandValueLines(value, prefix) {
+function expandValueLines(value, prefix, baseLength) {
   if (typeof value === "string") {
-    const lines = splitStringLines(value, `${prefix}| `);
+    const lines = splitStringLines(value, `${prefix}| `).map((line) => capContentLine(line, baseLength));
     if (lines.length > MAX_LINES) {
       return [
         ...lines.slice(0, MAX_LINES),
@@ -7211,7 +7272,11 @@ function expandValueLines(value, prefix) {
     }
     return lines;
   }
-  return prettyLines(value).map((line) => `${prefix}${line}`);
+  return prettyLines(value).map((line) => capContentLine(`${prefix}${line}`, baseLength));
+}
+function capContentLine(line, baseLength) {
+  if (line.length <= baseLength + MAX_LINE_WIDTH) return line;
+  return `${line.slice(0, baseLength + MAX_LINE_WIDTH - LINE_TRUNCATED_MARK.length)}${LINE_TRUNCATED_MARK}`;
 }
 
 // src/cli.js
@@ -7224,7 +7289,7 @@ var CliUsageError = class extends Error {
 };
 function argumentValue(argv, index, option) {
   const value = argv[index + 1];
-  if (!value || value.startsWith("--")) {
+  if (!value || value === "-h" || value.startsWith("--")) {
     throw new CliUsageError(`${option} \u7F3A\u5C11\u53C2\u6570\u503C`, `\u8BF7\u4E3A ${option} \u63D0\u4F9B\u4E00\u4E2A\u503C\uFF0C\u518D\u91CD\u65B0\u8FD0\u884C\u3002`);
   }
   return value;
@@ -7461,13 +7526,14 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   }
   if (!libraryUrl) return null;
   const base = libraryUrl.replace(/\/+$/, "") + "/";
+  const downloadSignal = AbortSignal.timeout(3e4);
   try {
-    const response = await fetch(`${base}${fileName}`);
+    const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     import_node_fs5.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
-    console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${error.message}\uFF09`);
+    console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : error.message}\uFF09`);
     return null;
   }
 }
@@ -7513,9 +7579,10 @@ function shouldRefreshFramework(layout, force) {
     return !!expected && sha256File(layout.frameworkPath(fileName)) !== expected;
   });
 }
-function recordRuntimeResult(created, skipped, relativePath, status) {
+function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   if (status === true) created.push(relativePath);
   else if (status === false) skipped.push(relativePath);
+  else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
   const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
@@ -7540,15 +7607,22 @@ async function initCommand(args) {
   ]);
   const created = [];
   const skipped = [];
+  const failedRuntimeFiles = [];
   for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
     const overwrite = force || frameworkTemplatePaths.has(relativePath);
     (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
   }
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
-  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework));
-  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework));
-  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework));
-  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework));
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework), failedRuntimeFiles);
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework), failedRuntimeFiles);
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework), failedRuntimeFiles);
+  recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework), failedRuntimeFiles);
+  if (failedRuntimeFiles.length) {
+    throw new Error(
+      `\u8FD0\u884C\u65F6\u526F\u672C\u66F4\u65B0\u5931\u8D25: ${failedRuntimeFiles.join(", ")}
+\u8BF7\u68C0\u67E5\u4E0B\u8F7D\u6E90\u6216\u7F51\u7EDC\u540E\u91CD\u8DD1 init\uFF1B\u73B0\u6709\u7248\u672C\u9501\u672A\u66F4\u65B0\u3002`
+    );
+  }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
   const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs5.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
@@ -7730,7 +7804,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              console.log(`      \u21B3 ${label} ${sub.name}: expected=${JSON.stringify(sub.expected)} actual=${JSON.stringify(sub.actual)}`);
+              console.log(`      \u21B3 ${label} ${sub.name}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
               for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
                 console.log(line);
               }
@@ -7739,7 +7813,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          console.log(`  - ${assertion.name}: expected=${JSON.stringify(assertion.expected)} actual=${JSON.stringify(assertion.actual)}`);
+          console.log(`  - ${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
           for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
             console.log(line);
           }
@@ -7975,7 +8049,8 @@ async function serveCommand(args) {
   });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
-      console.error(`\u7AEF\u53E3 ${args.port} \u5DF2\u88AB\u5360\u7528\uFF0C\u8BF7\u91CD\u65B0\u542F\u52A8\u4EE5\u83B7\u53D6\u65B0\u7684\u968F\u673A\u7AEF\u53E3`);
+      console.error(`\u9519\u8BEF\uFF1A\u7AEF\u53E3 ${args.port} \u5DF2\u88AB\u5360\u7528`);
+      console.error("\u63D0\u793A\uFF1A\u8BF7\u4F7F\u7528 --port <\u5176\u4ED6\u7A7A\u95F2\u7AEF\u53E3> \u6307\u5B9A\u7AEF\u53E3\u540E\u91CD\u8BD5\uFF1B\u6216\u53CC\u51FB start-scenario-test.cmd \u91CD\u65B0\u7533\u8BF7\u7A7A\u95F2\u7AEF\u53E3\u3002");
       process.exitCode = 1;
       return;
     }

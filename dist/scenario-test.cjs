@@ -1,4 +1,4 @@
-/*! scenario-test v0.5.25 */
+/*! scenario-test v0.5.26 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -314,7 +314,7 @@ module.exports = __toCommonJS(node_exports);
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.5.25";
+var VERSION = "0.5.26";
 
 // src/contract.js
 var CONTRACT_VERSION = 5;
@@ -3166,7 +3166,18 @@ var workbenchView = function() {
   function mdInline(value) {
     var text = typeof value === "string" ? value : JSON.stringify(value);
     if (text === void 0 || text === null || text === "") return "";
-    return text.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n");
+    return text.replace(/\\/g, "\\\\").replace(/\r\n|\r|\n/g, "\\n");
+  }
+  function mdCode(value) {
+    var text = String(value).replace(/\r\n|\r|\n/g, "\\n");
+    var runs = text.match(/`+/g) || [];
+    var maxRun = runs.reduce(function(max, run) {
+      return run.length > max ? run.length : max;
+    }, 0);
+    var fence = "`".repeat(Math.max(1, maxRun + 1));
+    var pad = /^`|`$/.test(text) || text[0] === " " && text[text.length - 1] === " " && /[^ ]/.test(text);
+    var sp = pad ? " " : "";
+    return fence + sp + text + sp + fence;
   }
   function eachDetailRows2(detail, prefix) {
     var html = "";
@@ -3962,11 +3973,11 @@ var workbenchView = function() {
     if (!report) return "";
     var summary = report.summary || {};
     var lines = [];
-    lines.push("# " + (report.title || "\u6D4B\u8BD5\u62A5\u544A"));
+    lines.push("# " + mdInline(report.title || "\u6D4B\u8BD5\u62A5\u544A"));
     lines.push("");
-    lines.push("- **\u573A\u666F\u6587\u4EF6**: `" + (report.scenarioFile || "-") + "`");
-    lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + (report.environment || "-"));
-    lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + (report.executionMode || "-"));
+    lines.push("- **\u573A\u666F\u6587\u4EF6**: " + mdCode(report.scenarioFile || "-"));
+    lines.push("- **\u6D4B\u8BD5\u73AF\u5883**: " + mdInline(report.environment || "-"));
+    lines.push("- **\u6267\u884C\u6A21\u5F0F**: " + mdInline(report.executionMode || "-"));
     var resultText = report.status === "CANCELLED" ? "\u{1F6AB} \u5DF2\u53D6\u6D88" : summary.failedSteps ? "\u274C \u5B58\u5728\u5931\u8D25" : summary.skippedSteps && summary.executedSteps === 0 ? "\u23ED\uFE0F \u5168\u90E8\u8DF3\u8FC7" : "\u2705 \u5168\u90E8\u901A\u8FC7";
     lines.push("- **\u7ED3\u679C**: " + resultText + " (" + summary.passedSteps + "/" + summary.executedSteps + ")");
     lines.push("- **\u901A\u8FC7\u7387**: " + summary.passRate);
@@ -3978,7 +3989,7 @@ var workbenchView = function() {
     (report.steps || []).forEach(function(step) {
       var icon = step.skipped ? "\u23ED\uFE0F" : step.passed ? "\u2705" : "\u274C";
       lines.push("### " + icon + " \u6B65\u9AA4 " + step.stepNo + ": " + mdInline(step.name));
-      lines.push("- **\u8BF7\u6C42**: `" + step.method + " " + step.path + "`");
+      lines.push("- **\u8BF7\u6C42**: " + mdCode(step.method + " " + step.path));
       lines.push("- **\u72B6\u6001**: " + step.status + " | **\u8017\u65F6**: " + step.durationFmt);
       if (step.error) lines.push("- **\u5931\u8D25\u539F\u56E0**: " + mdInline(step.error));
       (step.warnings || []).forEach(function(warning) {
