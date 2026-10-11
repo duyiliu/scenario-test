@@ -396,14 +396,20 @@ test("when 对象形式定义期校验：只允许 from vars，禁止 target/hea
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: false }] });
 });
 
-test("定义期拒绝非法断言（含 retryUntil 防御性 assertions）", () => {
+test("定义期拒绝非法断言（含 retryUntil 内误放 assertions）", () => {
     const base = { name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code", equals: 200 }] }] };
     assert.throws(() => defineScenario({ name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code" }] }] }), /必须至少包含一个操作符/);
     assert.throws(() => defineScenario({ name: "A", steps: [{ name: "s", path: "x", assertions: [{ path: "code", equals: 200, foo: 1 }] }] }), /未知键 "foo"/);
+    // retryUntil.assertions 不是协议字段：重试判定只用步骤顶层 assertions，
+    // 放在 retryUntil 内的断言从不执行——无论内容是否合法都拒绝并指引迁移
     assert.throws(() => defineScenario({
         name: "A",
         steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 3, assertions: [{ path: "code" }] } }]
-    }), /必须至少包含一个操作符/);
+    }), /retryUntil 不支持 assertions/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", retryUntil: { assertions: [{ path: "code", equals: 200 }] }, assertions: [{ path: "code", equals: 200 }] }]
+    }), /retryUntil 不支持 assertions/);
     // 真实协议：retryUntil 本身不含断言，带合法 maxAttempts/intervalMs 不抛
     defineScenario({ name: "A", steps: [{ name: "s", path: "x", retryUntil: { maxAttempts: 3, intervalMs: 100 }, assertions: [{ path: "code", equals: 200 }] }] });
 });

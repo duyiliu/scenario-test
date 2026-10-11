@@ -68,16 +68,15 @@ export function defineScenario(input) {
                 validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
             });
         }
-        // retryUntil 真实协议：{ maxAttempts, intervalMs, maxElapsedMs }，本身不含断言；
-        // 若调用方额外提供了 assertions，同样做定义期校验（防御性）。
+        // retryUntil 真实协议：{ maxAttempts, intervalMs, maxElapsedMs }，本身不含断言。
+        // 重试判定只用步骤顶层 assertions——放在 retryUntil 内的 assertions 从不执行，
+        // 定义期直接拒绝并指引迁移，避免"以为会按它重试、实际一次即停"的静默失效。
         if (step.retryUntil !== undefined) {
             invariant(isPlainObject(step.retryUntil), `步骤 ${step.name} 的 retryUntil 必须是对象`);
-            if (step.retryUntil.assertions !== undefined) {
-                invariant(Array.isArray(step.retryUntil.assertions), `步骤 ${step.name} 的 retryUntil.assertions 必须是数组`);
-                step.retryUntil.assertions.forEach((definition, assertionIndex) => {
-                    validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
-                });
-            }
+            invariant(
+                step.retryUntil.assertions === undefined,
+                `步骤 ${step.name} 的 retryUntil 不支持 assertions 字段（重试判定使用步骤顶层 assertions），请把断言移到步骤的 assertions`
+            );
             const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
             const intervalMs = Number(step.retryUntil.intervalMs ?? 2000);
             const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 300000);

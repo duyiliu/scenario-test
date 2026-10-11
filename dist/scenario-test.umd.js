@@ -1029,12 +1029,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       }
       if (step.retryUntil !== void 0) {
         invariant(isPlainObject(step.retryUntil), `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5FC5\u987B\u662F\u5BF9\u8C61`);
-        if (step.retryUntil.assertions !== void 0) {
-          invariant(Array.isArray(step.retryUntil.assertions), `\u6B65\u9AA4 ${step.name} \u7684 retryUntil.assertions \u5FC5\u987B\u662F\u6570\u7EC4`);
-          step.retryUntil.assertions.forEach((definition, assertionIndex) => {
-            validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
-          });
-        }
+        invariant(
+          step.retryUntil.assertions === void 0,
+          `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
+        );
         const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
         const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
         const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);

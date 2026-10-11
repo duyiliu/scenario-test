@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 
 ### DSL
 
+- `retryUntil` 内的 `assertions` 字段定义期即拒绝（此前会被校验但从不在重试判定中执行——重试只用步骤顶层 `assertions`，误写者得到"一次即停"的静默错误行为）。报错信息指引把断言移到步骤的 `assertions`。
+
 - `extract` 新增 `default` 兜底值（contract v6 → v7）：路径不存在时变量取声明的 `default`（支持模板、可引用先提取的变量），不再产生 warning；仅 `undefined` 判定缺失，JSON `null` 是真实响应值不触发兜底。`required: true` 与 `default` 互斥，同声明即报错。适配可选字段需要默认值的场景（如缺省分页参数、可选总数）。
 - 数组路径下标支持负索引：`records[-1]` 取数组末项、`records[-N]` 取倒数第 N 项，extract、断言 path、模板 `{{vars.*}}`/`{{lastResponse.*}}` 与 `from: "headers"` 子路径同口径生效。此前 `[-1]` 能被分词却按字面属性名取值，静默得到 `undefined`（表现为提取 warning 或断言失败）。越界负索引按路径不存在处理；引号键（`a["-1"]`）与非数组上的 `a[-1]` 维持属性名语义不变。
 
