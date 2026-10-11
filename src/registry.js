@@ -60,6 +60,19 @@ export function defineScenario(input) {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
         if (step.method !== undefined) invariant(nonEmptyString(step.method), `步骤 ${step.name} 的 method 无效`);
+        // GET/HEAD 不能携带请求体：executeHttp 对这两种方法静默丢弃 request.body，
+        // fileUpload 则交给 fetch 抛底层英文错——两种静默失败定义期即拒。
+        // 模板方法（{{...}}）定义期无法确定最终值，跳过；adapter 步骤的 request 语义
+        // 由适配器自行定义，不约束。
+        const requestDef = isPlainObject(step.request) ? step.request : {};
+        const rawMethod = String(step.method || requestDef.method || "GET");
+        const effectiveMethod = rawMethod.toUpperCase();
+        if (step.adapter === undefined && !rawMethod.includes("{{") && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+            invariant(
+                (requestDef.body === undefined || requestDef.body === null) && requestDef.fileUpload === undefined,
+                `步骤 ${step.name} 的 ${effectiveMethod} 请求不能携带请求体（request.body / request.fileUpload 会被丢弃），请改用 POST/PUT/PATCH 等方法，或把参数放进 params`
+            );
+        }
         // 断言定义期 fail-fast：定位到场景名、步骤序号、断言序号
         const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
         if (step.assertions !== undefined) {

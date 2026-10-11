@@ -1027,6 +1027,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
       invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
       if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
+      const requestDef = isPlainObject(step.request) ? step.request : {};
+      const rawMethod = String(step.method || requestDef.method || "GET");
+      const effectiveMethod = rawMethod.toUpperCase();
+      if (step.adapter === void 0 && !rawMethod.includes("{{") && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+        invariant(
+          (requestDef.body === void 0 || requestDef.body === null) && requestDef.fileUpload === void 0,
+          `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\uFF0C\u6216\u628A\u53C2\u6570\u653E\u8FDB params`
+        );
+      }
       const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
       if (step.assertions !== void 0) {
         invariant(Array.isArray(step.assertions), `\u6B65\u9AA4 ${step.name} \u7684 assertions \u5FC5\u987B\u662F\u6570\u7EC4`);

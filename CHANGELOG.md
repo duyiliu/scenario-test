@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### DSL
 
+- `GET`/`HEAD` 步骤声明请求体（`request.body` / `request.fileUpload`）定义期即拒绝：此前 `request.body` 被 `executeHttp` 静默丢弃（以为发了其实没发），`fileUpload` 则交给 fetch 抛底层英文错。报错指引改用 `POST`/`PUT`/`PATCH` 或把参数放进 `params`。模板方法名（`{{...}}`）定义期无法确定最终值跳过校验，`adapter` 步骤的 request 语义由适配器定义不约束，`body: null` 视为无体放行。
 - `matches` 断言的静态期望值定义期即编译校验：非法正则（如 `([`、`*bad`）此前在执行期被吞成断言失败，呈现为"值不匹配"而非"正则写错"；现 `defineScenario`/运行时校验即报错并给出正则与解析错误。含 `{{` 模板的期望值跳过（运行时解析后再判），`each` 子断言内的 `matches` 同口径校验。
 - `retryUntil` 内的 `assertions` 字段定义期即拒绝（此前会被校验但从不在重试判定中执行——重试只用步骤顶层 `assertions`，误写者得到"一次即停"的静默错误行为）。报错信息指引把断言移到步骤的 `assertions`。
 

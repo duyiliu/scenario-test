@@ -428,6 +428,33 @@ test("定义期拒绝非法 retryUntil 数值（maxAttempts/intervalMs/maxElapse
     withRetry({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 5000 });
 });
 
+test("定义期拒绝 GET/HEAD 携带请求体（body/fileUpload），带体方法与模板方法放行", () => {
+    // GET + request.body：执行期 body 被静默丢弃，定义期即拒
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", method: "GET", request: { body: { a: 1 } } }]
+    }), /GET 请求不能携带请求体/);
+    // 小写方法名归一化后同样拒绝
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", method: "head", request: { body: "x" } }]
+    }), /HEAD 请求不能携带请求体/);
+    // request.method 与缺省方法（默认 GET）同口径
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", request: { method: "HEAD", fileUpload: "f.png" } }]
+    }), /HEAD 请求不能携带请求体/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", request: { body: { a: 1 } } }]
+    }), /GET 请求不能携带请求体/);
+    // 放行：带体方法、空 body、模板方法（定义期无法确定）、adapter 步骤
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "POST", request: { body: { a: 1 } } }] });
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "GET", request: { body: null } }] });
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", method: "{{vars.m}}", request: { body: { a: 1 } } }] });
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", adapter: "custom", method: "GET", request: { body: { a: 1 } } }] });
+});
+
 test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars 中声明", async () => {
     const ok = async (vars) => {
         const report = await createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) }).runScenario(
@@ -797,8 +824,8 @@ test("generatedVars idcard：18 位、出生段正确、GB 11643 校验位合法
             { name: "femaleIdNo", type: "idcard", birthDate: "1996-03-12", gender: "FEMALE", regionCode: "370102" }
         ],
         steps: [
-            { name: "引用男号", path: "one", request: { body: { idNo: "{{vars.maleIdNo}}" } } },
-            { name: "引用女号", path: "two", request: { body: { idNo: "{{vars.femaleIdNo}}" } } }
+            { name: "引用男号", method: "POST", path: "one", request: { body: { idNo: "{{vars.maleIdNo}}" } } },
+            { name: "引用女号", method: "POST", path: "two", request: { body: { idNo: "{{vars.femaleIdNo}}" } } }
         ]
     });
     const report = await engine.runScenario(scenario);
@@ -936,7 +963,7 @@ test("generatedVars uuid：带连字符 UUID v4；uuidHex 保持 32 位无连字
     assert.ok(!report.vars.hex.includes("-"), "uuidHex 不带连字符（两个类型不可互相误实现）");
 });
 
-test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直传，GET 不携带 body", async () => {
+test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直传，GET 请求无 body", async () => {
     const seen = [];
     const engine = createEngine({
         baseUrl: "https://mock.local",
@@ -950,7 +977,7 @@ test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直�
         steps: [
             { name: "json", method: "POST", request: { body: { a: 1 } } },
             { name: "text", method: "POST", request: { body: "plain-text", headers: { "Content-Type": "text/plain" } } },
-            { name: "get-no-body", method: "GET", request: { body: { a: 1 } } }
+            { name: "get-no-body", method: "GET" }
         ]
     });
     const report = await engine.runScenario(scenario);
@@ -959,7 +986,7 @@ test("请求体：对象 JSON 序列化并补默认 Content-Type，字符串直�
     assert.equal(seen[0].contentType, "application/json");
     assert.equal(seen[1].body, "plain-text");
     assert.equal(seen[1].contentType, "text/plain");
-    // GET 请求即使声明了 body 也不发送
+    // GET 请求不发送 body（GET 声明 body 已在定义期被拒，见「GET/HEAD 携带请求体」用例）
     assert.equal(seen[2].body, undefined);
 });
 
