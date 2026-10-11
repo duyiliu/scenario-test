@@ -293,6 +293,7 @@ __export(node_exports, {
   mergeGlobals: () => mergeGlobals,
   normalizeGlobalParam: () => normalizeGlobalParam,
   parseBody: () => parseBody,
+  pickWeightedIndex: () => pickWeightedIndex,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
   registerScenario: () => registerScenario,
@@ -302,6 +303,7 @@ __export(node_exports, {
   runScenario: () => runScenario,
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
+  seedToUnit: () => seedToUnit,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
   validateAdapter: () => validateAdapter,
@@ -317,7 +319,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.5.26";
 
 // src/contract.js
-var CONTRACT_VERSION = 5;
+var CONTRACT_VERSION = 6;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -406,8 +408,8 @@ var contract = Object.freeze({
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
   reservedVars: Object.freeze(["runId", "runNo"]),
   generatedVars: Object.freeze({
-    types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid"]),
-    note: "\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7C7B\u6D4B\u8BD5\u9020\u6570\uFF08\u987A\u5E8F\u7801\u4E0E\u4E2D\u95F4\u6570\u5B57\u5747\u7531 runId \u4E0E\u53D8\u91CF\u540D\u786E\u5B9A\u6027\u6D3E\u751F\uFF1A\u6BCF\u8F6E\u53D8\u5316\u3001\u8F6E\u5185\u4E0D\u540C\u540D\u53D8\u91CF\u4E92\u5F02\uFF0C\u649E\u4E1A\u52A1\u552F\u4E00\u7EA6\u675F\u65F6\u91CD\u8DD1\u5373\u6362\u53F7\uFF09\u3002 idcard\uFF1A\u4E2D\u56FD\u5927\u9646 18 \u4F4D\u8EAB\u4EFD\u8BC1\u53F7\uFF0CbirthDate \u5FC5\u586B\uFF08YYYY-MM-DD \u5408\u6CD5\u65E5\u5386\u65E5\u671F\uFF09\u3001gender \u53EF\u9009\uFF08MALE/FEMALE\uFF0C\u9ED8\u8BA4 MALE\uFF09\u3001regionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u7F3A\u7701\u4ECE\u771F\u5B9E\u6D4B\u8BD5\u533A\u5212\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 11643 \u8BA1\u7B97\u3002 luhn\uFF1A\u94F6\u884C\u5361\u53F7\uFF0Clength \u53EF\u9009\uFF0812-19\uFF0C\u9ED8\u8BA4 16\uFF09\u3001prefix \u53EF\u9009\uFF08\u6570\u5B57\u5361\u5934\uFF0C\u9ED8\u8BA4 62\uFF09\uFF0C\u672B\u4F4D\u6309 Luhn \u7B97\u6CD5\u6821\u9A8C\u3002 phone\uFF1A\u5927\u9646\u624B\u673A\u53F7\uFF081[3-9] \u5F00\u5934 11 \u4F4D\uFF09\uFF0Cprefix \u53EF\u9009\uFF083 \u4F4D\u53F7\u6BB5\uFF0C\u7F3A\u7701\u4ECE\u6D4B\u8BD5\u53F7\u6BB5\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\u3002 uscc\uFF1A\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\uFF0818 \u4F4D\uFF09\uFF0CregionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u9ED8\u8BA4 110100\uFF09\uFF0C\u767B\u8BB0\u7BA1\u7406/\u673A\u6784\u7C7B\u522B\u56FA\u5B9A 91\uFF08\u4F01\u4E1A\u6CD5\u4EBA\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 32100-2015 \u8BA1\u7B97\u3002 timestamp\uFF1A\u53EF\u9009 offset\uFF08\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u7684\u504F\u79FB\uFF0C\u5982 -7d/+8d/30m\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001unit\uFF08ms \u9ED8\u8BA4/s\uFF0C\u6570\u503C\u7C92\u5EA6\uFF09\u6216 format\uFF08\u672C\u5730\u65F6\u95F4 token \u7EC4\u5408 YYYY/MM/DD/HH/mm/ss\uFF0C\u5982 YYYY-MM-DD HH:mm:ss\uFF0C\u8F93\u51FA\u5B57\u7B26\u4E32\uFF0C\u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u65F6\u95F4\u7A97\u4E0E\u8FC7\u671F\u7C7B\u53C2\u6570\u65E0\u9700\u5916\u90E8\u62FC\u503C\u3002 uuid\uFF1A\u5E26\u8FDE\u5B57\u7B26 UUID v4\uFF08uuidHex \u4E3A 32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u5341\u516D\u8FDB\u5236\uFF09\uFF0C\u9002\u914D\u4EE5 UUID \u4E3A\u4E1A\u52A1\u4E3B\u952E\u7684\u63A5\u53E3"
+    types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]),
+    note: "\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7C7B\u6D4B\u8BD5\u9020\u6570\uFF08\u987A\u5E8F\u7801\u4E0E\u4E2D\u95F4\u6570\u5B57\u5747\u7531 runId \u4E0E\u53D8\u91CF\u540D\u786E\u5B9A\u6027\u6D3E\u751F\uFF1A\u6BCF\u8F6E\u53D8\u5316\u3001\u8F6E\u5185\u4E0D\u540C\u540D\u53D8\u91CF\u4E92\u5F02\uFF0C\u649E\u4E1A\u52A1\u552F\u4E00\u7EA6\u675F\u65F6\u91CD\u8DD1\u5373\u6362\u53F7\uFF09\u3002 idcard\uFF1A\u4E2D\u56FD\u5927\u9646 18 \u4F4D\u8EAB\u4EFD\u8BC1\u53F7\uFF0CbirthDate \u5FC5\u586B\uFF08YYYY-MM-DD \u5408\u6CD5\u65E5\u5386\u65E5\u671F\uFF09\u3001gender \u53EF\u9009\uFF08MALE/FEMALE\uFF0C\u9ED8\u8BA4 MALE\uFF09\u3001regionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u7F3A\u7701\u4ECE\u771F\u5B9E\u6D4B\u8BD5\u533A\u5212\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 11643 \u8BA1\u7B97\u3002 luhn\uFF1A\u94F6\u884C\u5361\u53F7\uFF0Clength \u53EF\u9009\uFF0812-19\uFF0C\u9ED8\u8BA4 16\uFF09\u3001prefix \u53EF\u9009\uFF08\u6570\u5B57\u5361\u5934\uFF0C\u9ED8\u8BA4 62\uFF09\uFF0C\u672B\u4F4D\u6309 Luhn \u7B97\u6CD5\u6821\u9A8C\u3002 phone\uFF1A\u5927\u9646\u624B\u673A\u53F7\uFF081[3-9] \u5F00\u5934 11 \u4F4D\uFF09\uFF0Cprefix \u53EF\u9009\uFF083 \u4F4D\u53F7\u6BB5\uFF0C\u7F3A\u7701\u4ECE\u6D4B\u8BD5\u53F7\u6BB5\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\u3002 uscc\uFF1A\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\uFF0818 \u4F4D\uFF09\uFF0CregionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u9ED8\u8BA4 110100\uFF09\uFF0C\u767B\u8BB0\u7BA1\u7406/\u673A\u6784\u7C7B\u522B\u56FA\u5B9A 91\uFF08\u4F01\u4E1A\u6CD5\u4EBA\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 32100-2015 \u8BA1\u7B97\u3002 timestamp\uFF1A\u53EF\u9009 offset\uFF08\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u7684\u504F\u79FB\uFF0C\u5982 -7d/+8d/30m\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001unit\uFF08ms \u9ED8\u8BA4/s\uFF0C\u6570\u503C\u7C92\u5EA6\uFF09\u6216 format\uFF08\u672C\u5730\u65F6\u95F4 token \u7EC4\u5408 YYYY/MM/DD/HH/mm/ss\uFF0C\u5982 YYYY-MM-DD HH:mm:ss\uFF0C\u8F93\u51FA\u5B57\u7B26\u4E32\uFF0C\u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u65F6\u95F4\u7A97\u4E0E\u8FC7\u671F\u7C7B\u53C2\u6570\u65E0\u9700\u5916\u90E8\u62FC\u503C\u3002 uuid\uFF1A\u5E26\u8FDE\u5B57\u7B26 UUID v4\uFF08uuidHex \u4E3A 32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u5341\u516D\u8FDB\u5236\uFF09\uFF0C\u9002\u914D\u4EE5 UUID \u4E3A\u4E1A\u52A1\u4E3B\u952E\u7684\u63A5\u53E3\u3002 enum\uFF1A\u4ECE values \u5019\u9009\u96C6\u4E2D\u6309 weights\uFF08\u53EF\u9009\u975E\u8D1F\u6570\u5B57\uFF0C\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u8005\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\u786E\u5B9A\u6027\u62BD\u53D6\u4E00\u4E2A\u503C\u2014\u2014\u6309 runId \u4E0E\u53D8\u91CF\u540D\u6D3E\u751F\uFF0C\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF0C\u9002\u914D\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u573A\u666F"
   }),
   globals: Object.freeze({
     // 全局参数类型：追加到每个请求的 header / cookie / query
@@ -844,6 +846,19 @@ function seedToIndex(seed, maxExclusive) {
   const hex = md5(String(seed == null ? "" : seed)).slice(0, 8);
   return Number.parseInt(hex, 16) % maxExclusive;
 }
+function seedToUnit(seed) {
+  const hex = md5(String(seed == null ? "" : seed)).slice(0, 12);
+  return Number.parseInt(hex, 16) / 16 ** 12;
+}
+function pickWeightedIndex(seed, weights) {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let threshold = seedToUnit(seed) * total;
+  for (let index = 0; index < weights.length; index += 1) {
+    threshold -= weights[index];
+    if (threshold < 0) return index;
+  }
+  return weights.length - 1;
+}
 function luhnCheckDigit(firstDigits) {
   const text = String(firstDigits || "");
   if (!/^\d+$/.test(text)) {
@@ -1213,6 +1228,30 @@ function parseTimestampOffset(offset) {
   }
   return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
 }
+function normalizeEnumDefinition(definition) {
+  const values = definition.values;
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(`generatedVars enum \u7684 values \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4: ${definition.name}`);
+  }
+  const weights = definition.weights == null ? values.map(() => 1) : Array.isArray(definition.weights) ? definition.weights : null;
+  if (!weights) {
+    throw new Error(`generatedVars enum \u7684 weights \u5FC5\u987B\u662F\u6570\u5B57\u6570\u7EC4: ${definition.name}`);
+  }
+  if (weights.length !== values.length) {
+    throw new Error(`generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08${weights.length} vs ${values.length}\uFF09: ${definition.name}`);
+  }
+  const normalized = weights.map((weight, index) => {
+    const value = Number(weight);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`generatedVars enum \u7684 weights \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: ${weight}`);
+    }
+    return value;
+  });
+  if (!normalized.some((weight) => weight > 0)) {
+    throw new Error(`generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: ${definition.name}`);
+  }
+  return { values, weights: normalized };
+}
 function formatTimestamp(ms, format) {
   const date = new Date(ms);
   const pad = (value) => String(value).padStart(2, "0");
@@ -1342,6 +1381,9 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
       }
       vars[definition.name] = generateSignature(params, secret);
+    } else if (definition.type === "enum") {
+      const { values, weights } = normalizeEnumDefinition(definition);
+      vars[definition.name] = values[pickWeightedIndex(`${identifiers.runId}|${definition.name}`, weights)];
     } else {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
@@ -4420,6 +4462,7 @@ function createWorkbenchRuntime(options) {
   var assertNotReservedVar2 = assertNotReservedVar;
   var assertNoReservedVars2 = assertNoReservedVars;
   var md52 = md5;
+  var pickWeightedIndex2 = pickWeightedIndex;
   var mergeGlobals2 = mergeGlobals;
   var GLOBAL_TYPES2 = ["header", "cookie", "query"];
   var HEADER_VALUE_OPTIONS = {
@@ -4857,6 +4900,35 @@ function createWorkbenchRuntime(options) {
           throw new Error("\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars." + secretVar);
         }
         vars[def.name] = generateSignature(params, secretVal);
+        return;
+      }
+      if (def.type === "enum") {
+        var values = def.values;
+        if (!Array.isArray(values) || values.length === 0) {
+          throw new Error("generatedVars enum \u7684 values \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4: " + def.name);
+        }
+        var weights = def.weights == null ? values.map(function() {
+          return 1;
+        }) : Array.isArray(def.weights) ? def.weights : null;
+        if (!weights) {
+          throw new Error("generatedVars enum \u7684 weights \u5FC5\u987B\u662F\u6570\u5B57\u6570\u7EC4: " + def.name);
+        }
+        if (weights.length !== values.length) {
+          throw new Error("generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08" + weights.length + " vs " + values.length + "\uFF09: " + def.name);
+        }
+        var normalizedWeights = weights.map(function(weight, index) {
+          var value = Number(weight);
+          if (!isFinite(value) || value < 0) {
+            throw new Error("generatedVars enum \u7684 weights \u7B2C " + (index + 1) + " \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: " + weight);
+          }
+          return value;
+        });
+        if (!normalizedWeights.some(function(weight) {
+          return weight > 0;
+        })) {
+          throw new Error("generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: " + def.name);
+        }
+        vars[def.name] = values[pickWeightedIndex2(identifiers.runId + "|" + def.name, normalizedWeights)];
         return;
       }
       throw new Error("\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: " + def.type);
@@ -6377,6 +6449,7 @@ function loadScenarioFile(filePath, id, api) {
   mergeGlobals,
   normalizeGlobalParam,
   parseBody,
+  pickWeightedIndex,
   registerAdapter,
   registerConfig,
   registerScenario,
@@ -6386,6 +6459,7 @@ function loadScenarioFile(filePath, id, api) {
   runScenario,
   sanitizeSensitive,
   seedToIndex,
+  seedToUnit,
   unregisterAdapter,
   usccCheckChar,
   validateAdapter,

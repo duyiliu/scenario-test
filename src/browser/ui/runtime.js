@@ -18,6 +18,7 @@ export function createWorkbenchRuntime(options) {
     var assertNotReservedVar = core.assertNotReservedVar;
     var assertNoReservedVars = core.assertNoReservedVars;
     var md5 = core.md5;
+    var pickWeightedIndex = core.pickWeightedIndex;
     var mergeGlobals = core.mergeGlobals;
     var GLOBAL_TYPES = ['header', 'cookie', 'query'];
 
@@ -495,6 +496,35 @@ export function createWorkbenchRuntime(options) {
                     throw new Error('签名生成失败: 缺少密钥变量 vars.' + secretVar);
                 }
                 vars[def.name] = core.generateSignature(params, secretVal);
+                return;
+            }
+            if (def.type === 'enum') {
+                // 与 Node engine 一致：values 非空、weights 缺省等权或等长非负、至少一项 > 0；
+                // 按 runId+变量名确定性抽取（轮内稳定、跨轮变化）
+                var values = def.values;
+                if (!Array.isArray(values) || values.length === 0) {
+                    throw new Error('generatedVars enum 的 values 必须是非空数组: ' + def.name);
+                }
+                var weights = def.weights == null
+                    ? values.map(function () { return 1; })
+                    : (Array.isArray(def.weights) ? def.weights : null);
+                if (!weights) {
+                    throw new Error('generatedVars enum 的 weights 必须是数字数组: ' + def.name);
+                }
+                if (weights.length !== values.length) {
+                    throw new Error('generatedVars enum 的 weights 长度必须与 values 一致（' + weights.length + ' vs ' + values.length + '）: ' + def.name);
+                }
+                var normalizedWeights = weights.map(function (weight, index) {
+                    var value = Number(weight);
+                    if (!isFinite(value) || value < 0) {
+                        throw new Error('generatedVars enum 的 weights 第 ' + (index + 1) + ' 项必须是非负有限数字: ' + weight);
+                    }
+                    return value;
+                });
+                if (!normalizedWeights.some(function (weight) { return weight > 0; })) {
+                    throw new Error('generatedVars enum 的 weights 至少需要一项大于 0: ' + def.name);
+                }
+                vars[def.name] = values[pickWeightedIndex(identifiers.runId + '|' + def.name, normalizedWeights)];
                 return;
             }
             throw new Error('不支持的 generatedVars 类型: ' + def.type);

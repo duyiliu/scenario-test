@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 5;
+export const CONTRACT_VERSION = 6;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -106,14 +106,15 @@ export const contract = Object.freeze({
     reservedVars: Object.freeze(["runId", "runNo"]),
 
     generatedVars: Object.freeze({
-        types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid"]),
+        types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]),
         note: "证件/卡号/号码类测试造数（顺序码与中间数字均由 runId 与变量名确定性派生：每轮变化、轮内不同名变量互异，撞业务唯一约束时重跑即换号）。"
             + " idcard：中国大陆 18 位身份证号，birthDate 必填（YYYY-MM-DD 合法日历日期）、gender 可选（MALE/FEMALE，默认 MALE）、regionCode 可选（6 位数字，缺省从真实测试区划池按轮次派生），校验位按 GB 11643 计算。"
             + " luhn：银行卡号，length 可选（12-19，默认 16）、prefix 可选（数字卡头，默认 62），末位按 Luhn 算法校验。"
             + " phone：大陆手机号（1[3-9] 开头 11 位），prefix 可选（3 位号段，缺省从测试号段池按轮次派生）。"
             + " uscc：统一社会信用代码（18 位），regionCode 可选（6 位数字，默认 110100），登记管理/机构类别固定 91（企业法人），校验位按 GB 32100-2015 计算。"
             + " timestamp：可选 offset（相对当前时间的偏移，如 -7d/+8d/30m，数字+单位 ms/s/m/h/d/w）、unit（ms 默认/s，数值粒度）或 format（本地时间 token 组合 YYYY/MM/DD/HH/mm/ss，如 YYYY-MM-DD HH:mm:ss，输出字符串，与 unit 互斥），时间窗与过期类参数无需外部拼值。"
-            + " uuid：带连字符 UUID v4（uuidHex 为 32 位无连字符十六进制），适配以 UUID 为业务主键的接口"
+            + " uuid：带连字符 UUID v4（uuidHex 为 32 位无连字符十六进制），适配以 UUID 为业务主键的接口。"
+            + " enum：从 values 候选集中按 weights（可选非负数字，缺省等权，权重为 0 者永不被选中）确定性抽取一个值——按 runId 与变量名派生，轮内稳定、跨轮变化，适配渠道/状态等枚举类参数需要随机但可复现的场景"
     }),
 
     globals: Object.freeze({

@@ -481,6 +481,30 @@ export function seedToIndex(seed, maxExclusive) {
     return Number.parseInt(hex, 16) % maxExclusive;
 }
 
+/**
+ * 把任意种子字符串确定性地映射到 [0, 1) 的均匀小数。
+ * 取 md5 前 12 位十六进制（约 48 位分辨率），供加权枚举造数按累计权重选值：
+ * 同轮同变量稳定、跨轮变化，且不依赖 Math.random（Node/浏览器双端一致、可复现）。
+ */
+export function seedToUnit(seed) {
+    const hex = md5(String(seed == null ? "" : seed)).slice(0, 12);
+    return Number.parseInt(hex, 16) / 16 ** 12;
+}
+
+/**
+ * 按权重从种子确定性选取下标（weights 为非负数组，调用方保证至少一个 > 0）。
+ * 命中概率之比即权重之比；权重为 0 的候选项永不被选中。
+ */
+export function pickWeightedIndex(seed, weights) {
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let threshold = seedToUnit(seed) * total;
+    for (let index = 0; index < weights.length; index += 1) {
+        threshold -= weights[index];
+        if (threshold < 0) return index;
+    }
+    return weights.length - 1;
+}
+
 // ==================== Luhn 校验位（银行卡号，ISO/IEC 7812-1） ====================
 
 /**

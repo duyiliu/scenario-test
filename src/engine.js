@@ -15,6 +15,7 @@ import {
     md5,
     parseBody,
     evaluateAssertion,
+    pickWeightedIndex,
     resolve,
     resolveString,
     seedToIndex
@@ -110,6 +111,35 @@ function parseTimestampOffset(offset) {
         throw new Error(`generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ${offset}`);
     }
     return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+}
+
+// 枚举造数（可带权重）定义校验：values 非空数组、weights 缺省等权或与 values 等长的非负数字数组、
+// 至少一个权重 > 0（全 0 会导致抽取退化到末位）；返回规范化后的 values/weights
+function normalizeEnumDefinition(definition) {
+    const values = definition.values;
+    if (!Array.isArray(values) || values.length === 0) {
+        throw new Error(`generatedVars enum 的 values 必须是非空数组: ${definition.name}`);
+    }
+    const weights = definition.weights == null
+        ? values.map(() => 1)
+        : (Array.isArray(definition.weights) ? definition.weights : null);
+    if (!weights) {
+        throw new Error(`generatedVars enum 的 weights 必须是数字数组: ${definition.name}`);
+    }
+    if (weights.length !== values.length) {
+        throw new Error(`generatedVars enum 的 weights 长度必须与 values 一致（${weights.length} vs ${values.length}）: ${definition.name}`);
+    }
+    const normalized = weights.map((weight, index) => {
+        const value = Number(weight);
+        if (!Number.isFinite(value) || value < 0) {
+            throw new Error(`generatedVars enum 的 weights 第 ${index + 1} 项必须是非负有限数字: ${weight}`);
+        }
+        return value;
+    });
+    if (!normalized.some((weight) => weight > 0)) {
+        throw new Error(`generatedVars enum 的 weights 至少需要一项大于 0: ${definition.name}`);
+    }
+    return { values, weights: normalized };
 }
 
 // 按本地时间展开 format token（mm 为分钟、MM 为月份，大小写敏感）
@@ -273,6 +303,11 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
                 throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
             }
             vars[definition.name] = generateSignature(params, secret);
+        } else if (definition.type === "enum") {
+            // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
+            // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
+            const { values, weights } = normalizeEnumDefinition(definition);
+            vars[definition.name] = values[pickWeightedIndex(`${identifiers.runId}|${definition.name}`, weights)];
         } else {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }

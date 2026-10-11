@@ -397,7 +397,7 @@ test("CLI capabilities 文本模式输出可读清单，--json 输出纯 JSON", 
     assert.equal(json.code, 0);
     const parsed = JSON.parse(json.stdout);
     assert.equal(parsed.schema, "scenario-test-capabilities");
-    assert.deepEqual(parsed.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid"]);
+    assert.deepEqual(parsed.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);
 });
 
 test("CLI run --env 指定未知环境时报错退出，不静默回退", async () => {

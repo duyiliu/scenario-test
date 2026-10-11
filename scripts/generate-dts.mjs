@@ -142,6 +142,10 @@ export interface GeneratedVarDefinition {
     unit?: "ms" | "s";
     /** timestamp 专用：本地时间格式化 token 组合（YYYY/MM/DD/HH/mm/ss），输出字符串；与 unit 互斥 */
     format?: string;
+    /** enum 专用：候选值非空数组（元素可为任意类型，经 {{vars.<name>}} 引用时按原值解析） */
+    values?: unknown[];
+    /** enum 专用：与 values 等长的非负数字权重数组，缺省等权；权重为 0 的候选永不被选中 */
+    weights?: number[];
 }
 
 export interface RetryUntil {

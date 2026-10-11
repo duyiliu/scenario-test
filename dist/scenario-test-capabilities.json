@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.5.26",
-  "contractVersion": 5,
+  "contractVersion": 6,
   "assertions": {
     "operators": {
       "exists": {
@@ -110,7 +110,8 @@
       "luhn",
       "phone",
       "uscc",
-      "uuid"
+      "uuid",
+      "enum"
     ]
   },
   "globals": {

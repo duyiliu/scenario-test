@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### DSL
+
+- 新增 `generatedVars` 类型 `enum`（contract v5 → v6）：从 `values` 候选集中按可选 `weights` 非负权重抽取一个值。权重缺省等权，权重为 0 的候选永不被选中，至少一项必须大于 0；候选值保留原始类型（数字/布尔/字符串原样）。抽取按 `runId` 与变量名确定性派生（`seedToUnit`/`pickWeightedIndex`，md5 前 12 位十六进制），同轮稳定可复现、跨轮变化、Node/浏览器双端一致。非法定义（values 非非空数组 / weights 形状或长度不符 / 含负数或非有限值 / 全零）在使用前报错。适配渠道、状态等枚举类参数需要"随机但可复现"取值的场景。
+
 ## [0.5.26] - 2026-10-10
 
 ### CLI

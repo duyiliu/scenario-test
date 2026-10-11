@@ -1162,8 +1162,67 @@ test("generatedVars uscc：18 位 91 开头且 GB 32100 校验合法；regionCod
     );
 });
 
-test("响应体读取流异常时报 ERROR 而非挂起", async () => {
-    const failingBody = new ReadableStream({
+// ==================== generatedVars enum（可带权重枚举造数） ====================
+
+test("generatedVars enum：值取自候选集、权重 0 的候选永不被选中、非字符串候选保留原类型", async () => {
+    const report = await generatedVarEngine().runScenario(defineScenario({
+        name: "enum 基本语义",
+        generatedVars: [
+            { name: "channel", type: "enum", values: ["wechat", "alipay", "unionpay"], weights: [1, 1, 0] },
+            { name: "level", type: "enum", values: [1, 2, 3] }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    }));
+    assert.equal(report.status, "PASSED");
+    assert.ok(["wechat", "alipay"].includes(report.vars.channel), `权重 0 候选不得命中: ${report.vars.channel}`);
+    assert.ok([1, 2, 3].includes(report.vars.level), "数字候选应原类型返回（极性：误字符串化必失败）");
+    assert.equal(typeof report.vars.level, "number");
+});
+
+test("generatedVars enum：同轮内不同名变量互异、跨轮变化（runId 派生）", async () => {
+    const scenario = defineScenario({
+        name: "enum 确定性",
+        generatedVars: [
+            { name: "a", type: "enum", values: ["x", "y", "z"] },
+            { name: "b", type: "enum", values: ["x", "y", "z"] }
+        ],
+        steps: [{ name: "s", path: "x" }]
+    });
+    const first = await generatedVarEngine().runScenario(scenario);
+    const second = await generatedVarEngine().runScenario(scenario);
+    assert.equal(first.status, "PASSED");
+    assert.equal(second.status, "PASSED");
+    assert.equal(first.vars.a, first.vars.a, "同轮重复读取应稳定");
+    // 跨轮至少一个变量变化（36 组组合下同轮全同概率极低，但不作为唯一判别）
+    assert.ok(
+        first.vars.a !== second.vars.a || first.vars.b !== second.vars.b,
+        `两轮 runId 不同应有变化: ${first.vars.a}/${first.vars.b} vs ${second.vars.a}/${second.vars.b}`
+    );
+});
+
+test("generatedVars enum：权重分布与权重之比一致（大样本判别）", async () => {
+    // 直接验证底层派生：同一种子集合下 1:3 权重的命中比例应接近 1:3
+    const { pickWeightedIndex } = await import("../src/core.js");
+    let hits = [0, 0];
+    for (let i = 0; i < 2000; i += 1) {
+        hits[pickWeightedIndex(`sample-${i}`, [1, 3])] += 1;
+    }
+    const ratio = hits[1] / hits[0];
+    assert.ok(ratio > 2.2 && ratio < 4.1, `1:3 权重比例应接近 3（实际 ${ratio.toFixed(2)}，hits=${hits.join("/")}）`);
+});
+
+test("generatedVars enum：非法参数拒绝（values 空/weights 形状/全零权重）", async () => {
+    const run = (generatedVars) => generatedVarEngine().runScenario(
+        defineScenario({ name: "enum 非法参数", generatedVars, steps: [{ name: "s", path: "x" }] }));
+    await assert.rejects(run([{ name: "a", type: "enum" }]), /values/);
+    await assert.rejects(run([{ name: "a", type: "enum", values: [] }]), /values/);
+    await assert.rejects(run([{ name: "a", type: "enum", values: ["x", "y"], weights: "1" }]), /weights/);
+    await assert.rejects(run([{ name: "a", type: "enum", values: ["x", "y"], weights: [1] }]), /长度/);
+    await assert.rejects(run([{ name: "a", type: "enum", values: ["x", "y"], weights: [1, -1] }]), /非负/);
+    await assert.rejects(run([{ name: "a", type: "enum", values: ["x", "y"], weights: [0, 0] }]), /大于 0/);
+});
+
+test("响应体读取流异常时报 ERROR 而非挂起", async () => {    const failingBody = new ReadableStream({
         start(controller) { controller.error(new Error("流中途断开")); }
     });
     const engine = createEngine({

@@ -42,7 +42,7 @@ test("when 来源仅 vars；extract 来源与 required 语义；保留变量；g
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
     assert.equal(contract.extract.required, "boolean");
     assert.deepEqual(contract.reservedVars, ["runId", "runNo"]);
-    assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid"]);
+    assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);
 });
 
 test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {
