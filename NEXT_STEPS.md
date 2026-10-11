@@ -1,5 +1,28 @@
 # NEXT_STEPS — 优化迭代交接点
 
+## 第 11 轮（2026-10-11，用户指示：①暂缓 ②实现 ③修复 ④保留）
+
+### 本轮完成
+
+- **② 枚举随机（带权重）造数已实现**（队列最久的 DSL 能力，contractVersion 5→6）：
+  1. `core.js` 新增 `seedToUnit`（md5 前 12 位十六进制 → [0,1)）与 `pickWeightedIndex`（累计权重选下标，纯函数、双端一致、可复现）。
+  2. `contract.js`：`generatedVars.types` 加入 `enum` 并递增 `CONTRACT_VERSION` 到 6，能力说明补 enum 语义。
+  3. `engine.js`：`normalizeEnumDefinition` 校验（values 非空数组、weights 缺省等权或等长非负数字数组、至少一项 > 0）+ enum 分支（按 `runId|变量名` 派生，候选值保留原类型）。
+  4. `browser/ui/runtime.js` 同步镜像分支（工作台执行走该实现，浏览器端手工端到端已验证：权重 0 未命中、数字原类型、无 pageerror）。
+  5. 投射同步：`generate-dts.mjs` 补 `values`/`weights` 字段；`init-templates.js` 的 AI Prompt 与 Patterns 补 enum 用法。
+  6. 测试 +4：基本语义与权重 0 候选不命中、跨轮变化、1:3 权重分布比例（2000 样本，容差 2.2~4.1）、六类非法参数拒绝；两处名单锁（`tests/contract.test.js`、`tests/cli.test.js`）同步。
+- **③ Markdown 报告行内正文反引号已修复**（比遗留描述范围更广）：`mdInline` 增加反引号转义（`\``）——步骤名/失败原因/警告/断言名等行内正文的裸反引号会被 Markdown 当行内代码定界符，**奇数个时把后续文本整段吞进代码 span**（实测复现："变量 \`a 缺失" 吞掉后续）。`mdCode` 的行内代码 span 与代码围栏行为不变。测试 +3（奇数反引号转义且裸反引号清零、多连反引号与已有反斜杠互不干扰、无反引号格式锁定）。
+- **① npm audit 暂缓、④ 两个开发辅助脚本保留**：按用户指示维持现状，无需动作。
+- **提交**：`9701548` feat(dsl) enum → `15bb476` fix(workbench) 行内反引号（均含 dist 再生）。
+- **验证**：`npm test` **259/259 全绿**（252 基线 + 4 enum + 3 report）；`npm run test:browser` 桌面视口通过；`npm run build` 后 dist 与源码一致。
+
+### 本轮遗留事项
+
+1. **enum 尚未发版**：contractVersion 已是 6、版本号仍为 0.5.26（已发布）。下轮如需对外提供 enum，走 patch/minor 发版（版本号 + CHANGELOG Unreleased→版本 + install 脚本/README URL + build + 三方验证）。
+2. **enum 权重语义是确定性派生而非真随机**：同一 runId 与变量名组合恒得同值（跨轮变化靠 runId 变）。若后续需要"同轮内同一变量多次抽取得不同值"，需新增独立语义（如 `pick: N` 数组模式），属再次契约扩展。
+3. **`mdInline` 转义面已覆盖全部行内正文**：后续新增报告行时，用户值一律走 `mdInline`；代码 span 一律走 `mdCode`，不要裸拼反引号。
+4. 其余历史遗留（npm audit 7 漏洞、辅助脚本、staging 清理策略）见下条发版记录，均维持既有决策。
+
 ## 发版记录：v0.5.26（2026-10-11，用户指示）
 
 - 覆盖提交 `053c35a`（CLI 收敛失败路径 + 限排错输出长度）与浏览器 Markdown 报告代码 span 修复；contractVersion 仍为 5（无 DSL 能力变化），测试 217→252。
