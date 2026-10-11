@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 构建
+
+- `build.mjs` 换目录抗 Windows 瞬时锁：`staging → dist` 的 rename 被杀毒/索引器/编辑器瞬时占用时按 250ms 间隔重试，仍失败回退目录拷贝，不再一次 EPERM 即整轮失败；构建启动时按目录名内 pid 存活检测清理中断遗留的 `dist.staging-*` 孤儿目录（pid 已不存活才删，不误伤并发构建）。
+
 ### CLI
 
 - `run --scenario` 支持逗号分隔多选（如 `--scenario login,order`），按场景 id/name/url 逐项匹配，执行顺序保持配置清单顺序，manual:true 场景显式点名即可执行。任一选择项未命中即整体报错并点名缺失项与可选清单（all-or-error，避免 CI 拼写错误静默少跑）；`--scenario` 值为空白时报「值为空」而非回落默认场景。

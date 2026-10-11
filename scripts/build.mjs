@@ -13,6 +13,18 @@ const dist = path.join(root, "dist");
 // 半成品被 init/doctor 拷走导致测试偶发失败）。
 const staging = path.join(root, `dist.staging-${process.pid}`);
 
+// 清理上次构建中断遗留的 staging 目录：目录名带构建进程 pid，
+// 仅当该 pid 已不存活才删（pid 复用时宁可不删），避免误伤并发构建的活跃 staging
+for (const name of fs.readdirSync(root)) {
+    const match = /^dist\.staging-(\d+)$/.exec(name);
+    if (!match) continue;
+    try {
+        process.kill(Number(match[1]), 0);
+    } catch {
+        fs.rmSync(path.join(root, name), { recursive: true, force: true });
+    }
+}
+
 function atomicWriteFileSync(file, content) {
     const tmp = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, content, "utf8");
@@ -104,5 +116,22 @@ await build({
 
 // 构建全部成功后才替换 dist：删旧 + rename 的空窗为毫秒级（Windows 无目录原子交换），
 // 且失败时旧 dist 保持完整，不会像旧流程那样"开头就删、失败后 dist 残缺"
-fs.rmSync(dist, { recursive: true, force: true });
-fs.renameSync(staging, dist);
+// Windows 下 dist/staging 可能被杀毒/索引器/编辑器瞬时占用致 rename EPERM：
+// 先按 250ms 间隔重试；仍失败则回退目录拷贝（cpSync 不依赖目录 rename 语义），
+// 最终失败才报错——staging 目录保留供排查
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let swapped = false;
+for (let attempt = 0; attempt < 4 && !swapped; attempt += 1) {
+    try {
+        fs.rmSync(dist, { recursive: true, force: true });
+        fs.renameSync(staging, dist);
+        swapped = true;
+    } catch {
+        if (attempt < 3) await sleep(250);
+    }
+}
+if (!swapped) {
+    fs.rmSync(dist, { recursive: true, force: true });
+    fs.cpSync(staging, dist, { recursive: true });
+    fs.rmSync(staging, { recursive: true, force: true });
+}
