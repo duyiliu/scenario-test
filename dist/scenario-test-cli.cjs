@@ -7513,6 +7513,7 @@ ${optionHelp}
 \u8FD0\u884C\u8BF4\u660E:
   \u9ED8\u8BA4 run \u672A\u6307\u5B9A --all/--scenario \u65F6\u4EC5\u6267\u884C\u6E05\u5355\u7B2C\u4E00\u4E2A\u573A\u666F\u3002
   --all \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF1Bmanual:true \u573A\u666F\u987B\u901A\u8FC7 --scenario \u663E\u5F0F\u9009\u62E9\u3002
+  --scenario \u652F\u6301\u9017\u53F7\u5206\u9694\u591A\u9009\uFF08\u5982 --scenario login,order\uFF09\uFF0C\u6309 id/name/url \u5339\u914D\u3002
 
 \u80FD\u529B\u53D1\u73B0\u547D\u4EE4:
   capabilities          \u8F93\u51FA DSL \u80FD\u529B\u6E05\u5355\uFF08\u4EBA\u7C7B\u6587\u672C\uFF1B--json \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF0C
@@ -7797,26 +7798,31 @@ async function runCommand(args) {
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
-  const entries = args.all ? config.scenarios.filter((item) => !item.manual) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
+  const requested = args.scenario ? String(args.scenario).split(",").map((item) => item.trim()).filter(Boolean) : [];
+  if (args.scenario && !requested.length) {
+    throw new CliUsageError("--scenario \u7684\u503C\u4E3A\u7A7A", "\u8BF7\u63D0\u4F9B\u573A\u666F id/name/url\uFF1B\u591A\u4E2A\u573A\u666F\u7528\u9017\u53F7\u5206\u9694\u3002");
+  }
+  const missing = requested.filter((token) => !config.scenarios.some((item) => [item.id, item.name, item.url].includes(token)));
+  if (missing.length) {
+    const limit = 12;
+    const choices = config.scenarios.slice(0, limit).map((item) => {
+      const name = item.name && item.name !== item.id ? ` \u2014 ${item.name}` : "";
+      return `  - ${item.id || "(\u65E0 id)"}${name}${item.manual ? "\uFF08manual:true\uFF09" : ""}`;
+    });
+    const remaining = config.scenarios.length - choices.length;
+    const hasManualScenarios = config.scenarios.some((item) => item.manual);
+    const list = config.scenarios.length ? `\u53EF\u7528\u573A\u666F\uFF08\u663E\u793A ${choices.length}/${config.scenarios.length} \u9879\uFF09\uFF1A
+${choices.join("\n")}${remaining > 0 ? `
+  \u2026 \u5176\u4F59 ${remaining} \u9879\u672A\u663E\u793A\u3002` : ""}${hasManualScenarios ? "\nmanual:true \u573A\u666F\u9700\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002" : ""}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u9009\u573A\u666F\uFF0C\u8BF7\u68C0\u67E5 scenarios \u5217\u8868\u3002";
+    throw new CliUsageError(`\u672A\u627E\u5230\u573A\u666F: ${missing.join(", ")}`, list);
+  }
+  const entries = args.all ? config.scenarios.filter((item) => !item.manual) : requested.length ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key))) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
   if (!entries.length) {
     if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
       throw new CliUsageError(
         "\u914D\u7F6E\u4E2D\u7684\u573A\u666F\u5168\u90E8\u6807\u8BB0\u4E3A manual:true\uFF0C--all \u9ED8\u8BA4\u6392\u9664\u624B\u52A8\u573A\u666F",
         "\u8BF7\u5148\u786E\u8BA4\u6570\u636E\u5DF2\u51C6\u5907\u597D\uFF0C\u518D\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u8981\u6267\u884C\u7684\u624B\u52A8\u573A\u666F\u3002"
       );
-    }
-    if (args.scenario) {
-      const limit = 12;
-      const choices = config.scenarios.slice(0, limit).map((item) => {
-        const name = item.name && item.name !== item.id ? ` \u2014 ${item.name}` : "";
-        return `  - ${item.id || "(\u65E0 id)"}${name}${item.manual ? "\uFF08manual:true\uFF09" : ""}`;
-      });
-      const remaining = config.scenarios.length - choices.length;
-      const hasManualScenarios = config.scenarios.some((item) => item.manual);
-      const list = config.scenarios.length ? `\u53EF\u7528\u573A\u666F\uFF08\u663E\u793A ${choices.length}/${config.scenarios.length} \u9879\uFF09\uFF1A
-${choices.join("\n")}${remaining > 0 ? `
-  \u2026 \u5176\u4F59 ${remaining} \u9879\u672A\u663E\u793A\u3002` : ""}${hasManualScenarios ? "\nmanual:true \u573A\u666F\u9700\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002" : ""}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u9009\u573A\u666F\uFF0C\u8BF7\u68C0\u67E5 scenarios \u5217\u8868\u3002";
-      throw new CliUsageError(`\u672A\u627E\u5230\u573A\u666F: ${args.scenario}`, list);
     }
     throw new CliUsageError(
       "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u81EA\u52A8\u6267\u884C\u7684\u573A\u666F",

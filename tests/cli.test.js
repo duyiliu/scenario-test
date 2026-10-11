@@ -344,6 +344,54 @@ function runCli(args, extraEnv = {}) {
     });
 }
 
+test("CLI --scenario 逗号分隔多选：执行配置顺序子集，未命中项即报错", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-multisel-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[
+            {id:"alpha",name:"Alpha",url:"scenarios/alpha.js"},
+            {id:"beta",name:"Beta",url:"scenarios/beta.js"},
+            {id:"gamma",name:"Gamma",url:"scenarios/gamma.js"},
+            {id:"duty",name:"Duty",url:"scenarios/duty.js",manual:true}
+        ]}));`, "utf8");
+        for (const id of ["alpha", "beta", "gamma", "duty"]) {
+            fs.writeFileSync(path.join(directory, `scenarios/${id}.js`), `ScenarioTest.registerScenario("${id}",ScenarioTest.defineScenario({name:"${id}",steps:[{name:"${id}-step",path:"health",status:200}]}));`, "utf8");
+        }
+        const configPath = path.join(directory, "scenario.config.js");
+
+        // 多选（含显式点名 manual）：只执行选中项，顺序按配置清单
+        const multi = await runCli(["--config", configPath, "--scenario", "alpha,duty"]);
+        assert.equal(multi.code, 0, multi.stderr);
+        assert.match(multi.stdout, /\[PASS\] alpha-step/);
+        assert.match(multi.stdout, /\[PASS\] duty-step/);
+        assert.doesNotMatch(multi.stdout, /beta-step|gamma-step/);
+        assert.match(multi.stdout, /Overall: 2\/2 passed/);
+
+        // 部分未命中：strict 报错点名缺失项（防 CI 拼写错误静默少跑），命中项也不执行
+        const missing = await runCli(["--config", configPath, "--scenario", "alpha,ghost"]);
+        assert.notEqual(missing.code, 0);
+        assert.match(missing.stderr, /未找到场景: ghost/);
+        assert.match(missing.stderr, /可用场景/);
+        assert.doesNotMatch(missing.stdout, /alpha-step/);
+
+        // 场景 name 同样可作选择器；空白片段容忍（"Alpha, ,beta"）
+        const byName = await runCli(["--config", configPath, "--scenario", "Alpha, ,beta"]);
+        assert.equal(byName.code, 0, byName.stderr);
+        assert.match(byName.stdout, /\[PASS\] alpha-step/);
+        assert.match(byName.stdout, /\[PASS\] beta-step/);
+        assert.doesNotMatch(byName.stdout, /gamma-step|duty-step/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI --help 列出全部子命令与关键选项", async () => {
     const result = await runCli(["--help"]);
     assert.equal(result.code, 0);

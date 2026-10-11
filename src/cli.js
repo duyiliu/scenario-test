@@ -190,6 +190,7 @@ ${optionHelp}
 运行说明:
   默认 run 未指定 --all/--scenario 时仅执行清单第一个场景。
   --all 执行配置中的全部自动场景；manual:true 场景须通过 --scenario 显式选择。
+  --scenario 支持逗号分隔多选（如 --scenario login,order），按 id/name/url 匹配。
 
 能力发现命令:
   capabilities          输出 DSL 能力清单（人类文本；--json 输出机器可读 JSON，
@@ -510,28 +511,40 @@ async function runCommand(args) {
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
     const envGlobals = parseGlobalsEnv();
     const environment = selectEnvironment(config, args.env);
+    // --scenario 支持逗号分隔多选（按 id/name/url 逐项匹配，执行顺序保持配置清单顺序）；
+    // 未指定 --all/--scenario 时保持既有口径：仅执行清单第一个场景
+    const requested = args.scenario
+        ? String(args.scenario).split(",").map((item) => item.trim()).filter(Boolean)
+        : [];
+    if (args.scenario && !requested.length) {
+        throw new CliUsageError("--scenario 的值为空", "请提供场景 id/name/url；多个场景用逗号分隔。");
+    }
+    const missing = requested.filter((token) =>
+        !config.scenarios.some((item) => [item.id, item.name, item.url].includes(token)));
+    if (missing.length) {
+        const limit = 12;
+        const choices = config.scenarios.slice(0, limit).map((item) => {
+            const name = item.name && item.name !== item.id ? ` — ${item.name}` : "";
+            return `  - ${item.id || "(无 id)"}${name}${item.manual ? "（manual:true）" : ""}`;
+        });
+        const remaining = config.scenarios.length - choices.length;
+        const hasManualScenarios = config.scenarios.some((item) => item.manual);
+        const list = config.scenarios.length
+            ? `可用场景（显示 ${choices.length}/${config.scenarios.length} 项）：\n${choices.join("\n")}${remaining > 0 ? `\n  … 其余 ${remaining} 项未显示。` : ""}${hasManualScenarios ? "\nmanual:true 场景需通过 --scenario <id> 显式选择。" : ""}`
+            : "配置中没有可选场景，请检查 scenarios 列表。";
+        throw new CliUsageError(`未找到场景: ${missing.join(", ")}`, list);
+    }
     const entries = args.all
         ? config.scenarios.filter((item) => !item.manual)
-        : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(args.scenario || config.scenarios[0]?.id));
+        : requested.length
+            ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key)))
+            : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
     if (!entries.length) {
         if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
             throw new CliUsageError(
                 "配置中的场景全部标记为 manual:true，--all 默认排除手动场景",
                 "请先确认数据已准备好，再通过 --scenario <id> 显式选择要执行的手动场景。"
             );
-        }
-        if (args.scenario) {
-            const limit = 12;
-            const choices = config.scenarios.slice(0, limit).map((item) => {
-                const name = item.name && item.name !== item.id ? ` — ${item.name}` : "";
-                return `  - ${item.id || "(无 id)"}${name}${item.manual ? "（manual:true）" : ""}`;
-            });
-            const remaining = config.scenarios.length - choices.length;
-            const hasManualScenarios = config.scenarios.some((item) => item.manual);
-            const list = config.scenarios.length
-                ? `可用场景（显示 ${choices.length}/${config.scenarios.length} 项）：\n${choices.join("\n")}${remaining > 0 ? `\n  … 其余 ${remaining} 项未显示。` : ""}${hasManualScenarios ? "\nmanual:true 场景需通过 --scenario <id> 显式选择。" : ""}`
-                : "配置中没有可选场景，请检查 scenarios 列表。";
-            throw new CliUsageError(`未找到场景: ${args.scenario}`, list);
         }
         throw new CliUsageError(
             "配置中没有可自动执行的场景",

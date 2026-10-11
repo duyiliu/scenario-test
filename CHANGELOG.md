@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### CLI
+
+- `run --scenario` 支持逗号分隔多选（如 `--scenario login,order`），按场景 id/name/url 逐项匹配，执行顺序保持配置清单顺序，manual:true 场景显式点名即可执行。任一选择项未命中即整体报错并点名缺失项与可选清单（all-or-error，避免 CI 拼写错误静默少跑）；`--scenario` 值为空白时报「值为空」而非回落默认场景。
+
 ### DSL
 
 - 数组路径下标支持负索引：`records[-1]` 取数组末项、`records[-N]` 取倒数第 N 项，extract、断言 path、模板 `{{vars.*}}`/`{{lastResponse.*}}` 与 `from: "headers"` 子路径同口径生效。此前 `[-1]` 能被分词却按字面属性名取值，静默得到 `undefined`（表现为提取 warning 或断言失败）。越界负索引按路径不存在处理；引号键（`a["-1"]`）与非数组上的 `a[-1]` 维持属性名语义不变。
