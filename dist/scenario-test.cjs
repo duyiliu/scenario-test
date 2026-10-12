@@ -1,4 +1,4 @@
-/*! scenario-test v0.7.0 */
+/*! scenario-test v0.7.1 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -327,7 +327,7 @@ module.exports = __toCommonJS(node_exports);
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.7.0";
+var VERSION = "0.7.1";
 
 // src/contract.js
 var CONTRACT_VERSION = 8;
