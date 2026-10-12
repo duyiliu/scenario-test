@@ -43,6 +43,46 @@ test("模板插值保留完整表达式的原始类型和长整型字符串", ()
     assert.equal(resolve("{{vars.self}}", runtime), "{{vars.self}}");
 });
 
+test("模板根写法 vars[ / lastResponse[ / lastResponseBody[ 支持引号键（含运算符字符的键名可取值）", () => {
+    const runtime = {
+        vars: { "a>b": 7, "x:y": "v", obj: { "a]>b": 8 } },
+        lastResponse: { "odd key": "r" },
+        lastResponseBody: { "a=b": 9 }
+    };
+    // 键名含运算符字符时引号键是唯一逃生写法，且必须真实解析到值（防「定义期放行运行期空串」）
+    assert.equal(resolve("{{vars[\"a>b\"]}}", runtime), 7);
+    assert.equal(resolve("{{vars[\"x:y\"]}}", runtime), "v");
+    assert.equal(resolve("{{vars.obj[\"a]>b\"]}}", runtime), 8);
+    assert.equal(resolve("{{lastResponse[\"odd key\"]}}", runtime), "r");
+    assert.equal(resolve("{{lastResponseBody[\"a=b\"]}}", runtime), 9);
+});
+
+test("引号键转义与畸形路径（vars[]/vars[/未闭合引号不得静默取值）", () => {
+    const runtime = {
+        vars: { "a\"b": 42, "a\\b": 43, list: [1, 2], a: 1 },
+        lastResponse: { status: 200 }
+    };
+    // 引号键内支持 \" \' \\ 转义：键名含引号本身也能寻址
+    assert.equal(resolve("{{vars[\"a\\\"b\"]}}", runtime), 42);
+    assert.equal(resolve("{{vars[\"a\\\\b\"]}}", runtime), 43);
+    // 未声明的 \x 转义序列按字面保留：键 a\b（字面反斜杠）不被吞成 ab
+    assert.equal(resolve("{{vars[\"a\\b\"]}}", runtime), 43);
+    // 负索引下标维持既有语义
+    assert.equal(resolve("{{vars.list[-1]}}", runtime), 2);
+    // 畸形路径（空下标/未闭合/裸结尾点/双点/下标后缺分隔符）解析为 undefined
+    // 而非根对象或错值——{{vars[]}} 若返回整个 vars 对象会让 when 条件意外成立
+    assert.equal(resolve("{{vars[]}}", runtime), "");
+    assert.equal(resolve("{{vars[}}", runtime), "");
+    assert.equal(resolve("{{vars.list[]}}", runtime), "");
+    assert.equal(resolve("{{vars.a..b}}", runtime), "");
+    // 根前缀后双点：vars..a 与定义期同口径判缺（前导点兼容仅限 getByPath 直接调用）
+    assert.equal(resolve("{{vars..a}}", runtime), "");
+    assert.equal(resolve("{{vars..}}", runtime), "");
+    assert.equal(resolve("{{lastResponse..status}}", runtime), "");
+    // 下标后缺点分隔符的裸段非法（["a"]key 不得按 obj.key 取值）
+    assert.equal(resolve("{{vars[\"a\"]a}}", runtime), "");
+});
+
 test("断言、响应提取和 URL 拼接", () => {
     const runtime = { vars: {}, lastResponse: null, lastResponseBody: null };
     const step = {

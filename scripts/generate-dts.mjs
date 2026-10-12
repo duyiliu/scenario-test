@@ -159,6 +159,8 @@ export interface RetryUntil {
 
 export interface RequestDefinition {
     headers?: Record<string, string>;
+    /** HTTP 方法（缺省 GET）；支持 {{ }} 模板——动态方法写这里（step.method 不做模板解析） */
+    method?: string;
     body?: unknown;
     credentials?: "include" | "omit" | "same-origin";
     redirect?: "follow" | "error" | "manual";
@@ -334,6 +336,10 @@ export function generateSignature(params: Record<string, unknown>, secretValue: 
 export function md5(value: unknown): string;
 export function clone<T>(value: T): T;
 export function formatDuration(milliseconds: number): string;
+/** 模板路径严格分词：合法路径返回 token 数组；畸形写法（vars[]、a..b、["a" > "b"]）返回 null */
+export function tokenizePath(valuePath: string): string[] | null;
+/** saveResponseAs 落盘结果的内部标记：自定义 io.saveResponse 实现返回保存信息时可打标，CLI 凭标记输出「已保存至」而非按字段形状猜测 */
+export const SAVED_RESPONSE: unique symbol;
 
 export const VERSION: string;
 export const CONTRACT_VERSION: number;

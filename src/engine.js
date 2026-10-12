@@ -23,6 +23,7 @@ import {
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
 import { validateAdapterResponse } from "./adapter-types.js";
+import { escapeInlineText } from "./utils/failure-diff.js";
 
 function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -330,7 +331,13 @@ export function createRuntime(scenario, options = {}) {
 }
 
 function chooseAdapter(step, adapters) {
-    if (step.adapter) return { name: step.adapter, adapter: adapters.get(step.adapter) };
+    // adapter 字段存在（非 undefined）即视为显式适配器意图：""/null/false 等
+    // 非法值不回落 matches/HTTP——定义期已拒绝，直接调 runStep 绕过定义校验
+    // 时也应明确报「未注册适配器」而非静默走 HTTP 丢 body
+    if (step.adapter !== undefined) {
+        const name = typeof step.adapter === "string" ? step.adapter : String(step.adapter);
+        return { name, adapter: adapters.get(name) };
+    }
     for (const [name, adapter] of adapters.entries()) {
         if (typeof adapter.matches === "function" && adapter.matches(step)) return { name, adapter };
     }
@@ -520,7 +527,7 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
             try {
                 await adapter.onError({ step, runtime, options, error });
             } catch (hookError) {
-                console.warn(`适配器 ${adapterName} 错误钩子失败:`, hookError);
+                console.warn(`适配器 ${escapeInlineText(adapterName)} 错误钩子失败: ${escapeInlineText(hookError?.message || hookError)}`);
             }
         }
         throw new AdapterExecutionError(adapterName, error, step);
@@ -641,8 +648,9 @@ export function createEngine(engineOptions = {}) {
                 // ✅ 确保最小重试间隔
                 const intervalMs = Math.max(100, Number(retry.intervalMs || 2000));
                 // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
-                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死
-                await options.onAttempt?.({
+                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
+                // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
+                await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
                     step,
                     attempt,
                     totalAttempts,

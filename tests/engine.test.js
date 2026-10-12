@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { createEngine, defineScenario } from "../src/index.js";
+import { createEngine, defineScenario, pickWeightedIndex, registerAdapter, unregisterAdapter } from "../src/index.js";
 
 function jsonResponse(body, status = 200) {
     return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -529,6 +529,64 @@ test("定义期拒绝 GET/HEAD 携带请求体（body/fileUpload）；step.metho
     defineScenario({ name: "A", steps: [{ name: "s", path: "x", adapter: "custom", method: "GET", request: { body: { a: 1 } } }] });
 });
 
+test("适配器步骤跳过 HTTP 相容校验：仅显式 adapter 声明（matches 自动认领不豁免）", async () => {
+    // 显式 adapter：step.method 模板（execute 收 resolve 后副本，会真实解析）与 GET+body 均不约束
+    defineScenario({ name: "A", steps: [{ name: "s", path: "x", adapter: "custom", method: "{{vars.m}}", request: { body: { a: 1 } } }] });
+    // matches 自动认领不豁免校验：定义期可见全局注册表，运行期是引擎快照 + 实例适配器，
+    // 两个集合可能不同——自动放行会产生「以为适配器处理、实际发 HTTP 静默丢 body」的假通过；
+    // 报错指引显式声明 adapter 字段
+    registerAdapter("__claimtest__", {
+        matches: () => true,
+        execute: async () => ({ status: 200, headers: {}, body: null, bodyText: "" })
+    });
+    try {
+        assert.throws(() => defineScenario({
+            name: "A",
+            steps: [{ name: "s", path: "x", kind: "custom", request: { body: { a: 1 } } }]
+        }), /不能携带请求体.*adapter/);
+        assert.throws(() => defineScenario({
+            name: "A",
+            steps: [{ name: "s", path: "x", kind: "custom", method: "{{vars.m}}" }]
+        }), /method 不支持模板写法.*adapter/);
+        // 显式 adapter + 实例级适配器：定义期放行，运行期由 createEngine({adapters}) 执行，
+        // method 模板经 resolve 解析后交给适配器
+        let seenMethod = "";
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => { throw new Error("适配器步骤不应发 HTTP 请求"); },
+            adapters: {
+                inst: { execute: async ({ step }) => { seenMethod = step.method; return { status: 200, headers: {}, body: null, bodyText: "" }; } }
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "A",
+            vars: { m: "PATCH" },
+            steps: [{ name: "s", path: "x", adapter: "inst", method: "{{vars.m}}", request: { body: { a: 1 } } }]
+        }));
+        assert.equal(report.status, "PASSED");
+        assert.equal(seenMethod, "PATCH", "适配器收到的应是模板解析后的 method");
+        // adapter 假值（""/null/false）：运行期按无适配器处理会走 HTTP 静默丢 body，
+        // 定义期要求非空字符串；绕过定义直接 runStep 也应明确失败而非假通过
+        for (const bad of ["", null, false]) {
+            assert.throws(() => defineScenario({
+                name: "A",
+                steps: [{ name: "s", path: "x", adapter: bad, request: { body: { a: 1 } } }]
+            }), /adapter 必须是非空字符串/, `adapter=${JSON.stringify(bad)} 应被拒绝`);
+        }
+        const direct = await createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => { throw new Error("假值 adapter 不应发 HTTP 请求"); }
+        }).runStep(
+            { name: "s", path: "x", adapter: "", request: { body: { a: 1 } } },
+            { vars: {}, lastResponse: null, lastResponseBody: null }
+        );
+        assert.equal(direct.passed, false);
+        assert.match(direct.error || "", /适配器/);
+    } finally {
+        unregisterAdapter("__claimtest__");
+    }
+});
+
 test("定义期拒绝模板内运算符（{{vars.a > 0}} 会静默解析为空，引号键与普通字符串放行）", () => {
     // when / headers / params / extract default 任一位置的表达式都拒绝
     assert.throws(() => defineScenario({
@@ -560,7 +618,34 @@ test("定义期拒绝模板内运算符（{{vars.a > 0}} 会静默解析为空�
     const circular = { name: "A", vars: {}, steps: [{ name: "s", path: "x" }] };
     circular.vars.self = circular;
     defineScenario(circular);
-    // 放行：负索引/数字下标、引号键内的运算符字符、连字符键、模板默认值、无 {{}} 的普通文本
+    // 下标段边界：只剥语法合法的下标（整数/引号键）——[0 > 1]/[fn()] 内的运算符剥不掉必拒
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.list[0 > 1]}}" }]
+    }), /不允许使用运算符/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.list[fn()]}}" }]
+    }), /不允许使用运算符/);
+    // 引号键内夹带运算符表达式：["a" > "b"] 不是合法下标，按运算符误写拒绝
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars[\"a\" > \"b\"]}}" }]
+    }), /不允许使用运算符/);
+    // 路径畸形（空下标/未闭合括号）：运行期会取到根对象或静默 undefined，定义期拒绝
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars[]}}" }]
+    }), /不是合法路径写法/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars[}}" }]
+    }), /不是合法路径写法/);
+    assert.throws(() => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", when: "{{vars.}}" }]
+    }), /不是合法路径写法/);
+    // 放行：负索引/数字下标、引号键内的运算符字符（含 ]）、连字符键、模板默认值、无 {{}} 的普通文本
     defineScenario({
         name: "A",
         vars: { x: "{{vars.y}}-suffix" },
@@ -568,7 +653,7 @@ test("定义期拒绝模板内运算符（{{vars.a > 0}} 会静默解析为空�
             name: "s",
             path: "items/{{vars.list[-1].id}}",
             params: { q: "score > 5" },
-            request: { headers: { "X-F": "{{vars[\"a>b\"]}}" } },
+            request: { headers: { "X-F": "{{vars[\"a>b\"]}}", "X-G": "{{vars.obj[\"a]>b\"]}}" } },
             extract: [{ name: "n", path: "n", default: "{{vars.fallback}}" }],
             assertions: [{ path: "name-with-dash", equals: "{{vars.expected-value}}" }]
         }]
@@ -1346,15 +1431,14 @@ test("generatedVars enum：取值在候选集内、跨轮变化（runId 派生�
     // 不同名变量种子不同但可落到同一候选——只断言取值合法，不断言互异
     assert.ok(["x", "y", "z"].includes(first.vars.a));
     assert.ok(["x", "y", "z"].includes(first.vars.b));
-    // 跨轮变化：单次对比两轮全同概率 (1/3)²≈11%（曾概率性失败），
-    // 改为多轮重试——10 轮全同概率 ~3e-10，事实确定
-    let differ = false;
-    for (let round = 0; round < 10 && !differ; round += 1) {
-        const next = await generatedVarEngine().runScenario(scenario);
-        assert.equal(next.status, "PASSED");
-        differ = next.vars.a !== first.vars.a || next.vars.b !== first.vars.b;
-    }
-    assert.ok(differ, `多轮 runId 派生应产生取值变化（首轮 ${first.vars.a}/${first.vars.b}）`);
+    // 跨轮变化的确定性验证：enum 经 pickWeightedIndex(`${runId}|${name}`) 派生——
+    // 固定种子扫描取到多个下标 + 同种子结果稳定，即锁定「跨轮可变、轮内确定」的派生语义；
+    // 替代原多轮重试（两轮全同 ~11% 概率性失败，重试只是降概率不除根）
+    const weights = [1, 1, 1];
+    const seen = new Set();
+    for (let round = 0; round < 20; round += 1) seen.add(pickWeightedIndex(`run-${round}|a`, weights));
+    assert.ok(seen.size > 1, "固定种子扫描应取到多个候选下标（跨轮可变的派生依据）");
+    assert.equal(pickWeightedIndex("fixed|a", weights), pickWeightedIndex("fixed|a", weights), "同种子派生结果必须稳定");
 });
 
 test("generatedVars enum：权重分布与权重之比一致（大样本判别）", async () => {

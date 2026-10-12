@@ -12,9 +12,9 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
-import { mergeGlobals } from "./core.js";
+import { mergeGlobals, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
-import { failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -298,7 +298,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
         fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
         return true;
     } catch (error) {
-        console.warn(`警告: ${fileName} 下载失败（${downloadSignal.aborted ? "下载超时（30 秒）" : error.message}）`);
+        console.warn(`警告: ${fileName} 下载失败（${downloadSignal.aborted ? "下载超时（30 秒）" : escapeInlineText(error.message)}）`);
         return null;
     }
 }
@@ -446,7 +446,7 @@ async function loadPlugins(config, configDir, options = {}) {
         } catch (error) {
             if (options.allowExternalPlugins) {
                 // 明确允许外部插件：相对路径仍以配置目录为基准（与未加 flag 时的解析基准一致）
-                console.warn(`⚠️  加载外部插件: ${pluginPath}`);
+                console.warn(`⚠️  加载外部插件: ${escapeInlineText(pluginPath)}`);
                 absolutePath = path.isAbsolute(pluginPath) ? pluginPath : path.resolve(configDir, pluginPath);
             } else {
                 throw new Error(
@@ -595,20 +595,22 @@ async function runCommand(args) {
         }
         let scenario = ScenarioTest.loadScenarioFile(scenarioPath, entry.id, ScenarioTest);
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-        console.log(`\n# ${scenario.name} (${entry.id})`);
+        // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
+        // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
+        console.log(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
-                const detail = `status ${info.status}${info.failedAssertion ? `，${info.failedAssertion}` : ""}`;
-                console.log(`  [RETRY] ${info.step?.name || "未命名步骤"} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
+                console.log(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
-                console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${ScenarioTest.formatDuration(result.duration)})`);
+                console.log(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
-                    console.log(`  [WARN] ${warning}`);
+                    console.log(`  [WARN] ${escapeInlineText(warning)}`);
                 }
                 // each 失败明细：失败断言下逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                 // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
@@ -617,7 +619,7 @@ async function runCommand(args) {
                         const label = `${prefix}第 ${item.index + 1} 项`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            console.log(`      ↳ ${label} ${sub.name}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+                            console.log(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
                                 console.log(line);
@@ -627,7 +629,7 @@ async function runCommand(args) {
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
-                    console.log(`  - ${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+                    console.log(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
@@ -684,10 +686,24 @@ const FAILURE_BODY_LIMIT = 2000;
 // 防 ANSI 注入（清屏覆写/伪链接/OSC 52 写剪贴板）与裸 \r 打乱终端对齐；
 // JSON.stringify 只转义 C0/引号/反斜杠——C1 控制字符（\x7f-\x9f，含 8 位 CSI U+009B）手动补转义；
 // 纯可打印行保持原文不转义（JSON 转义会给引号/反斜杠加噪）
+const BODY_CTRL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
+// GitHub Actions 新格式命令 ::xxx:: 是行首识别（Runner 会 TrimStart）：整行保留
+// JSON 引号透出使行首变 "，解析器不再识别为命令（剥引号会与原文相同，防护空转）
+const CI_LINE_START = /^\s*::/;
+// ## 系标记（GH 旧格式 ##[、Azure ##vso[、TeamCity ##teamcity[）由 Runner 按整行
+// IndexOf 识别，引号挡不住——defuseCiCommandMarkers 打散标记字节序；
+// 命中任一即整行 JSON 引号 + 标记打散 + 控制字符转义，三道防护
+const CI_ANYWHERE = /##\[|##vso\[|##teamcity\[/i;
 function escapeBodyLine(line) {
-    if (!/[\x00-\x1f\x7f-\x9f]/.test(line)) return line;
-    return JSON.stringify(line).slice(1, -1)
-        .replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    if (!BODY_CTRL_CHARS.test(line) && !CI_LINE_START.test(line) && !CI_ANYWHERE.test(line)) return line;
+    return escapeC1(defuseCiCommandMarkers(JSON.stringify(line)));
+}
+
+// 错误对象输出：error.message/stack 可能混入服务端可控字节（如经模板注入进
+// path 的换行，或适配器抛出的含响应内容错误），逐行套 escapeBodyLine——
+// 普通行原文透出保持堆栈可读，行首 :: 命令、## 标记、控制字符行被打散/转义
+function escapeErrorText(error) {
+    return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
 
 function printFailedStepBody(result) {
@@ -695,11 +711,11 @@ function printFailedStepBody(result) {
     if (!response || typeof response !== "object") return;
     const body = response.body;
     const bodyText = typeof response.bodyText === "string" ? response.bodyText : null;
-    // saveResponseAs 时 bodyText 恒为 null、body 是保存信息，提示落盘位置而非静默。
-    // 限定 bodyText 为空才命中：业务 JSON 响应恰好含 savedTo 字段时不吞原文、
-    // 不被服务端伪造的 {"savedTo":"..."} 带偏；savedTo 可能经模板混入服务端可控
-    // 字节（extract 提取值进路径），同样过控制字符转义
-    if (bodyText === null && body && typeof body === "object" && typeof body.savedTo === "string") {
+    // saveResponseAs 时 bodyText 恒为 null、body 是保存信息 {savedTo,size,contentType}——
+    // 凭 SAVED_RESPONSE 内部标记确认真实发生过保存，不靠字段形状推断：
+    // 适配器结构化 body（bodyText 缺省归一化为 null）恰好含 savedTo+size 字段时不吞原文；
+    // savedTo 可能经模板混入服务端可控字节（extract 提取值进路径），同样转义
+    if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
         console.log(`  响应体已保存至 ${escapeBodyLine(body.savedTo)}`);
         return;
     }
@@ -929,7 +945,7 @@ async function serveCommand(args) {
             process.exitCode = 1;
             return;
         }
-        console.error(`场景测试工作台启动失败: ${error?.message || String(error)}`);
+        console.error(`场景测试工作台启动失败: ${escapeInlineText(error?.message || String(error))}`);
         process.exitCode = 1;
     });
     server.listen(args.port, "127.0.0.1", () => {
@@ -984,10 +1000,10 @@ async function main() {
 
 main().catch((error) => {
     if (error instanceof CliUsageError) {
-        console.error(`错误：${error.message}`);
-        if (error.hint) console.error(`提示：${error.hint}`);
+        console.error(`错误：${escapeInlineText(error.message)}`);
+        if (error.hint) console.error(`提示：${escapeInlineText(error.hint)}`);
     } else {
-        console.error(error?.stack || error);
+        console.error(escapeErrorText(error));
     }
     process.exitCode = 1;
 });

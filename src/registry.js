@@ -1,4 +1,5 @@
-import { isPlainObject, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
+import { isPlainObject, tokenizePath, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
+import { escapeInlineText } from "./utils/failure-diff.js";
 import { contract } from "./contract.js";
 import { validateAdapter } from "./adapter-types.js";
 
@@ -26,22 +27,38 @@ function assertUnique(items, field, label) {
 // 注意：共享 /g 正则仅可用于 matchAll（克隆 lastIndex）；若改为 .exec/.test 会从
 // 上次 lastIndex 继续导致静默漏检——届时需在函数内 new RegExp 或重置 lastIndex。
 const TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
-const BRACKET_SEGMENT = /\[[^\]]*\]/g;
 const TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
+const TEMPLATE_PATH_HINT = "模板只做路径取值（vars.* / lastResponse.* / lastResponseBody.*），比较/三元/逻辑判断请改用断言或 when 对象形式；若键名本身含运算符字符，请改用引号键写法 vars[\"a:b\"]";
 
 // 模板只做路径取值（vars.* / lastResponse.* / lastResponseBody.*），不支持表达式。
 // {{vars.a > 0}} 这类表达式会被当成键名查找并静默得到空串/undefined——when 静默跳过、
-// 断言静默失败、extract 静默取 undefined。定义期遍历全部字符串值拒绝运算符；
-// 剥掉 [...] 段后判断：引号键（vars["a>b"]）不误伤，无 {{}} 的普通文本不查。
+// 断言静默失败、extract 静默取 undefined。定义期用与运行期 getByPath 相同的严格分词
+// 校验：整式分词失败时按「含运算符→表达式误写 / 无运算符→路径畸形」区分报错；
+// 裸段内含运算符字符同样报错；引号键/下标段内部字符豁免（vars["a>b"]、["a]>b"] 合法）。
+// 无 {{}} 的普通文本不查。
 function assertTemplatePathsOnly(value, trail, seen = new WeakSet()) {
     if (typeof value === "string") {
         if (!value.includes("{{")) return;
         for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
-            const expression = match[1];
-            invariant(
-                !TEMPLATE_OPERATOR_CHARS.test(expression.replace(BRACKET_SEGMENT, "")),
-                `${trail} 的模板 {{${expression.trim()}}} 不允许使用运算符：模板只做路径取值（vars.* / lastResponse.* / lastResponseBody.*），比较/三元/逻辑判断请改用断言或 when 对象形式；若键名本身含运算符字符，请改用引号键写法 vars["a:b"]`
-            );
+            const expression = match[1].trim();
+            const tokens = tokenizePath(expression);
+            if (tokens === null) {
+                // 分词失败：优先按运算符误写报（vars.a > 0、vars["a" > "b"]、[0 > 1] 等），
+                // 无运算符字符才是路径畸形（vars[]、vars[、未闭合引号等）
+                invariant(
+                    !TEMPLATE_OPERATOR_CHARS.test(expression),
+                    `${trail} 的模板 {{${expression}}} 不允许使用运算符：${TEMPLATE_PATH_HINT}`
+                );
+                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键（vars.a、list[-1]、vars["a>b"]），不允许空下标或未闭合括号`);
+                continue;
+            }
+            for (const token of tokens) {
+                if (token.startsWith("[")) continue;
+                invariant(
+                    !TEMPLATE_OPERATOR_CHARS.test(token),
+                    `${trail} 的模板 {{${expression}}} 不允许使用运算符：${TEMPLATE_PATH_HINT}`
+                );
+            }
         }
         return;
     }
@@ -101,22 +118,36 @@ export function defineScenario(input) {
         // step.method 不经 {{ }} 解析（executeHttp 用原始值），模板写法会按字面方法名
         // 发送——恒为死写法，定义期直接拒绝；request.method 在 request 对象内会解析，
         // 动态方法应写在那里。
-        if (typeof step.method === "string" && step.method.includes("{{")) {
-            invariant(false, `步骤 ${step.name} 的 method 不支持模板写法（step.method 不做 {{ }} 解析，会按字面量发送），请写具体方法名或改用 request.method 模板`);
+        // 仅显式 adapter 的步骤跳过 HTTP 相容校验（adapter.execute 收到 resolve(clone(step))，
+        // method 模板会被解析、request 语义由适配器自行定义）。matches 自动认领不能用于
+        // 此处放行：定义期可见的是全局注册表，运行期用的是引擎创建时的快照 + 实例
+        // 适配器（createEngine({adapters})/isolateAdapters），两个集合可能不同——
+        // 自动认领放行可能产生「定义期认为适配器处理、运行期实际发 HTTP 静默丢 body」
+        // 的假通过；由适配器处理的步骤须显式声明 adapter 字段。
+        const isAdapterStep = step.adapter !== undefined;
+        // adapter 字段存在时必须是非空字符串：运行期 if (step.adapter) 对 ""/null/false
+        // 按无适配器处理会走 HTTP 静默丢 body——定义期直接拒绝杜绝假通过
+        if (isAdapterStep) {
+            invariant(
+                typeof step.adapter === "string" && step.adapter.trim() !== "",
+                `步骤 ${step.name} 的 adapter 必须是非空字符串（已注册适配器名），当前值运行期会被当成无适配器走 HTTP`
+            );
+        }
+        if (typeof step.method === "string" && step.method.includes("{{") && !isAdapterStep) {
+            invariant(false, `步骤 ${step.name} 的 method 不支持模板写法（step.method 不做 {{ }} 解析，会按字面量发送），请写具体方法名或改用 request.method 模板；适配器步骤请显式声明 adapter 字段`);
         }
         // GET/HEAD 不能携带请求体：executeHttp 对这两种方法静默丢弃 request.body，
         // fileUpload 则交给 fetch 抛底层英文错——两种静默失败定义期即拒。
-        // request.method 模板在运行期解析、定义期无法确定最终方法，跳过相容校验；
-        // adapter 步骤的 request 语义由适配器自行定义，不约束。
+        // request.method 模板在运行期解析、定义期无法确定最终方法，跳过相容校验。
         const requestDef = isPlainObject(step.request) ? step.request : {};
         const rawMethod = String(step.method || requestDef.method || "GET");
         const effectiveMethod = rawMethod.toUpperCase();
         const methodIsTemplate = step.method === undefined && String(requestDef.method || "").includes("{{");
-        if (step.adapter === undefined && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+        if (!isAdapterStep && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
             invariant(
                 (requestDef.body === undefined || requestDef.body === null)
                     && (requestDef.fileUpload === undefined || requestDef.fileUpload === null),
-                `步骤 ${step.name} 的 ${effectiveMethod} 请求不能携带请求体（request.body / request.fileUpload 会被丢弃），请改用 POST/PUT/PATCH 等方法，或把参数放进 params`
+                `步骤 ${step.name} 的 ${effectiveMethod} 请求不能携带请求体（request.body / request.fileUpload 会被丢弃），请改用 POST/PUT/PATCH 等方法、把参数放进 params，或显式声明 adapter 交给适配器处理`
             );
         }
         // 断言定义期 fail-fast：定位到场景名、步骤序号、断言序号
@@ -272,7 +303,7 @@ export function unregisterAdapter(name) {
         try {
             adapter.dispose();
         } catch (error) {
-            console.warn(`适配器 ${name} 清理失败:`, error);
+            console.warn(`适配器 ${escapeInlineText(name)} 清理失败: ${escapeInlineText(error?.message || error)}`);
         }
     }
     return adapterRegistry.delete(name);
@@ -284,7 +315,7 @@ export function clearAdapters() {
             try {
                 adapter.dispose();
             } catch (error) {
-                console.warn(`适配器 ${name} 清理失败:`, error);
+                console.warn(`适配器 ${escapeInlineText(name)} 清理失败: ${escapeInlineText(error?.message || error)}`);
             }
         }
     }

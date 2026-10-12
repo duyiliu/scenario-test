@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { SAVED_RESPONSE } from "../core.js";
 import { validatePath } from "../utils/path-validator.js";
 
 export function createNodeIo(workspace = process.cwd()) {
@@ -43,7 +44,9 @@ export function createNodeIo(workspace = process.cwd()) {
 
             fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
             fs.writeFileSync(absolutePath, data);
-            return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "" };
+            // SAVED_RESPONSE 标记：CLI 据此确认真实发生过保存——业务响应恰好含
+            // savedTo/size 字段时不会被误吞（Symbol 不可经 JSON 伪造）
+            return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
         }
     };
 }

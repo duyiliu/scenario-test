@@ -9,5 +9,9 @@ examples/**/temp/
 *.log
 tmp-*/
 dist.staging-*/
+dist.swap-*/
+dist.backup-*/
+dist.trash-*/
+dist.restore-*/
 .tmp/
 .playwright-mcp/

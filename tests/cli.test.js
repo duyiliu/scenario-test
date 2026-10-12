@@ -6,6 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+// 本文件全部 CLI 子进程默认继承 process.env：剥离宿主 SCENARIO_* 变量，
+// 防 SCENARIO_AUTH / SCENARIO_GLOBALS / SCENARIO_NO_BODY_PRINT 等改变被测进程行为；
+// 需要这些变量的用例在各自 spawn env 中显式注入
+for (const key of Object.keys(process.env)) {
+    // Windows 环境变量查询不区分大小写——小写 scenario_no_body_print 同样生效，
+    // 剥离判断必须大小写不敏感，否则宿主变量仍可穿透影响被测子进程
+    if (key.toUpperCase().startsWith("SCENARIO_")) delete process.env[key];
+}
+
 test("CLI 从公共 JS 配置执行场景", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-"));
     const server = http.createServer((request, response) => {
@@ -218,7 +227,7 @@ test("CLI run 重试轮询输出 [RETRY] 进度行（防长时间静默）", asy
     }
 });
 
-test("CLI run 响应体控制字符转义（防 ANSI 注入），SCENARIO_NO_BODY_PRINT 关闭输出", async () => {
+test("CLI run 响应体/路径/断言输出防 CI 命令与 ANSI 注入，SCENARIO_NO_BODY_PRINT 关闭输出", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-esc-"));
     const server = http.createServer((request, response) => {
         if (request.url === "/forge") {
@@ -228,19 +237,37 @@ test("CLI run 响应体控制字符转义（防 ANSI 注入），SCENARIO_NO_BOD
             response.end(JSON.stringify({ savedTo: "fake\u001b[31mpath\u001b[0m", error: "boom" }));
             return;
         }
+        if (request.url === "/p") {
+            // 第一步提取字段供第二步拼进 path——resolve 后的 result.path 是服务端可控
+            // 输出面：\n 可伪造新的 ::error:: 命令行，必须折成字面量
+            response.writeHead(200, { "Content-Type": "application/json" });
+            response.end(JSON.stringify({ p: "safe\n::error::from server" }));
+            return;
+        }
         response.writeHead(500, { "Content-Type": "text/plain" });
-        // 服务端可控内容混入 ESC 序列与裸 \r：转义后以字面量透出而非终端执行
-        response.end("ok\u001b[31mred\u001b[0m\nline\rtwo");
+        // 服务端可控内容混入 ESC 序列与裸 \r：转义后以字面量透出而非终端执行；
+        // 并混入 GitHub Actions(::xxx:: 行首识别 + ##[ 旧格式) 、Azure DevOps(##vso[)、
+        // TeamCity(##teamcity[) 工作流命令——## 系标记按整行 IndexOf 识别，引号挡不住，
+        // 必须把标记字节序打散（[ 转写为 unicode 转义形态）
+        response.end("ok\u001b[31mred\u001b[0m\nline\rtwo\n::error file=app.js::forged annotation\nmid ##vso[task.logissue type=error]forged suffix\n##[error]legacy forge\n##teamcity[testFailed name='x']");
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
         const port = server.address().port;
         fs.mkdirSync(path.join(directory, "scenarios"));
-        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"esc",name:"Esc",url:"scenarios/esc.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerAdapter("biz",{execute:async()=>({status:500,headers:{},body:{savedTo:"fake",size:1,importantError:"lost"},bodyText:null})});ScenarioTest.registerAdapter("biz2",{execute:async()=>({status:"S\\n::error::remote status",headers:{},body:{ok:false},bodyText:null})});ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"esc",name:"Esc",url:"scenarios/esc.js"},{id:"inject",name:"Inject",url:"scenarios/inject.js"},{id:"bizstep",name:"BizStep",url:"scenarios/bizstep.js"},{id:"retrystep",name:"RetryStep",url:"scenarios/retrystep.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/esc.js"), `ScenarioTest.registerScenario("esc",ScenarioTest.defineScenario({name:"Esc",failurePolicy:"continue",steps:[{name:"失败步骤",path:"x",status:200},{name:"伪造保存提示",path:"forge",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/inject.js"), `ScenarioTest.registerScenario("inject",ScenarioTest.defineScenario({name:"Inject",failurePolicy:"continue",steps:[{name:"提取字段",path:"p",status:200,extract:[{name:"p",path:"p"}]},{name:"路径注入",path:"{{vars.p}}",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/bizstep.js"), `ScenarioTest.registerScenario("bizstep",ScenarioTest.defineScenario({name:"BizStep",steps:[{name:"适配器业务响应",path:"x",adapter:"biz"}]}));`, "utf8");
+        // 适配器返回的 status 字符串/断言名同为服务端可控输出面：[FAIL] 行 status、
+        // [RETRY] detail（status + failedAssertion）、断言名逐行折行防注入
+        fs.writeFileSync(path.join(directory, "scenarios/retrystep.js"), `ScenarioTest.registerScenario("retrystep",ScenarioTest.defineScenario({name:"RetryStep",steps:[{name:"重试注入",adapter:"biz2",retryUntil:{maxAttempts:2,intervalMs:100},assertions:[{name:"断言\\n::error::name",path:"ok",equals:true}]}]}));`, "utf8");
         const cli = path.resolve(import.meta.dirname, "../src/cli.js");
         const run = (env) => new Promise((resolve) => {
-            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+            // 隔离宿主 SCENARIO_* 环境变量（SCENARIO_AUTH/GLOBALS/NO_BODY_PRINT 会改变子进程行为）
+            const childEnv = { ...process.env };
+            for (const key of Object.keys(childEnv)) if (key.toUpperCase().startsWith("SCENARIO_")) delete childEnv[key];
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { env: { ...childEnv, ...env }, stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
             child.stdout.setEncoding("utf8");
             child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -256,6 +283,24 @@ test("CLI run 响应体控制字符转义（防 ANSI 注入），SCENARIO_NO_BOD
         assert.match(result.stdout, /\[FAIL\] 伪造保存提示/);
         assert.ok(!result.stdout.includes("响应体已保存至"), "bodyText 非空时不得被伪造 savedTo 吞掉原文");
         assert.match(result.stdout, /fake\\u001b\[31mpath\\u001b\[0m/);
+        // CI 工作流命令行：:: 行首识别经 JSON 引号破坏；## 系标记按整行 IndexOf 识别，
+        // 标记 [ 被打散为 unicode 转义形态——stdout 任何位置都不得再出现可识别标记
+        assert.ok(!/##vso\[|##teamcity\[|##\[|^\s*::/im.test(result.stdout), "stdout 不应含可识别的 CI 工作流命令标记");
+        assert.match(result.stdout, /"::error file=app\.js::forged annotation"/);
+        assert.match(result.stdout, /##vso\\u005btask\.logissue type=error\]forged suffix/);
+        assert.match(result.stdout, /##\\u005berror\]legacy forge/);
+        assert.match(result.stdout, /##teamcity\\u005btestFailed name='x'\]/);
+        // result.path 注入：提取值含 \n + ::error::——[FAIL] 行折行后不得产生新命令行
+        assert.match(result.stdout, /\[FAIL\] 路径注入 GET safe\\n::error::from server -> 500/);
+        // 适配器业务 body 恰好含 savedTo+size：凭 SAVED_RESPONSE 标记区分，不吞原文
+        assert.match(result.stdout, /\[FAIL\] 适配器业务响应/);
+        assert.match(result.stdout, /importantError/, "适配器业务错误内容必须输出而非被伪造保存提示吞掉");
+        assert.ok(!result.stdout.includes("响应体已保存至"), "非真实保存的 body 不得输出保存提示");
+        // 适配器 status 字符串注入：[FAIL] 行与 [RETRY] detail 中 \n 折为字面量，
+        // 不产生新命令行；断言名中的注入同样折行
+        assert.match(result.stdout, /-> S\\n::error::remote status \(/);
+        assert.match(result.stdout, /\[RETRY\] 重试注入 第 1\/2 次未通过（status S\\n::error::remote status，断言\\n::error::name）/);
+        assert.match(result.stdout, /- 断言\\n::error::name: /);
         // SCENARIO_NO_BODY_PRINT 关闭响应体输出
         const hidden = await run({ SCENARIO_NO_BODY_PRINT: "1" });
         assert.notEqual(hidden.code, 0);

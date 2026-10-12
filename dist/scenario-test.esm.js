@@ -420,9 +420,36 @@ function clone(value) {
 function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
+var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+var PATH_SEGMENT = /[^.\[\]]+/y;
+var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+function tokenizePath(valuePath) {
+  const tokens = [];
+  const rest = String(valuePath);
+  let index = rest.startsWith(".") ? 1 : 0;
+  let prevBracket = false;
+  while (index < rest.length) {
+    const isBracket = rest[index] === "[";
+    if (!isBracket && prevBracket) return null;
+    const pattern = isBracket ? PATH_BRACKET : PATH_SEGMENT;
+    pattern.lastIndex = index;
+    const match = pattern.exec(rest);
+    if (!match) return null;
+    tokens.push(match[0]);
+    index += match[0].length;
+    prevBracket = isBracket;
+    if (rest[index] === ".") {
+      index += 1;
+      if (index >= rest.length || rest[index] === ".") return null;
+      prevBracket = false;
+    }
+  }
+  return tokens.length ? tokens : null;
+}
 function getByPath(source, valuePath) {
   if (!valuePath) return source;
-  const tokens = String(valuePath).match(/[^.\[\]]+|\[(?:-?\d+|".*?"|'.*?')\]/g) || [];
+  const tokens = tokenizePath(valuePath);
+  if (!tokens) return void 0;
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
@@ -431,7 +458,7 @@ function getByPath(source, valuePath) {
       cursor = cursor[cursor.length + Number(inner)];
       continue;
     }
-    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "");
+    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
     cursor = cursor[key];
   }
   return cursor;
@@ -442,9 +469,21 @@ function evalExpression(expression, runtime) {
   if (text === "vars") return runtime.vars;
   if (text === "lastResponse") return runtime.lastResponse;
   if (text === "lastResponseBody") return runtime.lastResponseBody;
-  if (text.startsWith("vars.")) return getByPath(runtime.vars, text.slice(5));
-  if (text.startsWith("lastResponse.")) return getByPath(runtime.lastResponse, text.slice(13));
-  if (text.startsWith("lastResponseBody.")) return getByPath(runtime.lastResponseBody, text.slice(17));
+  if (text.startsWith("vars.")) {
+    const sub = text.slice(5);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : void 0;
+  }
+  if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+  if (text.startsWith("lastResponse.")) {
+    const sub = text.slice(13);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : void 0;
+  }
+  if (text.startsWith("lastResponse[")) return getByPath(runtime.lastResponse, text.slice(12));
+  if (text.startsWith("lastResponseBody.")) {
+    const sub = text.slice(17);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponseBody, sub) : void 0;
+  }
+  if (text.startsWith("lastResponseBody[")) return getByPath(runtime.lastResponseBody, text.slice(16));
   if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, text)) return runtime.vars[text];
   return getByPath(runtime.vars, text);
 }
@@ -867,6 +906,18 @@ function formatDuration(milliseconds) {
   return milliseconds >= 1e3 ? `${(milliseconds / 1e3).toFixed(2)} s` : `${milliseconds.toFixed(0)} ms`;
 }
 
+// src/utils/failure-diff.js
+function escapeC1(text) {
+  return text.replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+var CI_COMMAND_MARKER = /##\[|##vso\[|##teamcity\[/gi;
+function defuseCiCommandMarkers(text) {
+  return String(text).replace(CI_COMMAND_MARKER, (m) => `${m.slice(0, -1)}\\u005b`);
+}
+function escapeInlineText(value) {
+  return escapeC1(defuseCiCommandMarkers(JSON.stringify(String(value ?? "")).slice(1, -1)));
+}
+
 // src/adapter-types.js
 function validateAdapter(adapter, name = "unknown") {
   const errors = [];
@@ -921,17 +972,29 @@ function assertUnique(items, field, label) {
   }
 }
 var TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
-var BRACKET_SEGMENT = /\[[^\]]*\]/g;
 var TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
+var TEMPLATE_PATH_HINT = '\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]';
 function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSet()) {
   if (typeof value === "string") {
     if (!value.includes("{{")) return;
     for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
-      const expression = match[1];
-      invariant(
-        !TEMPLATE_OPERATOR_CHARS.test(expression.replace(BRACKET_SEGMENT, "")),
-        `${trail} \u7684\u6A21\u677F {{${expression.trim()}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]`
-      );
+      const expression = match[1].trim();
+      const tokens = tokenizePath(expression);
+      if (tokens === null) {
+        invariant(
+          !TEMPLATE_OPERATOR_CHARS.test(expression),
+          `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
+        );
+        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
+        continue;
+      }
+      for (const token of tokens) {
+        if (token.startsWith("[")) continue;
+        invariant(
+          !TEMPLATE_OPERATOR_CHARS.test(token),
+          `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
+        );
+      }
     }
     return;
   }
@@ -981,17 +1044,24 @@ function defineScenario(input) {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
     if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
-    if (typeof step.method === "string" && step.method.includes("{{")) {
-      invariant(false, `\u6B65\u9AA4 ${step.name} \u7684 method \u4E0D\u652F\u6301\u6A21\u677F\u5199\u6CD5\uFF08step.method \u4E0D\u505A {{ }} \u89E3\u6790\uFF0C\u4F1A\u6309\u5B57\u9762\u91CF\u53D1\u9001\uFF09\uFF0C\u8BF7\u5199\u5177\u4F53\u65B9\u6CD5\u540D\u6216\u6539\u7528 request.method \u6A21\u677F`);
+    const isAdapterStep = step.adapter !== void 0;
+    if (isAdapterStep) {
+      invariant(
+        typeof step.adapter === "string" && step.adapter.trim() !== "",
+        `\u6B65\u9AA4 ${step.name} \u7684 adapter \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5DF2\u6CE8\u518C\u9002\u914D\u5668\u540D\uFF09\uFF0C\u5F53\u524D\u503C\u8FD0\u884C\u671F\u4F1A\u88AB\u5F53\u6210\u65E0\u9002\u914D\u5668\u8D70 HTTP`
+      );
+    }
+    if (typeof step.method === "string" && step.method.includes("{{") && !isAdapterStep) {
+      invariant(false, `\u6B65\u9AA4 ${step.name} \u7684 method \u4E0D\u652F\u6301\u6A21\u677F\u5199\u6CD5\uFF08step.method \u4E0D\u505A {{ }} \u89E3\u6790\uFF0C\u4F1A\u6309\u5B57\u9762\u91CF\u53D1\u9001\uFF09\uFF0C\u8BF7\u5199\u5177\u4F53\u65B9\u6CD5\u540D\u6216\u6539\u7528 request.method \u6A21\u677F\uFF1B\u9002\u914D\u5668\u6B65\u9AA4\u8BF7\u663E\u5F0F\u58F0\u660E adapter \u5B57\u6BB5`);
     }
     const requestDef = isPlainObject(step.request) ? step.request : {};
     const rawMethod = String(step.method || requestDef.method || "GET");
     const effectiveMethod = rawMethod.toUpperCase();
     const methodIsTemplate = step.method === void 0 && String(requestDef.method || "").includes("{{");
-    if (step.adapter === void 0 && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+    if (!isAdapterStep && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
       invariant(
         (requestDef.body === void 0 || requestDef.body === null) && (requestDef.fileUpload === void 0 || requestDef.fileUpload === null),
-        `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\uFF0C\u6216\u628A\u53C2\u6570\u653E\u8FDB params`
+        `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\u3001\u628A\u53C2\u6570\u653E\u8FDB params\uFF0C\u6216\u663E\u5F0F\u58F0\u660E adapter \u4EA4\u7ED9\u9002\u914D\u5668\u5904\u7406`
       );
     }
     const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
@@ -1125,7 +1195,7 @@ function unregisterAdapter(name) {
     try {
       adapter.dispose();
     } catch (error) {
-      console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+      console.warn(`\u9002\u914D\u5668 ${escapeInlineText(name)} \u6E05\u7406\u5931\u8D25: ${escapeInlineText(error?.message || error)}`);
     }
   }
   return adapterRegistry.delete(name);
@@ -1136,7 +1206,7 @@ function clearAdapters() {
       try {
         adapter.dispose();
       } catch (error) {
-        console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+        console.warn(`\u9002\u914D\u5668 ${escapeInlineText(name)} \u6E05\u7406\u5931\u8D25: ${escapeInlineText(error?.message || error)}`);
       }
     }
   }
@@ -1387,7 +1457,10 @@ function createRuntime(scenario, options = {}) {
   };
 }
 function chooseAdapter(step, adapters) {
-  if (step.adapter) return { name: step.adapter, adapter: adapters.get(step.adapter) };
+  if (step.adapter !== void 0) {
+    const name = typeof step.adapter === "string" ? step.adapter : String(step.adapter);
+    return { name, adapter: adapters.get(name) };
+  }
   for (const [name, adapter] of adapters.entries()) {
     if (typeof adapter.matches === "function" && adapter.matches(step)) return { name, adapter };
   }
@@ -1558,7 +1631,7 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
       try {
         await adapter.onError({ step, runtime, options, error });
       } catch (hookError) {
-        console.warn(`\u9002\u914D\u5668 ${adapterName} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25:`, hookError);
+        console.warn(`\u9002\u914D\u5668 ${escapeInlineText(adapterName)} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25: ${escapeInlineText(hookError?.message || hookError)}`);
       }
     }
     throw new AdapterExecutionError(adapterName, error, step);
@@ -1648,7 +1721,7 @@ function createEngine(engineOptions = {}) {
         if (extractResult.failures.length) assertions.push(...extractResult.failures);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
         const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
-        await options.onAttempt?.({
+        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
           step,
           attempt,
           totalAttempts,
@@ -6284,6 +6357,7 @@ export {
   CONTRACT_VERSION,
   GLOBAL_TYPES,
   RESERVED_VARS,
+  SAVED_RESPONSE,
   VERSION,
   applyExtract,
   assertNoReservedVars,
@@ -6337,6 +6411,7 @@ export {
   sanitizeSensitive,
   seedToIndex,
   seedToUnit,
+  tokenizePath,
   unregisterAdapter,
   usccCheckChar,
   validateAdapter,

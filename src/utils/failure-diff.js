@@ -28,9 +28,31 @@ function isShortValue(value) {
     }
 }
 
+// JSON.stringify 不转义 C1 控制字符（\x7f-\x9f，含 8 位 CSI U+009B）——服务端可控值
+// （响应字段断言失败的 actual 等）原样透出仍会带裸 C1 进终端，统一补 \uXXXX 字面转义
+export function escapeC1(text) {
+    return text.replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+// CI 工作流命令标记：GitHub Actions 旧格式 ##[、Azure DevOps ##vso[、TeamCity ##teamcity[
+// 由 Runner 按整行 IndexOf 识别（而非行首），JSON 引号与缩进都挡不住——必须把标记
+// 字节序本身打散：末尾 [ 转写为 unicode 转义形态（人类可读，Runner 无法识别）。
+// GitHub 新格式 ::xxx:: 是行首识别，不在此处处理（见 cli.js escapeBodyLine）
+const CI_COMMAND_MARKER = /##\[|##vso\[|##teamcity\[/gi;
+export function defuseCiCommandMarkers(text) {
+    return String(text).replace(CI_COMMAND_MARKER, (m) => `${m.slice(0, -1)}\\u005b`);
+}
+
+// 行内插值的可控文本（服务端响应内容、适配器返回值、错误消息等）：换行/控制
+// 字符折为字面量防注入新行，CI 命令标记打散；不保留引号（行内已有上下文包裹）。
+// cli.js / engine.js / registry.js 的诊断输出共用同一防线
+export function escapeInlineText(value) {
+    return escapeC1(defuseCiCommandMarkers(JSON.stringify(String(value ?? "")).slice(1, -1)));
+}
+
 export function formatFailureValue(value) {
     if (!isShortValue(value)) return "（长值，见下方）";
-    return JSON.stringify(value) ?? String(value);
+    return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
 }
 
 // 字符串值分块：按真实换行拆行（含转义字符的 JSON 形态），行号 1 基右侧对齐
@@ -39,17 +61,17 @@ export function formatFailureValue(value) {
 function splitStringLines(text, prefix) {
     const raw = String(text).split(/\r\n|\n|\r/);
     const width = String(raw.length).length;
-    return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${JSON.stringify(line).slice(1, -1)}`);
+    return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)))}`);
 }
 
 // 非字符串值（对象/数组/数字等）分块：pretty JSON 逐行，行数超限截断并提示
 function prettyLines(value) {
     let text;
     try {
-        text = JSON.stringify(value, null, 2) ?? String(value);
+        text = defuseCiCommandMarkers(escapeC1(JSON.stringify(value, null, 2) ?? String(value)));
     } catch {
         // 循环引用等极端值：回落 String，保证输出永不因格式化本身抛错
-        text = String(value);
+        text = defuseCiCommandMarkers(String(value));
     }
     const lines = text.split("\n");
     if (lines.length > MAX_LINES) {
@@ -81,7 +103,7 @@ export function firstDifferenceLines(expected, actual, prefix) {
         const head = start > 0 ? "…" : "";
         const tail = end < text.length ? "…" : "";
         // 三段分别转义后再拼接：整体转义会让 \n 等字符膨胀为两字符，使高亮偏移漂移错位
-        const escape = (part) => JSON.stringify(part).slice(1, -1);
+        const escape = (part) => defuseCiCommandMarkers(escapeC1(JSON.stringify(part).slice(1, -1)));
         return `${head}${escape(text.slice(start, index))}«${escape(text.slice(index, index + 1))}»${escape(text.slice(index + 1, end))}${tail}`;
     };
     return [

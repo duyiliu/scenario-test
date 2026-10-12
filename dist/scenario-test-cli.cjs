@@ -256,6 +256,7 @@ __export(node_exports, {
   CONTRACT_VERSION: () => CONTRACT_VERSION,
   GLOBAL_TYPES: () => GLOBAL_TYPES,
   RESERVED_VARS: () => RESERVED_VARS,
+  SAVED_RESPONSE: () => SAVED_RESPONSE,
   VERSION: () => VERSION,
   applyExtract: () => applyExtract,
   assertNoReservedVars: () => assertNoReservedVars,
@@ -313,6 +314,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
   validateAdapter: () => validateAdapter,
@@ -506,9 +508,36 @@ function clone(value) {
 function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
+var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+var PATH_SEGMENT = /[^.\[\]]+/y;
+var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+function tokenizePath(valuePath) {
+  const tokens = [];
+  const rest = String(valuePath);
+  let index = rest.startsWith(".") ? 1 : 0;
+  let prevBracket = false;
+  while (index < rest.length) {
+    const isBracket = rest[index] === "[";
+    if (!isBracket && prevBracket) return null;
+    const pattern = isBracket ? PATH_BRACKET : PATH_SEGMENT;
+    pattern.lastIndex = index;
+    const match = pattern.exec(rest);
+    if (!match) return null;
+    tokens.push(match[0]);
+    index += match[0].length;
+    prevBracket = isBracket;
+    if (rest[index] === ".") {
+      index += 1;
+      if (index >= rest.length || rest[index] === ".") return null;
+      prevBracket = false;
+    }
+  }
+  return tokens.length ? tokens : null;
+}
 function getByPath(source, valuePath) {
   if (!valuePath) return source;
-  const tokens = String(valuePath).match(/[^.\[\]]+|\[(?:-?\d+|".*?"|'.*?')\]/g) || [];
+  const tokens = tokenizePath(valuePath);
+  if (!tokens) return void 0;
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
@@ -517,7 +546,7 @@ function getByPath(source, valuePath) {
       cursor = cursor[cursor.length + Number(inner)];
       continue;
     }
-    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "");
+    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
     cursor = cursor[key];
   }
   return cursor;
@@ -528,9 +557,21 @@ function evalExpression(expression, runtime) {
   if (text === "vars") return runtime.vars;
   if (text === "lastResponse") return runtime.lastResponse;
   if (text === "lastResponseBody") return runtime.lastResponseBody;
-  if (text.startsWith("vars.")) return getByPath(runtime.vars, text.slice(5));
-  if (text.startsWith("lastResponse.")) return getByPath(runtime.lastResponse, text.slice(13));
-  if (text.startsWith("lastResponseBody.")) return getByPath(runtime.lastResponseBody, text.slice(17));
+  if (text.startsWith("vars.")) {
+    const sub = text.slice(5);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : void 0;
+  }
+  if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+  if (text.startsWith("lastResponse.")) {
+    const sub = text.slice(13);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : void 0;
+  }
+  if (text.startsWith("lastResponse[")) return getByPath(runtime.lastResponse, text.slice(12));
+  if (text.startsWith("lastResponseBody.")) {
+    const sub = text.slice(17);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponseBody, sub) : void 0;
+  }
+  if (text.startsWith("lastResponseBody[")) return getByPath(runtime.lastResponseBody, text.slice(16));
   if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, text)) return runtime.vars[text];
   return getByPath(runtime.vars, text);
 }
@@ -953,6 +994,113 @@ function formatDuration(milliseconds) {
   return milliseconds >= 1e3 ? `${(milliseconds / 1e3).toFixed(2)} s` : `${milliseconds.toFixed(0)} ms`;
 }
 
+// src/utils/failure-diff.js
+var SHORT_VALUE_LIMIT = 80;
+var MAX_LINES = 20;
+var CONTEXT_RADIUS = 40;
+var MAX_LINE_WIDTH = 240;
+var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
+function isShortValue(value) {
+  if (value === void 0) return true;
+  try {
+    const serialized = JSON.stringify(value ?? null) ?? String(value);
+    return serialized.length <= SHORT_VALUE_LIMIT;
+  } catch {
+    return false;
+  }
+}
+function escapeC1(text) {
+  return text.replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+var CI_COMMAND_MARKER = /##\[|##vso\[|##teamcity\[/gi;
+function defuseCiCommandMarkers(text) {
+  return String(text).replace(CI_COMMAND_MARKER, (m) => `${m.slice(0, -1)}\\u005b`);
+}
+function escapeInlineText(value) {
+  return escapeC1(defuseCiCommandMarkers(JSON.stringify(String(value ?? "")).slice(1, -1)));
+}
+function formatFailureValue(value) {
+  if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
+  return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
+}
+function splitStringLines(text, prefix) {
+  const raw = String(text).split(/\r\n|\n|\r/);
+  const width = String(raw.length).length;
+  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)))}`);
+}
+function prettyLines(value) {
+  let text;
+  try {
+    text = defuseCiCommandMarkers(escapeC1(JSON.stringify(value, null, 2) ?? String(value)));
+  } catch {
+    text = defuseCiCommandMarkers(String(value));
+  }
+  const lines = text.split("\n");
+  if (lines.length > MAX_LINES) {
+    return [
+      ...lines.slice(0, MAX_LINES),
+      `\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
+    ];
+  }
+  return lines;
+}
+function firstDifferenceLines(expected, actual, prefix) {
+  if (typeof expected !== "string" || typeof actual !== "string" || expected === actual) return [];
+  const maxLength = Math.max(expected.length, actual.length);
+  let index = 0;
+  while (index < maxLength && expected[index] === actual[index]) {
+    index += 1;
+  }
+  const window2 = (text) => {
+    const start = Math.max(0, index - CONTEXT_RADIUS);
+    const end = Math.min(text.length, index + CONTEXT_RADIUS);
+    const head = start > 0 ? "\u2026" : "";
+    const tail = end < text.length ? "\u2026" : "";
+    const escape = (part) => defuseCiCommandMarkers(escapeC1(JSON.stringify(part).slice(1, -1)));
+    return `${head}${escape(text.slice(start, index))}\xAB${escape(text.slice(index, index + 1))}\xBB${escape(text.slice(index + 1, end))}${tail}`;
+  };
+  return [
+    `${prefix}\u2191 \u9996\u4E2A\u5DEE\u5F02\u5728\u7B2C ${index + 1} \u4E2A\u5B57\u7B26\uFF08\u957F\u5EA6 ${expected.length} vs ${actual.length}\uFF09\uFF1A`,
+    `${prefix}\u2191 \u671F\u671B ${window2(expected)}`,
+    `${prefix}\u2191 \u5B9E\u9645 ${window2(actual)}`
+  ];
+}
+function failureDiffLines(expected, actual, prefix = "") {
+  if (isShortValue(expected) && isShortValue(actual)) return [];
+  const lines = [];
+  if (!isShortValue(expected)) {
+    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
+    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
+  }
+  if (!isShortValue(actual)) {
+    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
+    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+  }
+  lines.push(...firstDifferenceLines(
+    typeof expected === "string" ? expected : void 0,
+    typeof actual === "string" ? actual : void 0,
+    `${prefix}  `
+  ));
+  return lines;
+}
+function expandValueLines(value, prefix, baseLength) {
+  if (typeof value === "string") {
+    const lines = splitStringLines(value, `${prefix}| `).map((line) => capContentLine(line, baseLength));
+    if (lines.length > MAX_LINES) {
+      return [
+        ...lines.slice(0, MAX_LINES),
+        `${prefix}\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
+      ];
+    }
+    return lines;
+  }
+  return prettyLines(value).map((line) => capContentLine(`${prefix}${line}`, baseLength));
+}
+function capContentLine(line, baseLength) {
+  if (line.length <= baseLength + MAX_LINE_WIDTH) return line;
+  return `${line.slice(0, baseLength + MAX_LINE_WIDTH - LINE_TRUNCATED_MARK.length)}${LINE_TRUNCATED_MARK}`;
+}
+
 // src/adapter-types.js
 function validateAdapter(adapter, name = "unknown") {
   const errors = [];
@@ -1007,17 +1155,29 @@ function assertUnique(items, field, label) {
   }
 }
 var TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
-var BRACKET_SEGMENT = /\[[^\]]*\]/g;
 var TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
+var TEMPLATE_PATH_HINT = '\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]';
 function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSet()) {
   if (typeof value === "string") {
     if (!value.includes("{{")) return;
     for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
-      const expression = match[1];
-      invariant(
-        !TEMPLATE_OPERATOR_CHARS.test(expression.replace(BRACKET_SEGMENT, "")),
-        `${trail} \u7684\u6A21\u677F {{${expression.trim()}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]`
-      );
+      const expression = match[1].trim();
+      const tokens = tokenizePath(expression);
+      if (tokens === null) {
+        invariant(
+          !TEMPLATE_OPERATOR_CHARS.test(expression),
+          `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
+        );
+        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
+        continue;
+      }
+      for (const token of tokens) {
+        if (token.startsWith("[")) continue;
+        invariant(
+          !TEMPLATE_OPERATOR_CHARS.test(token),
+          `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
+        );
+      }
     }
     return;
   }
@@ -1067,17 +1227,24 @@ function defineScenario(input) {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
     if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
-    if (typeof step.method === "string" && step.method.includes("{{")) {
-      invariant(false, `\u6B65\u9AA4 ${step.name} \u7684 method \u4E0D\u652F\u6301\u6A21\u677F\u5199\u6CD5\uFF08step.method \u4E0D\u505A {{ }} \u89E3\u6790\uFF0C\u4F1A\u6309\u5B57\u9762\u91CF\u53D1\u9001\uFF09\uFF0C\u8BF7\u5199\u5177\u4F53\u65B9\u6CD5\u540D\u6216\u6539\u7528 request.method \u6A21\u677F`);
+    const isAdapterStep = step.adapter !== void 0;
+    if (isAdapterStep) {
+      invariant(
+        typeof step.adapter === "string" && step.adapter.trim() !== "",
+        `\u6B65\u9AA4 ${step.name} \u7684 adapter \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5DF2\u6CE8\u518C\u9002\u914D\u5668\u540D\uFF09\uFF0C\u5F53\u524D\u503C\u8FD0\u884C\u671F\u4F1A\u88AB\u5F53\u6210\u65E0\u9002\u914D\u5668\u8D70 HTTP`
+      );
+    }
+    if (typeof step.method === "string" && step.method.includes("{{") && !isAdapterStep) {
+      invariant(false, `\u6B65\u9AA4 ${step.name} \u7684 method \u4E0D\u652F\u6301\u6A21\u677F\u5199\u6CD5\uFF08step.method \u4E0D\u505A {{ }} \u89E3\u6790\uFF0C\u4F1A\u6309\u5B57\u9762\u91CF\u53D1\u9001\uFF09\uFF0C\u8BF7\u5199\u5177\u4F53\u65B9\u6CD5\u540D\u6216\u6539\u7528 request.method \u6A21\u677F\uFF1B\u9002\u914D\u5668\u6B65\u9AA4\u8BF7\u663E\u5F0F\u58F0\u660E adapter \u5B57\u6BB5`);
     }
     const requestDef = isPlainObject(step.request) ? step.request : {};
     const rawMethod = String(step.method || requestDef.method || "GET");
     const effectiveMethod = rawMethod.toUpperCase();
     const methodIsTemplate = step.method === void 0 && String(requestDef.method || "").includes("{{");
-    if (step.adapter === void 0 && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
+    if (!isAdapterStep && !methodIsTemplate && (effectiveMethod === "GET" || effectiveMethod === "HEAD")) {
       invariant(
         (requestDef.body === void 0 || requestDef.body === null) && (requestDef.fileUpload === void 0 || requestDef.fileUpload === null),
-        `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\uFF0C\u6216\u628A\u53C2\u6570\u653E\u8FDB params`
+        `\u6B65\u9AA4 ${step.name} \u7684 ${effectiveMethod} \u8BF7\u6C42\u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08request.body / request.fileUpload \u4F1A\u88AB\u4E22\u5F03\uFF09\uFF0C\u8BF7\u6539\u7528 POST/PUT/PATCH \u7B49\u65B9\u6CD5\u3001\u628A\u53C2\u6570\u653E\u8FDB params\uFF0C\u6216\u663E\u5F0F\u58F0\u660E adapter \u4EA4\u7ED9\u9002\u914D\u5668\u5904\u7406`
       );
     }
     const stepContext = { scenarioName: input.name, stepNo: index + 1, stepName: step.name };
@@ -1211,7 +1378,7 @@ function unregisterAdapter(name) {
     try {
       adapter.dispose();
     } catch (error) {
-      console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+      console.warn(`\u9002\u914D\u5668 ${escapeInlineText(name)} \u6E05\u7406\u5931\u8D25: ${escapeInlineText(error?.message || error)}`);
     }
   }
   return adapterRegistry.delete(name);
@@ -1222,7 +1389,7 @@ function clearAdapters() {
       try {
         adapter.dispose();
       } catch (error) {
-        console.warn(`\u9002\u914D\u5668 ${name} \u6E05\u7406\u5931\u8D25:`, error);
+        console.warn(`\u9002\u914D\u5668 ${escapeInlineText(name)} \u6E05\u7406\u5931\u8D25: ${escapeInlineText(error?.message || error)}`);
       }
     }
   }
@@ -1473,7 +1640,10 @@ function createRuntime(scenario, options = {}) {
   };
 }
 function chooseAdapter(step, adapters) {
-  if (step.adapter) return { name: step.adapter, adapter: adapters.get(step.adapter) };
+  if (step.adapter !== void 0) {
+    const name = typeof step.adapter === "string" ? step.adapter : String(step.adapter);
+    return { name, adapter: adapters.get(name) };
+  }
   for (const [name, adapter] of adapters.entries()) {
     if (typeof adapter.matches === "function" && adapter.matches(step)) return { name, adapter };
   }
@@ -1644,7 +1814,7 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
       try {
         await adapter.onError({ step, runtime, options, error });
       } catch (hookError) {
-        console.warn(`\u9002\u914D\u5668 ${adapterName} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25:`, hookError);
+        console.warn(`\u9002\u914D\u5668 ${escapeInlineText(adapterName)} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25: ${escapeInlineText(hookError?.message || hookError)}`);
       }
     }
     throw new AdapterExecutionError(adapterName, error, step);
@@ -1734,7 +1904,7 @@ function createEngine(engineOptions = {}) {
         if (extractResult.failures.length) assertions.push(...extractResult.failures);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
         const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
-        await options.onAttempt?.({
+        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
           step,
           attempt,
           totalAttempts,
@@ -6433,7 +6603,7 @@ function createNodeIo(workspace = process.cwd()) {
       }
       import_node_fs.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs.default.writeFileSync(absolutePath, data);
-      return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "" };
+      return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -7332,103 +7502,6 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
-// src/utils/failure-diff.js
-var SHORT_VALUE_LIMIT = 80;
-var MAX_LINES = 20;
-var CONTEXT_RADIUS = 40;
-var MAX_LINE_WIDTH = 240;
-var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
-function isShortValue(value) {
-  if (value === void 0) return true;
-  try {
-    const serialized = JSON.stringify(value ?? null) ?? String(value);
-    return serialized.length <= SHORT_VALUE_LIMIT;
-  } catch {
-    return false;
-  }
-}
-function formatFailureValue(value) {
-  if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
-  return JSON.stringify(value) ?? String(value);
-}
-function splitStringLines(text, prefix) {
-  const raw = String(text).split(/\r\n|\n|\r/);
-  const width = String(raw.length).length;
-  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${JSON.stringify(line).slice(1, -1)}`);
-}
-function prettyLines(value) {
-  let text;
-  try {
-    text = JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    text = String(value);
-  }
-  const lines = text.split("\n");
-  if (lines.length > MAX_LINES) {
-    return [
-      ...lines.slice(0, MAX_LINES),
-      `\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
-    ];
-  }
-  return lines;
-}
-function firstDifferenceLines(expected, actual, prefix) {
-  if (typeof expected !== "string" || typeof actual !== "string" || expected === actual) return [];
-  const maxLength = Math.max(expected.length, actual.length);
-  let index = 0;
-  while (index < maxLength && expected[index] === actual[index]) {
-    index += 1;
-  }
-  const window2 = (text) => {
-    const start = Math.max(0, index - CONTEXT_RADIUS);
-    const end = Math.min(text.length, index + CONTEXT_RADIUS);
-    const head = start > 0 ? "\u2026" : "";
-    const tail = end < text.length ? "\u2026" : "";
-    const escape = (part) => JSON.stringify(part).slice(1, -1);
-    return `${head}${escape(text.slice(start, index))}\xAB${escape(text.slice(index, index + 1))}\xBB${escape(text.slice(index + 1, end))}${tail}`;
-  };
-  return [
-    `${prefix}\u2191 \u9996\u4E2A\u5DEE\u5F02\u5728\u7B2C ${index + 1} \u4E2A\u5B57\u7B26\uFF08\u957F\u5EA6 ${expected.length} vs ${actual.length}\uFF09\uFF1A`,
-    `${prefix}\u2191 \u671F\u671B ${window2(expected)}`,
-    `${prefix}\u2191 \u5B9E\u9645 ${window2(actual)}`
-  ];
-}
-function failureDiffLines(expected, actual, prefix = "") {
-  if (isShortValue(expected) && isShortValue(actual)) return [];
-  const lines = [];
-  if (!isShortValue(expected)) {
-    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
-    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
-  }
-  if (!isShortValue(actual)) {
-    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
-    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
-  }
-  lines.push(...firstDifferenceLines(
-    typeof expected === "string" ? expected : void 0,
-    typeof actual === "string" ? actual : void 0,
-    `${prefix}  `
-  ));
-  return lines;
-}
-function expandValueLines(value, prefix, baseLength) {
-  if (typeof value === "string") {
-    const lines = splitStringLines(value, `${prefix}| `).map((line) => capContentLine(line, baseLength));
-    if (lines.length > MAX_LINES) {
-      return [
-        ...lines.slice(0, MAX_LINES),
-        `${prefix}\u2026\uFF08\u5171 ${lines.length} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`
-      ];
-    }
-    return lines;
-  }
-  return prettyLines(value).map((line) => capContentLine(`${prefix}${line}`, baseLength));
-}
-function capContentLine(line, baseLength) {
-  if (line.length <= baseLength + MAX_LINE_WIDTH) return line;
-  return `${line.slice(0, baseLength + MAX_LINE_WIDTH - LINE_TRUNCATED_MARK.length)}${LINE_TRUNCATED_MARK}`;
-}
-
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -7684,7 +7757,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
     import_node_fs5.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
-    console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : error.message}\uFF09`);
+    console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
     return null;
   }
 }
@@ -7811,7 +7884,7 @@ async function loadPlugins(config, configDir, options = {}) {
       absolutePath = validatePath(configDir, pluginPath);
     } catch (error) {
       if (options.allowExternalPlugins) {
-        console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${pluginPath}`);
+        console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
         absolutePath = import_node_path6.default.isAbsolute(pluginPath) ? pluginPath : import_node_path6.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
@@ -7946,27 +8019,27 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
     console.log(`
-# ${scenario.name} (${entry.id})`);
+# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
       // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
       async onAttempt(info) {
-        const detail = `status ${info.status}${info.failedAssertion ? `\uFF0C${info.failedAssertion}` : ""}`;
-        console.log(`  [RETRY] ${info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
+        console.log(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-        console.log(`[${mark}] ${result.name} ${result.method} ${result.path} -> ${result.status} (${formatDuration(result.duration)})`);
+        console.log(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
-          console.log(`  [WARN] ${warning}`);
+          console.log(`  [WARN] ${escapeInlineText(warning)}`);
         }
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              console.log(`      \u21B3 ${label} ${sub.name}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+              console.log(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
               for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
                 console.log(line);
               }
@@ -7975,7 +8048,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          console.log(`  - ${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+          console.log(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
           for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
             console.log(line);
           }
@@ -8021,16 +8094,22 @@ Overall: ${passedTotal}/${total} passed`);
   }
 }
 var FAILURE_BODY_LIMIT = 2e3;
+var BODY_CTRL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
+var CI_LINE_START = /^\s*::/;
+var CI_ANYWHERE = /##\[|##vso\[|##teamcity\[/i;
 function escapeBodyLine(line) {
-  if (!/[\x00-\x1f\x7f-\x9f]/.test(line)) return line;
-  return JSON.stringify(line).slice(1, -1).replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  if (!BODY_CTRL_CHARS.test(line) && !CI_LINE_START.test(line) && !CI_ANYWHERE.test(line)) return line;
+  return escapeC1(defuseCiCommandMarkers(JSON.stringify(line)));
+}
+function escapeErrorText(error) {
+  return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
 function printFailedStepBody(result) {
   const response = result?.response;
   if (!response || typeof response !== "object") return;
   const body = response.body;
   const bodyText = typeof response.bodyText === "string" ? response.bodyText : null;
-  if (bodyText === null && body && typeof body === "object" && typeof body.savedTo === "string") {
+  if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
     console.log(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${escapeBodyLine(body.savedTo)}`);
     return;
   }
@@ -8250,7 +8329,7 @@ async function serveCommand(args) {
       process.exitCode = 1;
       return;
     }
-    console.error(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0\u542F\u52A8\u5931\u8D25: ${error?.message || String(error)}`);
+    console.error(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0\u542F\u52A8\u5931\u8D25: ${escapeInlineText(error?.message || String(error))}`);
     process.exitCode = 1;
   });
   server.listen(args.port, "127.0.0.1", () => {
@@ -8302,10 +8381,10 @@ async function main() {
 }
 main().catch((error) => {
   if (error instanceof CliUsageError) {
-    console.error(`\u9519\u8BEF\uFF1A${error.message}`);
-    if (error.hint) console.error(`\u63D0\u793A\uFF1A${error.hint}`);
+    console.error(`\u9519\u8BEF\uFF1A${escapeInlineText(error.message)}`);
+    if (error.hint) console.error(`\u63D0\u793A\uFF1A${escapeInlineText(error.hint)}`);
   } else {
-    console.error(error?.stack || error);
+    console.error(escapeErrorText(error));
   }
   process.exitCode = 1;
 });

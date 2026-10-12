@@ -34,9 +34,50 @@ export function isPlainObject(value) {
     return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+// saveResponseAs 落盘结果的内部标记：io.saveResponse 返回值打标，
+// CLI 据此区分「真实保存信息」与业务响应恰好含 savedTo/size 字段的对象——
+// JSON 序列化不可表达 Symbol，服务端/适配器业务数据无法伪造
+export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+
+// 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
+// \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
+// getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被静默忽略剩余字符，
+// 空 token 序列甚至返回根对象本身（when 条件意外成立）
+const PATH_SEGMENT = /[^.\[\]]+/y;
+const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+export function tokenizePath(valuePath) {
+    const tokens = [];
+    const rest = String(valuePath);
+    // 前导点形式（.key）为既有公开口径（headers 子路径使用）：最多容忍一个
+    let index = rest.startsWith(".") ? 1 : 0;
+    // 下标段后只允许 . 分隔、连续下标或结尾——["a"]key 这种无分隔写法非法
+    let prevBracket = false;
+    while (index < rest.length) {
+        const isBracket = rest[index] === "[";
+        if (!isBracket && prevBracket) return null;
+        const pattern = isBracket ? PATH_BRACKET : PATH_SEGMENT;
+        pattern.lastIndex = index;
+        const match = pattern.exec(rest);
+        if (!match) return null;
+        tokens.push(match[0]);
+        index += match[0].length;
+        prevBracket = isBracket;
+        // 点分隔符不能连续出现或收尾（a..b / a. 非法；a.[0] 维持旧口径放行）
+        if (rest[index] === ".") {
+            index += 1;
+            if (index >= rest.length || rest[index] === ".") return null;
+            prevBracket = false;
+        }
+    }
+    // 非空路径分不出任何段（如 "."）：判非法而非返回根对象
+    return tokens.length ? tokens : null;
+}
+
 export function getByPath(source, valuePath) {
     if (!valuePath) return source;
-    const tokens = String(valuePath).match(/[^.\[\]]+|\[(?:-?\d+|".*?"|'.*?')\]/g) || [];
+    // 畸形路径（vars[]、vars[、a..b、未闭合下标）返回 undefined 而非取到错误值/根对象
+    const tokens = tokenizePath(valuePath);
+    if (!tokens) return undefined;
     let cursor = source;
     for (const token of tokens) {
         if (cursor === undefined || cursor === null) return undefined;
@@ -47,7 +88,9 @@ export function getByPath(source, valuePath) {
             cursor = cursor[cursor.length + Number(inner)];
             continue;
         }
-        const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "");
+        // 引号键去掉包围引号并反转义——只反转义声明支持的 \" \' \\，其余 \x
+        // 序列按字面保留（源对象键含 \b 等反斜杠字符时与旧口径一致，不会改键名）
+        const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
         cursor = cursor[key];
     }
     return cursor;
@@ -62,9 +105,23 @@ export function evalExpression(expression, runtime) {
     //   lastResponseBody  解析后的响应体（JSON 已转为对象；原始文本用断言 from: "bodyText" 获取）
     if (text === "lastResponse") return runtime.lastResponse;
     if (text === "lastResponseBody") return runtime.lastResponseBody;
-    if (text.startsWith("vars.")) return getByPath(runtime.vars, text.slice(5));
-    if (text.startsWith("lastResponse.")) return getByPath(runtime.lastResponse, text.slice(13));
-    if (text.startsWith("lastResponseBody.")) return getByPath(runtime.lastResponseBody, text.slice(17));
+    // 「根名.」前缀已消费分隔符，余段再以 . 开头属双点畸形（vars..a）——
+    // 定义期 tokenizePath 拒绝，运行期同口径判缺而非借前导点兼容取到值
+    if (text.startsWith("vars.")) {
+        const sub = text.slice(5);
+        return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : undefined;
+    }
+    if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+    if (text.startsWith("lastResponse.")) {
+        const sub = text.slice(13);
+        return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : undefined;
+    }
+    if (text.startsWith("lastResponse[")) return getByPath(runtime.lastResponse, text.slice(12));
+    if (text.startsWith("lastResponseBody.")) {
+        const sub = text.slice(17);
+        return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponseBody, sub) : undefined;
+    }
+    if (text.startsWith("lastResponseBody[")) return getByPath(runtime.lastResponseBody, text.slice(16));
     if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, text)) return runtime.vars[text];
     return getByPath(runtime.vars, text);
 }
