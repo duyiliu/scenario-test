@@ -1,24 +1,18 @@
 import {
     applyExtract,
+    applyGeneratedVar,
     assertNoReservedVars,
     assertNotReservedVar,
     buildAssertions,
     buildUrl,
-    buildChinaIdNumber,
-    buildUsccCode,
     clone,
-    generateSignature,
     hasHeader,
     headersToObject,
     joinUrl,
-    luhnCheckDigit,
-    md5,
     parseBody,
     evaluateAssertion,
-    pickWeightedIndex,
     resolve,
-    resolveString,
-    seedToIndex
+    resolveString
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
@@ -82,12 +76,8 @@ function createRequestSignal(parentSignal, timeoutMs) {
     };
 }
 
-// idcard 未显式声明 regionCode 时使用的真实行政区划测试池（容量扩展用，均为真实存在的区县级编码）
-const IDCARD_TEST_REGIONS = ["110101", "110105", "310101", "440103", "510107", "330102", "420102", "610103"];
-// phone 未显式声明 prefix 时使用的测试号段池（均为三大运营商+虚商真实在用号段）
-const PHONE_TEST_PREFIXES = ["138", "139", "150", "155", "158", "159", "176", "177", "185", "186", "187", "199"];
-// uscc 主体标识码（9 位）的派生字符集：与 core 的 USCC_ALPHABET 保持一致
-const USCC_ORG_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+// 造数派生池（IDCARD_TEST_REGIONS / PHONE_TEST_PREFIXES / USCC_ALPHABET）由 core.js 导出，
+// 与浏览器工作台共用同一名单
 
 function createRunIdentifiers() {
     const timestamp = String(Date.now());
@@ -100,64 +90,8 @@ function createRunIdentifiers() {
     };
 }
 
-// timestamp 造数 offset 的单位 → 毫秒；只提供固定跨度单位，不引入月/年等日历单位（月末歧义）
-const TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 });
-// format 的合法形态：token（YYYY/MM/DD/HH/mm/ss）与任意非字母字符自由组合；
-// 任何字母序列必须恰好构成合法 token——残缺/近似片段（"M"、"yyyy"、"dd"）整体拒绝而不是输出字面量
-const TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
-
-function parseTimestampOffset(offset) {
-    const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
-    if (!match) {
-        throw new Error(`generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ${offset}`);
-    }
-    return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
-}
-
-// 枚举造数（可带权重）定义校验：values 非空数组、weights 缺省等权或与 values 等长的非负数字数组、
-// 至少一个权重 > 0（全 0 会导致抽取退化到末位）；返回规范化后的 values/weights
-function normalizeEnumDefinition(definition) {
-    const values = definition.values;
-    if (!Array.isArray(values) || values.length === 0) {
-        throw new Error(`generatedVars enum 的 values 必须是非空数组: ${definition.name}`);
-    }
-    const weights = definition.weights == null
-        ? values.map(() => 1)
-        : (Array.isArray(definition.weights) ? definition.weights : null);
-    if (!weights) {
-        throw new Error(`generatedVars enum 的 weights 必须是数字数组: ${definition.name}`);
-    }
-    if (weights.length !== values.length) {
-        throw new Error(`generatedVars enum 的 weights 长度必须与 values 一致（${weights.length} vs ${values.length}）: ${definition.name}`);
-    }
-    const normalized = weights.map((weight, index) => {
-        const value = Number(weight);
-        if (!Number.isFinite(value) || value < 0) {
-            throw new Error(`generatedVars enum 的 weights 第 ${index + 1} 项必须是非负有限数字: ${weight}`);
-        }
-        return value;
-    });
-    if (!normalized.some((weight) => weight > 0)) {
-        throw new Error(`generatedVars enum 的 weights 至少需要一项大于 0: ${definition.name}`);
-    }
-    return { values, weights: normalized };
-}
-
-// 按本地时间展开 format token（mm 为分钟、MM 为月份，大小写敏感）
-function formatTimestamp(ms, format) {
-    const date = new Date(ms);
-    const pad = (value) => String(value).padStart(2, "0");
-    const tokens = {
-        YYYY: String(date.getFullYear()).padStart(4, "0"),
-        MM: pad(date.getMonth() + 1),
-        DD: pad(date.getDate()),
-        HH: pad(date.getHours()),
-        mm: pad(date.getMinutes()),
-        ss: pad(date.getSeconds())
-    };
-    return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
-}
-
+// generatedVars 各类型造数实现收敛在 core.js（applyGeneratedVar），
+// 与浏览器工作台共用同一实现——本文件只负责 vars 的组装顺序
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
     // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
@@ -198,120 +132,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         if (!contract.generatedVars.types.includes(definition.type)) {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
-        if (definition.type === "timestamp") {
-            // 时间戳造数：offset 相对当前时间偏移（如 "-7d"/"+8d"）；unit 决定数值粒度
-            // （ms 默认向后兼容 / s 秒级）；format（本地时间 token）输出字符串，与 unit 互斥。
-            const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
-            if (definition.format != null) {
-                if (definition.unit != null) {
-                    throw new Error(`generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ${definition.name}`);
-                }
-                if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
-                    throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
-                }
-                vars[definition.name] = formatTimestamp(base, definition.format);
-            } else if (definition.unit != null && definition.unit !== "ms") {
-                if (definition.unit !== "s") {
-                    throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
-                }
-                vars[definition.name] = Math.floor(base / 1000);
-            } else {
-                vars[definition.name] = base;
-            }
-        } else if (definition.type === "uuid") {
-            // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
-            if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-            vars[definition.name] = globalThis.crypto.randomUUID();
-        } else if (definition.type === "uuidHex") {
-            if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-            vars[definition.name] = globalThis.crypto.randomUUID().replace(/-/g, "");
-        } else if (definition.type === "idcard") {
-            // 中国大陆 18 位身份证号（测试造数）：出生日期必填 YYYY-MM-DD；
-            // gender MALE/FEMALE（默认 MALE）约束顺序码第 17 位奇偶；
-            // regionCode 6 位行政区划（不声明时从真实测试区划池按轮次派生）。
-            // 顺序码 = hash(runId + 变量名) % 500 * 2 + 性别位：随轮次变化、轮内不同名变量互异，
-            // 校验位按 GB 11643 计算；同(性别,出生日期)下唯一容量约 4000，极小概率撞库时重跑即换号。
-            const gender = definition.gender == null ? "MALE" : definition.gender;
-            if (gender !== "MALE" && gender !== "FEMALE") {
-                throw new Error(`generatedVars idcard 的 gender 只支持 MALE/FEMALE: ${gender}`);
-            }
-            // 未显式声明区划时从真实测试区划池按轮次派生，把唯一容量从 500/性别/生日 扩至 8 倍
-            let regionCode = definition.regionCode == null
-                ? IDCARD_TEST_REGIONS[seedToIndex(identifiers.runId, IDCARD_TEST_REGIONS.length)]
-                : String(definition.regionCode);
-            if (!/^\d{6}$/.test(regionCode)) {
-                throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
-            }
-            const seqBase = seedToIndex(`${identifiers.runId}|${definition.name}`, 500);
-            vars[definition.name] = buildChinaIdNumber({
-                regionCode,
-                birthDate: definition.birthDate,
-                sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-            });
-        } else if (definition.type === "luhn") {
-            // 银行卡号（Luhn 校验，测试造数）：prefix 数字卡头（默认 "62" 银联）、length 12-19（默认 16）；
-            // 卡头与校验位之间的数字由 runId+变量名逐位派生，末位按 Luhn 算法补齐。
-            const length = definition.length == null ? 16 : Number(definition.length);
-            if (!Number.isInteger(length) || length < 12 || length > 19) {
-                throw new Error(`generatedVars luhn 的 length 必须是 12-19 整数: ${definition.length}`);
-            }
-            const prefix = definition.prefix == null ? "62" : String(definition.prefix);
-            if (!/^\d{1,16}$/.test(prefix) || prefix.length >= length) {
-                throw new Error(`generatedVars luhn 的 prefix 必须是短于卡号长度的数字卡头: ${definition.prefix}`);
-            }
-            let body = "";
-            for (let i = 0; i < length - 1 - prefix.length; i += 1) {
-                body += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
-            }
-            const first = `${prefix}${body}`;
-            vars[definition.name] = `${first}${luhnCheckDigit(first)}`;
-        } else if (definition.type === "phone") {
-            // 大陆手机号（测试造数）：prefix 三位号段（1[3-9]x），缺省从测试号段池按轮次派生；
-            // 后 8 位由 runId+变量名逐位派生，撞业务唯一约束时重跑即换号。
-            const prefix = definition.prefix == null
-                ? PHONE_TEST_PREFIXES[seedToIndex(identifiers.runId, PHONE_TEST_PREFIXES.length)]
-                : String(definition.prefix);
-            if (!/^1[3-9]\d$/.test(prefix)) {
-                throw new Error(`generatedVars phone 的 prefix 必须是 1[3-9] 开头的 3 位号段: ${definition.prefix}`);
-            }
-            let tail = "";
-            for (let i = 0; i < 8; i += 1) {
-                tail += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
-            }
-            vars[definition.name] = `${prefix}${tail}`;
-        } else if (definition.type === "uscc") {
-            // 统一社会信用代码（GB 32100-2015，测试造数）：登记管理部门+机构类别固定 91（企业法人）；
-            // regionCode 6 位行政区划（默认 110100），主体标识码 9 位由 runId+变量名逐位派生（31 字符集），
-            // 校验位按 GB 32100 计算。
-            const regionCode = definition.regionCode == null ? "110100" : String(definition.regionCode);
-            if (!/^\d{6}$/.test(regionCode)) {
-                throw new Error(`generatedVars uscc 的 regionCode 必须是 6 位数字: ${definition.regionCode}`);
-            }
-            let orgCode = "";
-            for (let i = 0; i < 9; i += 1) {
-                orgCode += USCC_ORG_ALPHABET[seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, USCC_ORG_ALPHABET.length)];
-            }
-            vars[definition.name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
-        } else if (definition.type === "md5") {
-            const source = (definition.parts || []).map((name) => vars[name] == null ? "" : String(vars[name])).join("");
-            vars[definition.name] = md5(source);
-        } else if (definition.type === "signature") {
-            const params = Object.fromEntries(Object.entries(definition.params || {})
-                .map(([key, variableName]) => [key, vars[variableName]]));
-            // ✅ 从 vars 中获取密钥但不在错误消息中暴露
-            const secret = vars[definition.secretVar || "apiSecret"];
-            if (!secret) {
-                throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
-            }
-            vars[definition.name] = generateSignature(params, secret);
-        } else if (definition.type === "enum") {
-            // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
-            // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
-            const { values, weights } = normalizeEnumDefinition(definition);
-            vars[definition.name] = values[pickWeightedIndex(`${identifiers.runId}|${definition.name}`, weights)];
-        } else {
-            throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
-        }
+        applyGeneratedVar(definition, vars, identifiers);
     }
     // vars 由引擎统一构建，执行期 extract 是唯一写入方；不做冻结，场景/插件不应直接修改
     return vars;
@@ -679,9 +500,14 @@ export function createEngine(engineOptions = {}) {
             const context = error?.scenarioContext || null;
             const cancelled = Boolean(options.signal?.aborted);
             const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
+            // fetch 的 TypeError("fetch failed") 把真实原因收在 error.cause
+            // （ENOTFOUND/ECONNREFUSED/证书错误等）——透出 cause 让 CI 日志直接可定位
+            const causeText = error?.cause
+                ? `（${error.cause.code || error.cause.message || String(error.cause)}）`
+                : "";
             const errorMessage = cancelled
                 ? "用户已取消执行"
-                : (timedOut ? (error?.message?.includes("超时") ? error.message : (context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "请求超时")) : (error?.message || "请求执行失败"));
+                : (timedOut ? (error?.message?.includes("超时") ? error.message : (context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "请求超时")) : `${error?.message || "请求执行失败"}${causeText}`);
             const method = (context && context.method)
                 || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
             const path = (context && context.path) || resolveString(step.path || "", runtime);
@@ -716,8 +542,22 @@ export function createEngine(engineOptions = {}) {
             const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
             result.stepNo = index + 1;
             results.push(result);
-            // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）
-            await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+            // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）。
+            // 回调抛错不可向上抛——否则 runScenario 整体 reject、调用方拿不到任何 report；
+            // 与 onAttempt 同口径降级为该步骤 ERROR（fail-loud，不静默吞掉回调 bug）
+            try {
+                await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+            } catch (hookError) {
+                const message = `onStep 回调抛错: ${hookError?.message || hookError}`;
+                result.passed = false;
+                // 回调异常使该步骤实际产生了失败结果：skipped 必须清掉——
+                // 否则 skipped+passed:false 的步骤既不计 failed 也不计 passedSteps，
+                // 场景会报 SKIPPED/PASSED 而 results 里躺着 ERROR 行（残留假绿）
+                result.skipped = false;
+                result.status = "ERROR";
+                result.error = message;
+                result.assertions.push({ name: "onStep 回调无异常", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "无异常" });
+            }
             if (!result.passed && scenario.failurePolicy !== "continue") break;
             if (runOptions.signal?.aborted) break;
         }

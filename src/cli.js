@@ -11,7 +11,7 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
-import { validatePath } from "./utils/path-validator.js";
+import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { mergeGlobals, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
@@ -739,7 +739,9 @@ function printFailedStepBody(result) {
 function safeFile(root, relativePath) {
     const candidate = path.resolve(root, relativePath);
     const relative = path.relative(root, candidate);
-    return relative && (relative.startsWith("..") || path.isAbsolute(relative)) ? null : candidate;
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
+    // serve 真实读文件：junction/符号链接在词法层不可见，按真实位置再判一次
+    return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 
 function contentType(filePath) {

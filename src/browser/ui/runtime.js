@@ -17,8 +17,6 @@ export function createWorkbenchRuntime(options) {
     var isPlainObject = core.isPlainObject;
     var assertNotReservedVar = core.assertNotReservedVar;
     var assertNoReservedVars = core.assertNoReservedVars;
-    var md5 = core.md5;
-    var pickWeightedIndex = core.pickWeightedIndex;
     var mergeGlobals = core.mergeGlobals;
     var GLOBAL_TYPES = ['header', 'cookie', 'query'];
 
@@ -397,31 +395,6 @@ export function createWorkbenchRuntime(options) {
         };
     }
 
-    // 与 Node engine 的 timestamp 造数语义保持一致：offset 单位表 / format token 校验与展开
-    var TIMESTAMP_OFFSET_UNITS = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
-    var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
-
-    function parseTimestampOffset(offset) {
-        var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
-        if (!match) {
-            throw new Error('generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ' + offset);
-        }
-        return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
-    }
-
-    function formatTimestamp(ms, format) {
-        var date = new Date(ms);
-        var pad = function (n) { return n < 10 ? '0' + n : String(n); };
-        var tokens = {
-            YYYY: String(date.getFullYear()).padStart(4, '0'),
-            MM: pad(date.getMonth() + 1),
-            DD: pad(date.getDate()),
-            HH: pad(date.getHours()),
-            mm: pad(date.getMinutes()),
-            ss: pad(date.getSeconds())
-        };
-        return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, function (token) { return tokens[token]; });
-    }
 
     function buildScenarioRuntimeVars() {
         var cfg = appConfig;
@@ -442,92 +415,9 @@ export function createWorkbenchRuntime(options) {
         (scenario.generatedVars || []).forEach(function (def) {
             if (!def || !def.name) return;
             assertNotReservedVar(def.name, 'generatedVars');
-            if (def.type === 'timestamp') {
-                // 与 Node engine 一致：offset 偏移 / unit 数值粒度 / format 字符串（与 unit 互斥）
-                var base = Date.now() + (def.offset == null ? 0 : parseTimestampOffset(def.offset));
-                if (def.format != null) {
-                    if (def.unit != null) {
-                        throw new Error('generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ' + def.name);
-                    }
-                    if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(def.format) || !TIMESTAMP_FORMAT_PATTERN.test(def.format)) {
-                        throw new Error('generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ' + def.format);
-                    }
-                    vars[def.name] = formatTimestamp(base, def.format);
-                } else if (def.unit != null && def.unit !== 'ms') {
-                    if (def.unit !== 's') {
-                        throw new Error('generatedVars timestamp 的 unit 只支持 ms（默认）/s: ' + def.unit);
-                    }
-                    vars[def.name] = Math.floor(base / 1000);
-                } else {
-                    vars[def.name] = base;
-                }
-                return;
-            }
-            if (def.type === 'uuid') {
-                if (!(window.crypto && window.crypto.randomUUID)) {
-                    throw new Error('当前环境不支持 crypto.randomUUID');
-                }
-                vars[def.name] = window.crypto.randomUUID();
-                return;
-            }
-            if (def.type === 'uuidHex') {
-                vars[def.name] = createUuidHex();
-                return;
-            }
-            if (def.type === 'md5') {
-                var source = (def.parts || []).map(function (name) {
-                    return vars[name] == null ? '' : String(vars[name]);
-                }).join('');
-                vars[def.name] = md5(source);
-                return;
-            }
-            if (def.type === 'signature') {
-                var params = {};
-                var paramKeys = Object.keys(def.params || {});
-                paramKeys.forEach(function (key) {
-                    var varName = def.params[key];
-                    params[key] = vars[varName];
-                });
-                var secretVar = def.secretVar || 'apiSecret';
-                var secretVal = vars[secretVar];
-                if (!secretVal) {
-                    // 与 Node engine 的 buildGeneratedVars 语义一致：缺密钥直接报错，
-                    // 而不是静默用 undefined 生成错误签名继续执行
-                    throw new Error('签名生成失败: 缺少密钥变量 vars.' + secretVar);
-                }
-                vars[def.name] = core.generateSignature(params, secretVal);
-                return;
-            }
-            if (def.type === 'enum') {
-                // 与 Node engine 一致：values 非空、weights 缺省等权或等长非负、至少一项 > 0；
-                // 按 runId+变量名确定性抽取（轮内稳定、跨轮变化）
-                var values = def.values;
-                if (!Array.isArray(values) || values.length === 0) {
-                    throw new Error('generatedVars enum 的 values 必须是非空数组: ' + def.name);
-                }
-                var weights = def.weights == null
-                    ? values.map(function () { return 1; })
-                    : (Array.isArray(def.weights) ? def.weights : null);
-                if (!weights) {
-                    throw new Error('generatedVars enum 的 weights 必须是数字数组: ' + def.name);
-                }
-                if (weights.length !== values.length) {
-                    throw new Error('generatedVars enum 的 weights 长度必须与 values 一致（' + weights.length + ' vs ' + values.length + '）: ' + def.name);
-                }
-                var normalizedWeights = weights.map(function (weight, index) {
-                    var value = Number(weight);
-                    if (!isFinite(value) || value < 0) {
-                        throw new Error('generatedVars enum 的 weights 第 ' + (index + 1) + ' 项必须是非负有限数字: ' + weight);
-                    }
-                    return value;
-                });
-                if (!normalizedWeights.some(function (weight) { return weight > 0; })) {
-                    throw new Error('generatedVars enum 的 weights 至少需要一项大于 0: ' + def.name);
-                }
-                vars[def.name] = values[pickWeightedIndex(identifiers.runId + '|' + def.name, normalizedWeights)];
-                return;
-            }
-            throw new Error('不支持的 generatedVars 类型: ' + def.type);
+            // 造数类型分支收敛于 core.applyGeneratedVar（与 Node engine 同一实现）；
+            // createUuidHex 保留浏览器端降级链（crypto.randomUUID 缺失时退到 getRandomValues）
+            core.applyGeneratedVar(def, vars, identifiers, { uuidHex: createUuidHex });
         });
         return vars;
     }

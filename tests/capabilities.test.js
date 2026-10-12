@@ -16,8 +16,13 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.deepEqual(Object.keys(caps.assertions.operators), Object.keys(contract.assertions.operators));
     assert.deepEqual(caps.assertions.metaKeys, [...contract.assertions.metaKeys]);
     assert.deepEqual(caps.assertions.targets, ["status", "duration"]);
+    assert.deepEqual(caps.assertions.from, [...contract.assertions.from], "断言 from 白名单必须对外投射（contract v8 新增消费面）");
     assert.deepEqual(caps.assertions.numericOperators, [...contract.assertions.numericOperators]);
     assert.deepEqual(caps.when.sources, ["vars"]);
+    assert.deepEqual(caps.extract.from, [...contract.extract.from]);
+    assert.deepEqual(caps.extract.targets, [...contract.extract.targets]);
+    assert.deepEqual(caps.extract.metaKeys, [...contract.extract.metaKeys]);
+    assert.equal(caps.extract.default, contract.extract.default);
     assert.deepEqual(caps.reservedVars, [...contract.reservedVars]);
     assert.deepEqual(caps.generatedVars.types, [...contract.generatedVars.types]);
     assert.deepEqual(caps.globals.types, [...contract.globals.types]);
@@ -41,6 +46,8 @@ test("capabilities 文本：版本、操作符、when、extract、保留变量�
         assert.match(text, new RegExp(`\\b${op}\\b`), `文本缺少操作符 ${op}`);
     }
     assert.match(text, /断言目标 target: status \/ duration/);
+    assert.match(text, /断言来源 from: body \/ vars \/ headers \/ bodyText/);
+    assert.match(text, /提取目标 target: status/);
     assert.match(text, /when 条件来源: vars/);
     assert.match(text, /extract/);
     assert.match(text, /runId/);

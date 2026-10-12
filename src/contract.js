@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 7;
+export const CONTRACT_VERSION = 8;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -24,6 +24,8 @@ export const contract = Object.freeze({
         metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
         // 断言目标 target 的取值：status=HTTP 状态码，duration=本次请求耗时（毫秒，引擎挂载在 response.durationMs）
         targets: Object.freeze(["status", "duration"]),
+        // 断言数据来源 from 的取值（缺省按 body 取值）
+        from: Object.freeze(["body", "vars", "headers", "bodyText"]),
         // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
         // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
         operators: Object.freeze({
@@ -95,8 +97,13 @@ export const contract = Object.freeze({
     }),
 
     extract: Object.freeze({
+        // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
+        // 防止 heder/fromm 等拼错静默落到默认 body 来源）
+        metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default"]),
         // extract 支持的来源（默认 body）
         from: Object.freeze(["body", "headers", "bodyText", "response"]),
+        // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
+        targets: Object.freeze(["status"]),
         // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
         required: "boolean",
         // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
@@ -104,8 +111,10 @@ export const contract = Object.freeze({
         note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一"
     }),
 
-    // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
-    reservedVars: Object.freeze(["runId", "runNo"]),
+    // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
+    // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
+    // 改写（写入）或取到继承成员（读取），使断言结果被污染，一并禁止
+    reservedVars: Object.freeze(["runId", "runNo", "__proto__", "constructor", "prototype"]),
 
     generatedVars: Object.freeze({
         types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]),

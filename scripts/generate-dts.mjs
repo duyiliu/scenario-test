@@ -43,6 +43,7 @@ export type ReservedVar = ${quote(contract.reservedVars)};
 export type GeneratedVarType = ${quote(contract.generatedVars.types)};
 export type GlobalParamType = ${quote(contract.globals.types)};
 export type WhenSource = ${quote(contract.when.sources)};
+export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
 
@@ -98,7 +99,7 @@ export interface ScenarioConfig {
 export interface Assertion {
     name?: string;
     path?: string;
-    from?: "vars" | "headers" | "bodyText";
+    from?: AssertionSource;
     target?: "status" | "duration";
     header?: string;
     implicit?: boolean;
@@ -109,6 +110,10 @@ export interface ExtractDefinition {
     name: string;
     path?: string;
     from?: ExtractSource;
+    /** 提取目标：status=HTTP 状态码（缺省按 body 取值） */
+    target?: "status";
+    /** 响应头名简写（与断言 header 同口径）；配合 path 可在头值上继续取子路径（如 length） */
+    header?: string;
     /** required: true 且路径不存在时当前步骤失败；默认缺失产生 warning */
     required?: boolean;
     /** 路径不存在时的兜底值（支持模板；与 required 互斥，声明后缺失不产生 warning） */
@@ -354,11 +359,12 @@ export declare const contract: {
     assertions: {
         metaKeys: readonly AssertionMetaKey[];
         targets: readonly string[];
+        from: readonly AssertionSource[];
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
     };
     when: { sources: readonly WhenSource[]; note: string };
-    extract: { from: readonly ExtractSource[]; required: string; note: string };
+    extract: { metaKeys: readonly string[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
     reservedVars: readonly ReservedVar[];
     generatedVars: { types: readonly GeneratedVarType[] };
     globals: { types: readonly GlobalParamType[]; note: string };

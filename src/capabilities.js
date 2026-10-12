@@ -17,6 +17,7 @@ export function buildCapabilities(inputContract = contract) {
             ),
             metaKeys: [...assertions.metaKeys],
             targets: [...(assertions.targets || [])],
+            from: [...(assertions.from || [])],
             numericOperators: [...assertions.numericOperators]
         },
         when: {
@@ -24,8 +25,11 @@ export function buildCapabilities(inputContract = contract) {
             note: when.note
         },
         extract: {
+            metaKeys: [...(extract.metaKeys || [])],
             from: [...extract.from],
+            targets: [...(extract.targets || [])],
             required: extract.required,
+            default: extract.default,
             note: extract.note
         },
         reservedVars: [...reservedVars],
@@ -76,11 +80,17 @@ export function renderCapabilitiesText(capabilities) {
     if (capabilities.assertions.targets?.length) {
         lines.push(`  断言目标 target: ${capabilities.assertions.targets.join(" / ")}（duration 为单次请求耗时毫秒，见 response.durationMs）`);
     }
+    if (capabilities.assertions.from?.length) {
+        lines.push(`  断言来源 from: ${capabilities.assertions.from.join(" / ")}（默认 body）`);
+    }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
     lines.push(`  ${capabilities.when.note}`);
     lines.push("");
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);
+    if (capabilities.extract.targets?.length) {
+        lines.push(`  提取目标 target: ${capabilities.extract.targets.join(" / ")}；允许字段: ${capabilities.extract.metaKeys.join(" / ")}`);
+    }
     lines.push(`  ${capabilities.extract.note}`);
     lines.push("");
     lines.push(`保留变量: ${capabilities.reservedVars.join(" / ")}`);

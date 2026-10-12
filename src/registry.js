@@ -174,19 +174,86 @@ export function defineScenario(input) {
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
         }
+        // extract 项定义期校验：此前 extract 完全无校验——非对象项/缺 name 运行期
+        // 静默跳过（连 warning 都没有），name 撞保留变量、required+default 互斥、
+        // from/target 拼错、path 畸形都拖到运行期才错或静默吞掉
+        if (step.extract !== undefined) {
+            invariant(Array.isArray(step.extract), `步骤 ${step.name} 的 extract 必须是数组`);
+            step.extract.forEach((item, extractIndex) => {
+                const label = `步骤 ${step.name} 的 extract 第 ${extractIndex + 1} 项`;
+                invariant(isPlainObject(item), `${label} 必须是对象（{ name, path?, from?, required?, default? }）`);
+                // 未知键即拒：heder/fromm 这类拼错此前静默落到 body 来源，同断言 metaKeys 口径
+                const unknownKeys = Object.keys(item).filter((key) => !contract.extract.metaKeys.includes(key));
+                invariant(
+                    unknownKeys.length === 0,
+                    `${label} 包含未知键 ${unknownKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${contract.extract.metaKeys.join("/")}`
+                );
+                invariant(nonEmptyString(item.name), `${label} 缺少 name`);
+                invariant(
+                    !item.name.includes("{{"),
+                    `${label} 的 name 不支持 {{ }} 模板——变量名按字面使用不解析，会写成死变量（当前 ${JSON.stringify(item.name)}）`
+                );
+                assertNotReservedVar(item.name, `${label} name`);
+                invariant(
+                    item.required === undefined || typeof item.required === "boolean",
+                    `${label} 的 required 必须是布尔值（当前 ${JSON.stringify(item.required)}——非 true 值会静默降级为「非必需」）`
+                );
+                invariant(
+                    !(item.required === true && item.default !== undefined),
+                    `${label} 的 required: true 与 default 互斥，只能声明其一`
+                );
+                if (item.header !== undefined) {
+                    invariant(
+                        typeof item.header === "string" && item.header.trim() !== "" && !item.header.includes("{{"),
+                        `${label} 的 header 必须是非空字符串且不支持 {{ }} 模板（头名按字面匹配不解析；当前 ${JSON.stringify(item.header)}）`
+                    );
+                }
+                if (item.target !== undefined) {
+                    invariant(
+                        contract.extract.targets.includes(item.target),
+                        `${label} 的 target 只支持 ${contract.extract.targets.join("/")}（当前 ${JSON.stringify(item.target)}）`
+                    );
+                }
+                if (item.from !== undefined) {
+                    invariant(
+                        contract.extract.from.includes(item.from),
+                        `${label} 的 from 只支持 ${contract.extract.from.join("/")}（当前 ${JSON.stringify(item.from)}，缺省按 body 取值）`
+                    );
+                }
+                if (item.path !== undefined) {
+                    // extract 的 path 按字面取键不做模板解析——含 {{ 是死写法，定义期即拒；
+                    // 空串按运行期 falsy 语义取整个来源（下游在用写法），放行
+                    invariant(
+                        typeof item.path === "string" && !item.path.includes("{{")
+                            && (item.path === "" || tokenizePath(item.path) !== null),
+                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
+                    );
+                }
+            });
+        }
         // when 对象形式只能从 vars 取值，不允许 body/status/header；
-        // 非对象形式（模板字符串/布尔）保持兼容不做校验。
-        if (step.when !== undefined && isPlainObject(step.when)) {
-            if (!contract.when.sources.includes(step.when.from)) {
-                throw new TypeError(
-                    `步骤 ${step.name} 的 when 对象形式只允许 from: "vars"（当前为 ${JSON.stringify(step.when.from)}），` +
-                    "不允许从响应 body/status/header 取条件"
+        // 非对象形式只支持模板字符串（{{vars.x}}）与布尔——裸字符串 "false"/数字/数组
+        // 运行期按 truthiness 判定恒真（when:"false" 照样执行），是典型误写，定义期即拒。
+        if (step.when !== undefined) {
+            if (isPlainObject(step.when)) {
+                if (!contract.when.sources.includes(step.when.from)) {
+                    throw new TypeError(
+                        `步骤 ${step.name} 的 when 对象形式只允许 from: "vars"（当前为 ${JSON.stringify(step.when.from)}），` +
+                        "不允许从响应 body/status/header 取条件"
+                    );
+                }
+                if (step.when.target !== undefined || step.when.header !== undefined) {
+                    throw new TypeError(`步骤 ${step.name} 的 when 对象形式不允许使用 target/header 条件`);
+                }
+                validateAssertion(step.when, stepContext);
+            } else {
+                invariant(
+                    typeof step.when === "boolean"
+                        || (typeof step.when === "string" && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(step.when)),
+                    `步骤 ${step.name} 的 when 只支持对象断言、整串 {{ }} 模板（如 "{{vars.flag}}"，resolve 保真值）或布尔值` +
+                    `（当前 ${JSON.stringify(step.when)}——裸字符串按真值判定、部分模板如 "pre {{vars.x}}" 解析成非空串恒真，均非本意）`
                 );
             }
-            if (step.when.target !== undefined || step.when.header !== undefined) {
-                throw new TypeError(`步骤 ${step.name} 的 when 对象形式不允许使用 target/header 条件`);
-            }
-            validateAssertion(step.when, stepContext);
         }
     });
     const failurePolicy = input.failurePolicy || "stop";

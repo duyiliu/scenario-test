@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### DSL
+
+- `assertions`/`when`/`extract` 的 `from` 与 `target` 定义期白名单校验（contract v7 → v8）：未识别值此前在运行期静默落到 body 分支——`target: "statu"` 这类拼错会在错误来源上求值，响应体恰好有同名字段时产生**假绿**。断言 `target` 只支持 `status`/`duration`、断言 `from` 只支持 `body`/`vars`/`headers`/`bodyText`、extract `target` 只支持 `status`、extract `from` 只支持 `body`/`headers`/`bodyText`/`response`。
+- `extract` 定义期校验补齐（此前完全无校验）：必须是数组、每项是对象且 `name` 非空、`name` 不得撞保留变量、`required: true` 与 `default` 互斥、`from`/`target` 白名单、`path` 过严格分词。此前非对象项/缺 `name` 在运行期静默跳过（连 warning 都没有），拼错的 `from`/`target` 拖到运行期才错。
+- 断言与 extract 的裸 `path` 定义期过 `tokenizePath` 严格分词：`a..b`、`a[]`、`["a"]b` 等畸形写法此前静默判缺，`exists: false` 断言因此**假绿**。`path` 中的 `{{ }}` 模板顶层一律定义期拒绝——path 按字面取键从不做模板解析（`exists:false` 会因此恒真），仅 `each` 子断言的 path 随期望值整体先解析再校验属合法用法。`path: ""` 按运行期 falsy 语义取整个来源，放行。`from: "headers"` 的首段头名宽松特性不受影响。
+- `extract` 项键名白名单（`contract.extract.metaKeys`）：`heder`/`fromm` 等拼错键此前静默落到默认 body 来源，现定义期报「包含未知键」；`name`/`header` 中的 `{{ }}` 模板同为死写法（变量名/头名按字面使用不解析）一并拒绝，`required` 必须为布尔值（`required: "yes"` 此前静默降级为「非必需」，依赖 required 失败的场景照过）。
+- 断言 `header` 简写定义期校验：必须是非空白字符串且顶层不支持 `{{ }}` 模板——头名按字面匹配不做解析，`{header:"{{vars.h}}", exists:false}` 会与 path 同理恒真假绿。
+- `each` 子断言禁用响应级通道：`header`、`target`（status/duration）、`from:"headers"`/`from:"bodyText"` 在 each 内断言的是数组元素，`elementResponse` 的这些通道恒为 `undefined`/`""` 死值——`exists:false` 恒真假绿、`exists:true` 恒假。响应级断言请提升到顶层；each 内仅 `path`（元素自身）与 `from:"vars"` 合法，模板随期望值整体解析。
+- `when` 非对象形式收紧：只放行对象断言、整串 `{{ }}` 模板（`{{vars.flag}}`，resolve 保真值，外层空白容忍与运行期同口径）与布尔值；`"false"`/`"0"`/数字/数组等误写定义期即拒（按真值判定恒真或恒假，通常不是本意——典型 AI 生成坑），`"pre {{vars.x}}"`/`"{{a}}{{b}}"` 等拼接模板同样拒绝（解析成非空串恒真）。
+- `__proto__`/`constructor`/`prototype` 加入保留变量名单：extract 同名写入会触发 `vars.__proto__` setter 把服务端可控值挂进原型链污染后续断言；读侧 `{from:"vars", path:"__proto__", exists:true}` 此前恒真。现 `getByPath` 只导航自有键（继承成员不可见），extract/generatedVars/envVars/vars 声明同名一律报错。
+
+### 安全
+
+- `fileUpload`/`saveResponseAs`/`serve` 增加 realpath 边界校验：junction/符号链接指向工作区外时，词法 `path.relative` 检查放行但真实读写落到界外——fileUpload 可外泄界外文件、saveResponseAs 可向界外写文件。现对「最近存在的祖先」realpath 后拼回剩余段再判界内，根目录及其祖先链同样过 realpath（root 配在 junction 之下不误拒），`serve` 的静态文件服务同口径。
+
+### 引擎
+
+- `onStep` 回调抛错降级为该步骤 ERROR（附断言形态失败条目），与 `onAttempt` 同口径——此前回调 bug 会让 `runScenario` 整体 reject、调用方拿不到任何 report。对 SKIPPED 步骤抛错时同步清除 skipped 标记——否则该步既不计 failed 也不计 passedSteps，场景会报 SKIPPED/PASSED 而结果里躺着 ERROR 行（残留假绿）。
+- fetch 拒绝时透出 `error.cause`（`ENOTFOUND`/`ECONNREFUSED`/证书错误等）——`TypeError: fetch failed` 不再掩盖真实网络原因。
+
+### 浏览器工作台
+
+- `generatedVars` 补齐 `idcard`/`luhn`/`phone`/`uscc` 四类型（v0.5.23 起 CLI 已支持、工作台一直缺失）；并将单定义赋值链收敛进 `core.applyGeneratedVar`，Node engine 与浏览器共用同一实现，双端不再可能各自漂移。
+
+### 输出
+
+- `escapeInlineText`/`formatFailureValue` 等输出转义补 U+2028/U+2029（Unicode 行分隔符）：`JSON.stringify` 不转义它们，支持这些字符的终端会渲染为新行，可伪造报告行/CI 命令行。现统一折为 `\uXXXX` 字面量。
+
+### 能力投射
+
+- `capabilities`/`dist/scenario-test-capabilities.json` 补齐 `assertions.from`、`extract.targets`、`extract.metaKeys`、`extract.default` 投射——contract v8 的新消费面此前对外不可见，AI/工具侧拿不到断言来源白名单与提取目标/键名单。
+
+### 历史版本影响
+
+以上问题除 U+2028/U+2029 转义（防线本身为 0.7.0 新增）外均为**历史版本存量问题**（含下游在用的 v0.5.23）：原型污染写入面、junction 越界、假绿校验盲区、浏览器造数缺型、`onStep` 崩轮在旧版全部存在——旧版（≤0.6.x）还没有任何输出注入防护，服务端返回 `::error::`/ANSI 序列可原样进 CI 日志。升级是唯一修复路径；已验证定义期校验不产生新的存量拒绝（下游 87 场景 0 违规）。
+
 ## [0.7.0] - 2026-10-12
 
 ### 构建

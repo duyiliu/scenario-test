@@ -4,6 +4,7 @@
 // 双端对拍完成使命。本文件保留历史构造的断言用例集（含假绿回归用例），
 // 作为 src/core.js 的稳定回归快照，并补充对迁移后 UI 辅助模块的测试。
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import * as nodeCore from "../src/core.js";
 import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
@@ -453,6 +454,39 @@ test("extract from:headers 配 path：头名大小写不敏感，通用 response
     assert.equal(target.vars.responseNavStillExact, undefined);
     assert.equal(result.failures.length, 0);
     assert.equal(result.warnings.length, 2); // stillMissing + responseNavStillExact
+});
+
+test("generatedVars 双端同源：浏览器 runtime 复用 core.applyGeneratedVar，不再自维护类型分支", () => {
+    // 历史漂移回归防护：浏览器端曾缺 idcard/luhn/phone/uscc 四类型（工作台跑不了 CLI 能跑）。
+    // 修复方式是把单定义赋值链收敛进 core.applyGeneratedVar——此处钉住结构，防重新分叉
+    const source = fs.readFileSync(new URL("../src/browser/ui/runtime.js", import.meta.url), "utf8");
+    assert.match(source, /core\.applyGeneratedVar\(/, "浏览器端必须调用 core.applyGeneratedVar");
+    assert.equal(/def\.type === 'idcard'/.test(source), false, "runtime.js 不得再出现自维护的 idcard 分支");
+    assert.equal(/def\.type === 'uscc'/.test(source), false, "runtime.js 不得再出现自维护的 uscc 分支");
+    // 契约侧：所有声明类型均被 applyGeneratedVar 覆盖（走完一整链不抛「不支持」）
+    const { contract } = nodeCore;
+    for (const type of contract.generatedVars.types) {
+        const vars = {};
+        const identifiers = { runId: "parity-seed", runNo: "000001" };
+        // 各类型最小合法定义（signature 依赖 vars 成员，给一个最小可用形态）
+        const defs = {
+            timestamp: { name: "x", type, offset: "0d" },
+            uuid: { name: "x", type },
+            uuidHex: { name: "x", type },
+            idcard: { name: "x", type, birthDate: "1990-01-01", gender: "FEMALE", regionCode: "110101" },
+            luhn: { name: "x", type },
+            phone: { name: "x", type },
+            uscc: { name: "x", type },
+            md5: { name: "x", type, parts: [] },
+            signature: { name: "x", type, params: {}, secretVar: "s" },
+            enum: { name: "x", type, values: ["a", "b"] }
+        };
+        const definition = defs[type];
+        if (!definition) throw new Error(`契约类型 ${type} 缺少 parity 探针定义`);
+        if (type === "signature") vars.s = "secret";
+        nodeCore.applyGeneratedVar(definition, vars, identifiers);
+        assert.ok(vars.x !== undefined, `类型 ${type} 应产出 vars.x`);
+    }
 });
 
 test("ui-utils：copyText 在无 DOM 的 Node 环境中返回 false", async () => {

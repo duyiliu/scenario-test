@@ -91,7 +91,11 @@ export function getByPath(source, valuePath) {
         // 引号键去掉包围引号并反转义——只反转义声明支持的 \" \' \\，其余 \x
         // 序列按字面保留（源对象键含 \b 等反斜杠字符时与旧口径一致，不会改键名）
         const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
-        cursor = cursor[key];
+        // 只读自有键：继承成员（__proto__/constructor/prototype 及一切原型方法）对路径
+        // 导航不可见——否则 vars["__proto__"] 取到 Object.prototype、exists 断言被继承
+        // 成员骗成真；JSON 数据键（含字面 "__proto__" 自有键）不受影响。
+        // hasOwnProperty.call 对原始类型自动装箱（"abc".length / ("abc")[0] 仍为自有键可读）
+        cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : undefined;
     }
     return cursor;
 }
@@ -243,7 +247,7 @@ export function formatAssertionContext(context) {
     return parts.join(" ");
 }
 
-export function validateAssertion(definition, context) {
+export function validateAssertion(definition, context, options = {}) {
     const where = formatAssertionContext(context);
     const prefix = where ? `${where}断言无效` : "断言无效";
     if (!isPlainObject(definition)) throw new TypeError(`${prefix}: 断言必须是对象`);
@@ -258,6 +262,52 @@ export function validateAssertion(definition, context) {
     }
     if (!operators.length) {
         throw new TypeError(`${prefix}: 必须至少包含一个操作符（${ASSERTION_OPERATORS.join("/")}）`);
+    }
+    // from/target 白名单：未识别值在 assertionActual 里静默落到 body 分支——
+    // 拼错（"statu"/"bodyy"）会让断言在错误来源上求值，同名字段存在时产生假绿
+    if (definition.target !== undefined && !contract.assertions.targets.includes(definition.target)) {
+        throw new TypeError(`${prefix}: target 只支持 ${contract.assertions.targets.join("/")}（当前 ${JSON.stringify(definition.target)}）`);
+    }
+    if (definition.from !== undefined && !contract.assertions.from.includes(definition.from)) {
+        throw new TypeError(`${prefix}: from 只支持 ${contract.assertions.from.join("/")}（当前 ${JSON.stringify(definition.from)}，缺省按 body 取值）`);
+    }
+    // 裸 path（断言/when/extract 的 path 不经模板解析）必须与运行期 getByPath 同口径
+    // 严格分词：a..b 这类畸形路径此前静默判缺，exists:false 断言会产生假绿；
+    // 空串按运行期 falsy 语义取整个来源（下游在用写法），放行。
+    // {{ }} 在顶层 path 是死写法（path 按字面取键不解析）——只有 each 子断言的
+    // path 会随期望值整体 resolve，其余位置含 {{ 一律定义期即拒
+    if (definition.path !== undefined) {
+        if (typeof definition.path !== "string") {
+            throw new TypeError(`${prefix}: path 必须是字符串（当前 ${JSON.stringify(definition.path)}）`);
+        }
+        if (definition.path.includes("{{") && !options.inEach) {
+            throw new TypeError(
+                `${prefix}: path 不支持 {{ }} 模板——断言的 path 按字面取键不做解析，` +
+                `{{vars.x}} 会被当成字面键名查找不到（exists:false 因此恒真的假绿）。` +
+                `动态键名仅 each 子断言内有效（期望值整体先做模板解析），或改用 vars 来源断言`
+            );
+        }
+        if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
+            throw new TypeError(`${prefix}: path 不是合法路径写法（支持 点段/整数下标/引号键，如 a.b、list[-1]、a["x>y"]；当前 ${JSON.stringify(definition.path)}）`);
+        }
+    }
+    // each 子断言的作用对象是数组元素：elementResponse 仅 body=元素 与 runtime.vars 有实值，
+    // header/target/status 与 from:"headers"/"bodyText" 读的响应级通道恒为 undefined/"" 死值——
+    // exists:false 恒真假绿、exists:true 恒假。一律拒绝，响应级断言请提升到顶层
+    if (options.inEach
+        && (definition.header !== undefined || definition.target !== undefined
+            || (definition.from !== undefined && definition.from !== "body" && definition.from !== "vars"))) {
+        throw new TypeError(`${prefix}: each 子断言作用在数组元素上，不支持 header/target 及 from:"headers"/"bodyText" 响应级通道（恒取死值）——请提升到顶层断言`);
+    }
+    // header 简写按字面取头名不解析——{{ }} 在顶层是死写法（头名 {{vars.h}}
+    // 字面不存在 → exists:false 恒真假绿）；纯空白头名同理恒查不到
+    if (definition.header !== undefined) {
+        if (typeof definition.header !== "string" || definition.header.trim() === "") {
+            throw new TypeError(`${prefix}: header 必须是非空字符串（当前 ${JSON.stringify(definition.header)}）`);
+        }
+        if (definition.header.includes("{{") && !options.inEach) {
+            throw new TypeError(`${prefix}: header 不支持 {{ }} 模板——头名按字面匹配不做解析`);
+        }
     }
     // matches 静态期望值定义期即编译校验：非法正则此前在执行期被吞成断言失败，
     // 呈现为"值不匹配"而非"正则写错"。含 {{ 模板的期望值跳过（运行时解析后再判）
@@ -274,10 +324,10 @@ export function validateAssertion(definition, context) {
         if (Array.isArray(definition.each)) {
             definition.each.forEach((sub, subIndex) => {
                 if (!isPlainObject(sub)) throw new TypeError(`${eachLabel}（第 ${subIndex + 1} 项不是对象）`);
-                validateAssertion(sub, context);
+                validateAssertion(sub, context, { inEach: true });
             });
         } else if (isPlainObject(definition.each)) {
-            validateAssertion(definition.each, context);
+            validateAssertion(definition.each, context, { inEach: true });
         } else {
             throw new TypeError(eachLabel);
         }
@@ -615,7 +665,13 @@ export function luhnCheckDigit(firstDigits) {
 // 18 位 = 登记管理部门(1) + 机构类别(1) + 登记管理机关行政区划(6) + 主体标识码(9) + 校验位(1)。
 // 字符集不含 I、O、S、V、Z（31 个字符），校验位 = 字符集[(31 - Σ(字符值×权重) mod 31) mod 31]。
 
-const USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+// 造数确定性派生池：Node 引擎与浏览器工作台共用（engine.js / browser/ui/runtime.js），
+// 单一事实来源避免双端漂移
+export const USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+// idcard 未显式声明 regionCode 时使用的真实行政区划测试池（容量扩展用，均为真实存在的区县级编码）
+export const IDCARD_TEST_REGIONS = ["110101", "110105", "310101", "440103", "510107", "330102", "420102", "610103"];
+// phone 未显式声明 prefix 时使用的测试号段池（均为三大运营商+虚商真实在用号段）
+export const PHONE_TEST_PREFIXES = ["138", "139", "150", "155", "158", "159", "176", "177", "185", "186", "187", "199"];
 const USCC_WEIGHTS = [1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28];
 
 /**
@@ -662,6 +718,217 @@ export function buildUsccCode({ categoryCode, regionCode, orgCode }) {
     }
     const first17 = `${category}${region}${org}`;
     return `${first17}${usccCheckChar(first17)}`;
+}
+
+// ==================== generatedVars 造数（Node/浏览器双端共用） ====================
+// 单个定义 → 写入 vars 的完整逻辑收敛于此，engine.js 与 browser/ui/runtime.js 只负责
+// 各自 vars 的组装顺序，不得各自维护类型分支（历史漂移：浏览器端曾缺 idcard/luhn 等四类型）。
+
+// timestamp 造数 offset 的单位 → 毫秒；只提供固定跨度单位，不引入月/年等日历单位（月末歧义）
+export const TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 });
+// format 的合法形态：token（YYYY/MM/DD/HH/mm/ss）与任意非字母字符自由组合；
+// 任何字母序列必须恰好构成合法 token——残缺/近似片段（"M"、"yyyy"、"dd"）整体拒绝而不是输出字面量
+export const TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
+
+export function parseTimestampOffset(offset) {
+    const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+    if (!match) {
+        throw new Error(`generatedVars timestamp 的 offset 必须形如 "-7d"/"+8d"/"30m"（数字+单位 ms/s/m/h/d/w）: ${offset}`);
+    }
+    return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+}
+
+// 按本地时间展开 format token（mm 为分钟、MM 为月份，大小写敏感）
+export function formatTimestamp(ms, format) {
+    const date = new Date(ms);
+    const pad = (value) => String(value).padStart(2, "0");
+    const tokens = {
+        YYYY: String(date.getFullYear()).padStart(4, "0"),
+        MM: pad(date.getMonth() + 1),
+        DD: pad(date.getDate()),
+        HH: pad(date.getHours()),
+        mm: pad(date.getMinutes()),
+        ss: pad(date.getSeconds())
+    };
+    return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
+}
+
+// 枚举造数（可带权重）定义校验：values 非空数组、weights 缺省等权或与 values 等长的非负数字数组、
+// 至少一个权重 > 0（全 0 会导致抽取退化到末位）；返回规范化后的 values/weights
+export function normalizeEnumDefinition(definition) {
+    const values = definition.values;
+    if (!Array.isArray(values) || values.length === 0) {
+        throw new Error(`generatedVars enum 的 values 必须是非空数组: ${definition.name}`);
+    }
+    const weights = definition.weights == null
+        ? values.map(() => 1)
+        : (Array.isArray(definition.weights) ? definition.weights : null);
+    if (!weights) {
+        throw new Error(`generatedVars enum 的 weights 必须是数字数组: ${definition.name}`);
+    }
+    if (weights.length !== values.length) {
+        throw new Error(`generatedVars enum 的 weights 长度必须与 values 一致（${weights.length} vs ${values.length}）: ${definition.name}`);
+    }
+    const normalized = weights.map((weight, index) => {
+        const value = Number(weight);
+        if (!Number.isFinite(value) || value < 0) {
+            throw new Error(`generatedVars enum 的 weights 第 ${index + 1} 项必须是非负有限数字: ${weight}`);
+        }
+        return value;
+    });
+    if (!normalized.some((weight) => weight > 0)) {
+        throw new Error(`generatedVars enum 的 weights 至少需要一项大于 0: ${definition.name}`);
+    }
+    return { values, weights: normalized };
+}
+
+function defaultUuidHex() {
+    if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
+    return globalThis.crypto.randomUUID().replace(/-/g, "");
+}
+
+/**
+ * 把单个 generatedVars 定义按类型求值并写入 vars（vars[definition.name]）。
+ * 双端一致：造数按 identifiers.runId 与变量名确定性派生（轮内稳定、跨轮变化）。
+ * @param {object} definition 已通过 defineScenario 类型枚举校验的定义
+ * @param {object} vars 目标 vars 对象（先声明的变量可被后声明引用）
+ * @param {object} identifiers { runId } 运行标识（确定性种子）
+ * @param {object} [deps] 环境可选项：deps.uuidHex 覆盖 uuidHex 实现（浏览器端有降级链）
+ */
+export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
+    const name = definition.name;
+    const uuidHex = deps.uuidHex || defaultUuidHex;
+    if (definition.type === "timestamp") {
+        // 时间戳造数：offset 相对当前时间偏移（如 "-7d"/"+8d"）；unit 决定数值粒度
+        // （ms 默认向后兼容 / s 秒级）；format（本地时间 token）输出字符串，与 unit 互斥。
+        const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+        if (definition.format != null) {
+            if (definition.unit != null) {
+                throw new Error(`generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ${name}`);
+            }
+            if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
+                throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
+            }
+            vars[name] = formatTimestamp(base, definition.format);
+        } else if (definition.unit != null && definition.unit !== "ms") {
+            if (definition.unit !== "s") {
+                throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
+            }
+            vars[name] = Math.floor(base / 1000);
+        } else {
+            vars[name] = base;
+        }
+        return;
+    }
+    if (definition.type === "uuid") {
+        // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
+        if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
+        vars[name] = globalThis.crypto.randomUUID();
+        return;
+    }
+    if (definition.type === "uuidHex") {
+        vars[name] = uuidHex();
+        return;
+    }
+    if (definition.type === "idcard") {
+        // 中国大陆 18 位身份证号（测试造数）：出生日期必填 YYYY-MM-DD；
+        // gender MALE/FEMALE（默认 MALE）约束顺序码第 17 位奇偶；
+        // regionCode 6 位行政区划（不声明时从真实测试区划池按轮次派生）。
+        // 顺序码 = hash(runId + 变量名) % 500 * 2 + 性别位：随轮次变化、轮内不同名变量互异，
+        // 校验位按 GB 11643 计算；同(性别,出生日期)下唯一容量约 4000，极小概率撞库时重跑即换号。
+        const gender = definition.gender == null ? "MALE" : definition.gender;
+        if (gender !== "MALE" && gender !== "FEMALE") {
+            throw new Error(`generatedVars idcard 的 gender 只支持 MALE/FEMALE: ${gender}`);
+        }
+        // 未显式声明区划时从真实测试区划池按轮次派生，把唯一容量从 500/性别/生日 扩至 8 倍
+        const regionCode = definition.regionCode == null
+            ? IDCARD_TEST_REGIONS[seedToIndex(identifiers.runId, IDCARD_TEST_REGIONS.length)]
+            : String(definition.regionCode);
+        if (!/^\d{6}$/.test(regionCode)) {
+            throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
+        }
+        const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
+        vars[name] = buildChinaIdNumber({
+            regionCode,
+            birthDate: definition.birthDate,
+            sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
+        });
+        return;
+    }
+    if (definition.type === "luhn") {
+        // 银行卡号（Luhn 校验，测试造数）：prefix 数字卡头（默认 "62" 银联）、length 12-19（默认 16）；
+        // 卡头与校验位之间的数字由 runId+变量名逐位派生，末位按 Luhn 算法补齐。
+        const length = definition.length == null ? 16 : Number(definition.length);
+        if (!Number.isInteger(length) || length < 12 || length > 19) {
+            throw new Error(`generatedVars luhn 的 length 必须是 12-19 整数: ${definition.length}`);
+        }
+        const prefix = definition.prefix == null ? "62" : String(definition.prefix);
+        if (!/^\d{1,16}$/.test(prefix) || prefix.length >= length) {
+            throw new Error(`generatedVars luhn 的 prefix 必须是短于卡号长度的数字卡头: ${definition.prefix}`);
+        }
+        let body = "";
+        for (let i = 0; i < length - 1 - prefix.length; i += 1) {
+            body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
+        }
+        const first = `${prefix}${body}`;
+        vars[name] = `${first}${luhnCheckDigit(first)}`;
+        return;
+    }
+    if (definition.type === "phone") {
+        // 大陆手机号（测试造数）：prefix 三位号段（1[3-9]x），缺省从测试号段池按轮次派生；
+        // 后 8 位由 runId+变量名逐位派生，撞业务唯一约束时重跑即换号。
+        const prefix = definition.prefix == null
+            ? PHONE_TEST_PREFIXES[seedToIndex(identifiers.runId, PHONE_TEST_PREFIXES.length)]
+            : String(definition.prefix);
+        if (!/^1[3-9]\d$/.test(prefix)) {
+            throw new Error(`generatedVars phone 的 prefix 必须是 1[3-9] 开头的 3 位号段: ${definition.prefix}`);
+        }
+        let tail = "";
+        for (let i = 0; i < 8; i += 1) {
+            tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
+        }
+        vars[name] = `${prefix}${tail}`;
+        return;
+    }
+    if (definition.type === "uscc") {
+        // 统一社会信用代码（GB 32100-2015，测试造数）：登记管理部门+机构类别固定 91（企业法人）；
+        // regionCode 6 位行政区划（默认 110100），主体标识码 9 位由 runId+变量名逐位派生（31 字符集），
+        // 校验位按 GB 32100 计算。
+        const regionCode = definition.regionCode == null ? "110100" : String(definition.regionCode);
+        if (!/^\d{6}$/.test(regionCode)) {
+            throw new Error(`generatedVars uscc 的 regionCode 必须是 6 位数字: ${definition.regionCode}`);
+        }
+        let orgCode = "";
+        for (let i = 0; i < 9; i += 1) {
+            orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
+        }
+        vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+        return;
+    }
+    if (definition.type === "md5") {
+        const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
+        vars[name] = md5(source);
+        return;
+    }
+    if (definition.type === "signature") {
+        const params = Object.fromEntries(Object.entries(definition.params || {})
+            .map(([key, variableName]) => [key, vars[variableName]]));
+        // 从 vars 中获取密钥但不在错误消息中暴露
+        const secret = vars[definition.secretVar || "apiSecret"];
+        if (!secret) {
+            throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
+        }
+        vars[name] = generateSignature(params, secret);
+        return;
+    }
+    if (definition.type === "enum") {
+        // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
+        // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
+        const { values, weights } = normalizeEnumDefinition(definition);
+        vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+        return;
+    }
+    throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
 }
 
 export function maskSecret(value) {

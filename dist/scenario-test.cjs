@@ -246,10 +246,16 @@ __export(node_exports, {
   ASSERTION_OPERATORS: () => ASSERTION_OPERATORS,
   CONTRACT_VERSION: () => CONTRACT_VERSION,
   GLOBAL_TYPES: () => GLOBAL_TYPES,
+  IDCARD_TEST_REGIONS: () => IDCARD_TEST_REGIONS,
+  PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
+  TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
+  USCC_ALPHABET: () => USCC_ALPHABET,
   VERSION: () => VERSION,
   applyExtract: () => applyExtract,
+  applyGeneratedVar: () => applyGeneratedVar,
   assertNoReservedVars: () => assertNoReservedVars,
   assertNotReservedVar: () => assertNotReservedVar,
   buildAssertions: () => buildAssertions,
@@ -272,6 +278,7 @@ __export(node_exports, {
   executeDefinitionFile: () => executeDefinitionFile,
   formatAssertionContext: () => formatAssertionContext,
   formatDuration: () => formatDuration,
+  formatTimestamp: () => formatTimestamp,
   gb11643Checksum: () => gb11643Checksum,
   generateSignature: () => generateSignature,
   getAdapter: () => getAdapter,
@@ -292,8 +299,10 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   parseBody: () => parseBody,
+  parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -321,7 +330,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.7.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 7;
+var CONTRACT_VERSION = 8;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -332,6 +341,8 @@ var contract = Object.freeze({
     metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
     // 断言目标 target 的取值：status=HTTP 状态码，duration=本次请求耗时（毫秒，引擎挂载在 response.durationMs）
     targets: Object.freeze(["status", "duration"]),
+    // 断言数据来源 from 的取值（缺省按 body 取值）
+    from: Object.freeze(["body", "vars", "headers", "bodyText"]),
     // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
     // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
     operators: Object.freeze({
@@ -401,16 +412,23 @@ var contract = Object.freeze({
     note: 'when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF1B\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49'
   }),
   extract: Object.freeze({
+    // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
+    // 防止 heder/fromm 等拼错静默落到默认 body 来源）
+    metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default"]),
     // extract 支持的来源（默认 body）
     from: Object.freeze(["body", "headers", "bodyText", "response"]),
+    // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
+    targets: Object.freeze(["status"]),
     // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
     note: "required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00"
   }),
-  // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖
-  reservedVars: Object.freeze(["runId", "runNo"]),
+  // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
+  // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
+  // 改写（写入）或取到继承成员（读取），使断言结果被污染，一并禁止
+  reservedVars: Object.freeze(["runId", "runNo", "__proto__", "constructor", "prototype"]),
   generatedVars: Object.freeze({
     types: Object.freeze(["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]),
     note: "\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7C7B\u6D4B\u8BD5\u9020\u6570\uFF08\u987A\u5E8F\u7801\u4E0E\u4E2D\u95F4\u6570\u5B57\u5747\u7531 runId \u4E0E\u53D8\u91CF\u540D\u786E\u5B9A\u6027\u6D3E\u751F\uFF1A\u6BCF\u8F6E\u53D8\u5316\u3001\u8F6E\u5185\u4E0D\u540C\u540D\u53D8\u91CF\u4E92\u5F02\uFF0C\u649E\u4E1A\u52A1\u552F\u4E00\u7EA6\u675F\u65F6\u91CD\u8DD1\u5373\u6362\u53F7\uFF09\u3002 idcard\uFF1A\u4E2D\u56FD\u5927\u9646 18 \u4F4D\u8EAB\u4EFD\u8BC1\u53F7\uFF0CbirthDate \u5FC5\u586B\uFF08YYYY-MM-DD \u5408\u6CD5\u65E5\u5386\u65E5\u671F\uFF09\u3001gender \u53EF\u9009\uFF08MALE/FEMALE\uFF0C\u9ED8\u8BA4 MALE\uFF09\u3001regionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u7F3A\u7701\u4ECE\u771F\u5B9E\u6D4B\u8BD5\u533A\u5212\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 11643 \u8BA1\u7B97\u3002 luhn\uFF1A\u94F6\u884C\u5361\u53F7\uFF0Clength \u53EF\u9009\uFF0812-19\uFF0C\u9ED8\u8BA4 16\uFF09\u3001prefix \u53EF\u9009\uFF08\u6570\u5B57\u5361\u5934\uFF0C\u9ED8\u8BA4 62\uFF09\uFF0C\u672B\u4F4D\u6309 Luhn \u7B97\u6CD5\u6821\u9A8C\u3002 phone\uFF1A\u5927\u9646\u624B\u673A\u53F7\uFF081[3-9] \u5F00\u5934 11 \u4F4D\uFF09\uFF0Cprefix \u53EF\u9009\uFF083 \u4F4D\u53F7\u6BB5\uFF0C\u7F3A\u7701\u4ECE\u6D4B\u8BD5\u53F7\u6BB5\u6C60\u6309\u8F6E\u6B21\u6D3E\u751F\uFF09\u3002 uscc\uFF1A\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\uFF0818 \u4F4D\uFF09\uFF0CregionCode \u53EF\u9009\uFF086 \u4F4D\u6570\u5B57\uFF0C\u9ED8\u8BA4 110100\uFF09\uFF0C\u767B\u8BB0\u7BA1\u7406/\u673A\u6784\u7C7B\u522B\u56FA\u5B9A 91\uFF08\u4F01\u4E1A\u6CD5\u4EBA\uFF09\uFF0C\u6821\u9A8C\u4F4D\u6309 GB 32100-2015 \u8BA1\u7B97\u3002 timestamp\uFF1A\u53EF\u9009 offset\uFF08\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u7684\u504F\u79FB\uFF0C\u5982 -7d/+8d/30m\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001unit\uFF08ms \u9ED8\u8BA4/s\uFF0C\u6570\u503C\u7C92\u5EA6\uFF09\u6216 format\uFF08\u672C\u5730\u65F6\u95F4 token \u7EC4\u5408 YYYY/MM/DD/HH/mm/ss\uFF0C\u5982 YYYY-MM-DD HH:mm:ss\uFF0C\u8F93\u51FA\u5B57\u7B26\u4E32\uFF0C\u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u65F6\u95F4\u7A97\u4E0E\u8FC7\u671F\u7C7B\u53C2\u6570\u65E0\u9700\u5916\u90E8\u62FC\u503C\u3002 uuid\uFF1A\u5E26\u8FDE\u5B57\u7B26 UUID v4\uFF08uuidHex \u4E3A 32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u5341\u516D\u8FDB\u5236\uFF09\uFF0C\u9002\u914D\u4EE5 UUID \u4E3A\u4E1A\u52A1\u4E3B\u952E\u7684\u63A5\u53E3\u3002 enum\uFF1A\u4ECE values \u5019\u9009\u96C6\u4E2D\u6309 weights\uFF08\u53EF\u9009\u975E\u8D1F\u6570\u5B57\uFF0C\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u8005\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\u786E\u5B9A\u6027\u62BD\u53D6\u4E00\u4E2A\u503C\u2014\u2014\u6309 runId \u4E0E\u53D8\u91CF\u540D\u6D3E\u751F\uFF0C\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF0C\u9002\u914D\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u573A\u666F"
@@ -539,7 +557,7 @@ function getByPath(source, valuePath) {
       continue;
     }
     const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
-    cursor = cursor[key];
+    cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
   }
   return cursor;
 }
@@ -669,7 +687,7 @@ function formatAssertionContext(context) {
   if (context.assertionNo !== void 0) parts.push(`\u7B2C ${context.assertionNo} \u6761`);
   return parts.join(" ");
 }
-function validateAssertion(definition, context) {
+function validateAssertion(definition, context, options = {}) {
   const where = formatAssertionContext(context);
   const prefix = where ? `${where}\u65AD\u8A00\u65E0\u6548` : "\u65AD\u8A00\u65E0\u6548";
   if (!isPlainObject(definition)) throw new TypeError(`${prefix}: \u65AD\u8A00\u5FC5\u987B\u662F\u5BF9\u8C61`);
@@ -684,6 +702,36 @@ function validateAssertion(definition, context) {
   if (!operators.length) {
     throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
   }
+  if (definition.target !== void 0 && !contract.assertions.targets.includes(definition.target)) {
+    throw new TypeError(`${prefix}: target \u53EA\u652F\u6301 ${contract.assertions.targets.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(definition.target)}\uFF09`);
+  }
+  if (definition.from !== void 0 && !contract.assertions.from.includes(definition.from)) {
+    throw new TypeError(`${prefix}: from \u53EA\u652F\u6301 ${contract.assertions.from.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(definition.from)}\uFF0C\u7F3A\u7701\u6309 body \u53D6\u503C\uFF09`);
+  }
+  if (definition.path !== void 0) {
+    if (typeof definition.path !== "string") {
+      throw new TypeError(`${prefix}: path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
+    }
+    if (definition.path.includes("{{") && !options.inEach) {
+      throw new TypeError(
+        `${prefix}: path \u4E0D\u652F\u6301 {{ }} \u6A21\u677F\u2014\u2014\u65AD\u8A00\u7684 path \u6309\u5B57\u9762\u53D6\u952E\u4E0D\u505A\u89E3\u6790\uFF0C{{vars.x}} \u4F1A\u88AB\u5F53\u6210\u5B57\u9762\u952E\u540D\u67E5\u627E\u4E0D\u5230\uFF08exists:false \u56E0\u6B64\u6052\u771F\u7684\u5047\u7EFF\uFF09\u3002\u52A8\u6001\u952E\u540D\u4EC5 each \u5B50\u65AD\u8A00\u5185\u6709\u6548\uFF08\u671F\u671B\u503C\u6574\u4F53\u5148\u505A\u6A21\u677F\u89E3\u6790\uFF09\uFF0C\u6216\u6539\u7528 vars \u6765\u6E90\u65AD\u8A00`
+      );
+    }
+    if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
+      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
+    }
+  }
+  if (options.inEach && (definition.header !== void 0 || definition.target !== void 0 || definition.from !== void 0 && definition.from !== "body" && definition.from !== "vars")) {
+    throw new TypeError(`${prefix}: each \u5B50\u65AD\u8A00\u4F5C\u7528\u5728\u6570\u7EC4\u5143\u7D20\u4E0A\uFF0C\u4E0D\u652F\u6301 header/target \u53CA from:"headers"/"bodyText" \u54CD\u5E94\u7EA7\u901A\u9053\uFF08\u6052\u53D6\u6B7B\u503C\uFF09\u2014\u2014\u8BF7\u63D0\u5347\u5230\u9876\u5C42\u65AD\u8A00`);
+  }
+  if (definition.header !== void 0) {
+    if (typeof definition.header !== "string" || definition.header.trim() === "") {
+      throw new TypeError(`${prefix}: header \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(definition.header)}\uFF09`);
+    }
+    if (definition.header.includes("{{") && !options.inEach) {
+      throw new TypeError(`${prefix}: header \u4E0D\u652F\u6301 {{ }} \u6A21\u677F\u2014\u2014\u5934\u540D\u6309\u5B57\u9762\u5339\u914D\u4E0D\u505A\u89E3\u6790`);
+    }
+  }
   if (definition.matches !== void 0 && !String(definition.matches).includes("{{")) {
     try {
       new RegExp(String(definition.matches));
@@ -696,10 +744,10 @@ function validateAssertion(definition, context) {
     if (Array.isArray(definition.each)) {
       definition.each.forEach((sub, subIndex) => {
         if (!isPlainObject(sub)) throw new TypeError(`${eachLabel}\uFF08\u7B2C ${subIndex + 1} \u9879\u4E0D\u662F\u5BF9\u8C61\uFF09`);
-        validateAssertion(sub, context);
+        validateAssertion(sub, context, { inEach: true });
       });
     } else if (isPlainObject(definition.each)) {
-      validateAssertion(definition.each, context);
+      validateAssertion(definition.each, context, { inEach: true });
     } else {
       throw new TypeError(eachLabel);
     }
@@ -941,6 +989,8 @@ function luhnCheckDigit(firstDigits) {
   return String((10 - sum % 10) % 10);
 }
 var USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
+var IDCARD_TEST_REGIONS = ["110101", "110105", "310101", "440103", "510107", "330102", "420102", "610103"];
+var PHONE_TEST_PREFIXES = ["138", "139", "150", "155", "158", "159", "176", "177", "185", "186", "187", "199"];
 var USCC_WEIGHTS = [1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28];
 function usccCheckChar(first17Chars) {
   const text = String(first17Chars || "").toUpperCase();
@@ -973,6 +1023,167 @@ function buildUsccCode({ categoryCode, regionCode, orgCode }) {
   const first17 = `${category}${region}${org}`;
   return `${first17}${usccCheckChar(first17)}`;
 }
+var TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 });
+var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
+function parseTimestampOffset(offset) {
+  const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
+  if (!match) {
+    throw new Error(`generatedVars timestamp \u7684 offset \u5FC5\u987B\u5F62\u5982 "-7d"/"+8d"/"30m"\uFF08\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09: ${offset}`);
+  }
+  return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
+}
+function formatTimestamp(ms, format) {
+  const date = new Date(ms);
+  const pad = (value) => String(value).padStart(2, "0");
+  const tokens = {
+    YYYY: String(date.getFullYear()).padStart(4, "0"),
+    MM: pad(date.getMonth() + 1),
+    DD: pad(date.getDate()),
+    HH: pad(date.getHours()),
+    mm: pad(date.getMinutes()),
+    ss: pad(date.getSeconds())
+  };
+  return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
+}
+function normalizeEnumDefinition(definition) {
+  const values = definition.values;
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error(`generatedVars enum \u7684 values \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4: ${definition.name}`);
+  }
+  const weights = definition.weights == null ? values.map(() => 1) : Array.isArray(definition.weights) ? definition.weights : null;
+  if (!weights) {
+    throw new Error(`generatedVars enum \u7684 weights \u5FC5\u987B\u662F\u6570\u5B57\u6570\u7EC4: ${definition.name}`);
+  }
+  if (weights.length !== values.length) {
+    throw new Error(`generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08${weights.length} vs ${values.length}\uFF09: ${definition.name}`);
+  }
+  const normalized = weights.map((weight, index) => {
+    const value = Number(weight);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`generatedVars enum \u7684 weights \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: ${weight}`);
+    }
+    return value;
+  });
+  if (!normalized.some((weight) => weight > 0)) {
+    throw new Error(`generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: ${definition.name}`);
+  }
+  return { values, weights: normalized };
+}
+function defaultUuidHex() {
+  if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
+  return globalThis.crypto.randomUUID().replace(/-/g, "");
+}
+function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
+  const name = definition.name;
+  const uuidHex = deps.uuidHex || defaultUuidHex;
+  if (definition.type === "timestamp") {
+    const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+    if (definition.format != null) {
+      if (definition.unit != null) {
+        throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${name}`);
+      }
+      if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
+        throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
+      }
+      vars[name] = formatTimestamp(base, definition.format);
+    } else if (definition.unit != null && definition.unit !== "ms") {
+      if (definition.unit !== "s") {
+        throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
+      }
+      vars[name] = Math.floor(base / 1e3);
+    } else {
+      vars[name] = base;
+    }
+    return;
+  }
+  if (definition.type === "uuid") {
+    if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
+    vars[name] = globalThis.crypto.randomUUID();
+    return;
+  }
+  if (definition.type === "uuidHex") {
+    vars[name] = uuidHex();
+    return;
+  }
+  if (definition.type === "idcard") {
+    const gender = definition.gender == null ? "MALE" : definition.gender;
+    if (gender !== "MALE" && gender !== "FEMALE") {
+      throw new Error(`generatedVars idcard \u7684 gender \u53EA\u652F\u6301 MALE/FEMALE: ${gender}`);
+    }
+    const regionCode = definition.regionCode == null ? IDCARD_TEST_REGIONS[seedToIndex(identifiers.runId, IDCARD_TEST_REGIONS.length)] : String(definition.regionCode);
+    if (!/^\d{6}$/.test(regionCode)) {
+      throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
+    }
+    const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
+    vars[name] = buildChinaIdNumber({
+      regionCode,
+      birthDate: definition.birthDate,
+      sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
+    });
+    return;
+  }
+  if (definition.type === "luhn") {
+    const length = definition.length == null ? 16 : Number(definition.length);
+    if (!Number.isInteger(length) || length < 12 || length > 19) {
+      throw new Error(`generatedVars luhn \u7684 length \u5FC5\u987B\u662F 12-19 \u6574\u6570: ${definition.length}`);
+    }
+    const prefix = definition.prefix == null ? "62" : String(definition.prefix);
+    if (!/^\d{1,16}$/.test(prefix) || prefix.length >= length) {
+      throw new Error(`generatedVars luhn \u7684 prefix \u5FC5\u987B\u662F\u77ED\u4E8E\u5361\u53F7\u957F\u5EA6\u7684\u6570\u5B57\u5361\u5934: ${definition.prefix}`);
+    }
+    let body = "";
+    for (let i = 0; i < length - 1 - prefix.length; i += 1) {
+      body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
+    }
+    const first = `${prefix}${body}`;
+    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    return;
+  }
+  if (definition.type === "phone") {
+    const prefix = definition.prefix == null ? PHONE_TEST_PREFIXES[seedToIndex(identifiers.runId, PHONE_TEST_PREFIXES.length)] : String(definition.prefix);
+    if (!/^1[3-9]\d$/.test(prefix)) {
+      throw new Error(`generatedVars phone \u7684 prefix \u5FC5\u987B\u662F 1[3-9] \u5F00\u5934\u7684 3 \u4F4D\u53F7\u6BB5: ${definition.prefix}`);
+    }
+    let tail = "";
+    for (let i = 0; i < 8; i += 1) {
+      tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
+    }
+    vars[name] = `${prefix}${tail}`;
+    return;
+  }
+  if (definition.type === "uscc") {
+    const regionCode = definition.regionCode == null ? "110100" : String(definition.regionCode);
+    if (!/^\d{6}$/.test(regionCode)) {
+      throw new Error(`generatedVars uscc \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${definition.regionCode}`);
+    }
+    let orgCode = "";
+    for (let i = 0; i < 9; i += 1) {
+      orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
+    }
+    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    return;
+  }
+  if (definition.type === "md5") {
+    const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
+    vars[name] = md5(source);
+    return;
+  }
+  if (definition.type === "signature") {
+    const params = Object.fromEntries(Object.entries(definition.params || {}).map(([key, variableName]) => [key, vars[variableName]]));
+    const secret = vars[definition.secretVar || "apiSecret"];
+    if (!secret) {
+      throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
+    }
+    vars[name] = generateSignature(params, secret);
+    return;
+  }
+  if (definition.type === "enum") {
+    const { values, weights } = normalizeEnumDefinition(definition);
+    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    return;
+  }
+  throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
+}
 function maskSecret(value) {
   if (value === void 0 || value === null || value === "") return "";
   const text = String(value);
@@ -988,7 +1199,7 @@ function formatDuration(milliseconds) {
 
 // src/utils/failure-diff.js
 function escapeC1(text) {
-  return text.replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return text.replace(/[\x7f-\x9f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 var CI_COMMAND_MARKER = /##\[|##vso\[|##teamcity\[/gi;
 function defuseCiCommandMarkers(text) {
@@ -1164,16 +1375,73 @@ function defineScenario(input) {
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
     }
-    if (step.when !== void 0 && isPlainObject(step.when)) {
-      if (!contract.when.sources.includes(step.when.from)) {
-        throw new TypeError(
-          `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u54CD\u5E94 body/status/header \u53D6\u6761\u4EF6`
+    if (step.extract !== void 0) {
+      invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
+      step.extract.forEach((item, extractIndex) => {
+        const label = `\u6B65\u9AA4 ${step.name} \u7684 extract \u7B2C ${extractIndex + 1} \u9879`;
+        invariant(isPlainObject(item), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08{ name, path?, from?, required?, default? }\uFF09`);
+        const unknownKeys = Object.keys(item).filter((key) => !contract.extract.metaKeys.includes(key));
+        invariant(
+          unknownKeys.length === 0,
+          `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.extract.metaKeys.join("/")}`
+        );
+        invariant(nonEmptyString(item.name), `${label} \u7F3A\u5C11 name`);
+        invariant(
+          !item.name.includes("{{"),
+          `${label} \u7684 name \u4E0D\u652F\u6301 {{ }} \u6A21\u677F\u2014\u2014\u53D8\u91CF\u540D\u6309\u5B57\u9762\u4F7F\u7528\u4E0D\u89E3\u6790\uFF0C\u4F1A\u5199\u6210\u6B7B\u53D8\u91CF\uFF08\u5F53\u524D ${JSON.stringify(item.name)}\uFF09`
+        );
+        assertNotReservedVar(item.name, `${label} name`);
+        invariant(
+          item.required === void 0 || typeof item.required === "boolean",
+          `${label} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C\uFF08\u5F53\u524D ${JSON.stringify(item.required)}\u2014\u2014\u975E true \u503C\u4F1A\u9759\u9ED8\u964D\u7EA7\u4E3A\u300C\u975E\u5FC5\u9700\u300D\uFF09`
+        );
+        invariant(
+          !(item.required === true && item.default !== void 0),
+          `${label} \u7684 required: true \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00`
+        );
+        if (item.header !== void 0) {
+          invariant(
+            typeof item.header === "string" && item.header.trim() !== "" && !item.header.includes("{{"),
+            `${label} \u7684 header \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\u4E14\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF08\u5934\u540D\u6309\u5B57\u9762\u5339\u914D\u4E0D\u89E3\u6790\uFF1B\u5F53\u524D ${JSON.stringify(item.header)}\uFF09`
+          );
+        }
+        if (item.target !== void 0) {
+          invariant(
+            contract.extract.targets.includes(item.target),
+            `${label} \u7684 target \u53EA\u652F\u6301 ${contract.extract.targets.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.target)}\uFF09`
+          );
+        }
+        if (item.from !== void 0) {
+          invariant(
+            contract.extract.from.includes(item.from),
+            `${label} \u7684 from \u53EA\u652F\u6301 ${contract.extract.from.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.from)}\uFF0C\u7F3A\u7701\u6309 body \u53D6\u503C\uFF09`
+          );
+        }
+        if (item.path !== void 0) {
+          invariant(
+            typeof item.path === "string" && !item.path.includes("{{") && (item.path === "" || tokenizePath(item.path) !== null),
+            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
+          );
+        }
+      });
+    }
+    if (step.when !== void 0) {
+      if (isPlainObject(step.when)) {
+        if (!contract.when.sources.includes(step.when.from)) {
+          throw new TypeError(
+            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u54CD\u5E94 body/status/header \u53D6\u6761\u4EF6`
+          );
+        }
+        if (step.when.target !== void 0 || step.when.header !== void 0) {
+          throw new TypeError(`\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 target/header \u6761\u4EF6`);
+        }
+        validateAssertion(step.when, stepContext);
+      } else {
+        invariant(
+          typeof step.when === "boolean" || typeof step.when === "string" && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(step.when),
+          `\u6B65\u9AA4 ${step.name} \u7684 when \u53EA\u652F\u6301\u5BF9\u8C61\u65AD\u8A00\u3001\u6574\u4E32 {{ }} \u6A21\u677F\uFF08\u5982 "{{vars.flag}}"\uFF0Cresolve \u4FDD\u771F\u503C\uFF09\u6216\u5E03\u5C14\u503C\uFF08\u5F53\u524D ${JSON.stringify(step.when)}\u2014\u2014\u88F8\u5B57\u7B26\u4E32\u6309\u771F\u503C\u5224\u5B9A\u3001\u90E8\u5206\u6A21\u677F\u5982 "pre {{vars.x}}" \u89E3\u6790\u6210\u975E\u7A7A\u4E32\u6052\u771F\uFF0C\u5747\u975E\u672C\u610F\uFF09`
         );
       }
-      if (step.when.target !== void 0 || step.when.header !== void 0) {
-        throw new TypeError(`\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 target/header \u6761\u4EF6`);
-      }
-      validateAssertion(step.when, stepContext);
     }
   });
   const failurePolicy = input.failurePolicy || "stop";
@@ -1342,9 +1610,6 @@ function createRequestSignal(parentSignal, timeoutMs) {
     }
   };
 }
-var IDCARD_TEST_REGIONS = ["110101", "110105", "310101", "440103", "510107", "330102", "420102", "610103"];
-var PHONE_TEST_PREFIXES = ["138", "139", "150", "155", "158", "159", "176", "177", "185", "186", "187", "199"];
-var USCC_ORG_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY";
 function createRunIdentifiers() {
   const timestamp = String(Date.now());
   const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
@@ -1352,52 +1617,6 @@ function createRunIdentifiers() {
     runId: `${timestamp}-${random}`,
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
-}
-var TIMESTAMP_OFFSET_UNITS = Object.freeze({ ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 });
-var TIMESTAMP_FORMAT_PATTERN = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
-function parseTimestampOffset(offset) {
-  const match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
-  if (!match) {
-    throw new Error(`generatedVars timestamp \u7684 offset \u5FC5\u987B\u5F62\u5982 "-7d"/"+8d"/"30m"\uFF08\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09: ${offset}`);
-  }
-  return Number(match[1]) * TIMESTAMP_OFFSET_UNITS[match[2]];
-}
-function normalizeEnumDefinition(definition) {
-  const values = definition.values;
-  if (!Array.isArray(values) || values.length === 0) {
-    throw new Error(`generatedVars enum \u7684 values \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4: ${definition.name}`);
-  }
-  const weights = definition.weights == null ? values.map(() => 1) : Array.isArray(definition.weights) ? definition.weights : null;
-  if (!weights) {
-    throw new Error(`generatedVars enum \u7684 weights \u5FC5\u987B\u662F\u6570\u5B57\u6570\u7EC4: ${definition.name}`);
-  }
-  if (weights.length !== values.length) {
-    throw new Error(`generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08${weights.length} vs ${values.length}\uFF09: ${definition.name}`);
-  }
-  const normalized = weights.map((weight, index) => {
-    const value = Number(weight);
-    if (!Number.isFinite(value) || value < 0) {
-      throw new Error(`generatedVars enum \u7684 weights \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: ${weight}`);
-    }
-    return value;
-  });
-  if (!normalized.some((weight) => weight > 0)) {
-    throw new Error(`generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: ${definition.name}`);
-  }
-  return { values, weights: normalized };
-}
-function formatTimestamp(ms, format) {
-  const date = new Date(ms);
-  const pad = (value) => String(value).padStart(2, "0");
-  const tokens = {
-    YYYY: String(date.getFullYear()).padStart(4, "0"),
-    MM: pad(date.getMonth() + 1),
-    DD: pad(date.getDate()),
-    HH: pad(date.getHours()),
-    mm: pad(date.getMinutes()),
-    ss: pad(date.getSeconds())
-  };
-  return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, (token) => tokens[token]);
 }
 function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
@@ -1431,96 +1650,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     if (!contract.generatedVars.types.includes(definition.type)) {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
-    if (definition.type === "timestamp") {
-      const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
-      if (definition.format != null) {
-        if (definition.unit != null) {
-          throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${definition.name}`);
-        }
-        if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
-          throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
-        }
-        vars[definition.name] = formatTimestamp(base, definition.format);
-      } else if (definition.unit != null && definition.unit !== "ms") {
-        if (definition.unit !== "s") {
-          throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
-        }
-        vars[definition.name] = Math.floor(base / 1e3);
-      } else {
-        vars[definition.name] = base;
-      }
-    } else if (definition.type === "uuid") {
-      if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-      vars[definition.name] = globalThis.crypto.randomUUID();
-    } else if (definition.type === "uuidHex") {
-      if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-      vars[definition.name] = globalThis.crypto.randomUUID().replace(/-/g, "");
-    } else if (definition.type === "idcard") {
-      const gender = definition.gender == null ? "MALE" : definition.gender;
-      if (gender !== "MALE" && gender !== "FEMALE") {
-        throw new Error(`generatedVars idcard \u7684 gender \u53EA\u652F\u6301 MALE/FEMALE: ${gender}`);
-      }
-      let regionCode = definition.regionCode == null ? IDCARD_TEST_REGIONS[seedToIndex(identifiers.runId, IDCARD_TEST_REGIONS.length)] : String(definition.regionCode);
-      if (!/^\d{6}$/.test(regionCode)) {
-        throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
-      }
-      const seqBase = seedToIndex(`${identifiers.runId}|${definition.name}`, 500);
-      vars[definition.name] = buildChinaIdNumber({
-        regionCode,
-        birthDate: definition.birthDate,
-        sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-      });
-    } else if (definition.type === "luhn") {
-      const length = definition.length == null ? 16 : Number(definition.length);
-      if (!Number.isInteger(length) || length < 12 || length > 19) {
-        throw new Error(`generatedVars luhn \u7684 length \u5FC5\u987B\u662F 12-19 \u6574\u6570: ${definition.length}`);
-      }
-      const prefix = definition.prefix == null ? "62" : String(definition.prefix);
-      if (!/^\d{1,16}$/.test(prefix) || prefix.length >= length) {
-        throw new Error(`generatedVars luhn \u7684 prefix \u5FC5\u987B\u662F\u77ED\u4E8E\u5361\u53F7\u957F\u5EA6\u7684\u6570\u5B57\u5361\u5934: ${definition.prefix}`);
-      }
-      let body = "";
-      for (let i = 0; i < length - 1 - prefix.length; i += 1) {
-        body += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
-      }
-      const first = `${prefix}${body}`;
-      vars[definition.name] = `${first}${luhnCheckDigit(first)}`;
-    } else if (definition.type === "phone") {
-      const prefix = definition.prefix == null ? PHONE_TEST_PREFIXES[seedToIndex(identifiers.runId, PHONE_TEST_PREFIXES.length)] : String(definition.prefix);
-      if (!/^1[3-9]\d$/.test(prefix)) {
-        throw new Error(`generatedVars phone \u7684 prefix \u5FC5\u987B\u662F 1[3-9] \u5F00\u5934\u7684 3 \u4F4D\u53F7\u6BB5: ${definition.prefix}`);
-      }
-      let tail = "";
-      for (let i = 0; i < 8; i += 1) {
-        tail += seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, 10);
-      }
-      vars[definition.name] = `${prefix}${tail}`;
-    } else if (definition.type === "uscc") {
-      const regionCode = definition.regionCode == null ? "110100" : String(definition.regionCode);
-      if (!/^\d{6}$/.test(regionCode)) {
-        throw new Error(`generatedVars uscc \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${definition.regionCode}`);
-      }
-      let orgCode = "";
-      for (let i = 0; i < 9; i += 1) {
-        orgCode += USCC_ORG_ALPHABET[seedToIndex(`${identifiers.runId}|${definition.name}|${i}`, USCC_ORG_ALPHABET.length)];
-      }
-      vars[definition.name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
-    } else if (definition.type === "md5") {
-      const source = (definition.parts || []).map((name) => vars[name] == null ? "" : String(vars[name])).join("");
-      vars[definition.name] = md5(source);
-    } else if (definition.type === "signature") {
-      const params = Object.fromEntries(Object.entries(definition.params || {}).map(([key, variableName]) => [key, vars[variableName]]));
-      const secret = vars[definition.secretVar || "apiSecret"];
-      if (!secret) {
-        throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
-      }
-      vars[definition.name] = generateSignature(params, secret);
-    } else if (definition.type === "enum") {
-      const { values, weights } = normalizeEnumDefinition(definition);
-      vars[definition.name] = values[pickWeightedIndex(`${identifiers.runId}|${definition.name}`, weights)];
-    } else {
-      throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
-    }
+    applyGeneratedVar(definition, vars, identifiers);
   }
   return vars;
 }
@@ -1829,7 +1959,8 @@ function createEngine(engineOptions = {}) {
       const context = error?.scenarioContext || null;
       const cancelled = Boolean(options.signal?.aborted);
       const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
-      const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25";
+      const causeText = error?.cause ? `\uFF08${error.cause.code || error.cause.message || String(error.cause)}\uFF09` : "";
+      const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path4 = context && context.path || resolveString(step.path || "", runtime);
       return {
@@ -1862,7 +1993,16 @@ function createEngine(engineOptions = {}) {
       const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
       result.stepNo = index + 1;
       results.push(result);
-      await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+      try {
+        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+      } catch (hookError) {
+        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        result.passed = false;
+        result.skipped = false;
+        result.status = "ERROR";
+        result.error = message;
+        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
+      }
       if (!result.passed && scenario.failurePolicy !== "continue") break;
       if (runOptions.signal?.aborted) break;
     }
@@ -1904,6 +2044,7 @@ function buildCapabilities(inputContract = contract) {
       ),
       metaKeys: [...assertions.metaKeys],
       targets: [...assertions.targets || []],
+      from: [...assertions.from || []],
       numericOperators: [...assertions.numericOperators]
     },
     when: {
@@ -1911,8 +2052,11 @@ function buildCapabilities(inputContract = contract) {
       note: when.note
     },
     extract: {
+      metaKeys: [...extract.metaKeys || []],
       from: [...extract.from],
+      targets: [...extract.targets || []],
       required: extract.required,
+      default: extract.default,
       note: extract.note
     },
     reservedVars: [...reservedVars],
@@ -1961,11 +2105,17 @@ function renderCapabilitiesText(capabilities) {
   if (capabilities.assertions.targets?.length) {
     lines.push(`  \u65AD\u8A00\u76EE\u6807 target: ${capabilities.assertions.targets.join(" / ")}\uFF08duration \u4E3A\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\u6BEB\u79D2\uFF0C\u89C1 response.durationMs\uFF09`);
   }
+  if (capabilities.assertions.from?.length) {
+    lines.push(`  \u65AD\u8A00\u6765\u6E90 from: ${capabilities.assertions.from.join(" / ")}\uFF08\u9ED8\u8BA4 body\uFF09`);
+  }
   lines.push("");
   lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);
   lines.push(`  ${capabilities.when.note}`);
   lines.push("");
   lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
+  if (capabilities.extract.targets?.length) {
+    lines.push(`  \u63D0\u53D6\u76EE\u6807 target: ${capabilities.extract.targets.join(" / ")}\uFF1B\u5141\u8BB8\u5B57\u6BB5: ${capabilities.extract.metaKeys.join(" / ")}`);
+  }
   lines.push(`  ${capabilities.extract.note}`);
   lines.push("");
   lines.push(`\u4FDD\u7559\u53D8\u91CF: ${capabilities.reservedVars.join(" / ")}`);
@@ -4606,8 +4756,6 @@ function createWorkbenchRuntime(options) {
   var isPlainObject2 = isPlainObject;
   var assertNotReservedVar2 = assertNotReservedVar;
   var assertNoReservedVars2 = assertNoReservedVars;
-  var md52 = md5;
-  var pickWeightedIndex2 = pickWeightedIndex;
   var mergeGlobals2 = mergeGlobals;
   var GLOBAL_TYPES2 = ["header", "cookie", "query"];
   var HEADER_VALUE_OPTIONS = {
@@ -4948,32 +5096,6 @@ function createWorkbenchRuntime(options) {
       runNo: timestamp.slice(-6) + "-" + random.slice(0, 4)
     };
   }
-  var TIMESTAMP_OFFSET_UNITS2 = { ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
-  var TIMESTAMP_FORMAT_PATTERN2 = /^(?:YYYY|MM|DD|HH|mm|ss|[^A-Za-z])*$/;
-  function parseTimestampOffset2(offset) {
-    var match = /^([+-]?\d+)(ms|s|m|h|d|w)$/.exec(String(offset));
-    if (!match) {
-      throw new Error('generatedVars timestamp \u7684 offset \u5FC5\u987B\u5F62\u5982 "-7d"/"+8d"/"30m"\uFF08\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09: ' + offset);
-    }
-    return Number(match[1]) * TIMESTAMP_OFFSET_UNITS2[match[2]];
-  }
-  function formatTimestamp2(ms, format) {
-    var date = new Date(ms);
-    var pad = function(n) {
-      return n < 10 ? "0" + n : String(n);
-    };
-    var tokens = {
-      YYYY: String(date.getFullYear()).padStart(4, "0"),
-      MM: pad(date.getMonth() + 1),
-      DD: pad(date.getDate()),
-      HH: pad(date.getHours()),
-      mm: pad(date.getMinutes()),
-      ss: pad(date.getSeconds())
-    };
-    return String(format).replace(/YYYY|MM|DD|HH|mm|ss/g, function(token) {
-      return tokens[token];
-    });
-  }
   function buildScenarioRuntimeVars() {
     var cfg = appConfig;
     var scenario = state.scenario || {};
@@ -4994,89 +5116,7 @@ function createWorkbenchRuntime(options) {
     (scenario.generatedVars || []).forEach(function(def) {
       if (!def || !def.name) return;
       assertNotReservedVar2(def.name, "generatedVars");
-      if (def.type === "timestamp") {
-        var base = Date.now() + (def.offset == null ? 0 : parseTimestampOffset2(def.offset));
-        if (def.format != null) {
-          if (def.unit != null) {
-            throw new Error("generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: " + def.name);
-          }
-          if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(def.format) || !TIMESTAMP_FORMAT_PATTERN2.test(def.format)) {
-            throw new Error("generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: " + def.format);
-          }
-          vars[def.name] = formatTimestamp2(base, def.format);
-        } else if (def.unit != null && def.unit !== "ms") {
-          if (def.unit !== "s") {
-            throw new Error("generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: " + def.unit);
-          }
-          vars[def.name] = Math.floor(base / 1e3);
-        } else {
-          vars[def.name] = base;
-        }
-        return;
-      }
-      if (def.type === "uuid") {
-        if (!(window.crypto && window.crypto.randomUUID)) {
-          throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-        }
-        vars[def.name] = window.crypto.randomUUID();
-        return;
-      }
-      if (def.type === "uuidHex") {
-        vars[def.name] = createUuidHex();
-        return;
-      }
-      if (def.type === "md5") {
-        var source = (def.parts || []).map(function(name) {
-          return vars[name] == null ? "" : String(vars[name]);
-        }).join("");
-        vars[def.name] = md52(source);
-        return;
-      }
-      if (def.type === "signature") {
-        var params = {};
-        var paramKeys = Object.keys(def.params || {});
-        paramKeys.forEach(function(key) {
-          var varName = def.params[key];
-          params[key] = vars[varName];
-        });
-        var secretVar = def.secretVar || "apiSecret";
-        var secretVal = vars[secretVar];
-        if (!secretVal) {
-          throw new Error("\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars." + secretVar);
-        }
-        vars[def.name] = generateSignature(params, secretVal);
-        return;
-      }
-      if (def.type === "enum") {
-        var values = def.values;
-        if (!Array.isArray(values) || values.length === 0) {
-          throw new Error("generatedVars enum \u7684 values \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4: " + def.name);
-        }
-        var weights = def.weights == null ? values.map(function() {
-          return 1;
-        }) : Array.isArray(def.weights) ? def.weights : null;
-        if (!weights) {
-          throw new Error("generatedVars enum \u7684 weights \u5FC5\u987B\u662F\u6570\u5B57\u6570\u7EC4: " + def.name);
-        }
-        if (weights.length !== values.length) {
-          throw new Error("generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08" + weights.length + " vs " + values.length + "\uFF09: " + def.name);
-        }
-        var normalizedWeights = weights.map(function(weight, index) {
-          var value = Number(weight);
-          if (!isFinite(value) || value < 0) {
-            throw new Error("generatedVars enum \u7684 weights \u7B2C " + (index + 1) + " \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: " + weight);
-          }
-          return value;
-        });
-        if (!normalizedWeights.some(function(weight) {
-          return weight > 0;
-        })) {
-          throw new Error("generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: " + def.name);
-        }
-        vars[def.name] = values[pickWeightedIndex2(identifiers.runId + "|" + def.name, normalizedWeights)];
-        return;
-      }
-      throw new Error("\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: " + def.type);
+      applyGeneratedVar(def, vars, identifiers, { uuidHex: createUuidHex });
     });
     return vars;
   }
@@ -6433,11 +6473,42 @@ function createApp(options = {}) {
 }
 
 // src/node/io.js
-var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
 
 // src/utils/path-validator.js
+var import_node_fs = __toESM(require("node:fs"), 1);
 var import_node_path = __toESM(require("node:path"), 1);
+function resolveToRealPath(candidate) {
+  let probe = candidate;
+  const pending = [];
+  while (!import_node_fs.default.existsSync(probe)) {
+    const parent = import_node_path.default.dirname(probe);
+    if (parent === probe) break;
+    pending.unshift(import_node_path.default.basename(probe));
+    probe = parent;
+  }
+  const real = import_node_fs.default.realpathSync(probe);
+  return pending.length ? import_node_path.default.join(real, ...pending) : real;
+}
+function assertRealPathWithinRoot(root, resolved, userPath) {
+  let realRoot;
+  try {
+    realRoot = resolveToRealPath(root);
+  } catch {
+    realRoot = import_node_path.default.resolve(root);
+  }
+  let full;
+  try {
+    full = resolveToRealPath(resolved);
+  } catch (error) {
+    throw new Error(`\u65E0\u6CD5\u89E3\u6790\u8DEF\u5F84\u771F\u5B9E\u4F4D\u7F6E: ${userPath}\uFF08${error.message}\uFF09`);
+  }
+  const relative = import_node_path.default.relative(realRoot, full);
+  if (!relative || relative.startsWith("..") || import_node_path.default.isAbsolute(relative)) {
+    throw new Error(`\u8DEF\u5F84\u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C: ${userPath}`);
+  }
+}
 function validatePath(root, userPath, options = {}) {
   if (typeof userPath !== "string" || !userPath.trim()) {
     throw new Error("\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
@@ -6453,6 +6524,7 @@ function validatePath(root, userPath, options = {}) {
     if (relative2.startsWith("..") || import_node_path.default.isAbsolute(relative2)) {
       throw new Error(`\u7EDD\u5BF9\u8DEF\u5F84\u8D8A\u754C: ${userPath}`);
     }
+    assertRealPathWithinRoot(root, userPath, userPath);
     return userPath;
   }
   const resolved = import_node_path.default.resolve(root, userPath);
@@ -6460,6 +6532,7 @@ function validatePath(root, userPath, options = {}) {
   if (!relative || relative.startsWith("..") || import_node_path.default.isAbsolute(relative)) {
     throw new Error(`\u8DEF\u5F84\u8D8A\u754C: ${userPath}`);
   }
+  assertRealPathWithinRoot(root, resolved, userPath);
   return resolved;
 }
 
@@ -6479,11 +6552,11 @@ function createNodeIo(workspace = process.cwd()) {
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
         );
       }
-      if (!import_node_fs.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs.default.readFileSync(absolutePath)]), filename);
+      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
@@ -6498,15 +6571,15 @@ function createNodeIo(workspace = process.cwd()) {
 \u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
         );
       }
-      import_node_fs.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
-      import_node_fs.default.writeFileSync(absolutePath, data);
+      import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
+      import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
 
 // src/node/loader.js
-var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_fs3 = __toESM(require("node:fs"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
 var import_node_vm = __toESM(require("node:vm"), 1);
 function executeDefinitionFile(filePath, api) {
@@ -6527,7 +6600,7 @@ function executeDefinitionFile(filePath, api) {
   context.global = context;
   context.globalThis = context;
   import_node_vm.default.createContext(context);
-  import_node_vm.default.runInContext(import_node_fs2.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath });
+  import_node_vm.default.runInContext(import_node_fs3.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath });
   return { context, window: windowObject, exports: moduleObject.exports };
 }
 function loadConfigFile(filePath, api) {
@@ -6555,10 +6628,16 @@ function loadScenarioFile(filePath, id, api) {
   ASSERTION_OPERATORS,
   CONTRACT_VERSION,
   GLOBAL_TYPES,
+  IDCARD_TEST_REGIONS,
+  PHONE_TEST_PREFIXES,
   RESERVED_VARS,
   SAVED_RESPONSE,
+  TIMESTAMP_FORMAT_PATTERN,
+  TIMESTAMP_OFFSET_UNITS,
+  USCC_ALPHABET,
   VERSION,
   applyExtract,
+  applyGeneratedVar,
   assertNoReservedVars,
   assertNotReservedVar,
   buildAssertions,
@@ -6581,6 +6660,7 @@ function loadScenarioFile(filePath, id, api) {
   executeDefinitionFile,
   formatAssertionContext,
   formatDuration,
+  formatTimestamp,
   gb11643Checksum,
   generateSignature,
   getAdapter,
@@ -6601,8 +6681,10 @@ function loadScenarioFile(filePath, id, api) {
   maskSecret,
   md5,
   mergeGlobals,
+  normalizeEnumDefinition,
   normalizeGlobalParam,
   parseBody,
+  parseTimestampOffset,
   pickWeightedIndex,
   registerAdapter,
   registerConfig,

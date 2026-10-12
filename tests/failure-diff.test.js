@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { failureDiffLines, firstDifferenceLines, formatFailureValue, SHORT_VALUE_LIMIT } from "../src/utils/failure-diff.js";
+import { escapeInlineText, failureDiffLines, firstDifferenceLines, formatFailureValue, SHORT_VALUE_LIMIT } from "../src/utils/failure-diff.js";
 
 test("短值返回空数组（保持既有单行 expected=... actual=... 格式）", () => {
     // 标量短值：不应产生任何分块行，调用方继续走单行输出
@@ -170,4 +170,16 @@ test("首差异在长字符串尾部时仍按原文定位真实索引与字符",
     assert.ok(lines.some((line) => line.includes("首个差异在第 20000 个字符")), "差异索引应按未截断原文计算");
     assert.ok(lines.some((line) => line.includes("«b»")), "差异字符应高亮");
     assert.ok(lines.some((line) => line.includes("长度 20000 vs 20000")), "长度信息应按原文呈现");
+});
+
+test("escapeInlineText：Unicode 行分隔符 U+2028/U+2029 与 C1 控制符折叠为字面量", () => {
+    // JSON.stringify 不转义 U+2028/U+2029，支持它们的终端会把其渲染为新行——
+    // 破坏「换行折字面量」不变量，可伪造报告行/CI 命令行，必须补 \uXXXX 转义
+    const out = escapeInlineText("a\u2028b\u2029c");
+    assert.equal(out, "a\\u2028b\\u2029c");
+    assert.ok(!out.includes("\u2028") && !out.includes("\u2029"), "原文不得残留真实行分隔符");
+    // C1 控制符（含 8 位 CSI）同口径
+    assert.equal(escapeInlineText("x\u009b]31m"), "x\\u009b]31m");
+    // 常规字符原样透出
+    assert.equal(escapeInlineText("plain-text"), "plain-text");
 });

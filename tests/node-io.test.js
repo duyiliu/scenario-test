@@ -110,3 +110,33 @@ test("saveResponse：路径穿越拒绝，工作区外不可写", async () => {
         fs.rmSync(workspace, { recursive: true, force: true });
     }
 });
+
+test("junction/符号链接越界：词法在界内但实路径出界的上传与保存均拒绝", async (t) => {
+    const workspace = makeWorkspace();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-outside-"));
+    try {
+        fs.writeFileSync(path.join(outside, "secret.txt"), "out-of-bounds", "utf8");
+        const link = path.join(workspace, "link");
+        try {
+            // Windows junction 不需要管理员权限；其他平台退回符号链接语义一致
+            fs.symlinkSync(outside, link, "junction");
+        } catch (error) {
+            t.skip(`当前平台不支持目录链接: ${error.message}`);
+            return;
+        }
+        const io = createNodeIo(workspace);
+        // link/secret.txt 词法路径在工作区内，但实路径越界——必须按 realpath 判越界
+        await assert.rejects(
+            () => io.createUploadBody("link/secret.txt"),
+            /文件上传路径不安全[\s\S]*越界/
+        );
+        await assert.rejects(
+            () => io.saveResponse("link/out.bin", new TextEncoder().encode("x")),
+            /响应保存路径不安全[\s\S]*越界/
+        );
+        assert.equal(fs.existsSync(path.join(outside, "out.bin")), false, "不得写出到链接目标目录");
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    }
+});

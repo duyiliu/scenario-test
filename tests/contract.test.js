@@ -39,9 +39,13 @@ test("每个操作符含说明；数值比较操作符标注有限 number 约束
 
 test("when 来源仅 vars；extract 来源与 required 语义；保留变量；generatedVars 类型", () => {
     assert.deepEqual(contract.when.sources, ["vars"]);
+    assert.deepEqual(contract.assertions.from, ["body", "vars", "headers", "bodyText"]);
+    assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
+    assert.deepEqual(contract.extract.targets, ["status"]);
+    assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default"]);
     assert.equal(contract.extract.required, "boolean");
-    assert.deepEqual(contract.reservedVars, ["runId", "runNo"]);
+    assert.deepEqual(contract.reservedVars, ["runId", "runNo", "__proto__", "constructor", "prototype"]);
     assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);
 });
 

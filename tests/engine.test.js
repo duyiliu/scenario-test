@@ -1518,3 +1518,169 @@ test("运行环境无 fetch 实现时 createEngine 快速失败", () => {
         globalThis.fetch = originalFetch;
     }
 });
+
+test("断言/extract 的 from、target、裸 path 定义期白名单与分词校验（拼错不再静默落 body 假绿）", () => {
+    const define = (assertions, extra = {}) => defineScenario({
+        name: "A",
+        steps: [{ name: "s", path: "x", assertions, ...extra }]
+    });
+    // target 拼错（如 statu）原静默落到 body 分支假绿，现在定义期即拒
+    assert.throws(() => define([{ target: "statu", equals: 200 }]), /target 只支持 status[/]duration/);
+    assert.throws(() => define([{ target: "headers", path: "x", exists: true }]), /target 只支持 status[/]duration/);
+    // from 拼错/未知源同样拒绝
+    assert.throws(() => define([{ from: "bodyy", path: "code", equals: 200 }]), /from 只支持 body[/]vars[/]headers[/]bodyText/);
+    assert.throws(() => define([{ from: "response", path: "status", equals: 200 }]), /from 只支持 body[/]vars[/]headers[/]bodyText/);
+    // 裸 path 必须过 tokenizePath：a..b / a[] 原静默判缺，exists:false 假绿
+    assert.throws(() => define([{ path: "a..b", exists: false }]), /path 不是合法路径写法/);
+    assert.throws(() => define([{ path: "a[]", exists: true }]), /path 不是合法路径写法/);
+    assert.throws(() => define([{ path: '["a"]b', exists: true }]), /path 不是合法路径写法/);
+    // 合法形态不抛（headers 首段保留宽松特性；空串=整个来源；each 子断言 path 支持模板）
+    define([{ target: "status", equals: 200 }, { target: "duration", lt: 5000 }]);
+    define([{ from: "headers", path: "x-total", exists: true }]);
+    define([{ from: "headers", path: ".X-TOTAL.length", equals: 2 }]);
+    define([{ path: "list[-1]", equals: 1 }, { path: 'm["a>b"]', exists: true }]);
+    define([{ path: "", exists: true }]);
+    // 顶层 path 的 {{ }} 是死写法（path 按字面取键不解析）——定义期即拒，否则 exists:false 恒真假绿
+    assert.throws(() => define([{ path: "{{vars.p}}", exists: true }]), /path 不支持 \{\{ \}\} 模板/);
+    assert.throws(() => define([{ path: "a.{{vars.k}}", exists: false }]), /path 不支持 \{\{ \}\} 模板/);
+    // header 简写同口径：头名按字面匹配不解析，{{vars.h}} 字面头不存在 → exists:false 假绿
+    assert.throws(() => define([{ header: "{{vars.h}}", exists: false }]), /header 不支持 \{\{ \}\} 模板/);
+    assert.throws(() => define([{ header: "", exists: true }]), /header 必须是非空字符串/);
+    assert.throws(() => define([{ header: " ", exists: false }]), /header 必须是非空字符串/);
+    assert.throws(() => define([{ header: 123, exists: true }]), /header 必须是非空字符串/);
+    // each 子断言的 path 随期望值整体 resolve——{{ }} 合法
+    define([{ path: "list", each: { path: "{{vars.k}}", exists: true } }]);
+    // each 子断言的响应级通道恒取死值（elementResponse 仅 body/vars 有实值）——整体拒绝
+    assert.throws(() => define([{ path: "list", each: { header: "{{vars.h}}", exists: false } }]), /each 子断言.*响应级通道/);
+    assert.throws(() => define([{ path: "list", each: { header: "X-T", exists: true } }]), /each 子断言.*响应级通道/);
+    assert.throws(() => define([{ path: "list", each: { target: "status", exists: false } }]), /each 子断言.*响应级通道/);
+    assert.throws(() => define([{ path: "list", each: { from: "headers", path: "x", exists: true } }]), /each 子断言.*响应级通道/);
+    assert.throws(() => define([{ path: "list", each: { from: "bodyText", exists: true } }]), /each 子断言.*响应级通道/);
+    // each 内 from:"vars"（读运行变量）与默认 body（元素自身）合法
+    define([{ path: "list", each: [{ path: "id", exists: true }, { from: "vars", path: "flag", equals: true }] }]);
+});
+
+test("extract 定义期校验：形状/name/保留名/required+default 互斥/from、target、path", () => {
+    const define = (extract) => defineScenario({ name: "A", steps: [{ name: "s", path: "x", extract }] });
+    assert.throws(() => define("x"), /extract 必须是数组/);
+    assert.throws(() => define(["x"]), /extract 第 1 项 必须是对象/);
+    assert.throws(() => define([{ path: "a" }]), /extract 第 1 项 缺少 name/);
+    assert.throws(() => define([{ name: "runId", path: "a" }]), /保留变量/);
+    assert.throws(() => define([{ name: "__proto__", path: "a" }]), /保留变量/);
+    assert.throws(() => define([{ name: "x", required: true, default: 1 }]), /required: true 与 default 互斥/);
+    assert.throws(() => define([{ name: "x", target: "duration" }]), /target 只支持 status/);
+    assert.throws(() => define([{ name: "x", from: "statu" }]), /from 只支持 body[/]headers[/]bodyText[/]response/);
+    assert.throws(() => define([{ name: "x", path: "a..b" }]), /path 不是合法路径写法/);
+    // 未知键即拒：heder/fromm 拼错此前静默落到 body 来源（与断言 metaKeys 同口径）
+    assert.throws(() => define([{ name: "x", heder: "X-Token" }]), /未知键 "heder"/);
+    assert.throws(() => define([{ name: "x", fromm: "body" }]), /未知键 "fromm"/);
+    assert.throws(() => define([{ name: "x", path: "a", equals: 1 }]), /未知键 "equals"/);
+    // extract 的 path 不支持 {{ }} 模板（按字面取键不解析）
+    assert.throws(() => define([{ name: "x", path: "a.{{vars.k}}" }]), /不支持 \{\{ \}\} 模板/);
+    // name/header 的 {{ }} 同为死写法；required 非布尔静默降级为「非必需」
+    assert.throws(() => define([{ name: "{{vars.n}}", path: "a" }]), /name 不支持 \{\{ \}\} 模板/);
+    assert.throws(() => define([{ name: "x", header: "{{vars.h}}" }]), /header 必须是非空字符串且不支持/);
+    assert.throws(() => define([{ name: "x", header: "" }]), /header 必须是非空字符串/);
+    assert.throws(() => define([{ name: "x", header: " " }]), /header 必须是非空字符串/);
+    assert.throws(() => define([{ name: "x", path: "a", required: "yes" }]), /required 必须是布尔值/);
+    // 合法形态不抛
+    define([{ name: "x", path: "a.b" }, { name: "y", header: "Content-Type", path: "length" }]);
+    define([{ name: "x", from: "response", path: "body.code" }]);
+    define([{ name: "x", target: "status" }]);
+    define([{ name: "x", path: "a", default: "{{vars.y}}" }]);
+    define([{ name: "x", path: "" }]); // 空串 = 取整个响应体（下游在用语义，运行期 falsy 判整个 source）
+    define([]);
+});
+
+test("when 非对象形式定义期收紧：裸字符串/数字/数组拒绝，模板与布尔放行", () => {
+    const base = { name: "W", steps: [{ name: "s", path: "x" }] };
+    // "false"/"0" 裸字符串按真值判定恒真——典型误用，定义期引导到对象断言或模板
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "false" }] }), /when 只支持对象断言/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "vars.flag" }] }), /when 只支持/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: 1 }] }), /when 只支持/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: [] }] }), /when 只支持/);
+    // 部分模板 "pre {{vars.x}}" 解析成非空串恒真——when 字符串必须是整串 {{ }} 模板
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "pre {{vars.x}}" }] }), /when 只支持/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "{{a}}{{b}}" }] }), /when 只支持/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "{{ }}" }] }), /合法路径写法|when 只支持/);
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "{{vars.flag}}" }] });
+    // 外层空白整串模板与运行期 resolveString 同口径放行（保真值，非拼接恒真）
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: " {{vars.flag}} " }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: true }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: false }] });
+});
+
+test("__proto__/constructor/prototype 保留键：读侧不可见、写侧双端拦截", async () => {
+    const { getByPath, applyExtract } = await import("../src/core.js");
+    // 读侧：继承成员不参与路径导航（exists:true 不得对 __proto__ 恒真）
+    assert.equal(getByPath({ a: 1 }, "__proto__"), undefined);
+    assert.equal(getByPath({ a: 1 }, "constructor"), undefined);
+    assert.equal(getByPath({ a: { b: 2 } }, "a.b"), 2);
+    assert.equal(getByPath({ list: [1, 2] }, "list.length"), 2);
+    assert.equal(getByPath({ list: [1, 2] }, "list.map"), undefined);
+    assert.equal(getByPath("abc", "length"), 3);
+    // 写侧：vars.__proto__ 走 setter 会改原型——保留名拦截覆盖此面，运行期亦兜底
+    const targetRuntime = { vars: {}, lastResponse: null, lastResponseBody: null };
+    assert.throws(
+        () => applyExtract({ extract: [{ name: "__proto__", path: "x" }] }, { status: 200, headers: {}, body: { x: 1 } }, targetRuntime),
+        /保留变量/
+    );
+    assert.equal(targetRuntime.vars.polluted, undefined, "vars 原型链不得被 extract 污染");
+    // 断言 evaluateAssertion 同口径：from:vars 读 __proto__ 判缺
+    const verdict = (await import("../src/core.js")).evaluateAssertion(
+        { from: "vars", path: "__proto__", exists: true },
+        { status: 200, headers: {}, body: {}, bodyText: "" },
+        { vars: { a: 1 }, lastResponse: null, lastResponseBody: null }
+    );
+    assert.equal(verdict.passed, false);
+});
+
+test("onStep 回调抛错降级为步骤 ERROR，不吞掉整轮报告", async () => {
+    const engine = createEngine({ fetch: async () => jsonResponse({ code: 0 }) });
+    const report = await engine.runScenario(
+        { name: "A", steps: [{ name: "s1", path: "x" }] },
+        { onStep: () => { throw new Error("reporter boom"); } }
+    );
+    assert.equal(report.status, "FAILED");
+    assert.equal(report.results[0].status, "ERROR");
+    assert.match(report.results[0].error, /onStep 回调抛错/);
+    // continue 策略下回调异常不阻断后续步骤执行
+    const report2 = await engine.runScenario(
+        { name: "A", failurePolicy: "continue", steps: [{ name: "s1", path: "x" }, { name: "s2", path: "x" }] },
+        { onStep: () => { throw new Error("boom"); } }
+    );
+    assert.equal(report2.results.length, 2, "每步均应产生结果行（onStep 异常按步降级）");
+    assert.equal(report2.results[1].status, "ERROR");
+    // SKIPPED 步骤被回调打成 ERROR 时必须清 skipped 标记——
+    // 否则该步既不计 failed 也不计 passedSteps，场景报 SKIPPED/PASSED 是残留假绿
+    const report3 = await engine.runScenario(
+        { name: "A", steps: [{ name: "s1", path: "x", when: false }] },
+        { onStep: (r) => { if (r.skipped) throw new Error("probe"); } }
+    );
+    assert.equal(report3.status, "FAILED", "SKIPPED 步骤的 onStep 异常不得让场景报 SKIPPED/PASSED");
+    assert.equal(report3.results[0].status, "ERROR");
+    assert.equal(report3.results[0].skipped, false);
+});
+
+test("fetch 拒绝时透出 error.cause（ENOTFOUND/ECONNREFUSED 等真实原因进 CI 日志）", async () => {
+    const engine = createEngine({
+        fetch: async () => {
+            const error = new TypeError("fetch failed");
+            error.cause = Object.assign(new Error("getaddrinfo ENOTFOUND api.example"), { code: "ENOTFOUND" });
+            throw error;
+        }
+    });
+    const report = await engine.runScenario({ name: "A", steps: [{ name: "s", path: "x" }] });
+    assert.equal(report.results[0].status, "ERROR");
+    assert.match(report.results[0].error, /fetch failed（ENOTFOUND）/);
+    // cause 无 code 时回落 message
+    const engine2 = createEngine({
+        fetch: async () => {
+            const error = new TypeError("fetch failed");
+            error.cause = new Error("socket hang up");
+            throw error;
+        }
+    });
+    const report2 = await engine2.runScenario({ name: "A", steps: [{ name: "s", path: "x" }] });
+    assert.match(report2.results[0].error, /socket hang up/);
+});

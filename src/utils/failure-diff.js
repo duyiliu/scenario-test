@@ -28,10 +28,11 @@ function isShortValue(value) {
     }
 }
 
-// JSON.stringify 不转义 C1 控制字符（\x7f-\x9f，含 8 位 CSI U+009B）——服务端可控值
-// （响应字段断言失败的 actual 等）原样透出仍会带裸 C1 进终端，统一补 \uXXXX 字面转义
+// JSON.stringify 不转义 C1 控制字符（\x7f-\x9f，含 8 位 CSI U+009B）与 Unicode 行分隔符
+// （U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR——支持它们的终端会把其渲染成
+// 新行，破坏「换行折字面量」不变量）。统一补 \uXXXX 字面转义
 export function escapeC1(text) {
-    return text.replace(/[\x7f-\x9f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    return text.replace(/[\x7f-\x9f\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 // CI 工作流命令标记：GitHub Actions 旧格式 ##[、Azure DevOps ##vso[、TeamCity ##teamcity[
