@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.7.0] - 2026-10-12
 
 ### 构建
 
@@ -24,6 +24,20 @@ All notable changes to this project will be documented in this file.
 
 - `extract` 新增 `default` 兜底值（contract v6 → v7）：路径不存在时变量取声明的 `default`（支持模板、可引用先提取的变量），不再产生 warning；仅 `undefined` 判定缺失，JSON `null` 是真实响应值不触发兜底。`required: true` 与 `default` 互斥，同声明即报错。适配可选字段需要默认值的场景（如缺省分页参数、可选总数）。
 - 数组路径下标支持负索引：`records[-1]` 取数组末项、`records[-N]` 取倒数第 N 项，extract、断言 path、模板 `{{vars.*}}`/`{{lastResponse.*}}` 与 `from: "headers"` 子路径同口径生效。此前 `[-1]` 能被分词却按字面属性名取值，静默得到 `undefined`（表现为提取 warning 或断言失败）。越界负索引按路径不存在处理；引号键（`a["-1"]`）与非数组上的 `a[-1]` 维持属性名语义不变。
+
+### Migration Guide: v0.6.0 → v0.7.0
+
+本版本把多处「静默失败」收紧为「定义期显式报错」，正常写法的场景不受影响：
+
+1. **GET/HEAD 带 `request.body`/`request.fileUpload`**：body 原本被静默丢弃，现定义期报错——改用 `POST`/`PUT`/`PATCH` 或把参数放入 `params`。
+2. **模板内表达式**（`{{vars.a > 0}}`/`{{!vars.x}}`/三元/函数调用等）：原本被当键名查找静默得空串，现定义期报错——改用 `when`/断言对象形式。
+3. **`step.method` 模板写法**（`method: "{{vars.m}}"`）：原本按字面方法名发送，现定义期报错——动态方法写到 `request.method`。
+4. **畸形路径**（`vars[]`、`vars..a`、`["a"]b` 等）：原本可能返回根对象或取错值，现定义期报「不是合法路径写法」。
+5. **适配器步骤**：仅靠 `matches` 自动认领不再豁免 HTTP 校验——适配器步骤必须显式写 `adapter: "名字"`；`adapter: ""/null/false` 定义期即拒。
+6. **`retryUntil` 内的 `assertions`**：原从不在重试判定中执行，现定义期报错——断言移到步骤顶层 `assertions`。
+7. **CLI 输出变化**：失败步骤打印截断响应体（`SCENARIO_NO_BODY_PRINT=1` 可关闭）、retryUntil 轮询输出 `[RETRY]` 进度行——解析 CI 日志的工具会看到新行。
+
+存量场景文件可用 `defineScenario`/`defineConfig` 定义期校验一次性列出全部违规点，报错信息均带迁移指引。
 
 ## [0.6.0] - 2026-10-11
 

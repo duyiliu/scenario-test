@@ -28,8 +28,8 @@
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
     .\install.ps1 -UseNpm
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.6.0/dist"
-    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.6.0/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.7.0/dist"
+    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.0/scripts/install.ps1 | iex
 #>
 
 param(
@@ -41,7 +41,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScenarioTestVersion = "0.6.0"
+$ScenarioTestVersion = "0.7.0"
 $PackageTarball = "https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-$ScenarioTestVersion.tgz"
 $RuntimeFiles = @(
     "scenario-test-cli.cjs",
