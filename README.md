@@ -4,6 +4,25 @@
 
 `scenario-test` 是面向业务项目的 HTTP 场景测试工具，提供统一 DSL、浏览器工作台和 Node.js CLI。默认采用免 npm 接入，不修改业务项目依赖，也不要求克隆本仓库。
 
+## 全局 AI Skill（多业务项目推荐）
+
+可以在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中**按用户安装一次**，之后进入不同业务项目，只需说“为 OrderController 生成 HTTP 场景测试”。Skill 会按当前工作目录自动定位业务项目、检测接入状态，并读取该项目**自身版本**的 AI 规则和能力清单。无需每个项目复制 Skill；未接入时会提示并等待确认，不会自行下载安装。
+
+```bash
+# 用户级全局安装；按提示选择你使用的 Agent
+npx skills add youzhikeji/scenario-test --skill scenario-test -g
+```
+
+> 上述 `npx skills` 只负责一次性安装 **Agent Skill**，不代表在业务项目执行 npm 安装。业务项目仍默认使用下文的免 npm 安装脚本。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
+
+Skill 入口在 [`skills/scenario-test/SKILL.md`](skills/scenario-test/SKILL.md)，只读项目探测脚本在 [`skills/scenario-test/scripts/detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。手动检查当前项目：
+
+```bash
+node /path/to/scenario-test-skill/scripts/detect-project.mjs --cwd /path/to/business-project
+```
+
+探测只检查文件存在性；正式运行前仍以每个项目的 `doctor` 结果为准。生成场景不会自动执行 HTTP 请求；全局 Skill 升级也**不会**自动升级各业务项目运行时。
+
 ## 快速接入
 
 要求：Node.js 18+。
