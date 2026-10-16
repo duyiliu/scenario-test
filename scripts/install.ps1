@@ -29,7 +29,7 @@
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
     .\install.ps1 -UseNpm
     .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.7.1/dist"
-    irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.ps1 | iex
+    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.ps1 | iex
 #>
 
 param(

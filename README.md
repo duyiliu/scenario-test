@@ -10,7 +10,7 @@
 
 ```bash
 # 用户级全局安装；按提示选择你使用的 Agent
-npx skills add youzhikeji/scenario-test --skill scenario-test -g
+npx skills add duyiliu/scenario-test --skill scenario-test -g
 ```
 
 > 上述 `npx skills` 只负责一次性安装 **Agent Skill**，不代表在业务项目执行 npm 安装。业务项目仍默认使用下文的免 npm 安装脚本。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
@@ -35,7 +35,7 @@ node /path/to/scenario-test-skill/scripts/detect-project.mjs --cwd /path/to/busi
 执行要求：
 1. 先确认当前目录是项目根目录，且 Node.js 版本不低于 18；不满足时停止并说明原因。
 2. 不克隆公共库源码，不修改业务代码、构建配置或已有场景文件；不启动服务、不调用业务接口、不写入 Token、Secret 或真实测试数据。
-3. 默认免 npm 安装：直接执行官方固定版本脚本（Windows: irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.ps1 | iex；macOS/Linux: curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test）。只有用户明确要求使用 npm 时，才改用 npm install -D @yc_yzkj/scenario-test 并执行 npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"。
+3. 默认免 npm 安装：直接执行官方固定版本脚本（Windows: irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.ps1 | iex；macOS/Linux: curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test）。只有用户明确要求使用 npm 时，才改用 npm install -D @yc_yzkj/scenario-test 并执行 npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"。
 4. 运行 doctor 体检确认安装完整（免 npm: node scenario-test/.scenario-test/scenario-test-cli.cjs doctor --config scenario-test/scenario.config.js；npm: npx @yc_yzkj/scenario-test doctor --config scenario-test/scenario.config.js）。有 FAIL 时停止并报告，不继续后续步骤。
 5. doctor 通过后，读取刚生成的 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md 作为后续场景设计规则，不要要求用户复制或粘贴。
 6. 然后只询问：“你要测试哪个业务功能？请提供功能名称，以及页面、Controller、接口或已有测试中的任一入口。”此时不要扫描整个项目或生成场景。
@@ -55,12 +55,12 @@ node /path/to/scenario-test-skill/scripts/detect-project.mjs --cwd /path/to/busi
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.ps1 | iex
+irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test
 ```
 
 默认情况下，安装脚本只从 npm Registry 下载一次固定版本 tarball，在临时目录解压后从本地 `dist/` 初始化；不会执行 `npm install`、访问 GitHub API 或修改业务项目依赖。脚本会把 CLI、浏览器运行时、类型声明、能力清单和版本锁写入 `scenario-test/.scenario-test/`，并自动执行 doctor。内网下载源的指定方式：PowerShell 使用 `-Source <目录>`；macOS/Linux 使用第三个位置参数或 `SCENARIO_TEST_SOURCE`。内网目录需要包含完整的 `dist` 运行时文件。
@@ -211,12 +211,12 @@ scenario-test/
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.ps1 | iex
+irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.sh | bash -s -- . scenario-test
 ```
 
 ### npm 升级

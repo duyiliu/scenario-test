@@ -6,7 +6,7 @@
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
 #   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.7.1/dist"
-#   curl -fsSL https://cdn.jsdelivr.net/gh/youzhikeji/scenario-test@v0.7.1/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
 # 原理：默认免 npm 安装 —— 从 npm Registry 下载固定版本 tarball，解压后从本地 dist 初始化，
 #       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
