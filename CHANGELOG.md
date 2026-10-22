@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### 引擎
+
+- `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
+- `retryUntil.intervalMs` 显式 `0` 语义修正：此前 `intervalMs || 2000` 把显式 0 静默吞回默认 2000ms；现按「0 = 按最小间隔执行」钳到下限 100ms（与定义期 `≥0` 校验口径对齐），未声明/非法值仍按默认 2000ms。
+
+### 测试基建
+
+- `doctor.test.js` 子进程统一剥离 `*_proxy` 环境变量：宿主设了 `HTTP_PROXY` 等代理时，Node undici `EnvHttpProxyAgent` 会向 stderr 打 `UNDICI-EHPA` 实验警告，导致「stderr 应为空」类断言在本机环境必然失败。
+
+### 工程
+
+- 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
+
+
 ## [0.7.1] - 2026-10-12
 
 ### DSL
