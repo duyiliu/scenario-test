@@ -908,3 +908,49 @@ test("CLI --config 缺值拒绝 -h/--help 占位，单独 -h 正常输出帮助"
     assert.equal(runH.status, 0);
     assert.match(runH.stdout, /Commands:/);
 });
+
+test("CLI run --json：stdout 纯净可解析，单场景输出 report、多场景聚合，进度行改走 stderr", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-json-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"ok",name:"Ok",url:"scenarios/ok.js"},{id:"bad",name:"Bad",url:"scenarios/bad.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/ok.js"), `ScenarioTest.registerScenario("ok",ScenarioTest.defineScenario({name:"Ok",steps:[{name:"healthy",path:"health",status:200,assertions:[{path:"status",equals:"UP"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/bad.js"), `ScenarioTest.registerScenario("bad",ScenarioTest.defineScenario({name:"Bad",steps:[{name:"broken",path:"health",status:200,assertions:[{path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        const config = path.join(directory, "scenario.config.js");
+
+        // 单场景成功：直接输出该场景 report（不包 scenarios），退出码 0
+        const single = await runCli(["--config", config, "--scenario", "ok", "--json"]);
+        assert.equal(single.code, 0, single.stderr);
+        const singleReport = JSON.parse(single.stdout);
+        assert.equal(singleReport.scenarioName, "Ok");
+        assert.equal(singleReport.status, "PASSED");
+        assert.equal(singleReport.planned, 1);
+        assert.equal(singleReport.results[0].name, "healthy");
+        assert.ok(Array.isArray(singleReport.results[0].assertions));
+        assert.equal(Object.hasOwn(singleReport, "scenarios"), false);
+        assert.match(single.stderr, /\[PASS\] healthy/);
+        assert.doesNotMatch(single.stdout, /\[PASS\]|Overall:/);
+
+        // 多场景（含失败）：顶层包 { scenarios: [...] }，失败时仍输出完整 JSON 且退出码非 0
+        const multi = await runCli(["--config", config, "--all", "--json"]);
+        assert.notEqual(multi.code, 0, "失败场景应返回非零退出码");
+        const payload = JSON.parse(multi.stdout);
+        assert.equal(Array.isArray(payload.scenarios), true);
+        assert.equal(payload.scenarios.length, 2);
+        assert.equal(payload.scenarios[0].status, "PASSED");
+        assert.equal(payload.scenarios[1].status, "FAILED");
+        assert.equal(payload.scenarios[1].failed, 1);
+        assert.match(multi.stderr, /\[FAIL\] broken/);
+        assert.match(multi.stderr, /Overall: 1\/2 passed/);
+        assert.doesNotMatch(multi.stdout, /\[FAIL\]|\[PASS\]|Overall:|结论：/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

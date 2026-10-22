@@ -338,7 +338,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.7.1";
 
 // src/contract.js
-var CONTRACT_VERSION = 8;
+var CONTRACT_VERSION = 9;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -491,7 +491,7 @@ var contract = Object.freeze({
       "no-input": { kind: "flag", prop: "noInput", description: "init \u975E\u4EA4\u4E92\uFF1A\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u6309 keep\uFF08\u4FDD\u7559\u914D\u7F6E\u4E0E\u573A\u666F\uFF0C\u4EC5\u5237\u65B0 AI \u89C4\u5219\u548C\u8FD0\u884C\u65F6\u526F\u672C\uFF09" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
-      json: { kind: "flag", prop: "json", description: "capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF09" },
+      json: { kind: "flag", prop: "json", description: "run/capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF0C\u4EBA\u7C7B\u53EF\u8BFB\u8FDB\u5EA6\u4E0E\u7ED3\u8BBA\u8D70 stderr\uFF09" },
       token: {
         kind: "value",
         prop: "authorization",
@@ -7745,6 +7745,8 @@ ${optionHelp}
   \u9ED8\u8BA4 run \u672A\u6307\u5B9A --all/--scenario \u65F6\u4EC5\u6267\u884C\u6E05\u5355\u7B2C\u4E00\u4E2A\u573A\u666F\u3002
   --all \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF1Bmanual:true \u573A\u666F\u987B\u901A\u8FC7 --scenario \u663E\u5F0F\u9009\u62E9\u3002
   --scenario \u652F\u6301\u9017\u53F7\u5206\u9694\u591A\u9009\uFF08\u5982 --scenario login,order\uFF09\uFF0C\u6309 id/name/url \u5339\u914D\u3002
+  --json \u65F6 stdout \u53EA\u8F93\u51FA\u7ED3\u6784\u5316\u7ED3\u679C\uFF1A\u5355\u573A\u666F\u8F93\u51FA\u8BE5\u573A\u666F report\uFF0C\u591A\u573A\u666F\u8F93\u51FA
+  {"scenarios":[...]}\uFF1B\u8FDB\u5EA6\u884C\u4E0E\u7ED3\u8BBA\u6539\u8D70 stderr\uFF0C\u5931\u8D25\u573A\u666F\u4ECD\u8F93\u51FA\u5B8C\u6574 JSON \u4E14\u9000\u51FA\u7801\u975E\u96F6\u3002
 
 \u80FD\u529B\u53D1\u73B0\u547D\u4EE4:
   capabilities          \u8F93\u51FA DSL \u80FD\u529B\u6E05\u5355\uFF08\u4EBA\u7C7B\u6587\u672C\uFF1B--json \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF0C
@@ -8086,6 +8088,8 @@ ${choices.join("\n")}${remaining > 0 ? `
   let actualFailedTotal = 0;
   let skippedTotal = 0;
   let stoppedUnexecutedTotal = 0;
+  const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
+  const reports = [];
   for (const entry of entries) {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
@@ -8103,7 +8107,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-    console.log(`
+    print(`
 # ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
@@ -8111,40 +8115,41 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
       async onAttempt(info) {
         const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-        console.log(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-        console.log(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
+        print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
-          console.log(`  [WARN] ${escapeInlineText(warning)}`);
+          print(`  [WARN] ${escapeInlineText(warning)}`);
         }
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              console.log(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+              print(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
               for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
-                console.log(line);
+                print(line);
               }
               printEachDetail(sub.detail, `${label} \u203A `);
             }
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          console.log(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+          print(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
           for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
-            console.log(line);
+            print(line);
           }
           printEachDetail(assertion.detail, "");
         }
-        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result);
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print);
       }
     });
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
+    reports.push(report);
     total += report.planned;
     passedTotal += report.passedSteps;
     const stoppedUnexecuted = report.planned - report.executed - report.skipped;
@@ -8152,30 +8157,35 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     stoppedUnexecutedTotal += stoppedUnexecuted;
     failedTotal += report.failed + stoppedUnexecuted;
     skippedTotal += report.skipped;
-    console.log(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
+    print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
   }
-  console.log(`
+  print(`
 Overall: ${passedTotal}/${total} passed`);
   if (failedTotal) process.exitCode = 1;
   if (args.failOnSkip && skippedTotal > 0) {
-    console.log(`
+    print(`
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
     process.exitCode = 1;
   }
   const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65`;
   if (actualFailedTotal > 0) {
-    console.log(`
+    print(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5931\u8D25\u3002${countSummary}\uFF1B\u672A\u6267\u884C\u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7\u3002`);
   } else if (passedTotal === 0 && skippedTotal > 0) {
     const exitText = args.failOnSkip ? "\u56E0 --fail-on-skip \u5F00\u542F\uFF0C\u9000\u51FA\u7801\u4E3A 1" : "\u6309\u9ED8\u8BA4\u7B56\u7565\u9000\u51FA\u7801\u4E3A 0";
-    console.log(`
+    print(`
 \u7ED3\u8BBA\uFF1A\u5168\u90E8\u8DF3\u8FC7\uFF0C\u672A\u53D1\u8D77\u8BF7\u6C42\u3002${countSummary}\uFF1B${exitText}\u3002`);
   } else if (stoppedUnexecutedTotal > 0) {
-    console.log(`
+    print(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u672A\u5B8C\u6210\u3002${countSummary}\u3002`);
   } else {
-    console.log(`
+    print(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5B8C\u6210\u3002${countSummary}${skippedTotal > 0 ? "\uFF1B\u6761\u4EF6\u8DF3\u8FC7\u7684\u6B65\u9AA4\u672A\u53D1\u8D77\u8BF7\u6C42" : ""}\u3002`);
+  }
+  if (args.json) {
+    const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}
+`);
   }
 }
 var FAILURE_BODY_LIMIT = 2e3;
@@ -8189,13 +8199,13 @@ function escapeBodyLine(line) {
 function escapeErrorText(error) {
   return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
-function printFailedStepBody(result) {
+function printFailedStepBody(result, print = console.log) {
   const response = result?.response;
   if (!response || typeof response !== "object") return;
   const body = response.body;
   const bodyText = typeof response.bodyText === "string" ? response.bodyText : null;
   if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
-    console.log(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${escapeBodyLine(body.savedTo)}`);
+    print(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${escapeBodyLine(body.savedTo)}`);
     return;
   }
   let raw = bodyText ?? "";
@@ -8214,8 +8224,8 @@ function printFailedStepBody(result) {
   const truncated = text.length > FAILURE_BODY_LIMIT;
   const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
   const note = truncated ? `\uFF08\u5171 ${text.length} \u5B57\u7B26\uFF0C\u622A\u65AD\u663E\u793A\u524D ${FAILURE_BODY_LIMIT}\uFF09` : "";
-  console.log(`  \u54CD\u5E94\u4F53${note}:`);
-  for (const line of shown.split("\n")) console.log(`    ${escapeBodyLine(line)}`);
+  print(`  \u54CD\u5E94\u4F53${note}:`);
+  for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
 function safeFile(root, relativePath) {
   const candidate = import_node_path6.default.resolve(root, relativePath);

@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.7.1",
-  "contractVersion": 8,
+  "contractVersion": 9,
   "assertions": {
     "operators": {
       "exists": {
@@ -261,7 +261,7 @@
       },
       "json": {
         "kind": "flag",
-        "description": "capabilities/doctor 输出机器可读 JSON（stdout 纯净）"
+        "description": "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）"
       },
       "token": {
         "kind": "value",
