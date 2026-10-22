@@ -361,12 +361,22 @@ function stableStringify(value) {
         .join(",")}}`;
 }
 
+// includes 对 plain object 实际值的失败原因：非数组分支会走 String(actual)，对象恒为
+// "[object Object]"，断言必然失败且看起来像「对象不包含期望值」——属静默语义陷阱。
+// 保持失败口径不变（历史上恒 false，不可能有正当依赖），仅把原因换成可操作引导。
+const INCLUDES_OBJECT_ACTUAL_REASON =
+    "includes 不支持对象类型的实际值（String(actual) 恒为 \"[object Object]\"，断言必然失败）：" +
+    "对象深比较请改用 equals，或对具体字段用 path 断言（如 path: \"data.id\"）";
+
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
     validateAssertion(definition, context);
     let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
+    // 失败原因（语义化引导）：目前仅 includes 命中 plain object 实际值时产生，
+    // 通过断言/其余操作符不携带该键，保持既有四字段形状
+    let reason = "";
     // each 失败元素明细：[{ index, actual, assertions }]，仅在存在失败元素时挂到结果上
     let eachFailures = null;
     if (definition.exists !== undefined) {
@@ -384,9 +394,16 @@ export function evaluateAssertion(definition, response, runtime, context) {
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
         expected = resolve(definition.includes, runtime);
-        passed = passed && (Array.isArray(actual)
-            ? actual.some((item) => stableStringify(item) === stableStringify(expected))
-            : String(actual == null ? "" : actual).includes(String(expected)));
+        if (isPlainObject(actual)) {
+            // 对象实际值：不再走字符串化分支——结果与历史一致（失败），但透出语义化原因，
+            // 引导改用 equals 做对象深比较或对具体字段 path 断言
+            passed = false;
+            reason = INCLUDES_OBJECT_ACTUAL_REASON;
+        } else {
+            passed = passed && (Array.isArray(actual)
+                ? actual.some((item) => stableStringify(item) === stableStringify(expected))
+                : String(actual == null ? "" : actual).includes(String(expected)));
+        }
     }
     // each：数组逐项断言——对实际数组的每个元素套用子断言（对象或其数组），
     // 以 { body: 元素 } 合成响应复用同一求值管线（子断言 path 相对元素自身）。
@@ -462,6 +479,8 @@ export function evaluateAssertion(definition, response, runtime, context) {
         passed,
         actual,
         expected,
+        // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
+        ...(reason ? { reason } : {}),
         // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
         ...(eachFailures ? { detail: eachFailures } : {})
     };

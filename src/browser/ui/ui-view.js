@@ -44,6 +44,13 @@ const workbenchView = (function () {
                     '<td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td>' +
                     '<td class="px-3.5 py-1.5"></td>' +
                 '</tr>';
+                // 语义化失败原因（如 includes 对象实际值）：引导替代写法
+                if (sub.reason) {
+                    html += '<tr class="bg-rose-50/40">' +
+                        '<td class="px-3.5 py-1.5"></td>' +
+                        '<td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">原因: ' + esc(sub.reason) + '</td>' +
+                    '</tr>';
+                }
                 html += eachDetailRows(sub.detail, label);
             });
         });
@@ -58,6 +65,7 @@ const workbenchView = (function () {
             d.assertions.forEach(function (sub) {
                 if (sub.passed) return;
                 lines.push('    '.repeat(depth) + '- ' + label + '失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));
+                if (sub.reason) lines.push('    '.repeat(depth + 1) + '- 原因: ' + mdInline(sub.reason));
                 pushEachDetailLines(lines, sub.detail, label, depth + 1);
             });
         });
@@ -914,12 +922,19 @@ const workbenchView = (function () {
                 // each 失败明细：失败断言下逐行列出失败元素（序号 1 基，与断言报错口径一致）
                 // 与该元素上失败子断言的期望/实际值；嵌套 each 经 eachDetailRows 递归展开
                 var detailRows = !rowOk && Array.isArray(a.detail) ? eachDetailRows(a.detail, '') : '';
+                // 语义化失败原因（如 includes 对象实际值）：单独一行跨列展示，引导改用 equals/path
+                var reasonRow = !rowOk && a.reason
+                    ? '<tr class="bg-rose-50/60">' +
+                        '<td class="px-3.5 py-1.5"></td>' +
+                        '<td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">原因: ' + esc(a.reason) + '</td>' +
+                    '</tr>'
+                    : '';
                 return '<tr class="' + rowCls + ' transition-colors">' +
                     '<td class="px-3.5 py-2 font-medium ' + (rowOk ? 'text-slate-700' : 'text-rose-800 font-bold') + '">' + esc(a.name) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-700') + '">' + esc(stringify(a.expected)) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-900 font-bold') + '">' + esc(stringify(a.actual)) + '</td>' +
                     '<td class="px-3.5 py-2 text-xs">' + resLabel + '</td>' +
-                '</tr>' + detailRows;
+                '</tr>' + reasonRow + detailRows;
             }).join('');
 
             assertHtml =
@@ -1155,6 +1170,8 @@ const workbenchView = (function () {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
                     lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + mdInline(a.name));
+                    // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言
+                    if (a.reason) lines.push('    - 原因: ' + mdInline(a.reason));
                     // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                     // 嵌套 each 经 pushEachDetailLines 递归展开（路径「 › 」串联），值经 mdInline 转义
                     pushEachDetailLines(lines, a.detail, '', 1);
