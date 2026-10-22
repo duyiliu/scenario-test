@@ -7,12 +7,20 @@ All notable changes to this project will be documented in this file.
 
 ### DSL
 
-- `when` 对象形式扩展来源（contract v8 → v9）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。
+- `when` 对象形式扩展来源（contract v9 → v10）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。master 上 `run --json` 已先行占用 contract v9，故本次新增来源按不可变契约继续递增到 v10。
+
+### CLI
+
+- `run --json` 输出机器可读执行结果：单场景直接输出 `runScenario` report，多场景顶层包 `{ "scenarios": [<report>, ...] }`；`--json` 下所有人类可读进度（`[RETRY]`/`[PASS]`/`[FAIL]`/结论行等）改走 stderr，stdout 只承载 JSON 文档。退出码与 JSON 正交：断言/场景失败仍输出完整 JSON 并返回非零退出码。`contract.cli.options.json` 描述同步覆盖 run（contract v8 → v9）。
 
 ### 引擎
 
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
 - `retryUntil.intervalMs` 显式 `0` 语义修正：此前 `intervalMs || 2000` 把显式 0 静默吞回默认 2000ms；现按「0 = 按最小间隔执行」钳到下限 100ms（与定义期 `≥0` 校验口径对齐），未声明/非法值仍按默认 2000ms。
+
+### 诊断
+
+- `includes` 断言命中 plain object 实际值时不再只呈现 `actual="[object Object]"` 的确定性失败：保持失败口径不变（历史恒 false），断言结果新增可选 `reason`，点明 `includes` 不支持对象类型实际值并引导改用 `equals`（对象深比较）或对具体字段 `path` 断言；CLI、工作台断言表与 Markdown 诊断报告同步透出。数组/字符串分支行为不变，不涉及契约变更。
 
 ### 测试基建
 
@@ -20,7 +28,12 @@ All notable changes to this project will be documented in this file.
 
 ### 工程
 
+- 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
+
+### 文档
+
+- 补声明 `from: "headers"` 配 `path` 时首段头名按大小写不敏感匹配（与 `header` 简写、extract/断言同口径，`from: "response"` 与模板 `lastResponse.headers.*` 仍精确匹配）：contract 增加断言/提取说明并投射到 capabilities 与 d.ts，AI Prompt、模式库、项目 README 模板、根 README 示例及规则预览同步澄清；行为不变，`contractVersion` 维持 8。
 
 
 ## [0.7.1] - 2026-10-12

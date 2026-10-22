@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 9;
+export const CONTRACT_VERSION = 10;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -26,6 +26,10 @@ export const contract = Object.freeze({
         targets: Object.freeze(["status", "duration"]),
         // 断言数据来源 from 的取值（缺省按 body 取值）
         from: Object.freeze(["body", "vars", "headers", "bodyText"]),
+        // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
+        // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
+        // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
+        note: "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配",
         // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
         // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
         operators: Object.freeze({
@@ -103,6 +107,8 @@ export const contract = Object.freeze({
         // 防止 heder/fromm 等拼错静默落到默认 body 来源）
         metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default"]),
         // extract 支持的来源（默认 body）
+        // from:"headers" 配 path 时首段头名按大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；
+        // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
         from: Object.freeze(["body", "headers", "bodyText", "response"]),
         // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
         targets: Object.freeze(["status"]),
@@ -110,7 +116,7 @@ export const contract = Object.freeze({
         required: "boolean",
         // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
         default: "any",
-        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一"
+        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配"
     }),
 
     // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
@@ -173,7 +179,7 @@ export const contract = Object.freeze({
             "no-input": { kind: "flag", prop: "noInput", description: "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
-            json: { kind: "flag", prop: "json", description: "capabilities/doctor 输出机器可读 JSON（stdout 纯净）" },
+            json: { kind: "flag", prop: "json", description: "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）" },
             token: {
                 kind: "value", prop: "authorization",
                 aliases: ["authorization"],

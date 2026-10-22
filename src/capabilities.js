@@ -18,6 +18,7 @@ export function buildCapabilities(inputContract = contract) {
             metaKeys: [...assertions.metaKeys],
             targets: [...(assertions.targets || [])],
             from: [...(assertions.from || [])],
+            note: assertions.note,
             numericOperators: [...assertions.numericOperators]
         },
         when: {
@@ -83,6 +84,9 @@ export function renderCapabilitiesText(capabilities) {
     }
     if (capabilities.assertions.from?.length) {
         lines.push(`  断言来源 from: ${capabilities.assertions.from.join(" / ")}（默认 body）`);
+    }
+    if (capabilities.assertions.note) {
+        lines.push(`  ${capabilities.assertions.note}`);
     }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
