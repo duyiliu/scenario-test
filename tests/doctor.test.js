@@ -10,9 +10,19 @@ import { VERSION } from "../src/version.generated.js";
 const root = path.resolve(import.meta.dirname, "..");
 const cli = path.join(root, "src/cli.js");
 
+// 子进程环境剥离 *_proxy 变量：宿主设了 HTTP_PROXY/HTTPS_PROXY 等时，Node 的 undici
+// EnvHttpProxyAgent 会向 stderr 打实验警告（UNDICI-EHPA），污染「stderr 应为空」类断言
+function childEnv() {
+    const env = { ...process.env };
+    for (const key of Object.keys(env)) {
+        if (/_proxy$/i.test(key)) delete env[key];
+    }
+    return env;
+}
+
 function initProject() {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-"));
-    const result = spawnSync(process.execPath, [cli, "init", "--project", project, "--dir", "scenario-test"], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [cli, "init", "--project", project, "--dir", "scenario-test"], { encoding: "utf8", env: childEnv() });
     assert.equal(result.status, 0, result.stderr);
     const dir = path.join(project, "scenario-test");
     fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
@@ -36,7 +46,7 @@ function initProject() {
 }
 
 function runDoctor(dir, extra = []) {
-    return spawnSync(process.execPath, [cli, "doctor", "--config", path.join(dir, "scenario.config.js"), ...extra], { encoding: "utf8" });
+    return spawnSync(process.execPath, [cli, "doctor", "--config", path.join(dir, "scenario.config.js"), ...extra], { encoding: "utf8", env: childEnv() });
 }
 
 function cleanup(project) {
@@ -184,7 +194,7 @@ test("doctor --json：配置文件缺失时输出结构化 JSON 且退出码 1�
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-"));
     try {
         const missingConfig = path.join(dir, "missing.config.js");
-        const result = spawnSync(process.execPath, [cli, "doctor", "--config", missingConfig, "--json"], { encoding: "utf8" });
+        const result = spawnSync(process.execPath, [cli, "doctor", "--config", missingConfig, "--json"], { encoding: "utf8", env: childEnv() });
         assert.equal(result.status, 1);
         assert.equal(result.stderr, "", "配置缺失时 stderr 不应输出异常堆栈");
         const parsed = JSON.parse(result.stdout);
@@ -206,7 +216,7 @@ test("doctor --json：配置文件缺失时输出结构化 JSON 且退出码 1�
 test("doctor：配置文件缺失时文本模式输出可读提示，退出码 1，其余检查继续", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-text-"));
     try {
-        const result = spawnSync(process.execPath, [cli, "doctor", "--config", path.join(dir, "missing.config.js")], { encoding: "utf8" });
+        const result = spawnSync(process.execPath, [cli, "doctor", "--config", path.join(dir, "missing.config.js")], { encoding: "utf8", env: childEnv() });
         assert.equal(result.status, 1);
         assert.equal(result.stderr, "", "配置缺失时 stderr 不应输出异常堆栈");
         assert.match(result.stdout, /\[FAIL\] config:/);
