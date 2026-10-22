@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### CLI
+
+- `run --json` 输出机器可读执行结果：单场景直接输出 `runScenario` report，多场景顶层包 `{ "scenarios": [<report>, ...] }`；`--json` 下所有人类可读进度（`[RETRY]`/`[PASS]`/`[FAIL]`/结论行等）改走 stderr，stdout 只承载 JSON 文档。退出码与 JSON 正交：断言/场景失败仍输出完整 JSON 并返回非零退出码。`contract.cli.options.json` 描述同步覆盖 run（contract v8 → v9）。
+
 ### 引擎
 
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。

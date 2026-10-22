@@ -191,6 +191,8 @@ ${optionHelp}
   默认 run 未指定 --all/--scenario 时仅执行清单第一个场景。
   --all 执行配置中的全部自动场景；manual:true 场景须通过 --scenario 显式选择。
   --scenario 支持逗号分隔多选（如 --scenario login,order），按 id/name/url 匹配。
+  --json 时 stdout 只输出结构化结果：单场景输出该场景 report，多场景输出
+  {"scenarios":[...]}；进度行与结论改走 stderr，失败场景仍输出完整 JSON 且退出码非零。
 
 能力发现命令:
   capabilities          输出 DSL 能力清单（人类文本；--json 输出机器可读 JSON，
@@ -577,6 +579,10 @@ async function runCommand(args) {
     let actualFailedTotal = 0;
     let skippedTotal = 0;
     let stoppedUnexecutedTotal = 0;
+    // --json：stdout 只承载最终 JSON 文档，所有人类可读进度/结论改走 stderr；
+    // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
+    const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
+    const reports = [];
     for (const entry of entries) {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
@@ -597,20 +603,20 @@ async function runCommand(args) {
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
-        console.log(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+        print(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
                 const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
-                console.log(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                print(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
-                console.log(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
+                print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
-                    console.log(`  [WARN] ${escapeInlineText(warning)}`);
+                    print(`  [WARN] ${escapeInlineText(warning)}`);
                 }
                 // each 失败明细：失败断言下逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                 // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
@@ -619,27 +625,27 @@ async function runCommand(args) {
                         const label = `${prefix}第 ${item.index + 1} 项`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            console.log(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+                            print(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
                             // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
-                            if (sub.reason) console.log(`        原因: ${escapeInlineText(sub.reason)}`);
+                            if (sub.reason) print(`        原因: ${escapeInlineText(sub.reason)}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
-                                console.log(line);
+                                print(line);
                             }
                             printEachDetail(sub.detail, `${label} › `);
                         }
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
-                    console.log(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+                    print(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
                     // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言；
                     // 静态文案同样过 escapeInlineText，防插件注入换行/CI 命令标记
-                    if (assertion.reason) console.log(`      原因: ${escapeInlineText(assertion.reason)}`);
+                    if (assertion.reason) print(`      原因: ${escapeInlineText(assertion.reason)}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
                     for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
-                        console.log(line);
+                        print(line);
                     }
                     printEachDetail(assertion.detail, "");
                 }
@@ -648,12 +654,13 @@ async function runCommand(args) {
                 // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志；
                 // 响应体可能回显 token（登录步骤断言失败时），日志合规敏感的团队可设
                 // SCENARIO_NO_BODY_PRINT=1 关闭本输出
-                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result);
+                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print);
             }
         });
         for (const plugin of plugins) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
+        reports.push(report);
         total += report.planned;
         passedTotal += report.passedSteps;
         // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
@@ -662,25 +669,32 @@ async function runCommand(args) {
         stoppedUnexecutedTotal += stoppedUnexecuted;
         failedTotal += report.failed + stoppedUnexecuted;
         skippedTotal += report.skipped;
-        console.log(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
+        print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
     }
-    console.log(`\nOverall: ${passedTotal}/${total} passed`);
+    print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;
     if (args.failOnSkip && skippedTotal > 0) {
-        console.log(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
+        print(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
         process.exitCode = 1;
     }
 
     const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
     if (actualFailedTotal > 0) {
-        console.log(`\n结论：执行失败。${countSummary}；未执行步骤不计入通过。`);
+        print(`\n结论：执行失败。${countSummary}；未执行步骤不计入通过。`);
     } else if (passedTotal === 0 && skippedTotal > 0) {
         const exitText = args.failOnSkip ? "因 --fail-on-skip 开启，退出码为 1" : "按默认策略退出码为 0";
-        console.log(`\n结论：全部跳过，未发起请求。${countSummary}；${exitText}。`);
+        print(`\n结论：全部跳过，未发起请求。${countSummary}；${exitText}。`);
     } else if (stoppedUnexecutedTotal > 0) {
-        console.log(`\n结论：执行未完成。${countSummary}。`);
+        print(`\n结论：执行未完成。${countSummary}。`);
     } else {
-        console.log(`\n结论：执行完成。${countSummary}${skippedTotal > 0 ? "；条件跳过的步骤未发起请求" : ""}。`);
+        print(`\n结论：执行完成。${countSummary}${skippedTotal > 0 ? "；条件跳过的步骤未发起请求" : ""}。`);
+    }
+    if (args.json) {
+        // 直接序列化 runScenario report（编程接口的稳定形状，不另造易漂移子集）；
+        // 单场景输出 report 本身，多场景顶层包 { scenarios: [...] }。
+        // 退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
+        const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+        process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     }
 }
 
@@ -711,7 +725,7 @@ function escapeErrorText(error) {
     return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
 
-function printFailedStepBody(result) {
+function printFailedStepBody(result, print = console.log) {
     const response = result?.response;
     if (!response || typeof response !== "object") return;
     const body = response.body;
@@ -721,7 +735,7 @@ function printFailedStepBody(result) {
     // 适配器结构化 body（bodyText 缺省归一化为 null）恰好含 savedTo+size 字段时不吞原文；
     // savedTo 可能经模板混入服务端可控字节（extract 提取值进路径），同样转义
     if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
-        console.log(`  响应体已保存至 ${escapeBodyLine(body.savedTo)}`);
+        print(`  响应体已保存至 ${escapeBodyLine(body.savedTo)}`);
         return;
     }
     let raw = bodyText ?? "";
@@ -737,8 +751,8 @@ function printFailedStepBody(result) {
     const truncated = text.length > FAILURE_BODY_LIMIT;
     const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
     const note = truncated ? `（共 ${text.length} 字符，截断显示前 ${FAILURE_BODY_LIMIT}）` : "";
-    console.log(`  响应体${note}:`);
-    for (const line of shown.split("\n")) console.log(`    ${escapeBodyLine(line)}`);
+    print(`  响应体${note}:`);
+    for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
 
 function safeFile(root, relativePath) {

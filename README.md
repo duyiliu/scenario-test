@@ -182,6 +182,7 @@ scenario-test/
 - `serve` 提供静态服务和同源接口代理。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
+- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
 - 支持 `--fail-on-skip`、文件上传、响应保存及自定义 Node 插件。
 
