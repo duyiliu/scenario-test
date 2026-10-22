@@ -26,6 +26,10 @@ All notable changes to this project will be documented in this file.
 
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
+### 文档
+
+- 补声明 `from: "headers"` 配 `path` 时首段头名按大小写不敏感匹配（与 `header` 简写、extract/断言同口径，`from: "response"` 与模板 `lastResponse.headers.*` 仍精确匹配）：contract 增加断言/提取说明并投射到 capabilities 与 d.ts，AI Prompt、模式库、项目 README 模板、根 README 示例及规则预览同步澄清；行为不变，`contractVersion` 维持 8。
+
 
 ## [0.7.1] - 2026-10-12
 

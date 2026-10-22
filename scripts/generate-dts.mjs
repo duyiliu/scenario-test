@@ -99,6 +99,7 @@ export interface ScenarioConfig {
 export interface Assertion {
     name?: string;
     path?: string;
+    /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配 */
     from?: AssertionSource;
     target?: "status" | "duration";
     header?: string;
@@ -109,6 +110,7 @@ ${operatorMembers("    ")}
 export interface ExtractDefinition {
     name: string;
     path?: string;
+    /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；from:"response" 仍按精确键匹配 */
     from?: ExtractSource;
     /** 提取目标：status=HTTP 状态码（缺省按 body 取值） */
     target?: "status";
