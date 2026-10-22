@@ -169,6 +169,48 @@ test("执行失败：onError 收到原始异常，错误包装为 AdapterExecuti
     assert.equal(report.passed, false);
 });
 
+test("执行失败：适配器超时的结构化标记与请求现场透传，步骤判 TIMEOUT", async () => {
+    const timeoutError = new Error("请求超时（50ms）");
+    timeoutError.scenarioTimedOut = true;
+    timeoutError.scenarioContext = {
+        method: "POST",
+        path: "slow/endpoint",
+        request: { headers: { "X-Test": "1" }, body: null },
+        timedOut: true,
+        timeoutMs: 50
+    };
+    const adapter = { async execute() { throw timeoutError; } };
+    const scenario = defineScenario({
+        name: "适配器超时",
+        steps: [{ name: "慢步骤", adapter: "slow" }]
+    });
+    const report = await createEngine({ fetch: async () => new Response("ok"), adapters: { slow: adapter } })
+        .runScenario(scenario);
+    const result = report.results[0];
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    // scenarioContext 透传：method/path/request 现场保留在结果里
+    assert.equal(result.method, "POST");
+    assert.equal(result.path, "slow/endpoint");
+    assert.deepEqual(result.request, { headers: { "X-Test": "1" }, body: null });
+    // 包装消息已含原始错误，cause 不重复拼接成 "（…（…））"
+    assert.match(result.error, /适配器 slow 执行失败: 请求超时（50ms）/);
+    assert.doesNotMatch(result.error, /（请求超时（50ms））/);
+});
+
+test("执行失败：适配器底层错误的 code 经 cause 透出到错误消息", async () => {
+    const adapter = {
+        async execute() { throw Object.assign(new Error("连接失败"), { code: "ECONNREFUSED" }); }
+    };
+    const scenario = defineScenario({ name: "cause 透出", steps: [{ name: "步骤", adapter: "netty" }] });
+    const report = await createEngine({ fetch: async () => new Response("ok"), adapters: { netty: adapter } })
+        .runScenario(scenario);
+    const result = report.results[0];
+    assert.equal(result.status, "ERROR");
+    // 包装 message 只含原始 message；cause 里的 code 未出现在 message 中 → 追加透出
+    assert.match(result.error, /适配器 netty 执行失败: 连接失败（ECONNREFUSED）/);
+});
+
 test("执行失败：onError 自身抛错被吞，不掩盖原始错误", async () => {
     const adapter = {
         async execute() { throw new Error("原始故障"); },

@@ -313,11 +313,15 @@ async function executeHttp(step, runtime, options) {
 class AdapterExecutionError extends Error {
     constructor(adapterName, originalError, step) {
         const message = `适配器 ${adapterName} 执行失败: ${originalError.message}`;
-        super(message);
+        // cause 保留原始错误链；结构化标记透传——适配器内部超时/请求现场被包装后
+        // 仍按 TIMEOUT 归类并透出 method/path/request，不再降级为无上下文的 ERROR
+        super(message, { cause: originalError });
         this.name = "AdapterExecutionError";
         this.adapterName = adapterName;
         this.originalError = originalError;
         this.stepName = step?.name || "未命名步骤";
+        if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
+        if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
     }
 }
 
@@ -466,8 +470,11 @@ export function createEngine(engineOptions = {}) {
                 if (extractResult.failures.length) assertions.push(...extractResult.failures);
                 if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
 
-                // ✅ 确保最小重试间隔
-                const intervalMs = Math.max(100, Number(retry.intervalMs || 2000));
+                // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
+                // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
+                // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
+                const rawIntervalMs = Number(retry.intervalMs);
+                const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
                 // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
                 // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
                 // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
@@ -501,9 +508,13 @@ export function createEngine(engineOptions = {}) {
             const cancelled = Boolean(options.signal?.aborted);
             const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
             // fetch 的 TypeError("fetch failed") 把真实原因收在 error.cause
-            // （ENOTFOUND/ECONNREFUSED/证书错误等）——透出 cause 让 CI 日志直接可定位
-            const causeText = error?.cause
-                ? `（${error.cause.code || error.cause.message || String(error.cause)}）`
+            // （ENOTFOUND/ECONNREFUSED/证书错误等）——透出 cause 让 CI 日志直接可定位；
+            // cause 文本已被包装进 message（如 AdapterExecutionError）时不重复拼接
+            const causeDetail = error?.cause
+                ? (error.cause.code || error.cause.message || String(error.cause))
+                : "";
+            const causeText = causeDetail && !String(error?.message || "").includes(causeDetail)
+                ? `（${causeDetail}）`
                 : "";
             const errorMessage = cancelled
                 ? "用户已取消执行"

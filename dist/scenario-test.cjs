@@ -1818,11 +1818,13 @@ async function executeHttp(step, runtime, options) {
 var AdapterExecutionError = class extends Error {
   constructor(adapterName, originalError, step) {
     const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
-    super(message);
+    super(message, { cause: originalError });
     this.name = "AdapterExecutionError";
     this.adapterName = adapterName;
     this.originalError = originalError;
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
+    if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
+    if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
   }
 };
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
@@ -1930,7 +1932,8 @@ function createEngine(engineOptions = {}) {
         assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
         if (extractResult.failures.length) assertions.push(...extractResult.failures);
         if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
-        const intervalMs = Math.max(100, Number(retry.intervalMs || 2e3));
+        const rawIntervalMs = Number(retry.intervalMs);
+        const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
         await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
           step,
           attempt,
@@ -1959,7 +1962,8 @@ function createEngine(engineOptions = {}) {
       const context = error?.scenarioContext || null;
       const cancelled = Boolean(options.signal?.aborted);
       const timedOut = !cancelled && Boolean(error?.scenarioTimedOut || context?.timedOut);
-      const causeText = error?.cause ? `\uFF08${error.cause.code || error.cause.message || String(error.cause)}\uFF09` : "";
+      const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+      const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path4 = context && context.path || resolveString(step.path || "", runtime);
