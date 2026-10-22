@@ -23,6 +23,7 @@ export function buildCapabilities(inputContract = contract) {
         },
         when: {
             sources: [...when.sources],
+            targets: [...(when.targets || [])],
             note: when.note
         },
         extract: {
@@ -89,6 +90,9 @@ export function renderCapabilitiesText(capabilities) {
     }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
+    if (capabilities.when.targets?.length) {
+        lines.push(`  when 响应级 target: ${capabilities.when.targets.join(" / ")}（读上一步响应）`);
+    }
     lines.push(`  ${capabilities.when.note}`);
     lines.push("");
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);

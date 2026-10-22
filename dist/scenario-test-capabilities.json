@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.7.1",
-  "contractVersion": 9,
+  "contractVersion": 10,
   "assertions": {
     "operators": {
       "exists": {
@@ -89,9 +89,14 @@
   },
   "when": {
     "sources": [
-      "vars"
+      "vars",
+      "lastResponse",
+      "status"
     ],
-    "note": "when 对象形式只允许 from: \"vars\"；非对象形式（模板字符串/布尔）保持真值语义"
+    "targets": [
+      "status"
+    ],
+    "note": "when 对象形式支持 from: vars / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义"
   },
   "extract": {
     "metaKeys": [

@@ -486,6 +486,41 @@ export function evaluateAssertion(definition, response, runtime, context) {
     };
 }
 
+export function normalizeWhenDefinition(definition) {
+    if (!isPlainObject(definition)) return definition;
+    const normalized = { ...definition };
+    // when 的来源口径向已有能力靠拢：lastResponse 取上一步响应 body（与 extract from:"body" /
+    // 模板 {{lastResponse.*}} 的 body 子路径同口径）；status 等价于断言 target:"status"。
+    // 归一化后复用断言 schema 校验/求值，避免在 when 内维护第二套操作符语义。
+    if (normalized.from === "lastResponse") normalized.from = "body";
+    else if (normalized.from === "status") {
+        delete normalized.from;
+        normalized.target = "status";
+    }
+    return normalized;
+}
+
+// when 对象形式：来源 vars/lastResponse/status 或 target:"status"，复用断言求值管线。
+// 第一步（无上一步响应）引用 lastResponse/status 时按来源缺失处理——条件直接不成立，
+// 不因空响应抛错中断场景；这与「变量缺失」按断言自身语义求值不同。
+export function evaluateWhen(definition, runtime, context) {
+    if (!isPlainObject(definition)) return Boolean(resolve(definition, runtime));
+    const usesPreviousResponse = definition.from === "lastResponse"
+        || definition.from === "status"
+        || definition.target === "status";
+    const previous = runtime ? runtime.lastResponse : null;
+    if (usesPreviousResponse && (previous === undefined || previous === null)) return false;
+    const response = previous && typeof previous === "object"
+        ? {
+            status: previous.status,
+            headers: previous.headers || {},
+            body: previous.body,
+            bodyText: previous.bodyText || ""
+        }
+        : { status: undefined, headers: {}, body: undefined, bodyText: "" };
+    return evaluateAssertion(normalizeWhenDefinition(definition), response, runtime, context).passed;
+}
+
 export function buildAssertions(step, response, runtime, context) {
     const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
     if (step.status !== undefined && !definitions.some((item) => item.target === "status")) {

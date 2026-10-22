@@ -124,6 +124,19 @@ assertions: [
 }
 ```
 
+`when` 对象形式也可直接读取上一步响应，无需先 `extract`：
+
+```javascript
+// 上一步响应 body 的 data.ready 为 true 时才继续（子路径口径同 extract from: "body"）
+{ name: "继续校验", method: "GET", path: "/api/tasks/{{vars.taskId}}", when: { from: "lastResponse", path: "data.ready", equals: true } }
+
+// 上一步 HTTP 状态码为 202 时才继续；from: "status" 与 target: "status" 等价
+{ name: "轮询结果", method: "GET", path: "/api/tasks/{{vars.taskId}}", when: { from: "status", equals: 202 } }
+{ name: "轮询结果", method: "GET", path: "/api/tasks/{{vars.taskId}}", when: { target: "status", equals: 202 } }
+```
+
+第一步没有上一步响应：引用 `lastResponse`/`status` 时按来源缺失处理，条件不成立（步骤 SKIP），不会抛错中断场景。
+
 ---
 
 ## 高级用法

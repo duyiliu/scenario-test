@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- `when` 对象形式扩展来源（contract v9 → v10）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。master 上 `run --json` 已先行占用 contract v9，故本次新增来源按不可变契约继续递增到 v10。
+
 ### CLI
 
 - `run --json` 输出机器可读执行结果：单场景直接输出 `runScenario` report，多场景顶层包 `{ "scenarios": [<report>, ...] }`；`--json` 下所有人类可读进度（`[RETRY]`/`[PASS]`/`[FAIL]`/结论行等）改走 stderr，stdout 只承载 JSON 文档。退出码与 JSON 正交：断言/场景失败仍输出完整 JSON 并返回非零退出码。`contract.cli.options.json` 描述同步覆盖 run（contract v8 → v9）。
