@@ -43,6 +43,7 @@ export type ReservedVar = ${quote(contract.reservedVars)};
 export type GeneratedVarType = ${quote(contract.generatedVars.types)};
 export type GlobalParamType = ${quote(contract.globals.types)};
 export type WhenSource = ${quote(contract.when.sources)};
+export type WhenTarget = ${quote(contract.when.targets)};
 export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
@@ -120,9 +121,10 @@ export interface ExtractDefinition {
     default?: unknown;
 }
 
-/** when 对象形式：from 只能取 vars（来自 contract.when.sources） */
+/** when 对象形式：from: WhenSource（contract.when.sources = vars/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
 export interface WhenDefinition {
-    from: WhenSource;
+    from?: WhenSource;
+    target?: WhenTarget;
     path?: string;
 ${operatorMembers("    ")}
 }
@@ -363,7 +365,7 @@ export declare const contract: {
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
     };
-    when: { sources: readonly WhenSource[]; note: string };
+    when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
     reservedVars: readonly ReservedVar[];
     generatedVars: { types: readonly GeneratedVarType[] };

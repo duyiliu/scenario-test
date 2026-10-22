@@ -319,6 +319,55 @@ test("when 条件不满足时安全跳过步骤", async () => {
     assert.equal(report.results[0].passed, true);
 });
 
+test("when 支持 lastResponse/status/target:status 读取上一步响应", async () => {
+    let calls = 0;
+    const statuses = [201, 202, 203, 200];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            const status = statuses[calls];
+            calls += 1;
+            return jsonResponse({ data: { ok: true } }, status);
+        }
+    });
+    const scenario = defineScenario({
+        name: "上一步响应条件",
+        steps: [
+            { name: "第一步", path: "one", status: 201 },
+            { name: "按上一步 body", path: "two", status: 202, when: { from: "lastResponse", path: "data.ok", equals: true } },
+            { name: "按上一步状态码（from）", path: "three", status: 203, when: { from: "status", equals: 202 } },
+            { name: "按上一步状态码（target）", path: "four", status: 200, when: { target: "status", equals: 203 } },
+            { name: "上一步 body 路径缺失则不执行", path: "five", status: 200, when: { from: "lastResponse", path: "data.missing", exists: true } }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.deepEqual(report.results.map((item) => (item.skipped ? "SKIPPED" : item.status)), [201, 202, 203, 200, "SKIPPED"]);
+    assert.equal(report.skipped, 1);
+    assert.equal(calls, 4);
+});
+
+test("第一步引用 lastResponse/status 按来源缺失处理：条件不成立且不抛错", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => { calls += 1; return jsonResponse({ data: { id: "7" } }); }
+    });
+    const scenario = defineScenario({
+        name: "无上一步响应",
+        steps: [
+            { name: "lastResponse exists", path: "one", when: { from: "lastResponse", path: "data.id", exists: true } },
+            { name: "status equals", path: "two", when: { from: "status", equals: 200 } },
+            { name: "status notEquals", path: "three", when: { from: "status", notEquals: 200 } },
+            { name: "target exists false", path: "four", when: { target: "status", exists: false } }
+        ]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(calls, 0);
+    assert.deepEqual(report.results.map((item) => item.status), ["SKIPPED", "SKIPPED", "SKIPPED", "SKIPPED"]);
+    assert.equal(report.passed, true);
+    assert.equal(report.status, "SKIPPED");
+});
+
 test("全局参数注入 header/query/cookie", async () => {
     let captured;
     const engine = createEngine({
@@ -452,15 +501,21 @@ test("defineConfig 拒绝非法全局参数", async () => {
     assert.deepEqual(config.envs[0].globals, [{ type: "query", name: "q", value: "1" }]);
 });
 
-test("when 对象形式定义期校验：只允许 from vars，禁止 target/header 与未知断言键", () => {
+test("when 对象形式定义期校验：来源 vars/lastResponse/status、target 仅 status，禁止 header 与未知断言键", () => {
     const base = { name: "W", steps: [{ name: "s", path: "x" }] };
-    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { path: "code", equals: 200 } }] }), /when 对象形式只允许 from: "vars"/);
-    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "body", path: "code", equals: 200 } }] }), /只允许 from: "vars"/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { path: "code", equals: 200 } }] }), /必须声明来源 from/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "body", path: "code", equals: 200 } }] }), /来源只支持 vars\/lastResponse\/status/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "headers", path: "code", equals: 200 } }] }), /来源只支持 vars\/lastResponse\/status/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", target: "status", equals: 200 } }] }), /不允许使用 target\/header/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { target: "duration", equals: 200 } }] }), /target 只支持 status/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", header: "x-trace", exists: true } }] }), /不允许使用 header/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "code", bogus: 1 } }] }), /未知键 "bogus"/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "code" } }] }), /必须至少包含一个操作符/);
     // 合法 when 与模板真值形式不抛
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "cleanupId", exists: true } }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "lastResponse", path: "data.id", exists: true } }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "status", equals: 200 } }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { target: "status", equals: 200 } }] });
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: "{{vars.flag}}" }] });
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: false }] });
 });

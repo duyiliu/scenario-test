@@ -275,6 +275,7 @@ __export(node_exports, {
   defineScenario: () => defineScenario,
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
+  evaluateWhen: () => evaluateWhen,
   executeDefinitionFile: () => executeDefinitionFile,
   formatAssertionContext: () => formatAssertionContext,
   formatDuration: () => formatDuration,
@@ -301,6 +302,7 @@ __export(node_exports, {
   mergeGlobals: () => mergeGlobals,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
+  normalizeWhenDefinition: () => normalizeWhenDefinition,
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
@@ -330,7 +332,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.7.1";
 
 // src/contract.js
-var CONTRACT_VERSION = 8;
+var CONTRACT_VERSION = 9;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -407,9 +409,11 @@ var contract = Object.freeze({
     numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
   }),
   when: Object.freeze({
-    // when 对象形式支持的来源：仅 vars；不允许 body/status/header 条件
-    sources: Object.freeze(["vars"]),
-    note: 'when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF1B\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49'
+    // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
+    sources: Object.freeze(["vars", "lastResponse", "status"]),
+    // when 对象形式也可用 target 读取上一步响应级通道，目前仅 status（与断言 target 白名单的 status 对齐）
+    targets: Object.freeze(["status"]),
+    note: 'when \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 from: vars / lastResponse / status\uFF08lastResponse \u53D6\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cstatus \u53D6\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: "status" \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49'
   }),
   extract: Object.freeze({
     // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
@@ -854,6 +858,29 @@ function evaluateAssertion(definition, response, runtime, context) {
     // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
     ...eachFailures ? { detail: eachFailures } : {}
   };
+}
+function normalizeWhenDefinition(definition) {
+  if (!isPlainObject(definition)) return definition;
+  const normalized = { ...definition };
+  if (normalized.from === "lastResponse") normalized.from = "body";
+  else if (normalized.from === "status") {
+    delete normalized.from;
+    normalized.target = "status";
+  }
+  return normalized;
+}
+function evaluateWhen(definition, runtime, context) {
+  if (!isPlainObject(definition)) return Boolean(resolve(definition, runtime));
+  const usesPreviousResponse = definition.from === "lastResponse" || definition.from === "status" || definition.target === "status";
+  const previous = runtime ? runtime.lastResponse : null;
+  if (usesPreviousResponse && (previous === void 0 || previous === null)) return false;
+  const response = previous && typeof previous === "object" ? {
+    status: previous.status,
+    headers: previous.headers || {},
+    body: previous.body,
+    bodyText: previous.bodyText || ""
+  } : { status: void 0, headers: {}, body: void 0, bodyText: "" };
+  return evaluateAssertion(normalizeWhenDefinition(definition), response, runtime, context).passed;
 }
 function buildAssertions(step, response, runtime, context) {
   const definitions = Array.isArray(step.assertions) ? [...step.assertions] : [];
@@ -1427,15 +1454,31 @@ function defineScenario(input) {
     }
     if (step.when !== void 0) {
       if (isPlainObject(step.when)) {
-        if (!contract.when.sources.includes(step.when.from)) {
+        const hasFrom = step.when.from !== void 0;
+        if (hasFrom && !contract.when.sources.includes(step.when.from)) {
           throw new TypeError(
-            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u53EA\u5141\u8BB8 from: "vars"\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u54CD\u5E94 body/status/header \u53D6\u6761\u4EF6`
+            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u53EA\u652F\u6301 ${contract.when.sources.join("/")}\uFF08\u5F53\u524D\u4E3A ${JSON.stringify(step.when.from)}\uFF09\uFF0C\u4E0D\u5141\u8BB8\u4ECE\u5176\u4ED6\u54CD\u5E94\u6765\u6E90\u53D6\u6761\u4EF6`
           );
         }
-        if (step.when.target !== void 0 || step.when.header !== void 0) {
-          throw new TypeError(`\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 target/header \u6761\u4EF6`);
+        if (!hasFrom && step.when.target === void 0) {
+          throw new TypeError(
+            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u5FC5\u987B\u58F0\u660E\u6765\u6E90 from\uFF08${contract.when.sources.join("/")}\uFF09\u6216 target: "${contract.when.targets.join("/")}"`
+          );
         }
-        validateAssertion(step.when, stepContext);
+        if (step.when.target !== void 0 && !contract.when.targets.includes(step.when.target)) {
+          throw new TypeError(
+            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F target \u53EA\u652F\u6301 ${contract.when.targets.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(step.when.target)}\uFF09\uFF1Bduration \u7B49\u5176\u4F59\u54CD\u5E94\u7EA7\u901A\u9053\u4EC5\u7528\u4E8E assertions`
+          );
+        }
+        if (hasFrom && step.when.target !== void 0) {
+          throw new TypeError(
+            `\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 target/header \u6761\u4EF6\u4E0E from \u6DF7\u7528\uFF08target: "${contract.when.targets.join("/")}" \u5355\u72EC\u4F7F\u7528\u5373\u53EF\uFF09`
+          );
+        }
+        if (step.when.header !== void 0) {
+          throw new TypeError(`\u6B65\u9AA4 ${step.name} \u7684 when \u5BF9\u8C61\u5F62\u5F0F\u4E0D\u5141\u8BB8\u4F7F\u7528 header \u6761\u4EF6`);
+        }
+        validateAssertion(normalizeWhenDefinition(step.when), stepContext);
       } else {
         invariant(
           typeof step.when === "boolean" || typeof step.when === "string" && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(step.when),
@@ -1884,7 +1927,7 @@ function createEngine(engineOptions = {}) {
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
     if (step.when !== void 0) {
-      const shouldRun = typeof step.when === "object" ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed : Boolean(resolve(step.when, runtime));
+      const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
@@ -2053,6 +2096,7 @@ function buildCapabilities(inputContract = contract) {
     },
     when: {
       sources: [...when.sources],
+      targets: [...when.targets || []],
       note: when.note
     },
     extract: {
@@ -2114,6 +2158,9 @@ function renderCapabilitiesText(capabilities) {
   }
   lines.push("");
   lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);
+  if (capabilities.when.targets?.length) {
+    lines.push(`  when \u54CD\u5E94\u7EA7 target: ${capabilities.when.targets.join(" / ")}\uFF08\u8BFB\u4E0A\u4E00\u6B65\u54CD\u5E94\uFF09`);
+  }
   lines.push(`  ${capabilities.when.note}`);
   lines.push("");
   lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
@@ -6661,6 +6708,7 @@ function loadScenarioFile(filePath, id, api) {
   defineScenario,
   evalExpression,
   evaluateAssertion,
+  evaluateWhen,
   executeDefinitionFile,
   formatAssertionContext,
   formatDuration,
@@ -6687,6 +6735,7 @@ function loadScenarioFile(filePath, id, api) {
   mergeGlobals,
   normalizeEnumDefinition,
   normalizeGlobalParam,
+  normalizeWhenDefinition,
   parseBody,
   parseTimestampOffset,
   pickWeightedIndex,

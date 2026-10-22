@@ -37,8 +37,9 @@ test("每个操作符含说明；数值比较操作符标注有限 number 约束
     }
 });
 
-test("when 来源仅 vars；extract 来源与 required 语义；保留变量；generatedVars 类型", () => {
-    assert.deepEqual(contract.when.sources, ["vars"]);
+test("when 来源含 vars/lastResponse/status；extract 来源与 required 语义；保留变量；generatedVars 类型", () => {
+    assert.deepEqual(contract.when.sources, ["vars", "lastResponse", "status"]);
+    assert.deepEqual(contract.when.targets, ["status"]);
     assert.deepEqual(contract.assertions.from, ["body", "vars", "headers", "bodyText"]);
     assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
@@ -91,9 +92,11 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
     for (const type of contract.globals.types) {
         assert.ok(readme.includes(`\`${type}\``), `README 模板缺少 globals 类型 ${type}`);
     }
-    // when 来源投影
-    assert.ok(prompt.includes('from: "vars"'));
-    assert.ok(patterns.includes("from: 'vars'"));
+    // when 来源投影（契约新增来源必须同步到 AI Prompt 与模式库）
+    for (const source of contract.when.sources) {
+        assert.ok(prompt.includes(`from: "${source}"`), `AI Prompt 缺少 when 来源 ${source}`);
+        assert.ok(patterns.includes(`from: '${source}'`), `SCENARIO_PATTERNS 缺少 when 来源 ${source}`);
+    }
 });
 
 test("对外接入文档使用当前版本且只要求复制一次 Prompt", () => {

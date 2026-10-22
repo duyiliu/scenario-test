@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 8;
+export const CONTRACT_VERSION = 9;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -91,9 +91,11 @@ export const contract = Object.freeze({
     }),
 
     when: Object.freeze({
-        // when 对象形式支持的来源：仅 vars；不允许 body/status/header 条件
-        sources: Object.freeze(["vars"]),
-        note: "when 对象形式只允许 from: \"vars\"；非对象形式（模板字符串/布尔）保持真值语义"
+        // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
+        sources: Object.freeze(["vars", "lastResponse", "status"]),
+        // when 对象形式也可用 target 读取上一步响应级通道，目前仅 status（与断言 target 白名单的 status 对齐）
+        targets: Object.freeze(["status"]),
+        note: "when 对象形式支持 from: vars / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义"
     }),
 
     extract: Object.freeze({

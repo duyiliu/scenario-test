@@ -177,7 +177,7 @@ scenario-test/
 
 ## 核心能力
 
-- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试。
+- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
 - `serve` 提供静态服务和同源接口代理。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
