@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### 测试基建
 
+- `build.mjs` 的 dist 发布与孤儿清理抽到 `scripts/build-dist.mjs`，fs/sleep/pid 存活判断均可注入；新增 `tests/build.test.js` 用 EPERM 故障注入覆盖 rename 重试（250ms × 3）、持续失败回退 `cpSync` 到 swap、失败回滚还原旧产物，以及孤儿目录仅在 pid 确认死亡（ESRCH）时清理、存活/pid 复用与 EPERM 一律不误删、backup 自动还原遇活跃构建推迟。相比 `mock.module`，依赖注入无需加载 esbuild/tailwind 构建依赖即可确定性复现瞬时 OS 锁。
 - `doctor.test.js` 子进程统一剥离 `*_proxy` 环境变量：宿主设了 `HTTP_PROXY` 等代理时，Node undici `EnvHttpProxyAgent` 会向 stderr 打 `UNDICI-EHPA` 实验警告，导致「stderr 应为空」类断言在本机环境必然失败。
 
 ### 工程
