@@ -214,6 +214,8 @@ export interface AssertionResult {
     passed: boolean;
     actual?: unknown;
     expected?: unknown;
+    /** 失败原因（语义化引导）：includes 命中对象实际值时提示改用 equals 或字段 path 断言，其余情况不携带 */
+    reason?: string;
     detail?: AssertionEachFailure[];
 }
 

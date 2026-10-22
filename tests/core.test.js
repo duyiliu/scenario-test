@@ -233,6 +233,32 @@ test("equals/notEquals/includes/oneOf 深比较对对象键序不敏感", () => 
     assert.equal(evaluateAssertion({ path: "obj", equals: { a: 1, b: 2, extra: undefined } }, response, runtime).passed, true);
 });
 
+test("includes 对象实际值：断言失败并透出语义化引导（不再静默字符串化）", () => {
+    const runtime = runtimeWith();
+    const response = responseWith({ obj: { a: 1 }, list: [{ a: 1 }], text: "abc" });
+
+    // 对象实际值：保持既有失败口径（历史恒 false），但原因点明不支持对象并给出替代写法
+    const objectResult = evaluateAssertion({ name: "对象包含", path: "obj", includes: { a: 1 } }, response, runtime);
+    assert.equal(objectResult.passed, false, "对象实际值不得因期望值同为对象而判通过");
+    assert.deepEqual(objectResult.actual, { a: 1 }, "actual 保留原始对象而非字符串化结果");
+    assert.match(objectResult.reason, /includes 不支持对象类型的实际值/, "失败原因应点明对象实际值不受支持");
+    assert.match(objectResult.reason, /equals/, "失败原因应引导改用 equals");
+    assert.match(objectResult.reason, /path/, "失败原因应引导对具体字段 path 断言");
+
+    // 数组/字符串分支行为不变，且不携带 reason（既有四字段形状）
+    const arrayResult = evaluateAssertion({ path: "list", includes: { a: 1 } }, response, runtime);
+    assert.equal(arrayResult.passed, true);
+    assert.equal("reason" in arrayResult, false, "数组分支不携带 reason");
+    const stringResult = evaluateAssertion({ path: "text", includes: "b" }, response, runtime);
+    assert.equal(stringResult.passed, true);
+    assert.equal("reason" in stringResult, false, "字符串分支不携带 reason");
+    // 通过断言同样不携带 reason
+    assert.deepEqual(
+        Object.keys(evaluateAssertion({ path: "obj", equals: { a: 1 } }, response, runtime)).sort(),
+        ["actual", "expected", "name", "passed"]
+    );
+});
+
 
 test("数字比较断言：类型不符合时断言失败而非抛异常，并保留 actual/expected", () => {
     const runtime = runtimeWith();

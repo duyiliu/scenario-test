@@ -88,6 +88,41 @@ test("CLI run 失败输出单列 each 元素级明细行（嵌套递归）", asy
     }
 });
 
+test("CLI run includes 对象实际值失败输出语义化原因（数组/字符串分支不输出）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-includes-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ obj: { a: 1 }, list: [{ a: 1 }], text: "abc" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"includesobj",name:"IncludesObj",url:"scenarios/includesobj.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/includesobj.js"), `ScenarioTest.registerScenario("includesobj",ScenarioTest.defineScenario({name:"IncludesObj",steps:[{name:"包含校验",path:"data",assertions:[{name:"对象包含",path:"obj",includes:{a:1}},{name:"数组包含",path:"list",includes:{a:1}},{name:"字符串包含",path:"text",includes:"a"}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.setEncoding("utf8");
+            child.stderr.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.notEqual(result.code, 0, "对象实际值 includes 仍应判失败，退出码非 0");
+        // actual 保留原始对象（不再显示字符串化的 [object Object]），并紧随语义化原因行
+        assert.match(result.stdout, /- 对象包含: expected=\{"a":1\} actual=\{"a":1\}/);
+        assert.match(result.stdout, /原因: .*includes 不支持对象类型的实际值.*equals.*path/);
+        // 极性判别：数组/字符串分支通过且不输出原因行
+        assert.equal(result.stdout.split("原因: ").length - 1, 1, "仅对象实际值失败输出原因行");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定位/短值保持单行）", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-diff-"));
     // 长 JSON 响应体（bodyText 断言序列化超 80 字符触发分块）+ 短 JSON（保持单行格式）

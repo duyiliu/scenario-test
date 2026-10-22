@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
 - `retryUntil.intervalMs` 显式 `0` 语义修正：此前 `intervalMs || 2000` 把显式 0 静默吞回默认 2000ms；现按「0 = 按最小间隔执行」钳到下限 100ms（与定义期 `≥0` 校验口径对齐），未声明/非法值仍按默认 2000ms。
 
+### 诊断
+
+- `includes` 断言命中 plain object 实际值时不再只呈现 `actual="[object Object]"` 的确定性失败：保持失败口径不变（历史恒 false），断言结果新增可选 `reason`，点明 `includes` 不支持对象类型实际值并引导改用 `equals`（对象深比较）或对具体字段 `path` 断言；CLI、工作台断言表与 Markdown 诊断报告同步透出。数组/字符串分支行为不变，不涉及契约变更。
+
 ### 测试基建
 
 - `doctor.test.js` 子进程统一剥离 `*_proxy` 环境变量：宿主设了 `HTTP_PROXY` 等代理时，Node undici `EnvHttpProxyAgent` 会向 stderr 打 `UNDICI-EHPA` 实验警告，导致「stderr 应为空」类断言在本机环境必然失败。
