@@ -620,6 +620,8 @@ async function runCommand(args) {
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
                             console.log(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+                            // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
+                            if (sub.reason) console.log(`        原因: ${escapeInlineText(sub.reason)}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
                                 console.log(line);
@@ -630,6 +632,9 @@ async function runCommand(args) {
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
                     console.log(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+                    // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言；
+                    // 静态文案同样过 escapeInlineText，防插件注入换行/CI 命令标记
+                    if (assertion.reason) console.log(`      原因: ${escapeInlineText(assertion.reason)}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口

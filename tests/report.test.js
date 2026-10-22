@@ -123,6 +123,36 @@ test("断言表明细行 eachDetailRows 递归展开且只含失败子断言", (
     assert.equal(eachDetailRows(undefined, ""), "");
 });
 
+test("Markdown 报告透出断言失败原因（顶层与 each 子断言，值经转义）", () => {
+    const reason = "includes 不支持对象类型的实际值：请改用 equals 或 path 断言";
+    const report = {
+        steps: [failedStep({
+            assertions: [
+                { name: "对象包含", passed: false, expected: { a: 1 }, actual: { a: 1 }, reason },
+                {
+                    name: "逐项",
+                    passed: false,
+                    expected: { path: "obj", includes: { a: 1 } },
+                    actual: [],
+                    detail: [{
+                        index: 0,
+                        actual: { obj: { a: 1 } },
+                        assertions: [{ name: "obj", passed: false, expected: { a: 1 }, actual: { a: 1 }, reason }]
+                    }]
+                }
+            ]
+        })]
+    };
+    const md = buildMarkdownReport(report);
+    // 顶层断言原因 4 空格缩进；each 子断言原因在其明细行下再缩进一级
+    assert.match(md, new RegExp(`^    - 原因: ${reason}$`, "m"));
+    assert.match(md, new RegExp(`^        - 原因: ${reason}$`, "m"));
+    assert.equal(md.split("原因: ").length - 1, 2, "仅携带 reason 的断言产生原因行");
+
+    const html = eachDetailRows(report.steps[0].assertions[1].detail, "");
+    assert.ok(html.includes("原因: " + reason), "each 明细 HTML 应透出失败原因");
+});
+
 test("Markdown 报告代码围栏自适应：内容无反引号时保持三反引号（既有格式不变）", () => {
     const report = {
         steps: [failedStep({
