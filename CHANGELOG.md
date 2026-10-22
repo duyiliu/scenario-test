@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### 工程
 
+- 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
 
