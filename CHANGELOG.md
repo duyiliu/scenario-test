@@ -12,7 +12,9 @@ All notable changes to this project will be documented in this file.
 - `retryUntil` 轮询 `delay` 修复 abort 监听泄漏：正常到期只 resolve 不摘监听，监听器随尝试次数在同一父 signal 上累积——工作台整场执行复用单个 `abortController`、长轮询场景在 Node 下 ≥11 个监听器即打 `MaxListenersExceededWarning` 污染 stderr，亦构成内存泄漏。现到期即摘除，与 `readBodyChunks`/`createRequestSignal` 的清理口径对齐。
 - `each` 子断言执行期校验收敛：子断言定义在单次 `evaluateAssertion` 内由 `resolve()` 新鲜生成且不逃逸同步遍历，逐元素 `validateAssertion` 是纯浪费——N 元素 × M 子断言次校验降为 M 次（校验/求值输出完全同口径），大数组逐项断言的 CPU 开销显著下降。
 - `stableStringify` 单趟组装：对象分支 `filter`+`map` 各序列化一次同一子树，每层 2× 冗余在深层嵌套上指数放大；`includes`/`oneOf` 同步把 actual/expected 的稳定序列化移出逐项比较循环。
-- `resolveString` 无模板文本快速返回：`{{` 子串预检一次即返回，跳过整串 match+replace+test 三轮正则；`tokenizePath` 分词结果按路径字符串缓存（有界 FIFO、缓存数组冻结防改写污染）——模板/断言/extract 裸路径在多步骤与轮询重试间反复分词。
+- `resolveString` 无模板文本快速返回：`{{` 子串预检一次即返回，跳过整串 match+replace+test 三轮正则；`tokenizePath` 分词结果按路径字符串缓存（有界 FIFO）——模板/断言/extract 裸路径在多步骤与轮询重试间反复分词。
+- `tokenizePath` 兼容性回归修复：缓存内部数组仍然冻结（防调用方改写污染），但对外按公开声明 `string[] | null` 返回**可变副本**——调用方 `push`/`splice` 不再在 ESM/严格模式下抛 `TypeError`，公开 API 约定与旧版一致。
+- `includes`/`oneOf` 序列化短路：仅在累计结果仍可能通过、且候选/实际集合非空时才做稳定序列化——`oneOf: []`、空数组 `includes` 恢复为普通断言失败，不再因不可 JSON 序列化的实际值（如适配器返回的 `body: 1n`）把断言失败升级为步骤异常；前序操作符已失败时同样跳过后续无谓序列化。
 - 断言键白名单查询 Set 化（每次求值都过 `validateAssertion`）；`gt/gte/lt/lte` 循环复用 `contract.assertions.numericOperators` 名单，不再手写第二份。
 
 ### 诊断
