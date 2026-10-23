@@ -10,8 +10,10 @@
 
 ## 常用命令
 
+构建链要求 Node.js 20+（Tailwind CSS 4 的 oxide）；业务项目运行时消费仍为 Node.js 18+。
+
 ```bash
-npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind）
+npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
 npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）

@@ -15,6 +15,7 @@
    ```powershell
    npm run check
    npm run test:browser
+   npm audit   # 期望 0 vulnerabilities；运行时依赖链上不允许遗留，devDependencies 链上遗留需在 issue 中登记
    ```
 
 3. 提交版本变更并推送 `master`。

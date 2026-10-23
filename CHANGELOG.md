@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 
 ### 工程
 
+- Tailwind CSS 3.4 → 4.3（#5）：构建链依赖从 `tailwindcss`（v3 PostCSS 插件）换成 `@tailwindcss/postcss`，`build.mjs` 输入改为 CSS 优先的 `@import "tailwindcss" source(none)` + `@source` 显式指向三个 UI 源文件（与原 `content` 列表一一对应）。v3 `important: "#scenario-test-root"` 在 v4 无等价配置（v4 important 只做 `!important`），改由构建内联 PostCSS 步骤对 `@layer utilities`/`components` 的选择器统一加 `#scenario-test-root` 前缀，theme/base（变量与 preflight）保持全局，与 v3 作用域口径一致。默认外观差异逐项还原：`@theme` 钩子恢复 `--default-ring-width: 3px` 与 `--default-ring-color: rgb(59 130 246 / 0.5)`，base 层补 `border-color: var(--color-gray-200)`（v4 默认改为 1px 与 currentColor）；UI 源文件 `outline-none` 更名 `outline-hidden`（v4 里 `outline-none` 变为彻底移除 outline，旧语义归 `outline-hidden`）。其余旧类（`flex-shrink-0`、`rounded`、`shadow`、`placeholder-slate-*`、`divide-*`、`space-*` 等）v4 均有兼容输出无需改名。同步收益：此前 v3 里不存在而静默失效的 `shadow-2xs`/`shadow-xs` 类在 v4 恢复生效。`npm audit` 8 个漏洞（6 high/2 moderate，全部位于 tailwind 3.x 传递链与 source-map-js）随升级清零；仓库构建链要求随之升为 Node.js 20+（@tailwindcss/oxide），业务项目运行时消费仍为 Node.js 18+。
 - 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
