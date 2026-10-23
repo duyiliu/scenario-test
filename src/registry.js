@@ -1,4 +1,4 @@
-import { isPlainObject, normalizeGlobalParam, tokenizePath, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
+import { isPlainObject, normalizeGlobalParam, tokenizePath, validateAssertion, assertNoReservedVars, assertNotReservedVar, normalizeWhenDefinition } from "./core.js";
 import { escapeInlineText } from "./utils/failure-diff.js";
 import { contract } from "./contract.js";
 import { validateAdapter } from "./adapter-types.js";
@@ -234,21 +234,40 @@ export function defineScenario(input) {
                 }
             });
         }
-        // when 对象形式只能从 vars 取值，不允许 body/status/header；
+        // when 对象形式来源：vars/lastResponse/status，或 target:"status" 读取上一步状态码；
         // 非对象形式只支持模板字符串（{{vars.x}}）与布尔——裸字符串 "false"/数字/数组
         // 运行期按 truthiness 判定恒真（when:"false" 照样执行），是典型误写，定义期即拒。
         if (step.when !== undefined) {
             if (isPlainObject(step.when)) {
-                if (!contract.when.sources.includes(step.when.from)) {
+                const hasFrom = step.when.from !== undefined;
+                if (hasFrom && !contract.when.sources.includes(step.when.from)) {
                     throw new TypeError(
-                        `步骤 ${step.name} 的 when 对象形式只允许 from: "vars"（当前为 ${JSON.stringify(step.when.from)}），` +
-                        "不允许从响应 body/status/header 取条件"
+                        `步骤 ${step.name} 的 when 对象形式来源只支持 ${contract.when.sources.join("/")}（当前为 ${JSON.stringify(step.when.from)}），` +
+                        "不允许从其他响应来源取条件"
                     );
                 }
-                if (step.when.target !== undefined || step.when.header !== undefined) {
-                    throw new TypeError(`步骤 ${step.name} 的 when 对象形式不允许使用 target/header 条件`);
+                if (!hasFrom && step.when.target === undefined) {
+                    throw new TypeError(
+                        `步骤 ${step.name} 的 when 对象形式必须声明来源 from（${contract.when.sources.join("/")}）或 target: "${contract.when.targets.join("/")}"`
+                    );
                 }
-                validateAssertion(step.when, stepContext);
+                if (step.when.target !== undefined && !contract.when.targets.includes(step.when.target)) {
+                    throw new TypeError(
+                        `步骤 ${step.name} 的 when 对象形式 target 只支持 ${contract.when.targets.join("/")}（当前 ${JSON.stringify(step.when.target)}）；duration 等其余响应级通道仅用于 assertions`
+                    );
+                }
+                // from 与 target 互斥：目标通道单独声明即可，混用会让一个来源被静默忽略
+                if (hasFrom && step.when.target !== undefined) {
+                    throw new TypeError(
+                        `步骤 ${step.name} 的 when 对象形式不允许使用 target/header 条件与 from 混用（target: "${contract.when.targets.join("/")}" 单独使用即可）`
+                    );
+                }
+                if (step.when.header !== undefined) {
+                    throw new TypeError(`步骤 ${step.name} 的 when 对象形式不允许使用 header 条件`);
+                }
+                // lastResponse/status 归一化到断言 schema（body / target:status）后再复用同一套
+                // 校验：路径分词、操作符、each 子断言等规则与断言完全一致
+                validateAssertion(normalizeWhenDefinition(step.when), stepContext);
             } else {
                 invariant(
                     typeof step.when === "boolean"
