@@ -20,6 +20,7 @@ import {
     resolve,
     sanitizeSensitive,
     seedToIndex,
+    tokenizePath,
     usccCheckChar,
     validateAssertion
 } from "../src/index.js";
@@ -41,6 +42,18 @@ test("模板插值保留完整表达式的原始类型和长整型字符串", ()
     assert.equal(resolve("{{vars.recordName}}", runtime), "scenario-123456");
     assert.equal(resolve("name={{vars.recordName}}", runtime), "name=scenario-123456");
     assert.equal(resolve("{{vars.self}}", runtime), "{{vars.self}}");
+});
+
+test("tokenizePath 结果按路径字符串缓存，缓存数组冻结防改写污染", () => {
+    const first = tokenizePath("user.list[0].name");
+    const second = tokenizePath("user.list[0].name");
+    // 命中缓存返回同一对象（分词是模板/断言/extract 取值的公共热路径）
+    assert.equal(first, second);
+    // 缓存数组冻结：改写会在严格模式下抛 TypeError，防止污染后续取值
+    assert.throws(() => first.push("injected"), TypeError);
+    // 非法路径的 null 结果同样缓存（has 判定区分「未缓存」与「缓存为 null」）
+    assert.equal(tokenizePath("a..b"), null);
+    assert.equal(tokenizePath("a..b"), null);
 });
 
 test("模板根写法 vars[ / lastResponse[ / lastResponseBody[ 支持引号键（含运算符字符的键名可取值）", () => {

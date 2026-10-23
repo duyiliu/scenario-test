@@ -527,9 +527,20 @@ var ScenarioTest = (() => {
   var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
   var PATH_SEGMENT = /[^.\[\]]+/y;
   var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+  var PATH_TOKEN_CACHE_LIMIT = 256;
+  var pathTokenCache = /* @__PURE__ */ new Map();
   function tokenizePath(valuePath) {
-    const tokens = [];
     const rest = String(valuePath);
+    if (pathTokenCache.has(rest)) return pathTokenCache.get(rest);
+    const tokens = tokenizePathStrict(rest);
+    if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
+      pathTokenCache.delete(pathTokenCache.keys().next().value);
+    }
+    pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
+    return tokens;
+  }
+  function tokenizePathStrict(rest) {
+    const tokens = [];
     let index = rest.startsWith(".") ? 1 : 0;
     let prevBracket = false;
     while (index < rest.length) {
@@ -593,6 +604,7 @@ var ScenarioTest = (() => {
   }
   function resolveString(value, runtime) {
     if (typeof value !== "string") return value;
+    if (!value.includes("{{")) return value;
     let current = value;
     const seen = /* @__PURE__ */ new Set();
     for (let depth = 0; depth < 10; depth += 1) {
@@ -683,6 +695,9 @@ var ScenarioTest = (() => {
   }
   var ASSERTION_OPERATORS = Object.keys(contract.assertions.operators);
   var ASSERTION_META_KEYS = [...contract.assertions.metaKeys];
+  var ASSERTION_OPERATOR_SET = new Set(ASSERTION_OPERATORS);
+  var ASSERTION_META_KEY_SET = new Set(ASSERTION_META_KEYS);
+  var STRING_EDGE_OPERATORS = ["startsWith", "endsWith"];
   function formatAssertionContext(context) {
     if (!context) return "";
     if (typeof context === "string") return context;
@@ -698,8 +713,8 @@ var ScenarioTest = (() => {
     const prefix = where ? `${where}\u65AD\u8A00\u65E0\u6548` : "\u65AD\u8A00\u65E0\u6548";
     if (!isPlainObject(definition)) throw new TypeError(`${prefix}: \u65AD\u8A00\u5FC5\u987B\u662F\u5BF9\u8C61`);
     const keys = Object.keys(definition);
-    const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
-    const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+    const operators = keys.filter((key) => ASSERTION_OPERATOR_SET.has(key));
+    const unknown = keys.filter((key) => !ASSERTION_OPERATOR_SET.has(key) && !ASSERTION_META_KEY_SET.has(key));
     if (unknown.length) {
       throw new TypeError(
         `${prefix}: \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u5143\u6570\u636E\u952E\u4E3A ${ASSERTION_META_KEYS.join("/")}\uFF0C\u64CD\u4F5C\u7B26\u4E3A ${ASSERTION_OPERATORS.join("/")}`
@@ -773,11 +788,19 @@ var ScenarioTest = (() => {
     if (value === void 0) return "undefined";
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-    return `{${Object.keys(value).sort().filter((key) => stableStringify(value[key]) !== "undefined").map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+    const entries = [];
+    for (const key of Object.keys(value).sort()) {
+      const text = stableStringify(value[key]);
+      if (text !== "undefined") entries.push(`${JSON.stringify(key)}:${text}`);
+    }
+    return `{${entries.join(",")}}`;
   }
   var INCLUDES_OBJECT_ACTUAL_REASON = 'includes \u4E0D\u652F\u6301\u5BF9\u8C61\u7C7B\u578B\u7684\u5B9E\u9645\u503C\uFF08String(actual) \u6052\u4E3A "[object Object]"\uFF0C\u65AD\u8A00\u5FC5\u7136\u5931\u8D25\uFF09\uFF1A\u5BF9\u8C61\u6DF1\u6BD4\u8F83\u8BF7\u6539\u7528 equals\uFF0C\u6216\u5BF9\u5177\u4F53\u5B57\u6BB5\u7528 path \u65AD\u8A00\uFF08\u5982 path: "data.id"\uFF09';
   function evaluateAssertion(definition, response, runtime, context) {
     validateAssertion(definition, context);
+    return evaluateValidatedAssertion(definition, response, runtime, context);
+  }
+  function evaluateValidatedAssertion(definition, response, runtime, context) {
     let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
@@ -801,8 +824,11 @@ var ScenarioTest = (() => {
       if (isPlainObject(actual)) {
         passed = false;
         reason = INCLUDES_OBJECT_ACTUAL_REASON;
+      } else if (Array.isArray(actual)) {
+        const expectedText = stableStringify(expected);
+        passed = passed && actual.some((item) => stableStringify(item) === expectedText);
       } else {
-        passed = passed && (Array.isArray(actual) ? actual.some((item) => stableStringify(item) === stableStringify(expected)) : String(actual == null ? "" : actual).includes(String(expected)));
+        passed = passed && String(actual == null ? "" : actual).includes(String(expected));
       }
     }
     if (Object.prototype.hasOwnProperty.call(definition, "each")) {
@@ -810,9 +836,10 @@ var ScenarioTest = (() => {
       const subDefinitions = Array.isArray(expected) ? expected : isPlainObject(expected) ? [expected] : null;
       passed = passed && Array.isArray(actual) && subDefinitions !== null;
       if (passed) {
+        for (const sub of subDefinitions) validateAssertion(sub, context);
         actual.forEach((element, index) => {
           const elementResponse = { status: void 0, headers: {}, body: element, bodyText: "" };
-          const subResults = subDefinitions.map((sub) => evaluateAssertion(sub, elementResponse, runtime, context));
+          const subResults = subDefinitions.map((sub) => evaluateValidatedAssertion(sub, elementResponse, runtime, context));
           if (subResults.some((result) => !result.passed)) {
             (eachFailures ??= []).push({ index, actual: element, assertions: subResults });
             passed = false;
@@ -832,9 +859,14 @@ var ScenarioTest = (() => {
     }
     if (definition.oneOf !== void 0) {
       expected = resolve(definition.oneOf, runtime);
-      passed = passed && Array.isArray(expected) && expected.some((item) => stableStringify(item) === stableStringify(actual));
+      if (Array.isArray(expected)) {
+        const actualText = stableStringify(actual);
+        passed = passed && expected.some((item) => stableStringify(item) === actualText);
+      } else {
+        passed = false;
+      }
     }
-    for (const op of ["startsWith", "endsWith"]) {
+    for (const op of STRING_EDGE_OPERATORS) {
       if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
       expected = resolve(definition[op], runtime);
       const text = String(actual == null ? "" : actual);
@@ -846,7 +878,7 @@ var ScenarioTest = (() => {
       if (lengthOf !== null) actual = lengthOf;
       passed = passed && lengthOf !== null && typeof expected === "number" && Number.isFinite(expected) && lengthOf === expected;
     }
-    for (const op of ["gt", "gte", "lt", "lte"]) {
+    for (const op of contract.assertions.numericOperators) {
       if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
       expected = resolve(definition[op], runtime);
       const comparable = typeof actual === "number" && Number.isFinite(actual) && typeof expected === "number" && Number.isFinite(expected);
@@ -1345,7 +1377,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       invariant(isPlainObject(item), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570\u5FC5\u987B\u662F\u5BF9\u8C61`);
       invariant(types.includes(item.type), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570 type \u5FC5\u987B\u662F ${types.join("/")}`);
       invariant(nonEmptyString(item.name), `${label}\u7B2C ${index + 1} \u4E2A\u5168\u5C40\u53C2\u6570\u7F3A\u5C11 name`);
-      return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+      return normalizeGlobalParam(item);
     }) : [];
     const seen = /* @__PURE__ */ new Set();
     for (const item of result) {
@@ -1629,13 +1661,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (!milliseconds) return Promise.resolve();
     if (signal?.aborted) return Promise.reject(abortReason(signal));
     return new Promise((resolveDelay, reject) => {
-      const timer = setTimeout(resolveDelay, milliseconds);
-      if (signal) {
-        signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          reject(abortReason(signal));
-        }, { once: true });
-      }
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(abortReason(signal));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolveDelay();
+      }, milliseconds);
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
   function createTimeoutError(timeoutMs, message) {

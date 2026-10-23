@@ -45,9 +45,26 @@ export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
 // 空 token 序列甚至返回根对象本身（when 条件意外成立）
 const PATH_SEGMENT = /[^.\[\]]+/y;
 const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+// 分词是 {{vars.*}} 模板、断言/extract 裸路径取值的公共热路径：同一路径串在多步骤
+// 与 retryUntil 轮询间反复出现，按字符串缓存结果（有界 FIFO 防路径爆炸占内存，
+// 非法路径的 null 同样缓存）。缓存数组冻结——调用方改写会污染后续取值，
+// 严格模式下抛 TypeError 比静默出错值更安全
+const PATH_TOKEN_CACHE_LIMIT = 256;
+const pathTokenCache = new Map();
+
 export function tokenizePath(valuePath) {
-    const tokens = [];
     const rest = String(valuePath);
+    if (pathTokenCache.has(rest)) return pathTokenCache.get(rest);
+    const tokens = tokenizePathStrict(rest);
+    if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
+        pathTokenCache.delete(pathTokenCache.keys().next().value);
+    }
+    pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
+    return tokens;
+}
+
+function tokenizePathStrict(rest) {
+    const tokens = [];
     // 前导点形式（.key）为既有公开口径（headers 子路径使用）：最多容忍一个
     let index = rest.startsWith(".") ? 1 : 0;
     // 下标段后只允许 . 分隔、连续下标或结尾——["a"]key 这种无分隔写法非法
@@ -132,6 +149,9 @@ export function evalExpression(expression, runtime) {
 
 export function resolveString(value, runtime) {
     if (typeof value !== "string") return value;
+    // 无模板文本占绝大多数：一次子串扫描直接返回，
+    // 跳过下方整串 match + 全局 replace + 残留 test 三轮正则
+    if (!value.includes("{{")) return value;
     let current = value;
     const seen = new Set();
     for (let depth = 0; depth < 10; depth += 1) {
@@ -235,6 +255,11 @@ export function parseBody(text, contentType) {
 // ===== 断言 schema（唯一操作符名单来自 contract，registry 定义期与执行期共用）=====
 export const ASSERTION_OPERATORS = Object.keys(contract.assertions.operators);
 export const ASSERTION_META_KEYS = [...contract.assertions.metaKeys];
+// 执行期键白名单查询 O(1) 化：evaluateAssertion 每次求值都过一遍 validateAssertion
+const ASSERTION_OPERATOR_SET = new Set(ASSERTION_OPERATORS);
+const ASSERTION_META_KEY_SET = new Set(ASSERTION_META_KEYS);
+// 字符串边界操作符（数值操作符名单见 contract.assertions.numericOperators，勿另写副本）
+const STRING_EDGE_OPERATORS = ["startsWith", "endsWith"];
 
 export function formatAssertionContext(context) {
     if (!context) return "";
@@ -252,8 +277,8 @@ export function validateAssertion(definition, context, options = {}) {
     const prefix = where ? `${where}断言无效` : "断言无效";
     if (!isPlainObject(definition)) throw new TypeError(`${prefix}: 断言必须是对象`);
     const keys = Object.keys(definition);
-    const operators = keys.filter((key) => ASSERTION_OPERATORS.includes(key));
-    const unknown = keys.filter((key) => !ASSERTION_OPERATORS.includes(key) && !ASSERTION_META_KEYS.includes(key));
+    const operators = keys.filter((key) => ASSERTION_OPERATOR_SET.has(key));
+    const unknown = keys.filter((key) => !ASSERTION_OPERATOR_SET.has(key) && !ASSERTION_META_KEY_SET.has(key));
     if (unknown.length) {
         throw new TypeError(
             `${prefix}: 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，` +
@@ -355,10 +380,14 @@ function stableStringify(value) {
     if (value === undefined) return "undefined";
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-    return `{${Object.keys(value).sort()
-        .filter((key) => stableStringify(value[key]) !== "undefined")
-        .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-        .join(",")}}`;
+    // 单趟组装：此前 filter+map 各序列化一次同一子树——每层 2× 冗余，
+    // 深层嵌套被指数放大（equals/notEquals/includes/oneOf 的深比较底座）
+    const entries = [];
+    for (const key of Object.keys(value).sort()) {
+        const text = stableStringify(value[key]);
+        if (text !== "undefined") entries.push(`${JSON.stringify(key)}:${text}`);
+    }
+    return `{${entries.join(",")}}`;
 }
 
 // includes 对 plain object 实际值的失败原因：非数组分支会走 String(actual)，对象恒为
@@ -371,6 +400,10 @@ const INCLUDES_OBJECT_ACTUAL_REASON =
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
     validateAssertion(definition, context);
+    return evaluateValidatedAssertion(definition, response, runtime, context);
+}
+
+function evaluateValidatedAssertion(definition, response, runtime, context) {
     let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
@@ -399,10 +432,12 @@ export function evaluateAssertion(definition, response, runtime, context) {
             // 引导改用 equals 做对象深比较或对具体字段 path 断言
             passed = false;
             reason = INCLUDES_OBJECT_ACTUAL_REASON;
+        } else if (Array.isArray(actual)) {
+            // 期望值序列化移出逐项比较循环：此前每个元素重复序列化同一 expected
+            const expectedText = stableStringify(expected);
+            passed = passed && actual.some((item) => stableStringify(item) === expectedText);
         } else {
-            passed = passed && (Array.isArray(actual)
-                ? actual.some((item) => stableStringify(item) === stableStringify(expected))
-                : String(actual == null ? "" : actual).includes(String(expected)));
+            passed = passed && String(actual == null ? "" : actual).includes(String(expected));
         }
     }
     // each：数组逐项断言——对实际数组的每个元素套用子断言（对象或其数组），
@@ -418,9 +453,12 @@ export function evaluateAssertion(definition, response, runtime, context) {
         // 子结果递归求值，自带各自的 detail。非数组/期望值形状非法的失败不产生元素级
         // 明细（此时 actual/expected 自身已可定位）；仅在确有失败元素时挂 detail 字段
         if (passed) {
+            // 子断言定义由本调用的 resolve() 新鲜生成、不逃逸出同步遍历——
+            // 逐元素重复 validateAssertion 是纯浪费，N 元素 × M 子断言降为 M 次
+            for (const sub of subDefinitions) validateAssertion(sub, context);
             actual.forEach((element, index) => {
                 const elementResponse = { status: undefined, headers: {}, body: element, bodyText: "" };
-                const subResults = subDefinitions.map((sub) => evaluateAssertion(sub, elementResponse, runtime, context));
+                const subResults = subDefinitions.map((sub) => evaluateValidatedAssertion(sub, elementResponse, runtime, context));
                 if (subResults.some((result) => !result.passed)) {
                     (eachFailures ??= []).push({ index, actual: element, assertions: subResults });
                     passed = false;
@@ -439,12 +477,17 @@ export function evaluateAssertion(definition, response, runtime, context) {
     }
     if (definition.oneOf !== undefined) {
         expected = resolve(definition.oneOf, runtime);
-        passed = passed && Array.isArray(expected)
-            && expected.some((item) => stableStringify(item) === stableStringify(actual));
+        if (Array.isArray(expected)) {
+            // actual 序列化移出候选比较循环：此前每个候选项重复序列化同一 actual
+            const actualText = stableStringify(actual);
+            passed = passed && expected.some((item) => stableStringify(item) === actualText);
+        } else {
+            passed = false;
+        }
     }
     // startsWith/endsWith：字符串化后比较，口径与 includes 字符串分支一致
     // （null/undefined 实际值视为空串；大小写敏感，无隐式类型转换放行）
-    for (const op of ["startsWith", "endsWith"]) {
+    for (const op of STRING_EDGE_OPERATORS) {
         if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
         expected = resolve(definition[op], runtime);
         const text = String(actual == null ? "" : actual);
@@ -462,7 +505,7 @@ export function evaluateAssertion(definition, response, runtime, context) {
             && typeof expected === "number" && Number.isFinite(expected)
             && lengthOf === expected;
     }
-    for (const op of ["gt", "gte", "lt", "lte"]) {
+    for (const op of contract.assertions.numericOperators) {
         if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
         expected = resolve(definition[op], runtime);
         // 只接受有限 number，不做字符串隐式转换；类型不符时断言失败而非抛异常

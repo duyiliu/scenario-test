@@ -12,7 +12,7 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { mergeGlobals, SAVED_RESPONSE } from "./core.js";
+import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 
@@ -156,7 +156,7 @@ function parseGlobalsEnv() {
             || typeof item.name !== "string" || !item.name.trim()) {
             throw new CliUsageError(`SCENARIO_GLOBALS 第 ${index + 1} 项无效，格式应为 { type: "${types.join("|")}", name, value }`);
         }
-        return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+        return normalizeGlobalParam(item);
     });
 }
 

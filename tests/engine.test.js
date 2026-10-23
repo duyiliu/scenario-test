@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -207,6 +208,20 @@ test("retryUntil 成功、耗尽和取消", async () => {
     controller.abort(new Error("cancel test"));
     const cancelled = await engine.runScenario(retryScenario, { signal: controller.signal });
     assert.equal(cancelled.results[0].status, "CANCELLED");
+});
+
+test("retryUntil 轮询不在父 signal 上累积 abort 监听（delay 正常到期即摘除）", async () => {
+    // 12 次尝试 × intervalMs 下限 100ms：delay 此前在父 signal 上挂 { once:true } 监听
+    // 只在 abort 时摘除——正常到期的监听随尝试次数累积，11 个即触发 Node
+    // MaxListenersExceededWarning 污染 stderr（工作台整场执行复用单个 abortController）
+    const controller = new AbortController();
+    const engine = createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({ ready: false }) });
+    const report = await engine.runScenario(defineScenario({
+        name: "轮询",
+        steps: [{ name: "等就绪", path: "status", assertions: [{ path: "ready", equals: true }], retryUntil: { maxAttempts: 12, intervalMs: 100 } }]
+    }), { signal: controller.signal });
+    assert.equal(report.status, "FAILED");
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
 });
 
 test("retryUntil maxAttempts 语义 = 最大尝试总次数（含首次），不再 +1", async () => {
