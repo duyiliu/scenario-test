@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { CONTRACT_VERSION } from "../src/index.js";
+import { satisfiesNodeEngine } from "../src/doctor.js";
 import { VERSION } from "../src/version.generated.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -52,6 +53,24 @@ function runDoctor(dir, extra = []) {
 function cleanup(project) {
     fs.rmSync(project, { recursive: true, force: true });
 }
+
+test("satisfiesNodeEngine：缺省段按 0 参与比较（v18.x 对 >=18 不误判 FAIL）", () => {
+    // 缺省 minor/patch 曾被 map(Number) 解析成 NaN——NaN 参与比较恒 false，
+    // ">=18" 在全部 v18.x（engines 声明的支持下限）上误判 FAIL，
+    // 仅主版本高于下限时因短路偶然正确
+    assert.equal(satisfiesNodeEngine("v18.0.0", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v18.19.0", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v20.0.0", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v17.9.9", ">=18"), false);
+    // 边界等值：v18.17.0 恰好满足 >=18.17
+    assert.equal(satisfiesNodeEngine("v18.17.0", ">=18.17"), true);
+    assert.equal(satisfiesNodeEngine("v18.16.9", ">=18.17"), false);
+    assert.equal(satisfiesNodeEngine("v18.17.1", ">=18.17.1"), true);
+    assert.equal(satisfiesNodeEngine("v18.17.0", ">=18.17.1"), false);
+    // 非法输入不误放
+    assert.equal(satisfiesNodeEngine("not-a-version", ">=18"), false);
+    assert.equal(satisfiesNodeEngine("v18.0.0", "not-a-range"), false);
+});
 
 test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
     const { project, dir } = initProject();

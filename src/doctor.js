@@ -222,14 +222,17 @@ function checkVersionLock(filePath) {
     };
 }
 
-function satisfiesNodeEngine(version, range) {
+// 缺省段按 0 参与比较：此前 map(Number) 对未命中的可选组产出 NaN（解构默认值只兜
+// undefined），NaN 参与比较恒 false——">=18" 在全部 v18.x（engines 声明的支持下限）
+// 上误判 FAIL，仅主版本高于下限时因短路偶然正确；v18.17.0 对 >=18.17 同病
+export function satisfiesNodeEngine(version, range) {
     const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
     if (!match) return false;
-    const [major, minor = 0, patch = 0] = match.slice(1).map(Number);
+    const [major, minor, patch] = match.slice(1).map((segment) => Number(segment ?? 0));
     // 用正则提取数字段，忽略 pre-release 后缀（如 v18.0.0-rc.1），避免 Number("0-rc.1") 为 NaN 导致误判
     const current = /^v?(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(version).trim());
     if (!current) return false;
-    const [curMajor, curMinor = 0, curPatch = 0] = current.slice(1).map(Number);
+    const [curMajor, curMinor, curPatch] = current.slice(1).map((segment) => Number(segment ?? 0));
     if (curMajor !== major) return curMajor > major;
     if (curMinor !== minor) return curMinor > minor;
     return curPatch >= patch;

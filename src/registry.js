@@ -1,4 +1,4 @@
-import { isPlainObject, tokenizePath, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
+import { isPlainObject, normalizeGlobalParam, tokenizePath, validateAssertion, assertNoReservedVars, assertNotReservedVar } from "./core.js";
 import { escapeInlineText } from "./utils/failure-diff.js";
 import { contract } from "./contract.js";
 import { validateAdapter } from "./adapter-types.js";
@@ -83,7 +83,8 @@ function normalizeGlobals(globals, label) {
         invariant(isPlainObject(item), `${label}第 ${index + 1} 个全局参数必须是对象`);
         invariant(types.includes(item.type), `${label}第 ${index + 1} 个全局参数 type 必须是 ${types.join("/")}`);
         invariant(nonEmptyString(item.name), `${label}第 ${index + 1} 个全局参数缺少 name`);
-        return { type: item.type, name: item.name, value: item.value == null ? "" : String(item.value) };
+        // 规范化复用 core.normalizeGlobalParam，勿再写同形副本
+        return normalizeGlobalParam(item);
     }) : [];
     const seen = new Set();
     for (const item of result) {

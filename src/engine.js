@@ -37,13 +37,19 @@ function delay(milliseconds, signal) {
     // 取消要白等完整 interval 才被下一轮循环发现
     if (signal?.aborted) return Promise.reject(abortReason(signal));
     return new Promise((resolveDelay, reject) => {
-        const timer = setTimeout(resolveDelay, milliseconds);
-        if (signal) {
-            signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                reject(abortReason(signal));
-            }, { once: true });
-        }
+        // 正常到期必须摘除 abort 监听：retryUntil 轮询在同一个父 signal 上反复挂
+        // { once:true } 监听（只在 abort 时移除），监听器会随尝试次数累积——工作台
+        // 整场执行复用单个 abortController，Node ≥11 个监听器即打
+        // MaxListenersExceededWarning 污染 stderr，也构成内存泄漏
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(abortReason(signal));
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", onAbort);
+            resolveDelay();
+        }, milliseconds);
+        signal?.addEventListener("abort", onAbort, { once: true });
     });
 }
 

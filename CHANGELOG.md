@@ -9,6 +9,19 @@ All notable changes to this project will be documented in this file.
 
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
 - `retryUntil.intervalMs` 显式 `0` 语义修正：此前 `intervalMs || 2000` 把显式 0 静默吞回默认 2000ms；现按「0 = 按最小间隔执行」钳到下限 100ms（与定义期 `≥0` 校验口径对齐），未声明/非法值仍按默认 2000ms。
+- `retryUntil` 轮询 `delay` 修复 abort 监听泄漏：正常到期只 resolve 不摘监听，监听器随尝试次数在同一父 signal 上累积——工作台整场执行复用单个 `abortController`、长轮询场景在 Node 下 ≥11 个监听器即打 `MaxListenersExceededWarning` 污染 stderr，亦构成内存泄漏。现到期即摘除，与 `readBodyChunks`/`createRequestSignal` 的清理口径对齐。
+- `each` 子断言执行期校验收敛：子断言定义在单次 `evaluateAssertion` 内由 `resolve()` 新鲜生成且不逃逸同步遍历，逐元素 `validateAssertion` 是纯浪费——N 元素 × M 子断言次校验降为 M 次（校验/求值输出完全同口径），大数组逐项断言的 CPU 开销显著下降。
+- `stableStringify` 单趟组装：对象分支 `filter`+`map` 各序列化一次同一子树，每层 2× 冗余在深层嵌套上指数放大；`includes`/`oneOf` 同步把 actual/expected 的稳定序列化移出逐项比较循环。
+- `resolveString` 无模板文本快速返回：`{{` 子串预检一次即返回，跳过整串 match+replace+test 三轮正则；`tokenizePath` 分词结果按路径字符串缓存（有界 FIFO、缓存数组冻结防改写污染）——模板/断言/extract 裸路径在多步骤与轮询重试间反复分词。
+- 断言键白名单查询 Set 化（每次求值都过 `validateAssertion`）；`gt/gte/lt/lte` 循环复用 `contract.assertions.numericOperators` 名单，不再手写第二份。
+
+### 诊断
+
+- `doctor` 的 Node 版本区间比较修复缺省段：`">=18"` 这类只声明主版本的范围把缺省 minor/patch 解析成 `NaN` 参与比较（NaN 比较恒 false）——**所有 v18.x 在 node-version 检查被判 FAIL**，恰好击穿 engines 声明的支持下限（仅主版本高于下限时因短路偶然正确，故存量未暴露）；`v18.17.0` 对 `>=18.17` 的边界等值同病。现缺省段按 0 参与比较，恢复 `>=` 语义。
+
+### 工程
+
+- `registry.normalizeGlobals` 与 CLI `SCENARIO_GLOBALS` 解析复用 `core.normalizeGlobalParam`，消除两处同形规范化副本。
 
 ### 测试基建
 
