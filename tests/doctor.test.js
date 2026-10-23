@@ -67,6 +67,18 @@ test("satisfiesNodeEngine：缺省段按 0 参与比较（v18.x 对 >=18 不误�
     assert.equal(satisfiesNodeEngine("v18.16.9", ">=18.17"), false);
     assert.equal(satisfiesNodeEngine("v18.17.1", ">=18.17.1"), true);
     assert.equal(satisfiesNodeEngine("v18.17.0", ">=18.17.1"), false);
+    // current 侧同口径：运行版本缺省段同样按 0 参与比较（旧实现下同样得到 NaN）
+    assert.equal(satisfiesNodeEngine("v18", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v18.19", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v20", ">=18"), true);
+    assert.equal(satisfiesNodeEngine("v18.17", ">=18.17"), true);
+    assert.equal(satisfiesNodeEngine("v18.17", ">=18.17.1"), false);
+    // 下限 minor 高于当前 minor 时必须判不满足（NaN 曾让该分支恒 false，行为正确但需锁死）
+    assert.equal(satisfiesNodeEngine("v18", ">=18.17"), false);
+    assert.equal(satisfiesNodeEngine("v18.0.0", ">=18.17"), false);
+    assert.equal(satisfiesNodeEngine("v18.19.0", ">=18.17"), true);
+    // 预发布后缀不影响数字段提取
+    assert.equal(satisfiesNodeEngine("v18.0.0-rc.1", ">=18"), true);
     // 非法输入不误放
     assert.equal(satisfiesNodeEngine("not-a-version", ">=18"), false);
     assert.equal(satisfiesNodeEngine("v18.0.0", "not-a-range"), false);

@@ -10,13 +10,20 @@
 
 ## 常用命令
 
+构建链要求 Node.js 20+（Tailwind CSS 4 的 oxide）；业务项目运行时消费仍为 Node.js 18+。
+
 ```bash
-npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind）
+npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
 npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
 npm run check          # npm run build && npm test
+npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
+
+行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制；
+`dist/` 与 `*.generated.js` 显式锁定 LF。若 `git status` 显示 M 而 `git diff` 为空，先跑 `npm run check:eol`，
+按提示用 `git checkout -- <路径>`（工作区漂移）或 `git add --renormalize .`（索引漂移）修复。
 
 测试使用 Node 内置的 `node:test` 运行器，从 `src/`（源码，而非 `dist/`）导入。运行单个文件或单个用例：
 

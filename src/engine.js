@@ -10,7 +10,7 @@ import {
     headersToObject,
     joinUrl,
     parseBody,
-    evaluateAssertion,
+    evaluateWhen,
     resolve,
     resolveString
 } from "./core.js";
@@ -412,9 +412,7 @@ export function createEngine(engineOptions = {}) {
             requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 30000
         };
         if (step.when !== undefined) {
-            const shouldRun = typeof step.when === "object"
-                ? evaluateAssertion(step.when, { status: 0, headers: {}, body: null, bodyText: "" }, runtime, { stepName: step.name }).passed
-                : Boolean(resolve(step.when, runtime));
+            const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
             if (!shouldRun) {
                 return {
                     name: step.name || "未命名步骤",

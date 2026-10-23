@@ -43,6 +43,7 @@ export type ReservedVar = ${quote(contract.reservedVars)};
 export type GeneratedVarType = ${quote(contract.generatedVars.types)};
 export type GlobalParamType = ${quote(contract.globals.types)};
 export type WhenSource = ${quote(contract.when.sources)};
+export type WhenTarget = ${quote(contract.when.targets)};
 export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
@@ -99,6 +100,7 @@ export interface ScenarioConfig {
 export interface Assertion {
     name?: string;
     path?: string;
+    /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配 */
     from?: AssertionSource;
     target?: "status" | "duration";
     header?: string;
@@ -109,6 +111,7 @@ ${operatorMembers("    ")}
 export interface ExtractDefinition {
     name: string;
     path?: string;
+    /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；from:"response" 仍按精确键匹配 */
     from?: ExtractSource;
     /** 提取目标：status=HTTP 状态码（缺省按 body 取值） */
     target?: "status";
@@ -120,9 +123,10 @@ export interface ExtractDefinition {
     default?: unknown;
 }
 
-/** when 对象形式：from 只能取 vars（来自 contract.when.sources） */
+/** when 对象形式：from: WhenSource（contract.when.sources = vars/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
 export interface WhenDefinition {
-    from: WhenSource;
+    from?: WhenSource;
+    target?: WhenTarget;
     path?: string;
 ${operatorMembers("    ")}
 }
@@ -214,6 +218,8 @@ export interface AssertionResult {
     passed: boolean;
     actual?: unknown;
     expected?: unknown;
+    /** 失败原因（语义化引导）：includes 命中对象实际值时提示改用 equals 或字段 path 断言，其余情况不携带 */
+    reason?: string;
     detail?: AssertionEachFailure[];
 }
 
@@ -363,7 +369,7 @@ export declare const contract: {
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
     };
-    when: { sources: readonly WhenSource[]; note: string };
+    when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
     reservedVars: readonly ReservedVar[];
     generatedVars: { types: readonly GeneratedVarType[] };

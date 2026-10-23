@@ -991,7 +991,7 @@ export function createWorkbenchRuntime(options) {
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')' +
                     (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">显示</button>' : '') +
                 '</span>' +
-                '<input id="scenarioVar_' + esc(def.name) + '" type="' + (isSecret ? 'password' : 'text') + '" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+                '<input id="scenarioVar_' + esc(def.name) + '" type="' + (isSecret ? 'password' : 'text') + '" value="' + esc(value) + '" placeholder="请输入 ' + esc(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
                 '</label>';
         }).join('');
     }
@@ -1040,9 +1040,9 @@ export function createWorkbenchRuntime(options) {
             }).join('');
             var attrs = buildGlobalInputAttrs(g, index);
             return '<div class="global-param-row flex items-center gap-2" data-index="' + index + '">' +
-                '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' + typeOptions + '</select>' +
-                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.nameList + ' placeholder="参数名" value="' + esc(g.name) + '" />' +
-                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.valueList + ' placeholder="参数值，支持 {{vars.xxx}}" value="' + esc(g.value) + '" />' +
+                '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' + typeOptions + '</select>' +
+                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.nameList + ' placeholder="参数名" value="' + esc(g.name) + '" />' +
+                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.valueList + ' placeholder="参数值，支持 {{vars.xxx}}" value="' + esc(g.value) + '" />' +
                 '<button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="删除该参数">✕</button>' +
                 attrs.valueDatalist +
                 '</div>';
@@ -1069,11 +1069,11 @@ export function createWorkbenchRuntime(options) {
             if (!container) return;
             var row = document.createElement('div');
             row.className = 'global-param-row flex items-center gap-2';
-            row.innerHTML = '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
+            row.innerHTML = '<select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' +
                 GLOBAL_TYPES.map(function (type) { return '<option value="' + type + '">' + type + '</option>'; }).join('') +
                 '</select>' +
-                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" list="globalHeaderNameList" placeholder="参数名" />' +
-                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" placeholder="参数值，支持 {{vars.xxx}}" />' +
+                '<input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" list="globalHeaderNameList" placeholder="参数名" />' +
+                '<input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" placeholder="参数值，支持 {{vars.xxx}}" />' +
                 '<button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="删除该参数">✕</button>';
             container.appendChild(row);
         });
