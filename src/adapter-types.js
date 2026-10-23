@@ -40,7 +40,7 @@ export function validateAdapterResponse(response, adapterName = "unknown") {
         throw new TypeError(`适配器 ${adapterName} 响应缺少 status 字段`);
     }
     
-    if (actualResponse.headers !== undefined && typeof actualResponse.headers !== "object") {
+    if (actualResponse.headers !== undefined && actualResponse.headers !== null && typeof actualResponse.headers !== "object") {
         throw new TypeError(`适配器 ${adapterName} 响应的 headers 必须是对象`);
     }
     

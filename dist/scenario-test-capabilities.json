@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.7.1",
-  "contractVersion": 8,
+  "contractVersion": 9,
   "assertions": {
     "operators": {
       "exists": {
@@ -155,7 +155,8 @@
       "key",
       "name",
       "baseUrl",
-      "globals"
+      "globals",
+      "authorization"
     ],
     "variableKeys": [
       "name",

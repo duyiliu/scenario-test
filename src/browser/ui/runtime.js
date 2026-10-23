@@ -467,8 +467,10 @@ export function createWorkbenchRuntime(options) {
         updateExecutionFooter();
     }
 
-    function renderStatsAll(iterations) {
-        uiView.renderStatsAll(state.steps, iterations, state.scenario, state.scenarioFile);
+    function renderStatsAll() {
+        // iterations 字段从未被引擎/工作台写入，也不在契约中（B1 未知键校验一并移除读取），
+        // 统计口径完全由 state.steps 推导；此处保留占位参数形状供 uiView 渲染。
+        uiView.renderStatsAll(state.steps, { run: 1, failed: 0 }, state.scenario, state.scenarioFile);
         updateExecutionFooter();
     }
 
@@ -611,7 +613,7 @@ export function createWorkbenchRuntime(options) {
     }
 
     function refreshStepSessionView() {
-        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
@@ -687,7 +689,7 @@ export function createWorkbenchRuntime(options) {
         state.executionMode = 'full';
         stepsFilterState.type = 'all';
         stepsFilterState.keyword = '';
-        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
@@ -835,7 +837,6 @@ export function createWorkbenchRuntime(options) {
             return;
         }
         var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
-        var iterations = state.scenario.iterations || { run: 1, failed: 0 };
         var failurePolicy = state.scenario.failurePolicy || 'stop';
         state.running = true;
         state.activeRuntime = runtime;
@@ -864,7 +865,7 @@ export function createWorkbenchRuntime(options) {
                 result.stepNo = i + 1;
                 state.steps.push(result);
                 state.varsTrail[i] = { ...runtime.vars };
-                renderStatsAll(iterations);
+                renderStatsAll();
                 renderFilterAll();
                 uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
                 renderReportPanel();
@@ -928,7 +929,7 @@ export function createWorkbenchRuntime(options) {
             state.varsTrail[stepIndex] = { ...runtime.vars };
             state.nextStepIndex += 1;
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
-            renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+            renderStatsAll();
             renderFilterAll();
             uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
             expandStepDetails(stepIndex);
@@ -1240,7 +1241,7 @@ export function createWorkbenchRuntime(options) {
             persistSetting(keys.environment, envKey);
             syncSettingsInputs();
             updateHeader();
-            renderStatsAll(state.scenario ? state.scenario.iterations : { run: 1, failed: 0 });
+            renderStatsAll();
             renderFilterAll();
             renderStepsAll();
         }
@@ -1348,6 +1349,12 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
+    // POSIX shell 单引号转义：单引号内不做 $VAR/$(...)/反引号展开，值中的 ' 用 '\'' 收尾再续开。
+    // 复制出的命令与工作台实际发送值一致，也避免变量值借复制粘贴注入命令。
+    function shellSingleQuote(value) {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
     function generateStepCurl(step, stepIndex) {
         if (!step) return '';
         var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
@@ -1376,13 +1383,13 @@ export function createWorkbenchRuntime(options) {
                 if (key) existingKeys.add(decodeURIComponent(key));
             });
         }
-        var queryPairs = [];
+        var queryParts = [];
         globals.forEach(function (global) {
             if (global.type !== 'query' || existingKeys.has(global.name)) return;
-            queryPairs.push(encodeURIComponent(global.name) + '=' + encodeURIComponent(String(core.resolveString(global.value, runtime))));
+            queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
         });
-        if (queryPairs.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryPairs.join('&');
+        if (queryParts.length) {
+            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
         }
 
         // 拼接 globals 的 cookie
@@ -1412,17 +1419,17 @@ export function createWorkbenchRuntime(options) {
         }
 
         var fullUrl = core.joinUrl(baseUrl, requestPath);
-        var parts = ['curl -X ' + method + ' "' + fullUrl + '"'];
+        var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
 
         Object.keys(headers).forEach(function (key) {
-            parts.push('-H "' + key + ': ' + String(headers[key]).replace(/"/g, '\\"') + '"');
+            parts.push('-H ' + shellSingleQuote(key + ': ' + String(headers[key])));
         });
 
         if (step.request && step.request.body != null) {
             var bodyVal = step.request.body;
             var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
             bodyStr = core.resolveString(bodyStr, runtime);
-            parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
+            parts.push('-d ' + shellSingleQuote(bodyStr));
         }
         return parts.join(' \\\n  ');
     }
@@ -1656,7 +1663,7 @@ export function createWorkbenchRuntime(options) {
                 syncSettingsInputs();
                 updateHeader();
                 renderScenarioSelect();
-                renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+                renderStatsAll();
                 renderFilterAll();
                 renderStepsAll();
                 renderReportPanel();

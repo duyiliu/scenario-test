@@ -313,6 +313,7 @@ __export(node_exports, {
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
+  queryPairs: () => queryPairs,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
   registerScenario: () => registerScenario,
@@ -338,7 +339,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.7.1";
 
 // src/contract.js
-var CONTRACT_VERSION = 8;
+var CONTRACT_VERSION = 9;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -449,7 +450,7 @@ var contract = Object.freeze({
   config: Object.freeze({
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals"]),
+    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     manual: Object.freeze({
       type: "boolean",
@@ -670,18 +671,26 @@ function headersToObject(headers) {
   return result;
 }
 function joinUrl(baseUrl, requestPath) {
-  if (/^https?:\/\//i.test(requestPath || "")) return requestPath;
+  if (/^(?:https?:)?\/\//i.test(requestPath || "")) return requestPath;
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const tail = String(requestPath || "").replace(/^\/+/, "");
   return base ? `${base}/${tail}` : tail;
+}
+function queryPairs(key, value) {
+  const encodedKey = encodeURIComponent(key);
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== void 0 && item !== null).map((item) => `${encodedKey}=${encodeURIComponent(String(item))}`);
+  }
+  if (value === void 0 || value === null) return [];
+  return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
-  const query = Object.entries(resolved).filter(([, value]) => value !== void 0 && value !== null).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&");
-  if (!query) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${query}`;
+  const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
+  if (!pairs.length) return rawPath;
+  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
 }
 function parseBody(text, contentType2) {
   if (!text) return null;
@@ -1375,7 +1384,7 @@ function validateAdapterResponse(response, adapterName = "unknown") {
   if (actualResponse.status === void 0 || actualResponse.status === null) {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7F3A\u5C11 status \u5B57\u6BB5`);
   }
-  if (actualResponse.headers !== void 0 && typeof actualResponse.headers !== "object") {
+  if (actualResponse.headers !== void 0 && actualResponse.headers !== null && typeof actualResponse.headers !== "object") {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7684 headers \u5FC5\u987B\u662F\u5BF9\u8C61`);
   }
   return true;
@@ -1390,6 +1399,35 @@ function invariant(condition, message) {
 }
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
+}
+function describeUnknownKeys(input, allowed) {
+  const allowedSet = new Set(allowed);
+  return Object.keys(input).filter((key) => !allowedSet.has(key));
+}
+function editDistance(a, b) {
+  const rows = Array.from({ length: a.length + 1 }, (_, index) => [index]);
+  for (let column = 1; column <= b.length; column += 1) rows[0][column] = column;
+  for (let row = 1; row <= a.length; row += 1) {
+    for (let column = 1; column <= b.length; column += 1) {
+      rows[row][column] = Math.min(
+        rows[row - 1][column] + 1,
+        rows[row][column - 1] + 1,
+        rows[row - 1][column - 1] + (a[row - 1] === b[column - 1] ? 0 : 1)
+      );
+    }
+  }
+  return rows[a.length][b.length];
+}
+function looksLikeKeyTypo(key, allowed) {
+  const lower = key.toLowerCase();
+  return allowed.some((candidate) => {
+    const target = candidate.toLowerCase();
+    return target === lower || editDistance(lower, target) <= 1;
+  });
+}
+var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
+  return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1458,6 +1496,11 @@ function defineScenario(input) {
   invariant(isPlainObject(input), "\u573A\u666F\u5FC5\u987B\u662F\u5BF9\u8C61");
   invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
   invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
+  const unknownScenarioKeys = describeUnknownKeys(input, contract.scenario.keys);
+  invariant(
+    unknownScenarioKeys.length === 0,
+    unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
+  );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
   for (const definition of input.generatedVars || []) {
@@ -1471,6 +1514,30 @@ function defineScenario(input) {
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    if (step.request !== void 0) {
+      invariant(
+        isPlainObject(step.request),
+        `\u6B65\u9AA4 ${step.name} \u7684 request \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5728\u8FD0\u884C\u671F\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09`
+      );
+      if (step.request.params !== void 0) {
+        invariant(
+          isPlainObject(step.request.params),
+          `\u6B65\u9AA4 ${step.name} \u7684 request.params \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request.params)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5BFC\u81F4\u6574\u4E2A query \u88AB\u9759\u9ED8\u4E22\u5F03\uFF09`
+        );
+      }
+    }
+    if (step.params !== void 0) {
+      invariant(
+        isPlainObject(step.params),
+        `\u6B65\u9AA4 ${step.name} \u7684 params \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.params)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5BFC\u81F4\u6574\u4E2A query \u88AB\u9759\u9ED8\u4E22\u5F03\uFF09`
+      );
+    }
+    if (step.params !== void 0 && isPlainObject(step.request) && step.request.params !== void 0) {
+      invariant(
+        false,
+        `\u6B65\u9AA4 ${step.name} \u540C\u65F6\u58F0\u660E\u4E86 params \u4E0E request.params\uFF0C\u8FD0\u884C\u671F\u53EA\u53D6 params\uFF08request.params \u4F1A\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09\uFF0C\u8BF7\u4E8C\u9009\u4E00`
+      );
+    }
     if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
     const isAdapterStep = step.adapter !== void 0;
     if (isAdapterStep) {
@@ -1580,6 +1647,13 @@ function defineScenario(input) {
         );
       }
     }
+    const unknownStepKeys = describeUnknownKeys(step, contract.scenario.stepKeys);
+    const hasHttpExecution = step.adapter === void 0 && HTTP_STEP_KEYS.some((key) => step[key] !== void 0);
+    const rejectedKeys = hasHttpExecution ? unknownStepKeys : unknownStepKeys.filter((key) => looksLikeKeyTypo(key, contract.scenario.stepKeys));
+    invariant(
+      rejectedKeys.length === 0,
+      unknownKeysMessage(`\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`, rejectedKeys, contract.scenario.stepKeys)
+    );
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
@@ -1880,7 +1954,7 @@ async function executeHttp(step, runtime, options) {
   const method = String(step.method || request.method || "GET").toUpperCase();
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
-  const absoluteUrl = /^https?:\/\//i.test(requestPath);
+  const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -1892,12 +1966,12 @@ async function executeHttp(step, runtime, options) {
         if (key) existingKeys.add(decodeURIComponent(key));
       }
     }
-    const queryPairs = [];
+    const queryParts = [];
     for (const global of globals) {
       if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryPairs.push(`${encodeURIComponent(global.name)}=${encodeURIComponent(String(resolveString(global.value, runtime)))}`);
+      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
     }
-    if (queryPairs.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryPairs.join("&")}`;
+    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -1966,26 +2040,63 @@ var AdapterExecutionError = class extends Error {
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
   }
 };
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolveRace, rejectRace) => {
+    const onAbort = () => rejectRace(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolveRace(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        rejectRace(error);
+      }
+    );
+  });
+}
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
   let output;
+  const request = isPlainObject(step.request) ? step.request : {};
+  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const requestSignal = createRequestSignal(options.signal, timeoutMs);
+  const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
   try {
-    if (typeof adapter.beforeExecute === "function") {
-      await adapter.beforeExecute({ step, runtime, options });
-    }
-    output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
-    if (typeof adapter.afterExecute === "function") {
-      output = await adapter.afterExecute({ step, runtime, options, output }) || output;
-    }
+    output = await raceWithSignal((async () => {
+      if (typeof adapter.beforeExecute === "function") {
+        await adapter.beforeExecute({ step, runtime, options: adapterOptions });
+      }
+      let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
+      if (typeof adapter.afterExecute === "function") {
+        result = await adapter.afterExecute({ step, runtime, options: adapterOptions, output: result }) || result;
+      }
+      return result;
+    })(), requestSignal.signal);
   } catch (error) {
+    if (requestSignal.timedOut() && error && typeof error === "object" && !error.scenarioContext) {
+      error.scenarioContext = {
+        method: "ADAPTER",
+        path: adapterName || step.adapter || "adapter",
+        request: null,
+        timedOut: true,
+        timeoutMs
+      };
+    }
     if (typeof adapter.onError === "function") {
       try {
-        await adapter.onError({ step, runtime, options, error });
+        await adapter.onError({ step, runtime, options: adapterOptions, error });
       } catch (hookError) {
         console.warn(`\u9002\u914D\u5668 ${escapeInlineText(adapterName)} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25: ${escapeInlineText(hookError?.message || hookError)}`);
       }
     }
     throw new AdapterExecutionError(adapterName, error, step);
+  } finally {
+    requestSignal.dispose();
   }
   validateAdapterResponse(output, adapterName);
   const response = output?.response || output;
@@ -5306,8 +5417,8 @@ function createWorkbenchRuntime(options) {
     uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
     updateExecutionFooter();
   }
-  function renderStatsAll(iterations) {
-    uiView.renderStatsAll(state.steps, iterations, state.scenario, state.scenarioFile);
+  function renderStatsAll() {
+    uiView.renderStatsAll(state.steps, { run: 1, failed: 0 }, state.scenario, state.scenarioFile);
     updateExecutionFooter();
   }
   function renderFilterAll() {
@@ -5431,7 +5542,7 @@ function createWorkbenchRuntime(options) {
     runtime.cancelled = false;
   }
   function refreshStepSessionView() {
-    renderStatsAll(state.scenario && state.scenario.iterations || { run: 1, failed: 0 });
+    renderStatsAll();
     renderFilterAll();
     renderStepsAll();
     renderReportPanel();
@@ -5500,7 +5611,7 @@ function createWorkbenchRuntime(options) {
     state.executionMode = "full";
     stepsFilterState.type = "all";
     stepsFilterState.keyword = "";
-    renderStatsAll(state.scenario && state.scenario.iterations || { run: 1, failed: 0 });
+    renderStatsAll();
     renderFilterAll();
     renderStepsAll();
     renderReportPanel();
@@ -5632,7 +5743,6 @@ function createWorkbenchRuntime(options) {
       return;
     }
     var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
-    var iterations = state.scenario.iterations || { run: 1, failed: 0 };
     var failurePolicy = state.scenario.failurePolicy || "stop";
     state.running = true;
     state.activeRuntime = runtime;
@@ -5658,7 +5768,7 @@ function createWorkbenchRuntime(options) {
         result.stepNo = i + 1;
         state.steps.push(result);
         state.varsTrail[i] = { ...runtime.vars };
-        renderStatsAll(iterations);
+        renderStatsAll();
         renderFilterAll();
         uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
         renderReportPanel();
@@ -5716,7 +5826,7 @@ function createWorkbenchRuntime(options) {
       state.varsTrail[stepIndex] = { ...runtime.vars };
       state.nextStepIndex += 1;
       state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
-      renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+      renderStatsAll();
       renderFilterAll();
       uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
       expandStepDetails(stepIndex);
@@ -5992,7 +6102,7 @@ function createWorkbenchRuntime(options) {
       persistSetting(keys.environment, envKey);
       syncSettingsInputs();
       updateHeader();
-      renderStatsAll(state.scenario ? state.scenario.iterations : { run: 1, failed: 0 });
+      renderStatsAll();
       renderFilterAll();
       renderStepsAll();
     }
@@ -6106,6 +6216,9 @@ function createWorkbenchRuntime(options) {
       }, 1500);
     }
   }
+  function shellSingleQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+  }
   function generateStepCurl(step, stepIndex) {
     if (!step) return "";
     var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
@@ -6131,13 +6244,13 @@ function createWorkbenchRuntime(options) {
         if (key) existingKeys.add(decodeURIComponent(key));
       });
     }
-    var queryPairs = [];
+    var queryParts = [];
     globals.forEach(function(global) {
       if (global.type !== "query" || existingKeys.has(global.name)) return;
-      queryPairs.push(encodeURIComponent(global.name) + "=" + encodeURIComponent(String(resolveString(global.value, runtime))));
+      queryParts.push.apply(queryParts, queryPairs(global.name, resolve(global.value, runtime)));
     });
-    if (queryPairs.length) {
-      requestPath += (queryIndex >= 0 ? "&" : "?") + queryPairs.join("&");
+    if (queryParts.length) {
+      requestPath += (queryIndex >= 0 ? "&" : "?") + queryParts.join("&");
     }
     var cookieParts = globals.filter(function(global) {
       return global.type === "cookie";
@@ -6166,15 +6279,15 @@ function createWorkbenchRuntime(options) {
       else headers.Cookie = mergedCookie;
     }
     var fullUrl = joinUrl(baseUrl, requestPath);
-    var parts = ["curl -X " + method + ' "' + fullUrl + '"'];
+    var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
     Object.keys(headers).forEach(function(key) {
-      parts.push('-H "' + key + ": " + String(headers[key]).replace(/"/g, '\\"') + '"');
+      parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
     });
     if (step.request && step.request.body != null) {
       var bodyVal = step.request.body;
       var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
       bodyStr = resolveString(bodyStr, runtime);
-      parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
+      parts.push("-d " + shellSingleQuote(bodyStr));
     }
     return parts.join(" \\\n  ");
   }
@@ -6376,7 +6489,7 @@ function createWorkbenchRuntime(options) {
         syncSettingsInputs();
         updateHeader();
         renderScenarioSelect();
-        renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
