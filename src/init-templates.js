@@ -27,7 +27,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 2. 业务功能是设计边界，场景是该功能下的一条独立验证路径。按证据覆盖成功路径、业务规则/参数校验、权限、边界值、重复操作或幂等、合法与非法状态流转；没有证据的类别不生成。一个场景可以包含准备、执行、查询验证和精确清理等多个 HTTP 步骤，但这些步骤只服务于目标功能，不把多个业务功能串成一个大场景。认证等公共前置只作为准备步骤，不改变场景归属。
 3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。
 4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
-5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`；GET/HEAD 不能携带请求体（\`request.body\`、\`request.fileUpload\` 定义期即被拒），请求参数一律放 \`params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤。断言操作符：${OPERATORS_BACKTICK}；数值比较（如总数字段不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），列表条数/字符串长度/对象键数用 \`length: N\`（数组元素数、字符串字符数、对象键数，非容器类型直接失败），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒，单次请求耗时）。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败；可加 \`default\` 给可选字段声明兜底值（支持模板，与 required 互斥，声明后缺失不产生 warning）。路径中的数组下标支持负数取倒数项（如 \`records[-1]\` 为末项，\`records[-2]\` 为倒数第二项）。\`when\` 对象形式只允许 \`{ from: "vars", ... }\`，不能基于响应体判断条件。模板 \`{{ }}\` 只做路径取值，不支持比较、三元、逻辑运算或函数调用（如 \`{{vars.a > 0}}\` 定义期即被拒），条件判断用 \`assertions\` 或 \`when\` 对象形式。
+5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`；GET/HEAD 不能携带请求体（\`request.body\`、\`request.fileUpload\` 定义期即被拒），请求参数一律放 \`params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤；\`from: "headers"\` 的 path 首段按头名大小写不敏感匹配（任意大小写命中同一响应头，无需为大小写变体重复配置），首段之后的子路径在头值上取。断言操作符：${OPERATORS_BACKTICK}；数值比较（如总数字段不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），列表条数/字符串长度/对象键数用 \`length: N\`（数组元素数、字符串字符数、对象键数，非容器类型直接失败），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒，单次请求耗时）。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败；可加 \`default\` 给可选字段声明兜底值（支持模板，与 required 互斥，声明后缺失不产生 warning）。路径中的数组下标支持负数取倒数项（如 \`records[-1]\` 为末项，\`records[-2]\` 为倒数第二项）。\`when\` 对象形式来源为 \`from: "vars"\`（已提取变量）、\`from: "lastResponse"\`（上一步响应 body，path 子路径取值同 extract from:"body"）或 \`from: "status"\`（上一步 HTTP 状态码，数值），也可用 \`target: "status"\` 读上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。模板 \`{{ }}\` 只做路径取值，不支持比较、三元、逻辑运算或函数调用（如 \`{{vars.a > 0}}\` 定义期即被拒），条件判断用 \`assertions\` 或 \`when\` 对象形式。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
 7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。 需要唯一证件/卡号/号码的测试数据（身份证号、银行卡号、手机号、统一社会信用代码等带格式或校验位约束的字段）用 \`generatedVars\` 按轮次生成：\`idcard\`（声明 birthDate 与 gender）、\`luhn\`（可选 length/prefix）、\`phone\`（可选 prefix）、\`uscc\`（可选 regionCode），禁止写死固定或真实号码导致重跑撞唯一性。 时间窗/过期类参数（startTime、expiredAt 等）用 \`timestamp\` 类型相对当前时间生成：\`offset\`（如 "-7d"、"+8d"，数字+单位 ms/s/m/h/d/w）、\`unit: 's'\` 秒级数值、\`format: 'YYYY-MM-DD HH:mm:ss'\` 本地时间字符串（format 与 unit 互斥），禁止外部脚本拼值或写死过期时间。业务主键为 UUID 的字段用 \`uuid\` 类型（带连字符标准形态），无连字符 32 位用 \`uuidHex\`。渠道、状态等枚举类参数需要随机但可复现的取值时用 \`enum\` 类型：\`values\` 候选数组 + 可选 \`weights\` 非负权重（缺省等权，权重为 0 的候选永不被选中），按轮次确定性抽取（轮内稳定、跨轮变化）；枚举取值必须有项目证据，不得凭空编造候选。
 8. 默认保持 \`failurePolicy: "stop"\`。不同验证目标拆成独立场景；只有同一验证路径确实需要继续收集后续步骤结果时才设置 \`failurePolicy: "continue"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
@@ -50,10 +50,10 @@ const SCENARIO_PATTERNS = [
     "4. 建议使用 scenarios/<功能标识>/<验证路径>.js 组织文件，并使用 <功能标识>-<验证路径> 作为稳定场景 id，例如 order-review-success、order-review-forbidden；运行时仍使用扁平 scenarios 清单，不需要新增功能分组字段。",
     "5. 每个场景独立运行：自己满足前置条件或读取配置变量，自己提取 ID，不能依赖其他场景或上次运行留下的数据。",
     "6. 确认场景内每个接口的方法、路径、认证位置、请求字段、响应结构、是否写数据和安全清理方式。在 scenario.config.js 注册场景 id、名称和文件地址；文件注册 id 必须一致。",
-    "7. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存。Query 参数写在步骤顶层 params，不写 request.params；GET/HEAD 不写请求体（request.body、request.fileUpload 定义期即被拒），参数一律放 params。",
+    "7. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存；from: 'headers' 的 path 首段头名大小写不敏感匹配（与断言 from: 'headers'、header 简写同口径），首段后的子路径在头值上取。Query 参数写在步骤顶层 params，不写 request.params；GET/HEAD 不写请求体（request.body、request.fileUpload 定义期即被拒），参数一律放 params。",
     "8. runId 和 runNo 由运行时自动生成，不要在 vars、variables、envVars、generatedVars 或 extract 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。 需要唯一号码/证号的测试数据在 generatedVars 声明：身份证 { name, type: 'idcard', birthDate, gender }、银行卡 { name, type: 'luhn', length, prefix }、手机号 { name, type: 'phone', prefix }、统一社会信用代码 { name, type: 'uscc', regionCode }，引擎按轮次生成校验位合法且跨轮唯一的值，用 {{vars.<name>}} 引用。 时间窗/过期类参数用 timestamp 类型：{ name, type: 'timestamp', offset: '-7d', unit: 's' } 或 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }（offset 数字+单位 ms/s/m/h/d/w；format 与 unit 互斥），禁止写死时间戳或日期字符串。业务主键 UUID 用 { name, type: 'uuid' }（带连字符），32 位无连字符用 uuidHex。渠道/状态等枚举参数需要随机但可复现的取值时用 enum：{ name, type: 'enum', values: [<候选>], weights: [<非负权重，可选>] }，缺省等权、权重 0 的候选永不选中，按轮次确定性抽取；候选必须有项目证据。",
     "9. 无法确认的必填请求值放入配置 vars 留空，并在 variables 声明 required: true；不得用 PDF、pdf、SUCCESS 或 scenario-{{vars.runNo}} 充当未知枚举。",
-    `10. 断言操作符：${OPERATORS_TEXT}；数值比较（条数不少于 N）用 gte: N，格式校验（非负整数）用 matches: '^\\\\d+$'，列表条数/字符串长度/对象键数用 length: N（数组元素数、字符串字符数、对象键数）。接口耗时上限用 { target: 'duration', lte: 800 }（毫秒，单次请求耗时）。when 对象形式只允许 from: 'vars'。extract 可加 required: true 强制路径存在。模板 {{ }} 只做路径取值，不支持比较/三元/逻辑运算/函数调用（如 {{vars.a > 0}} 定义期即被拒），条件判断用 assertions 或 when 对象形式。`,
+    `10. 断言操作符：${OPERATORS_TEXT}；数值比较（条数不少于 N）用 gte: N，格式校验（非负整数）用 matches: '^\\\\d+$'，列表条数/字符串长度/对象键数用 length: N（数组元素数、字符串字符数、对象键数）。接口耗时上限用 { target: 'duration', lte: 800 }（毫秒，单次请求耗时）。when 对象形式来源为 from: 'vars'（已提取变量）、from: 'lastResponse'（上一步响应 body）或 from: 'status'（上一步 HTTP 状态码），也可用 target: 'status' 读上一步状态码；第一步无上一步响应时条件不成立、不中断场景。extract 可加 required: true 强制路径存在；from: 'headers' 配 path 时首段头名按大小写不敏感匹配（与断言 from: 'headers'、header 简写同口径，无需为大小写变体重复配置），首段后的子路径在头值上取。模板 {{ }} 只做路径取值，不支持比较/三元/逻辑运算/函数调用（如 {{vars.a > 0}} 定义期即被拒），条件判断用 assertions 或 when 对象形式。`,
     "",
     "以下模式是功能场景内部的步骤组合。按目标功能所需选用，不要求全部使用，也不要把所有模式拼成一个大场景。",
     "",
@@ -90,6 +90,15 @@ const SCENARIO_PATTERNS = [
     "    }));",
     "",
     "列表允许为空时保留 when 让详情跳过，或在确认安全前置条件后先创建专属测试数据；不要假定任何环境一定有数据。",
+    "",
+    "需要按上一步响应决定是否继续时，直接用 when 的响应来源，不必先 extract 一个临时变量：",
+    "",
+    "    // 上一步响应 body 的 data.ready 为 true 才继续（子路径口径同 extract from: 'body'）",
+    "    { name: \"继续校验\", method: \"GET\", path: \"<详情路径>\", when: { from: \"lastResponse\", path: \"data.ready\", equals: true } }",
+    "    // 上一步 HTTP 状态码为 202 才继续；from: 'status' 与 target: 'status' 等价",
+    "    { name: \"查询处理结果\", method: \"GET\", path: \"<结果路径>\", when: { from: \"status\", equals: 202 } }",
+    "",
+    "第一步没有上一步响应：引用 lastResponse/status 时按来源缺失处理，条件不成立（步骤 SKIP），不会抛错中断场景。",
     "",
     "## 模式三：创建、查询、精确清理",
     "",
@@ -324,12 +333,12 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 常用能力：
 
 - 用 \`{{vars.name}}\` 在 path、Query、Header、Body 中引用变量。
-- 用 \`extract\` 从响应提取 ID、Token 或状态，再供后续步骤使用；路径必填时加 \`required: true\`，缺失会失败，默认缺失只产生 warning；可选字段可声明 \`default\` 兜底值（与 required 互斥）。数组下标支持负数取倒数项（\`records[-1]\` 为末项）。
+- 用 \`extract\` 从响应提取 ID、Token 或状态，再供后续步骤使用；路径必填时加 \`required: true\`，缺失会失败，默认缺失只产生 warning；可选字段可声明 \`default\` 兜底值（与 required 互斥）。数组下标支持负数取倒数项（\`records[-1]\` 为末项）。\`from: "headers"\` 配 \`path\` 时首段头名按大小写不敏感匹配（与断言 \`from: "headers"\`、\`header\` 简写同口径，任意大小写命中同一响应头），首段后的子路径在头值上取。
 - 断言操作符：${OPERATORS_BACKTICK}；数值比较用 \`gte: 5\`，列表条数/字符串长度/对象键数用 \`length: N\`，非负整数等格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒）。
 - 登录、换 Token、签名都按普通步骤和变量实现；浏览器 Cookie 会话显式使用 \`request.credentials: "include"\`，Node CLI 当前不提供自动 Cookie Jar。
 - 每一步至少写 \`name\`、\`method\`、\`path\`、\`status\`；关键结果补充 \`assertions\`。
 - 未写 \`status\` 和 \`assertions\` 时运行时默认要求 HTTP 2xx，不能把异常响应当成功。
-- 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式只允许 \`from: "vars"\`）。
+- 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式支持 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`，或用 \`target: "status"\` 读取上一步状态码）。
 - \`runId\` / \`runNo\` 是运行时保留变量，禁止在配置或场景中声明或覆盖。
 - 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
 - SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。

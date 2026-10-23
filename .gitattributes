@@ -1,11 +1,30 @@
 # 统一行尾策略，根治 Windows（core.autocrlf=true）下构建产物与源码的 CRLF 幻影改动：
 # R6-R8 轮反复出现 git status 标记 M 而 diff 为空的文件（dist 投射物、version.generated.js 等）。
 # 规则：文本文件一律按 LF 入库与检出；PowerShell 脚本保留 CRLF（Windows PowerShell 5.1 对 LF-only
-# 脚本的解析存在边角问题）；图片按二进制处理不做任何转换。
+# 脚本的解析存在边角问题）；图片/字体等二进制不做任何转换。
+# 审计：`npm run check:eol`（只读，检测索引/工作区行尾漂移）已被 `npm test` 覆盖。
 * text=auto eol=lf
+
+# 生成物口径：dist/ 与 *.generated.js 由构建脚本以 \n 写出，显式锁定 LF，避免与源码策略漂移。
+dist/** text=auto eol=lf
+src/version.generated.js text=auto eol=lf
+src/browser/tailwind.generated.js text=auto eol=lf
+
+# Windows PowerShell 5.1 对 LF-only 脚本的解析存在边角问题，脚本保留 CRLF（入库仍归一为 LF）。
 *.ps1 text eol=crlf
+
+# 二进制：不参与行尾归一。
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.gif binary
 *.ico binary
+*.webp binary
+*.bmp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.pdf binary
+*.zip binary

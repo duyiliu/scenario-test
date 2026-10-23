@@ -390,6 +390,13 @@ function stableStringify(value) {
     return `{${entries.join(",")}}`;
 }
 
+// includes 对 plain object 实际值的失败原因：非数组分支会走 String(actual)，对象恒为
+// "[object Object]"，断言必然失败且看起来像「对象不包含期望值」——属静默语义陷阱。
+// 保持失败口径不变（历史上恒 false，不可能有正当依赖），仅把原因换成可操作引导。
+const INCLUDES_OBJECT_ACTUAL_REASON =
+    "includes 不支持对象类型的实际值（String(actual) 恒为 \"[object Object]\"，断言必然失败）：" +
+    "对象深比较请改用 equals，或对具体字段用 path 断言（如 path: \"data.id\"）";
+
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
     validateAssertion(definition, context);
@@ -400,6 +407,9 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     let actual = assertionActual(definition, response, runtime);
     let expected;
     let passed = true;
+    // 失败原因（语义化引导）：目前仅 includes 命中 plain object 实际值时产生，
+    // 通过断言/其余操作符不携带该键，保持既有四字段形状
+    let reason = "";
     // each 失败元素明细：[{ index, actual, assertions }]，仅在存在失败元素时挂到结果上
     let eachFailures = null;
     if (definition.exists !== undefined) {
@@ -417,7 +427,12 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     }
     if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
         expected = resolve(definition.includes, runtime);
-        if (Array.isArray(actual)) {
+        if (isPlainObject(actual)) {
+            // 对象实际值：不再走字符串化分支——结果与历史一致（失败），但透出语义化原因，
+            // 引导改用 equals 做对象深比较或对具体字段 path 断言
+            passed = false;
+            reason = INCLUDES_OBJECT_ACTUAL_REASON;
+        } else if (Array.isArray(actual)) {
             // 期望值序列化移出逐项比较循环：此前每个元素重复序列化同一 expected
             const expectedText = stableStringify(expected);
             passed = passed && actual.some((item) => stableStringify(item) === expectedText);
@@ -507,9 +522,46 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         passed,
         actual,
         expected,
+        // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
+        ...(reason ? { reason } : {}),
         // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
         ...(eachFailures ? { detail: eachFailures } : {})
     };
+}
+
+export function normalizeWhenDefinition(definition) {
+    if (!isPlainObject(definition)) return definition;
+    const normalized = { ...definition };
+    // when 的来源口径向已有能力靠拢：lastResponse 取上一步响应 body（与 extract from:"body" /
+    // 模板 {{lastResponse.*}} 的 body 子路径同口径）；status 等价于断言 target:"status"。
+    // 归一化后复用断言 schema 校验/求值，避免在 when 内维护第二套操作符语义。
+    if (normalized.from === "lastResponse") normalized.from = "body";
+    else if (normalized.from === "status") {
+        delete normalized.from;
+        normalized.target = "status";
+    }
+    return normalized;
+}
+
+// when 对象形式：来源 vars/lastResponse/status 或 target:"status"，复用断言求值管线。
+// 第一步（无上一步响应）引用 lastResponse/status 时按来源缺失处理——条件直接不成立，
+// 不因空响应抛错中断场景；这与「变量缺失」按断言自身语义求值不同。
+export function evaluateWhen(definition, runtime, context) {
+    if (!isPlainObject(definition)) return Boolean(resolve(definition, runtime));
+    const usesPreviousResponse = definition.from === "lastResponse"
+        || definition.from === "status"
+        || definition.target === "status";
+    const previous = runtime ? runtime.lastResponse : null;
+    if (usesPreviousResponse && (previous === undefined || previous === null)) return false;
+    const response = previous && typeof previous === "object"
+        ? {
+            status: previous.status,
+            headers: previous.headers || {},
+            body: previous.body,
+            bodyText: previous.bodyText || ""
+        }
+        : { status: undefined, headers: {}, body: undefined, bodyText: "" };
+    return evaluateAssertion(normalizeWhenDefinition(definition), response, runtime, context).passed;
 }
 
 export function buildAssertions(step, response, runtime, context) {

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- `when` 对象形式扩展来源（contract v9 → v10）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。master 上 `run --json` 已先行占用 contract v9，故本次新增来源按不可变契约继续递增到 v10。
+
+### CLI
+
+- `run --json` 输出机器可读执行结果：单场景直接输出 `runScenario` report，多场景顶层包 `{ "scenarios": [<report>, ...] }`；`--json` 下所有人类可读进度（`[RETRY]`/`[PASS]`/`[FAIL]`/结论行等）改走 stderr，stdout 只承载 JSON 文档。退出码与 JSON 正交：断言/场景失败仍输出完整 JSON 并返回非零退出码。`contract.cli.options.json` 描述同步覆盖 run（contract v8 → v9）。
+
 ### 引擎
 
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
@@ -18,6 +26,7 @@ All notable changes to this project will be documented in this file.
 ### 诊断
 
 - `doctor` 的 Node 版本区间比较修复缺省段：`">=18"` 这类只声明主版本的范围把缺省 minor/patch 解析成 `NaN` 参与比较（NaN 比较恒 false）——**所有 v18.x 在 node-version 检查被判 FAIL**，恰好击穿 engines 声明的支持下限（仅主版本高于下限时因短路偶然正确，故存量未暴露）；`v18.17.0` 对 `>=18.17` 的边界等值同病。现缺省段按 0 参与比较，恢复 `>=` 语义。
+- `includes` 断言命中 plain object 实际值时不再只呈现 `actual="[object Object]"` 的确定性失败：保持失败口径不变（历史恒 false），断言结果新增可选 `reason`，点明 `includes` 不支持对象类型实际值并引导改用 `equals`（对象深比较）或对具体字段 `path` 断言；CLI、工作台断言表与 Markdown 诊断报告同步透出。数组/字符串分支行为不变，不涉及契约变更。
 
 ### 工程
 
@@ -25,15 +34,22 @@ All notable changes to this project will be documented in this file.
 
 ### 测试基建
 
+- `build.mjs` 的 dist 发布与孤儿清理抽到 `scripts/build-dist.mjs`，fs/sleep/pid 存活判断均可注入；新增 `tests/build.test.js` 用 EPERM 故障注入覆盖 rename 重试（250ms × 3）、持续失败回退 `cpSync` 到 swap、失败回滚还原旧产物，以及孤儿目录仅在 pid 确认死亡（ESRCH）时清理、存活/pid 复用与 EPERM 一律不误删、backup 自动还原遇活跃构建推迟。相比 `mock.module`，依赖注入无需加载 esbuild/tailwind 构建依赖即可确定性复现瞬时 OS 锁。
 - `doctor.test.js` 子进程统一剥离 `*_proxy` 环境变量：宿主设了 `HTTP_PROXY` 等代理时，Node undici `EnvHttpProxyAgent` 会向 stderr 打 `UNDICI-EHPA` 实验警告，导致「stderr 应为空」类断言在本机环境必然失败。
 
 ### 工程
 
+- Tailwind CSS 3.4 → 4.3（#5）：构建链依赖从 `tailwindcss`（v3 PostCSS 插件）换成 `@tailwindcss/postcss`，`build.mjs` 输入改为 CSS 优先的 `@import "tailwindcss" source(none)` + `@source` 显式指向三个 UI 源文件（与原 `content` 列表一一对应）。v3 `important: "#scenario-test-root"` 在 v4 无等价配置（v4 important 只做 `!important`），改由构建内联 PostCSS 步骤对 `@layer utilities`/`components` 的选择器统一加 `#scenario-test-root` 前缀，theme/base（变量与 preflight）保持全局，与 v3 作用域口径一致。默认外观差异逐项还原：`@theme` 钩子恢复 `--default-ring-width: 3px` 与 `--default-ring-color: rgb(59 130 246 / 0.5)`，base 层补 `border-color: var(--color-gray-200)`（v4 默认改为 1px 与 currentColor）；UI 源文件 `outline-none` 更名 `outline-hidden`（v4 里 `outline-none` 变为彻底移除 outline，旧语义归 `outline-hidden`）。其余旧类（`flex-shrink-0`、`rounded`、`shadow`、`placeholder-slate-*`、`divide-*`、`space-*` 等）v4 均有兼容输出无需改名。同步收益：此前 v3 里不存在而静默失效的 `shadow-2xs`/`shadow-xs` 类在 v4 恢复生效。`npm audit` 8 个漏洞（6 high/2 moderate，全部位于 tailwind 3.x 传递链与 source-map-js）随升级清零；仓库构建链要求随之升为 Node.js 20+（@tailwindcss/oxide），业务项目运行时消费仍为 Node.js 18+。
+- 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
 ### 决策
 
 - `generatedVars.enum` 维持「同一 `runId` + 变量名恒得同值」的确定性派生语义，**不引入** `pick: N`（数组模式）或等价契约扩展。现有场景只要求单值枚举（轮内稳定、跨轮随 `runId` 变化），确定性派生已覆盖；多值形态还须先定义 N 个值的口径（同轮去重互异，还是允许重复），属尚未验证的需求。故本次不改 `contractVersion`、`contract.js`、dts/AI Prompt 投射、浏览器 `runtime.js` 的 enum 分支，两处类型名单锁（`tests/contract.test.js`、`tests/cli.test.js`）保持原样。真实「同轮同变量多值」需求出现时再按契约变更流程启用：先定 N 值口径，再递增 `contractVersion` 并同步投射与名单锁。
+
+### 文档
+
+- 补声明 `from: "headers"` 配 `path` 时首段头名按大小写不敏感匹配（与 `header` 简写、extract/断言同口径，`from: "response"` 与模板 `lastResponse.headers.*` 仍精确匹配）：contract 增加断言/提取说明并投射到 capabilities 与 d.ts，AI Prompt、模式库、项目 README 模板、根 README 示例及规则预览同步澄清；行为不变，`contractVersion` 维持 8。
 
 
 ## [0.7.1] - 2026-10-12

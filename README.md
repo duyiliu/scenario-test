@@ -177,13 +177,15 @@ scenario-test/
 
 ## 核心能力
 
-- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试。
+- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
 - `serve` 提供静态服务和同源接口代理。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
+- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
 - 支持 `--fail-on-skip`、文件上传、响应保存及自定义 Node 插件。
+- `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
 
@@ -245,6 +247,8 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 维护者
+
+要求：Node.js 20+（构建链含 Tailwind CSS 4 的 oxide；业务项目运行时消费仍为 Node.js 18+）。
 
 ```powershell
 npm install

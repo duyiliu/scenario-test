@@ -18,10 +18,12 @@ export function buildCapabilities(inputContract = contract) {
             metaKeys: [...assertions.metaKeys],
             targets: [...(assertions.targets || [])],
             from: [...(assertions.from || [])],
+            note: assertions.note,
             numericOperators: [...assertions.numericOperators]
         },
         when: {
             sources: [...when.sources],
+            targets: [...(when.targets || [])],
             note: when.note
         },
         extract: {
@@ -83,8 +85,14 @@ export function renderCapabilitiesText(capabilities) {
     if (capabilities.assertions.from?.length) {
         lines.push(`  断言来源 from: ${capabilities.assertions.from.join(" / ")}（默认 body）`);
     }
+    if (capabilities.assertions.note) {
+        lines.push(`  ${capabilities.assertions.note}`);
+    }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
+    if (capabilities.when.targets?.length) {
+        lines.push(`  when 响应级 target: ${capabilities.when.targets.join(" / ")}（读上一步响应）`);
+    }
     lines.push(`  ${capabilities.when.note}`);
     lines.push("");
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);

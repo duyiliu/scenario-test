@@ -45,6 +45,7 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "GeneratedVarType"), [...contract.generatedVars.types].sort());
     assert.deepEqual(parseUnion(dts, "GlobalParamType"), [...contract.globals.types].sort());
     assert.deepEqual(parseUnion(dts, "WhenSource"), [...contract.when.sources].sort());
+    assert.deepEqual(parseUnion(dts, "WhenTarget"), [...contract.when.targets].sort());
     assert.deepEqual(parseUnion(dts, "ExtractSource"), [...contract.extract.from].sort());
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
 });
@@ -72,8 +73,9 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     ]) {
         assert.ok(dts.includes(symbol), `d.ts 缺少 ${symbol}`);
     }
-    // WhenDefinition.from 只能 vars（与 contract 一致）
-    assert.match(dts, /from: WhenSource/);
+    // WhenDefinition 的来源/响应级目标与 contract 一致
+    assert.match(dts, /from\?: WhenSource/);
+    assert.match(dts, /target\?: WhenTarget/);
 });
 
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {
