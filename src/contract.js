@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 10;
+export const CONTRACT_VERSION = 11;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -145,7 +145,7 @@ export const contract = Object.freeze({
     config: Object.freeze({
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
         scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-        environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals"]),
+        environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
         variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
         manual: Object.freeze({
             type: "boolean",
