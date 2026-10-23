@@ -12,6 +12,7 @@ import {
     joinUrl,
     parseBody,
     evaluateWhen,
+    queryPairs,
     resolve,
     resolveString
 } from "./core.js";
@@ -232,7 +233,7 @@ async function executeHttp(step, runtime, options) {
     const method = String(step.method || request.method || "GET").toUpperCase();
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...(request.headers || {}) };
-    const absoluteUrl = /^https?:\/\//i.test(requestPath);
+    const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
@@ -245,12 +246,13 @@ async function executeHttp(step, runtime, options) {
                 if (key) existingKeys.add(decodeURIComponent(key));
             }
         }
-        const queryPairs = [];
+        const queryParts = [];
         for (const global of globals) {
             if (global.type !== "query" || existingKeys.has(global.name)) continue;
-            queryPairs.push(`${encodeURIComponent(global.name)}=${encodeURIComponent(String(resolveString(global.value, runtime)))}`);
+            // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
+            queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
         }
-        if (queryPairs.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryPairs.join("&")}`;
+        if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
         // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
         const cookieParts = globals
             .filter((global) => global.type === "cookie")

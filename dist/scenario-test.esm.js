@@ -583,18 +583,26 @@ function headersToObject(headers) {
   return result;
 }
 function joinUrl(baseUrl, requestPath) {
-  if (/^https?:\/\//i.test(requestPath || "")) return requestPath;
+  if (/^(?:https?:)?\/\//i.test(requestPath || "")) return requestPath;
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const tail = String(requestPath || "").replace(/^\/+/, "");
   return base ? `${base}/${tail}` : tail;
+}
+function queryPairs(key, value) {
+  const encodedKey = encodeURIComponent(key);
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== void 0 && item !== null).map((item) => `${encodedKey}=${encodeURIComponent(String(item))}`);
+  }
+  if (value === void 0 || value === null) return [];
+  return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
-  const query = Object.entries(resolved).filter(([, value]) => value !== void 0 && value !== null).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&");
-  if (!query) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${query}`;
+  const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
+  if (!pairs.length) return rawPath;
+  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
 }
 function parseBody(text, contentType) {
   if (!text) return null;
@@ -1750,7 +1758,7 @@ async function executeHttp(step, runtime, options) {
   const method = String(step.method || request.method || "GET").toUpperCase();
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
-  const absoluteUrl = /^https?:\/\//i.test(requestPath);
+  const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -1762,12 +1770,12 @@ async function executeHttp(step, runtime, options) {
         if (key) existingKeys.add(decodeURIComponent(key));
       }
     }
-    const queryPairs = [];
+    const queryParts = [];
     for (const global of globals) {
       if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryPairs.push(`${encodeURIComponent(global.name)}=${encodeURIComponent(String(resolveString(global.value, runtime)))}`);
+      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
     }
-    if (queryPairs.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryPairs.join("&")}`;
+    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -6055,13 +6063,13 @@ function createWorkbenchRuntime(options) {
         if (key) existingKeys.add(decodeURIComponent(key));
       });
     }
-    var queryPairs = [];
+    var queryParts = [];
     globals.forEach(function(global) {
       if (global.type !== "query" || existingKeys.has(global.name)) return;
-      queryPairs.push(encodeURIComponent(global.name) + "=" + encodeURIComponent(String(resolveString(global.value, runtime))));
+      queryParts.push.apply(queryParts, queryPairs(global.name, resolve(global.value, runtime)));
     });
-    if (queryPairs.length) {
-      requestPath += (queryIndex >= 0 ? "&" : "?") + queryPairs.join("&");
+    if (queryParts.length) {
+      requestPath += (queryIndex >= 0 ? "&" : "?") + queryParts.join("&");
     }
     var cookieParts = globals.filter(function(global) {
       return global.type === "cookie";
@@ -6599,6 +6607,7 @@ export {
   parseBody,
   parseTimestampOffset,
   pickWeightedIndex,
+  queryPairs,
   registerAdapter,
   registerConfig,
   registerScenario,

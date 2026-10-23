@@ -363,6 +363,7 @@ export function buildAssertions(step: Step, response: unknown, runtime: unknown,
 export function resolve(value: unknown, runtime: unknown): unknown;
 export function joinUrl(baseUrl: string, requestPath: string): string;
 export function buildUrl(requestPath: string, params?: Record<string, unknown>, runtime?: unknown): string;
+export function queryPairs(key: string, value: unknown): string[];
 export function generateSignature(params: Record<string, unknown>, secretValue: string): string;
 export function md5(value: unknown): string;
 export function clone<T>(value: T): T;
