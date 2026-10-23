@@ -8,6 +8,7 @@ import {
     clone,
     hasHeader,
     headersToObject,
+    isPlainObject,
     joinUrl,
     parseBody,
     evaluateWhen,
@@ -331,37 +332,77 @@ class AdapterExecutionError extends Error {
     }
 }
 
+// 适配器执行超时包装：createRequestSignal 的 signal 只对「尊重 signal 的适配器」有效，
+// 适配器可能完全不看 signal（sleep/阻塞 IO）——必须同时与 signal 竞速，超时即返回，
+// 否则挂死的适配器会让整个场景永久卡住（retryUntil.maxElapsedMs 只在 attempt 之间检查）。
+function raceWithSignal(promise, signal) {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(abortReason(signal));
+    return new Promise((resolveRace, rejectRace) => {
+        const onAbort = () => rejectRace(abortReason(signal));
+        signal.addEventListener("abort", onAbort, { once: true });
+        promise.then(
+            (value) => { signal.removeEventListener("abort", onAbort); resolveRace(value); },
+            (error) => { signal.removeEventListener("abort", onAbort); rejectRace(error); }
+        );
+    });
+}
+
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
     if (!adapter) throw new Error(`未注册步骤适配器: ${adapterName || "unknown"}`);
 
     let output;
+    const request = isPlainObject(step.request) ? step.request : {};
+    // 与 executeHttp 同一超时链路口径：step.timeoutMs → request.timeoutMs → 配置默认值；
+    // 非法/非正值钳制为 30000，避免 "0"/负数/Infinity 导致永不超时
+    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
+    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
+    const requestSignal = createRequestSignal(options.signal, timeoutMs);
+    // 适配器钩子与 execute 都拿到带超时的 signal（原 options.signal 仍可由父级取消）
+    const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
 
     // 钩子协议：钩子收到的是步骤原始定义（未做 {{vars.*}} 替换）。
     // beforeExecute 对 step 的修改会随深拷贝进入 execute；execute 收到 resolve 后的独立副本，
     // 副本内的修改不会泄漏回原始 step 或后续步骤。
     try {
-        // 前置钩子（step 为原始定义）
-        if (typeof adapter.beforeExecute === "function") {
-            await adapter.beforeExecute({ step, runtime, options });
-        }
+        output = await raceWithSignal((async () => {
+            // 前置钩子（step 为原始定义）
+            if (typeof adapter.beforeExecute === "function") {
+                await adapter.beforeExecute({ step, runtime, options: adapterOptions });
+            }
 
-        // 执行主逻辑（step 为变量替换后的副本）
-        output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
+            // 执行主逻辑（step 为变量替换后的副本）
+            let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
 
-        // 后置钩子（step 为原始定义；返回值可覆盖 output）
-        if (typeof adapter.afterExecute === "function") {
-            output = await adapter.afterExecute({ step, runtime, options, output }) || output;
-        }
+            // 后置钩子（step 为原始定义；返回值可覆盖 result）
+            if (typeof adapter.afterExecute === "function") {
+                result = await adapter.afterExecute({ step, runtime, options: adapterOptions, output: result }) || result;
+            }
+            return result;
+        })(), requestSignal.signal);
     } catch (error) {
+        // 超时由本函数产生时补结构化请求现场：runStep 据此按 TIMEOUT 归类并透出
+        // method/path 与超时毫秒数（不依赖错误文案）
+        if (requestSignal.timedOut() && error && typeof error === "object" && !error.scenarioContext) {
+            error.scenarioContext = {
+                method: "ADAPTER",
+                path: adapterName || step.adapter || "adapter",
+                request: null,
+                timedOut: true,
+                timeoutMs
+            };
+        }
         // 错误钩子（step 为原始定义）
         if (typeof adapter.onError === "function") {
             try {
-                await adapter.onError({ step, runtime, options, error });
+                await adapter.onError({ step, runtime, options: adapterOptions, error });
             } catch (hookError) {
                 console.warn(`适配器 ${escapeInlineText(adapterName)} 错误钩子失败: ${escapeInlineText(hookError?.message || hookError)}`);
             }
         }
         throw new AdapterExecutionError(adapterName, error, step);
+    } finally {
+        requestSignal.dispose();
     }
     
     // 统一走 adapter-types 的响应校验，避免引擎内另写一份校验逻辑

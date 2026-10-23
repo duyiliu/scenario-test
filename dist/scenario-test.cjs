@@ -1927,26 +1927,63 @@ var AdapterExecutionError = class extends Error {
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
   }
 };
+function raceWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolveRace, rejectRace) => {
+    const onAbort = () => rejectRace(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolveRace(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        rejectRace(error);
+      }
+    );
+  });
+}
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
   let output;
+  const request = isPlainObject(step.request) ? step.request : {};
+  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const requestSignal = createRequestSignal(options.signal, timeoutMs);
+  const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
   try {
-    if (typeof adapter.beforeExecute === "function") {
-      await adapter.beforeExecute({ step, runtime, options });
-    }
-    output = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options });
-    if (typeof adapter.afterExecute === "function") {
-      output = await adapter.afterExecute({ step, runtime, options, output }) || output;
-    }
+    output = await raceWithSignal((async () => {
+      if (typeof adapter.beforeExecute === "function") {
+        await adapter.beforeExecute({ step, runtime, options: adapterOptions });
+      }
+      let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
+      if (typeof adapter.afterExecute === "function") {
+        result = await adapter.afterExecute({ step, runtime, options: adapterOptions, output: result }) || result;
+      }
+      return result;
+    })(), requestSignal.signal);
   } catch (error) {
+    if (requestSignal.timedOut() && error && typeof error === "object" && !error.scenarioContext) {
+      error.scenarioContext = {
+        method: "ADAPTER",
+        path: adapterName || step.adapter || "adapter",
+        request: null,
+        timedOut: true,
+        timeoutMs
+      };
+    }
     if (typeof adapter.onError === "function") {
       try {
-        await adapter.onError({ step, runtime, options, error });
+        await adapter.onError({ step, runtime, options: adapterOptions, error });
       } catch (hookError) {
         console.warn(`\u9002\u914D\u5668 ${escapeInlineText(adapterName)} \u9519\u8BEF\u94A9\u5B50\u5931\u8D25: ${escapeInlineText(hookError?.message || hookError)}`);
       }
     }
     throw new AdapterExecutionError(adapterName, error, step);
+  } finally {
+    requestSignal.dispose();
   }
   validateAdapterResponse(output, adapterName);
   const response = output?.response || output;
