@@ -31,6 +31,10 @@ All notable changes to this project will be documented in this file.
 
 - 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
+### 决策
+
+- `generatedVars.enum` 维持「同一 `runId` + 变量名恒得同值」的确定性派生语义，**不引入** `pick: N`（数组模式）或等价契约扩展。现有场景只要求单值枚举（轮内稳定、跨轮随 `runId` 变化），确定性派生已覆盖；多值形态还须先定义 N 个值的口径（同轮去重互异，还是允许重复），属尚未验证的需求。故本次不改 `contractVersion`、`contract.js`、dts/AI Prompt 投射、浏览器 `runtime.js` 的 enum 分支，两处类型名单锁（`tests/contract.test.js`、`tests/cli.test.js`）保持原样。真实「同轮同变量多值」需求出现时再按契约变更流程启用：先定 N 值口径，再递增 `contractVersion` 并同步投射与名单锁。
+
 
 ## [0.7.1] - 2026-10-12
 
