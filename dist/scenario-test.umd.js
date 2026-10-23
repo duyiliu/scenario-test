@@ -531,13 +531,15 @@ var ScenarioTest = (() => {
   var pathTokenCache = /* @__PURE__ */ new Map();
   function tokenizePath(valuePath) {
     const rest = String(valuePath);
-    if (pathTokenCache.has(rest)) return pathTokenCache.get(rest);
-    const tokens = tokenizePathStrict(rest);
-    if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
-      pathTokenCache.delete(pathTokenCache.keys().next().value);
+    if (!pathTokenCache.has(rest)) {
+      const tokens = tokenizePathStrict(rest);
+      if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
+        pathTokenCache.delete(pathTokenCache.keys().next().value);
+      }
+      pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
     }
-    pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
-    return tokens;
+    const cached = pathTokenCache.get(rest);
+    return cached === null ? null : [...cached];
   }
   function tokenizePathStrict(rest) {
     const tokens = [];
@@ -825,8 +827,11 @@ var ScenarioTest = (() => {
         passed = false;
         reason = INCLUDES_OBJECT_ACTUAL_REASON;
       } else if (Array.isArray(actual)) {
-        const expectedText = stableStringify(expected);
-        passed = passed && actual.some((item) => stableStringify(item) === expectedText);
+        passed = passed && actual.length > 0;
+        if (passed) {
+          const expectedText = stableStringify(expected);
+          passed = actual.some((item) => stableStringify(item) === expectedText);
+        }
       } else {
         passed = passed && String(actual == null ? "" : actual).includes(String(expected));
       }
@@ -860,8 +865,11 @@ var ScenarioTest = (() => {
     if (definition.oneOf !== void 0) {
       expected = resolve(definition.oneOf, runtime);
       if (Array.isArray(expected)) {
-        const actualText = stableStringify(actual);
-        passed = passed && expected.some((item) => stableStringify(item) === actualText);
+        passed = passed && expected.length > 0;
+        if (passed) {
+          const actualText = stableStringify(actual);
+          passed = expected.some((item) => stableStringify(item) === actualText);
+        }
       } else {
         passed = false;
       }

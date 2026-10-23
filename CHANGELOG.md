@@ -21,11 +21,14 @@ All notable changes to this project will be documented in this file.
 - `each` 子断言执行期校验收敛：子断言定义在单次 `evaluateAssertion` 内由 `resolve()` 新鲜生成且不逃逸同步遍历，逐元素 `validateAssertion` 是纯浪费——N 元素 × M 子断言次校验降为 M 次（校验/求值输出完全同口径），大数组逐项断言的 CPU 开销显著下降。
 - `stableStringify` 单趟组装：对象分支 `filter`+`map` 各序列化一次同一子树，每层 2× 冗余在深层嵌套上指数放大；`includes`/`oneOf` 同步把 actual/expected 的稳定序列化移出逐项比较循环。
 - `resolveString` 无模板文本快速返回：`{{` 子串预检一次即返回，跳过整串 match+replace+test 三轮正则；`tokenizePath` 分词结果按路径字符串缓存（有界 FIFO、缓存数组冻结防改写污染）——模板/断言/extract 裸路径在多步骤与轮询重试间反复分词。
+- `tokenizePath` 兼容性回归修复：缓存内部数组仍然冻结（防调用方改写污染），但对外按公开声明 `string[] | null` 返回**可变副本**——调用方 `push`/`splice` 不再在 ESM/严格模式下抛 `TypeError`，公开 API 约定与旧版一致。
+- `includes`/`oneOf` 序列化短路：仅在累计结果仍可能通过、且候选/实际集合非空时才做稳定序列化——`oneOf: []`、空数组 `includes` 恢复为普通断言失败，不再因不可 JSON 序列化的实际值（如适配器返回的 `body: 1n`）把断言失败升级为步骤异常；前序操作符已失败时同样跳过后续无谓序列化。
 - 断言键白名单查询 Set 化（每次求值都过 `validateAssertion`）；`gt/gte/lt/lte` 循环复用 `contract.assertions.numericOperators` 名单，不再手写第二份。
 
 ### 诊断
 
 - `doctor` 的 Node 版本区间比较修复缺省段：`">=18"` 这类只声明主版本的范围把缺省 minor/patch 解析成 `NaN` 参与比较（NaN 比较恒 false）——**所有 v18.x 在 node-version 检查被判 FAIL**，恰好击穿 engines 声明的支持下限（仅主版本高于下限时因短路偶然正确，故存量未暴露）；`v18.17.0` 对 `>=18.17` 的边界等值同病。现缺省段按 0 参与比较，恢复 `>=` 语义。
+
 - `includes` 断言命中 plain object 实际值时不再只呈现 `actual="[object Object]"` 的确定性失败：保持失败口径不变（历史恒 false），断言结果新增可选 `reason`，点明 `includes` 不支持对象类型实际值并引导改用 `equals`（对象深比较）或对具体字段 `path` 断言；CLI、工作台断言表与 Markdown 诊断报告同步透出。数组/字符串分支行为不变，不涉及契约变更。
 
 ### 工程

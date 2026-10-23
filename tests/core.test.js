@@ -44,13 +44,16 @@ test("模板插值保留完整表达式的原始类型和长整型字符串", ()
     assert.equal(resolve("{{vars.self}}", runtime), "{{vars.self}}");
 });
 
-test("tokenizePath 结果按路径字符串缓存，缓存数组冻结防改写污染", () => {
+test("tokenizePath 对外返回可变副本，缓存内部不受调用方改写污染", () => {
     const first = tokenizePath("user.list[0].name");
+    assert.deepEqual(first, ["user", "list", "[0]", "name"]);
+    // 公开类型为 string[]：调用方按声明修改数组不应抛错（旧行为可修改）
+    first.push("injected");
+    assert.deepEqual(first, ["user", "list", "[0]", "name", "injected"]);
+    // 后续调用返回独立副本，缓存未受污染（命中缓存也不会返回同一引用）
     const second = tokenizePath("user.list[0].name");
-    // 命中缓存返回同一对象（分词是模板/断言/extract 取值的公共热路径）
-    assert.equal(first, second);
-    // 缓存数组冻结：改写会在严格模式下抛 TypeError，防止污染后续取值
-    assert.throws(() => first.push("injected"), TypeError);
+    assert.deepEqual(second, ["user", "list", "[0]", "name"]);
+    assert.notEqual(first, second);
     // 非法路径的 null 结果同样缓存（has 判定区分「未缓存」与「缓存为 null」）
     assert.equal(tokenizePath("a..b"), null);
     assert.equal(tokenizePath("a..b"), null);
@@ -272,6 +275,30 @@ test("includes 对象实际值：断言失败并透出语义化引导（不再�
     );
 });
 
+
+test("空候选集合的 oneOf/includes 直接失败，不对不可序列化值做稳定序列化", () => {
+    const runtime = runtimeWith();
+    // 适配器协议允许任意 body（仅约束响应对象与 status）：body 为 BigInt 时
+    // JSON.stringify 会抛 TypeError，空候选集合本应短路为普通断言失败
+    const bigintResponse = { status: 200, headers: {}, body: 1n, bodyText: "" };
+    const oneOfEmpty = evaluateAssertion({ path: "", oneOf: [] }, bigintResponse, runtime);
+    assert.equal(oneOfEmpty.passed, false);
+    assert.equal(oneOfEmpty.actual, 1n);
+
+    // includes：实际数组为空 → 直接失败，不序列化期望值（1n）
+    const emptyListResponse = { status: 200, headers: {}, body: [], bodyText: "" };
+    const includesEmpty = evaluateAssertion({ path: "", includes: 1n }, emptyListResponse, runtime);
+    assert.equal(includesEmpty.passed, false);
+    assert.deepEqual(includesEmpty.actual, []);
+    assert.equal(includesEmpty.expected, 1n);
+
+    // 前序操作符已失败时不进行后续无谓序列化：actual 含 BigInt 也不会抛错
+    const bigintItemsResponse = { status: 200, headers: {}, body: [1n], bodyText: "" };
+    const includesSkipped = evaluateAssertion({ exists: false, includes: 1n }, bigintItemsResponse, runtime);
+    assert.equal(includesSkipped.passed, false);
+    const oneOfSkipped = evaluateAssertion({ exists: false, oneOf: [{}] }, bigintResponse, runtime);
+    assert.equal(oneOfSkipped.passed, false);
+});
 
 test("数字比较断言：类型不符合时断言失败而非抛异常，并保留 actual/expected", () => {
     const runtime = runtimeWith();

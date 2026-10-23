@@ -47,20 +47,24 @@ const PATH_SEGMENT = /[^.\[\]]+/y;
 const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
 // 分词是 {{vars.*}} 模板、断言/extract 裸路径取值的公共热路径：同一路径串在多步骤
 // 与 retryUntil 轮询间反复出现，按字符串缓存结果（有界 FIFO 防路径爆炸占内存，
-// 非法路径的 null 同样缓存）。缓存数组冻结——调用方改写会污染后续取值，
-// 严格模式下抛 TypeError 比静默出错值更安全
+// 非法路径的 null 同样缓存）。缓存内部数组冻结——防止经任何引用改写污染后续取值；
+// 对外按公开声明 `string[] | null` 返回可变副本（调用方 push/splice 不抛错、
+// 也不影响缓存），公开 API 约定保持与旧版一致
 const PATH_TOKEN_CACHE_LIMIT = 256;
 const pathTokenCache = new Map();
 
 export function tokenizePath(valuePath) {
     const rest = String(valuePath);
-    if (pathTokenCache.has(rest)) return pathTokenCache.get(rest);
-    const tokens = tokenizePathStrict(rest);
-    if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
-        pathTokenCache.delete(pathTokenCache.keys().next().value);
+    if (!pathTokenCache.has(rest)) {
+        const tokens = tokenizePathStrict(rest);
+        if (pathTokenCache.size >= PATH_TOKEN_CACHE_LIMIT) {
+            pathTokenCache.delete(pathTokenCache.keys().next().value);
+        }
+        pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
     }
-    pathTokenCache.set(rest, tokens === null ? null : Object.freeze(tokens));
-    return tokens;
+    const cached = pathTokenCache.get(rest);
+    // 扁平数组小，复制成本远低于重新分词；每调用方拿到独立可变副本
+    return cached === null ? null : [...cached];
 }
 
 function tokenizePathStrict(rest) {
@@ -433,9 +437,15 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
             passed = false;
             reason = INCLUDES_OBJECT_ACTUAL_REASON;
         } else if (Array.isArray(actual)) {
-            // 期望值序列化移出逐项比较循环：此前每个元素重复序列化同一 expected
-            const expectedText = stableStringify(expected);
-            passed = passed && actual.some((item) => stableStringify(item) === expectedText);
+            // 仅在累计结果仍可能通过且实际数组非空时序列化：空数组必然失败、
+            // 前序操作符已失败时也无需再比较——避免对不可序列化值（如 BigInt）
+            // 做无谓的 JSON 序列化而把普通断言失败升级为步骤异常
+            passed = passed && actual.length > 0;
+            if (passed) {
+                // 期望值序列化移出逐项比较循环：此前每个元素重复序列化同一 expected
+                const expectedText = stableStringify(expected);
+                passed = actual.some((item) => stableStringify(item) === expectedText);
+            }
         } else {
             passed = passed && String(actual == null ? "" : actual).includes(String(expected));
         }
@@ -478,9 +488,13 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     if (definition.oneOf !== undefined) {
         expected = resolve(definition.oneOf, runtime);
         if (Array.isArray(expected)) {
-            // actual 序列化移出候选比较循环：此前每个候选项重复序列化同一 actual
-            const actualText = stableStringify(actual);
-            passed = passed && expected.some((item) => stableStringify(item) === actualText);
+            // 同 includes：空候选集合直接失败；累计已失败或候选为空时不序列化 actual
+            passed = passed && expected.length > 0;
+            if (passed) {
+                // actual 序列化移出候选比较循环：此前每个候选项重复序列化同一 actual
+                const actualText = stableStringify(actual);
+                passed = expected.some((item) => stableStringify(item) === actualText);
+            }
         } else {
             passed = false;
         }
