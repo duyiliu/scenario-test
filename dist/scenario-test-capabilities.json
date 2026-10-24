@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 11,
+  "contractVersion": 12,
   "assertions": {
     "operators": {
       "exists": {
@@ -230,9 +230,21 @@
         "kind": "value",
         "description": "执行指定场景（可执行 manual:true 场景）"
       },
+      "vars": {
+        "kind": "value",
+        "description": "临时注入/覆盖配置变量（key=value，可重复；优先级最高，值支持 {{ }} 模板）",
+        "parse": "keyValue",
+        "repeatable": true
+      },
+      "timeout": {
+        "kind": "value",
+        "description": "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs",
+        "parse": "number"
+      },
       "port": {
         "kind": "value",
-        "description": "浏览器服务端口，默认 4300"
+        "description": "浏览器服务端口，默认 4300",
+        "parse": "number"
       },
       "project": {
         "kind": "value",

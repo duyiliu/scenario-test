@@ -58,7 +58,13 @@ export function buildCapabilities(inputContract = contract) {
             options: Object.fromEntries(
                 Object.entries(cli.options).map(([name, spec]) => [
                     name,
-                    { kind: spec.kind, description: spec.description, ...(spec.aliases ? { aliases: [...spec.aliases] } : {}) }
+                    {
+                        kind: spec.kind,
+                        description: spec.description,
+                        ...(spec.parse ? { parse: spec.parse } : {}),
+                        ...(spec.repeatable ? { repeatable: true } : {}),
+                        ...(spec.aliases ? { aliases: [...spec.aliases] } : {})
+                    }
                 ])
             )
         }

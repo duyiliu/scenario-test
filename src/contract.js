@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 11;
+export const CONTRACT_VERSION = 12;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -170,6 +170,14 @@ export const contract = Object.freeze({
             env: { kind: "value", prop: "env", description: "配置中的环境 key" },
             "base-url": { kind: "value", prop: "baseUrl", description: "临时覆盖 Base URL" },
             scenario: { kind: "value", prop: "scenario", description: "执行指定场景（可执行 manual:true 场景）" },
+            vars: {
+                kind: "value",
+                prop: "vars",
+                parse: "keyValue",
+                repeatable: true,
+                description: "临时注入/覆盖配置变量（key=value，可重复；优先级最高，值支持 {{ }} 模板）"
+            },
+            timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
