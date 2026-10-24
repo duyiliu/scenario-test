@@ -20,14 +20,15 @@ npm run test:unit      # 同上，显式入口
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
 npm run test:ui-style  # Playwright 样式测试（tests/ui-style.test.mjs）
 npm run test:all       # 单元 + 浏览器 + 样式全量
-npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 阈值
-npm run check          # npm run build && npm run test:unit（快速门禁）
-npm run check:all      # npm run build && npm run test:all（完整门禁，CI 使用）
+npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 阈值；当前按预期失败
+npm run check:coverage # 实际执行 test:coverage，确认仅报告 src/ 且因阈值不足失败
+npm run check          # npm run build && test:unit && check:coverage（快速门禁）
+npm run check:all      # npm run build && test:all && check:coverage（完整门禁，CI 使用）
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 
 `npm test` / `npm run check` 只跑 Node 单元测试，**不会**执行 `.mjs` 浏览器用例；完整验证必须用 `npm run check:all`（CI 已按此执行）。新增可独立运行的 Node `.mjs` 单测请命名为 `*.unit.test.mjs`，浏览器用例继续走 `test:browser` / `test:ui-style`。
-`test:coverage` 仅统计 `src/`，当前会因 `cli.js`（#33）与浏览器 UI（由 Playwright 覆盖）低于 line 阈值而失败，属已知缺口，不等同于全量测试失败。
+`test:coverage` 仅统计 `src/`，当前会因 `cli.js`（#33）与浏览器 UI（由 Playwright 覆盖）低于 line 阈值而失败，属已知缺口，不等同于全量测试失败；`check` / `check:all` 会通过 `check:coverage` 再跑一次完整覆盖率命令，确认报告范围与预期失败原因。
 
 行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制；
 `dist/` 与 `*.generated.js` 显式锁定 LF。若 `git status` 显示 M 而 `git diff` 为空，先跑 `npm run check:eol`，

@@ -20,12 +20,14 @@ test("test:unit 同时收集 .test.js 与 .unit.test.mjs，浏览器 .mjs 用例
     assert.match(scripts["test:ui-style"], /tests\/ui-style\.test\.mjs/);
 });
 
-test("test:all 汇总单元与浏览器用例，check 只跑单元，check:all 跑全量", () => {
+test("test:all 汇总单元与浏览器用例，check/check:all 都验证覆盖率预期失败路径", () => {
     assert.equal(scripts["test:all"], "npm run test:unit && npm run test:browser && npm run test:ui-style");
+    assert.equal(scripts["check:coverage"], "node scripts/check-coverage.mjs");
     assert.match(scripts.check, /npm run build/);
     assert.match(scripts.check, /npm run test:unit/);
+    assert.match(scripts.check, /npm run check:coverage/);
     assert.doesNotMatch(scripts.check, /test:browser|test:ui-style|test:all/);
-    assert.equal(scripts["check:all"], "npm run build && npm run test:all");
+    assert.equal(scripts["check:all"], "npm run build && npm run test:all && npm run check:coverage");
 });
 
 test("test:coverage 仅统计 src/，并启用 line 90 / branch 80 阈值", () => {

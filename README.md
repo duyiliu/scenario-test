@@ -263,9 +263,10 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 npm install
 npm run check:all      # 构建 + Node 单元测试 + Playwright 浏览器/样式测试
 npm run test:unit      # 仅 Node 单元/集成测试（.test.js 与 .unit.test.mjs）
-npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 门禁
+npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 门禁（当前按预期失败）
+npm run check:coverage # 实际执行 test:coverage，确认仅报告 src/ 且因阈值不足失败
 ```
 
-`test:coverage` 当前会因 `cli.js` 与浏览器 UI 未纳入 Node 单测覆盖而低于 line 阈值并返回非零；这两块分别由 #33 与 `test:browser` 跟踪，日常验证以 `check:all` 为准。
+`test:coverage` 当前会因 `cli.js` 与浏览器 UI 未纳入 Node 单测覆盖而低于 line 阈值并返回非零；这两块分别由 #33 与 `test:browser` 跟踪。`check` / `check:all` 会通过 `check:coverage` 实际执行一次完整覆盖率命令，确认报告范围与预期失败原因后，日常验证以 `check:all` 为准。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
