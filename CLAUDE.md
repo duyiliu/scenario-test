@@ -10,15 +10,24 @@
 
 ## 常用命令
 
-构建链要求 Node.js 20+（Tailwind CSS 4 的 oxide）；业务项目运行时消费仍为 Node.js 18+。
+构建/测试要求 Node.js 20.11+（`import.meta.dirname` 自 20.11 可用；Tailwind CSS 4 的 oxide 要求 20+）；业务项目运行时消费仍为 Node.js 18+。`test:coverage` 使用 Node.js 22.8+ 的内置覆盖率过滤与阈值参数。
 
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
-npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
+npm test               # 仅 Node 单元/集成测试（.test.js 与 *.unit.test.mjs）
+npm run test:unit      # 同上，显式入口
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
-npm run check          # npm run build && npm test
+npm run test:ui-style  # Playwright 样式测试（tests/ui-style.test.mjs）
+npm run test:all       # 单元 + 浏览器 + 样式全量
+npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 阈值；当前按预期失败
+npm run check:coverage # 实际执行 test:coverage，确认仅报告 src/ 且因阈值不足失败
+npm run check          # npm run build && test:unit && check:coverage（快速门禁）
+npm run check:all      # npm run build && test:all && check:coverage（完整门禁，CI 使用）
 ```
+
+`npm test` / `npm run check` 只跑 Node 单元测试，**不会**执行 `.mjs` 浏览器用例；完整验证必须用 `npm run check:all`（CI 已按此执行）。新增可独立运行的 Node `.mjs` 单测请命名为 `*.unit.test.mjs`，浏览器用例继续走 `test:browser` / `test:ui-style`。
+`test:coverage` 仅统计 `src/`，当前会因 `cli.js`（#33）与浏览器 UI（由 Playwright 覆盖）低于 line 阈值而失败，属已知缺口，不等同于全量测试失败；`check` / `check:all` 会通过 `check:coverage` 再跑一次完整覆盖率命令，确认报告范围与预期失败原因。
 
 测试使用 Node 内置的 `node:test` 运行器，从 `src/`（源码，而非 `dist/`）导入。运行单个文件或单个用例：
 
@@ -65,4 +74,4 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check && npm run test:browser`，打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check:all`，打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
