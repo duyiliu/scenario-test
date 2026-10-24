@@ -1,7 +1,7 @@
 import * as core from "../../core.js";
 import { createEngine } from "../../engine.js";
 import { esc, safeJson, copyText } from "./ui-utils.js";
-import { safeDecodeComponent } from "../../utils/safe-decode.js";
+import { appendQueryParams, existingQueryKeys } from "../../utils/url-query.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
@@ -1370,23 +1370,14 @@ export function createWorkbenchRuntime(options) {
         var globals = getEffectiveGlobals();
         var headers = {};
 
-        // 拼接 globals 的 query
-        var queryIndex = requestPath.indexOf('?');
-        var existingKeys = new Set();
-        if (queryIndex >= 0) {
-            requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
-                var key = pair.split('=')[0];
-                if (key) existingKeys.add(safeDecodeComponent(key));
-            });
-        }
+        // 拼接 globals 的 query（追加到 fragment 之前，避免参数落入 fragment）
+        var existingKeys = existingQueryKeys(requestPath);
         var queryParts = [];
         globals.forEach(function (global) {
             if (global.type !== 'query' || existingKeys.has(global.name)) return;
             queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
         });
-        if (queryParts.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
-        }
+        requestPath = appendQueryParams(requestPath, queryParts);
 
         // 拼接 globals 的 cookie
         var cookieParts = globals

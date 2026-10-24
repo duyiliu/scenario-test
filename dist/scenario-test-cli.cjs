@@ -1906,6 +1906,29 @@ function safeDecodeComponent(value) {
   }
 }
 
+// src/utils/url-query.js
+function splitFragment(requestPath) {
+  const text = String(requestPath || "");
+  const hashIndex = text.indexOf("#");
+  return hashIndex >= 0 ? { path: text.slice(0, hashIndex), fragment: text.slice(hashIndex) } : { path: text, fragment: "" };
+}
+function existingQueryKeys(requestPath) {
+  const { path: path7 } = splitFragment(requestPath);
+  const queryIndex = path7.indexOf("?");
+  const keys = /* @__PURE__ */ new Set();
+  if (queryIndex < 0) return keys;
+  for (const pair of path7.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(safeDecodeComponent(key));
+  }
+  return keys;
+}
+function appendQueryParams(requestPath, queryParts) {
+  if (!queryParts || !queryParts.length) return requestPath;
+  const { path: path7, fragment } = splitFragment(requestPath);
+  return `${path7}${path7.includes("?") ? "&" : "?"}${queryParts.join("&")}${fragment}`;
+}
+
 // src/engine.js
 function now() {
   return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -2092,20 +2115,13 @@ async function executeHttp(step, runtime, options) {
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
-    const existingKeys = /* @__PURE__ */ new Set();
-    const queryIndex = requestPath.indexOf("?");
-    if (queryIndex >= 0) {
-      for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-        const key = pair.split("=")[0];
-        if (key) existingKeys.add(safeDecodeComponent(key));
-      }
-    }
+    const existingKeys = existingQueryKeys(requestPath);
     const queryParts = [];
     for (const global of globals) {
       if (global.type !== "query" || existingKeys.has(global.name)) continue;
       queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
     }
-    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+    if (queryParts.length) requestPath = appendQueryParams(requestPath, queryParts);
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -6390,22 +6406,13 @@ function createWorkbenchRuntime(options) {
     var requestPath = buildUrl(stepPath, stepParams, runtime);
     var globals = getEffectiveGlobals();
     var headers = {};
-    var queryIndex = requestPath.indexOf("?");
-    var existingKeys = /* @__PURE__ */ new Set();
-    if (queryIndex >= 0) {
-      requestPath.slice(queryIndex + 1).split("&").forEach(function(pair) {
-        var key = pair.split("=")[0];
-        if (key) existingKeys.add(safeDecodeComponent(key));
-      });
-    }
+    var existingKeys = existingQueryKeys(requestPath);
     var queryParts = [];
     globals.forEach(function(global) {
       if (global.type !== "query" || existingKeys.has(global.name)) return;
       queryParts.push.apply(queryParts, queryPairs(global.name, resolve(global.value, runtime)));
     });
-    if (queryParts.length) {
-      requestPath += (queryIndex >= 0 ? "&" : "?") + queryParts.join("&");
-    }
+    requestPath = appendQueryParams(requestPath, queryParts);
     var cookieParts = globals.filter(function(global) {
       return global.type === "cookie";
     }).map(function(global) {
