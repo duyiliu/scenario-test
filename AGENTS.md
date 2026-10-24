@@ -46,6 +46,8 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 本地复现 unit：`npm run check && npm run check:eol`。本地复现 browser：先 `npx playwright install chromium`，再
 `PLAYWRIGHT_CHANNEL=chromium npm run test:browser`（PowerShell：`$env:PLAYWRIGHT_CHANNEL="chromium"; npm run test:browser`）。
 `unit` 与 `browser` 需在 GitHub 分支保护中设为 required status checks；分支保护属仓库设置，不在代码中声明。
+`check:eol` 只审计 CI 检出后的索引/工作区：CRLF 经生成物、外部工具或强制写入真正进入索引/工作区时 unit 变红；
+普通文本的 CRLF-only 编辑会在提交/检出时被 `.gitattributes` 归一为 LF，不会形成可审计的 PR 差异，应在提交前用本地 `npm run check:eol` 发现（`tests/eol.test.js` 已用临时仓库锁定该边界）。
 
 ## 架构
 

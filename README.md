@@ -264,7 +264,7 @@ GitHub Actions 工作流 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 
 - **unit**：Node.js 20/22 × Ubuntu/Windows 矩阵，依次执行 `npm ci` → `npm run build` → `npm test` → `npm run check:eol`；Windows 组合覆盖路径、CRLF 与 PowerShell 相关用例。
 - **browser**：Ubuntu + Node.js 20，安装 Playwright Chromium 后执行 `npm run test:browser`。
 
-`master` 分支保护需将 `unit`、`browser` 设为 required status checks（属 GitHub 仓库设置，不在代码中声明）。故意破坏断言会令 `unit` 变红；制造 CRLF 幻影改动会令 `unit` 的 `check:eol` 步骤变红。
+`master` 分支保护需将 `unit`、`browser` 设为 required status checks（属 GitHub 仓库设置，不在代码中声明）。故意破坏断言会令 `unit` 变红。`check:eol` 审计 CI 检出后的索引与工作区：若 CRLF 通过生成物、外部工具或强制写入真正进入索引/工作区，`unit` 会变红；普通文本在提交/检出时会被 `.gitattributes` 归一为 LF，因此仅在本地把文本改成 CRLF 不会形成可审计的 PR 差异，也不会让 CI 变红——这类漂移应在提交前用 `npm run check:eol` 在本地发现。
 
 ## 维护者
 

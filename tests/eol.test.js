@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -9,6 +11,21 @@ import {
 } from "../scripts/check-eol.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
+const gitAvailable = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0;
+
+function git(cwd, args, input) {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8", input });
+    assert.equal(result.status, 0, `git ${args.join(" ")} 失败：${(result.stderr || "").trim()}`);
+    return result.stdout;
+}
+
+function makeGitRepo(t) {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-eol-"));
+    t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+    git(repo, ["init", "-q"]);
+    fs.writeFileSync(path.join(repo, ".gitattributes"), "* text=auto eol=lf\n", "utf8");
+    return repo;
+}
 
 function attributeRules() {
     return fs.readFileSync(path.join(root, ".gitattributes"), "utf8")
@@ -82,5 +99,41 @@ test(
             .map(({ file, side, expected, actual }) => `  ${file}（${side}：期望 ${expected}，实际 ${actual}）`)
             .join("\n");
         assert.deepEqual(problems, [], `发现行尾漂移，请运行 \`npm run check:eol\` 并按提示修复：\n${detail}`);
+    }
+);
+
+test(
+    "auditRepository 检出索引内 CRLF：强制写入的 CRLF blob 在干净检出后仍失败",
+    { skip: gitAvailable ? false : "环境无 git，跳过行尾审计集成用例" },
+    (t) => {
+        const repo = makeGitRepo(t);
+        // 普通 git add 会把 CRLF 归一为 LF；这里用 --no-filters 模拟绕过归一后真正入库的 CRLF blob。
+        const blob = git(repo, ["hash-object", "-w", "--no-filters", "--stdin"], "alpha\r\nbeta\r\n").trim();
+        git(repo, ["update-index", "--add", "--cacheinfo", `100644,${blob},sample.txt`]);
+        // 模拟 eol=lf 的干净检出：工作区为 LF，但索引仍是 CRLF。
+        fs.writeFileSync(path.join(repo, "sample.txt"), "alpha\nbeta\n", "utf8");
+
+        assert.deepEqual(auditRepository(repo), [
+            { file: "sample.txt", side: "index", expected: "lf", actual: "crlf" }
+        ]);
+    }
+);
+
+test(
+    "普通 CRLF-only 编辑被 Git 归一：干净检出后索引与工作区均为 LF",
+    { skip: gitAvailable ? false : "环境无 git，跳过行尾审计集成用例" },
+    (t) => {
+        const repo = makeGitRepo(t);
+        const file = path.join(repo, "sample.txt");
+        fs.writeFileSync(file, "alpha\r\nbeta\r\n", "utf8");
+        git(repo, ["add", "sample.txt"]);
+        // 暂存后工作区仍是 CRLF（本地会看到幻影），但索引已按 eol=lf 归一。
+        assert.match(git(repo, ["ls-files", "--eol"]), /^i\/lf\s+w\/crlf/m);
+
+        // 干净检出按索引重写工作区，CI 看到的是 LF，因此普通 CRLF-only 编辑不会形成可审计的 PR 差异。
+        fs.rmSync(file);
+        git(repo, ["checkout-index", "-f", "--", "sample.txt"]);
+        assert.match(git(repo, ["ls-files", "--eol"]), /^i\/lf\s+w\/lf/m);
+        assert.deepEqual(auditRepository(repo), []);
     }
 );
