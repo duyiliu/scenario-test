@@ -272,8 +272,10 @@ var ScenarioTest = (() => {
     createApp: () => createApp,
     createEngine: () => createEngine,
     createRuntime: () => createRuntime,
+    decodeServeEnvKey: () => decodeServeEnvKey,
     defineConfig: () => defineConfig,
     defineScenario: () => defineScenario,
+    encodeServeEnvKey: () => encodeServeEnvKey,
     evalExpression: () => evalExpression,
     evaluateAssertion: () => evaluateAssertion,
     evaluateWhen: () => evaluateWhen,
@@ -514,6 +516,18 @@ var ScenarioTest = (() => {
 
   // src/core.js
   var SERVE_ENV_HEADER = "x-scenario-test-env";
+  function encodeServeEnvKey(key) {
+    return encodeURIComponent(String(key));
+  }
+  function decodeServeEnvKey(value) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    const text = String(raw === void 0 || raw === null ? "" : raw);
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return text;
+    }
+  }
   var GLOBAL_TYPES = [...contract.globals.types];
   function isGlobalParam(item) {
     return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -5073,6 +5087,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   var ui_adhoc_default = workbenchAdhoc;
 
   // src/browser/ui/runtime.js
+  function buildProxyEnvHeaders(environmentKey) {
+    if (!environmentKey) return null;
+    var headers = {};
+    headers[SERVE_ENV_HEADER] = encodeServeEnvKey(environmentKey);
+    return headers;
+  }
   function applyCurlProxyHeaders(headers, requestPath, proxyHeaders) {
     if (!proxyHeaders) return headers;
     if (/^(?:https?:)?\/\//i.test(String(requestPath || ""))) return headers;
@@ -5364,9 +5384,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (!window.__SCENARIO_TEST_SERVE_PROXY__) return null;
       var environment = getSelectedEnvironment();
       if (!environment || !environment.key) return null;
-      var headers = {};
-      headers[SERVE_ENV_HEADER] = environment.key;
-      return headers;
+      return buildProxyEnvHeaders(environment.key);
     }
     function getEffectiveAuthorization() {
       var cfg = appConfig;

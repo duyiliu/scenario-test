@@ -5,6 +5,15 @@ import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
 
+// 构造 serve 环境路由头：环境 key 经 URL 编码，保证非 ASCII / 特殊字符能作为 Fetch 头值。
+// 非代理模式或没有可识别环境时返回 null，不注入任何头。
+export function buildProxyEnvHeaders(environmentKey) {
+    if (!environmentKey) return null;
+    var headers = {};
+    headers[core.SERVE_ENV_HEADER] = core.encodeServeEnvKey(environmentKey);
+    return headers;
+}
+
 // 生成 curl 时合并代理路由头：requestPath 必须传模板解析后的真实路径——
 // 模板可能把看起来相对的 stepPath 解析成外部绝对 URL，此时不能附带本地路由头。
 // 同名头按 HTTP 语义大小写不敏感覆盖，避免生成两个同名头导致 serve 无法识别环境。
@@ -336,9 +345,7 @@ export function createWorkbenchRuntime(options) {
         if (!window.__SCENARIO_TEST_SERVE_PROXY__) return null;
         var environment = getSelectedEnvironment();
         if (!environment || !environment.key) return null;
-        var headers = {};
-        headers[core.SERVE_ENV_HEADER] = environment.key;
-        return headers;
+        return buildProxyEnvHeaders(environment.key);
     }
 
     function getEffectiveAuthorization() {

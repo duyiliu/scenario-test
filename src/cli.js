@@ -12,7 +12,7 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { SERVE_ENV_HEADER, mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
+import { SERVE_ENV_HEADER, decodeServeEnvKey, mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 
@@ -878,8 +878,7 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
 // 单个代理请求的环境路由：未知/未配置的环境 key 必须拒绝并给出可选环境，
 // 绝不接受浏览器传入任意 URL——目标只能来自 config.envs 的 baseUrl 或 --base-url。
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-    const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
-    const requestedKey = String(raw || "").trim();
+    const requestedKey = decodeServeEnvKey(requestedEnvKey).trim();
     if (!proxy.environments.length) {
         // 无 envs 时默认 config.baseUrl/--base-url 仍是旧行为，但明确携带任意环境 key
         // 都属于未配置环境：不能静默代理到默认后端，否则非法 key 会被当成默认环境。
@@ -1052,8 +1051,11 @@ async function serveCommand(args) {
                 if (error || !stat.isFile()) {
                     // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS。
                     // 目标按请求携带的环境 key 实时解析，切换环境后无需重启 serve。
-                    if (proxy.target || proxy.environments.length) {
-                        const route = resolveServeRequestTarget(proxy, request.headers[SERVE_ENV_HEADER]);
+                    // 即使没有任何可代理目标，只要显式携带环境头也要进入校验并返回可读 502，
+                    // 不能因代理入口条件不成立而把非法环境 key 静默保成 404。
+                    const requestedEnvHeader = request.headers[SERVE_ENV_HEADER];
+                    if (proxy.target || proxy.environments.length || requestedEnvHeader !== undefined) {
+                        const route = resolveServeRequestTarget(proxy, requestedEnvHeader);
                         if (route.error) { respondProxyError(response, route.error); return; }
                         if (route.target) { proxyRequest(request, response, route.target); return; }
                     }

@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
-- `serve` 代理目标按请求实时路由：工作台随请求发送当前所选环境 key（内部头 `x-scenario-test-env`，不转发上游），serve 从配置 `envs` 解析该环境的 `baseUrl`，切换环境后不再固定打到启动环境。`--env` 仅作为未携带环境 key 时的默认环境，`--base-url` 仍为显式覆盖；未知/未配置的环境 key（含配置无 `envs` 时携带任意 key）返回 502 并列出可用环境，代理不接受浏览器传入任意 URL。同名路由头按 HTTP 大小写不敏感覆盖，生成 curl 对模板解析出的外部绝对 URL 不附带内部头。
+- `serve` 代理目标按请求实时路由：工作台随请求发送当前所选环境 key（内部头 `x-scenario-test-env`，不转发上游），serve 从配置 `envs` 解析该环境的 `baseUrl`，切换环境后不再固定打到启动环境。`--env` 仅作为未携带环境 key 时的默认环境，`--base-url` 仍为显式覆盖；未知/未配置的环境 key（含配置无 `envs` 时携带任意 key）返回 502 并列出可用环境，代理不接受浏览器传入任意 URL。同名路由头按 HTTP 大小写不敏感覆盖，非 ASCII/特殊字符环境 key 经 URL 编码传输，无 `envs` 且无任何代理目标时携带 key 仍返回可读 502；生成 curl 对模板解析出的外部绝对 URL 不附带内部头。
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 

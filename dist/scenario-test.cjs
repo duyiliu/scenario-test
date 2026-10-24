@@ -272,8 +272,10 @@ __export(node_exports, {
   createEngine: () => createEngine,
   createNodeIo: () => createNodeIo,
   createRuntime: () => createRuntime,
+  decodeServeEnvKey: () => decodeServeEnvKey,
   defineConfig: () => defineConfig,
   defineScenario: () => defineScenario,
+  encodeServeEnvKey: () => encodeServeEnvKey,
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
   evaluateWhen: () => evaluateWhen,
@@ -518,6 +520,18 @@ var contract = Object.freeze({
 
 // src/core.js
 var SERVE_ENV_HEADER = "x-scenario-test-env";
+function encodeServeEnvKey(key) {
+  return encodeURIComponent(String(key));
+}
+function decodeServeEnvKey(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = String(raw === void 0 || raw === null ? "" : raw);
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
   return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -2655,8 +2669,10 @@ function createApp() {
   createEngine,
   createNodeIo,
   createRuntime,
+  decodeServeEnvKey,
   defineConfig,
   defineScenario,
+  encodeServeEnvKey,
   evalExpression,
   evaluateAssertion,
   evaluateWhen,

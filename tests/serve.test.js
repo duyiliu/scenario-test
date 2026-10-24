@@ -723,3 +723,64 @@ test("serve 无 envs 时默认 baseUrl 保留，但携带任意环境 key 返回
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("serve 接受 URL 编码后的非 ASCII 环境 key 并转发到对应 baseUrl", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-unicode-env-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "生产", name: "生产", baseUrl: "http://127.0.0.1:${mockPort}" },
+            { key: "本地", name: "本地", baseUrl: "http://127.0.0.1:1" }
+        ],
+        defaultEnvKey: "生产",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "接口代理: 生产 -> ");
+        const response = await fetch(`http://127.0.0.1:${servePort}/api/unicode`, {
+            headers: { "X-Scenario-Test-Env": encodeURIComponent("生产") }
+        });
+        assert.equal(response.status, 200, "URL 编码后的非 ASCII 环境 key 应能路由到配置环境");
+        assert.equal((await response.json()).url, "/api/unicode");
+        assert.equal(received.length, 1);
+        assert.equal(received[0].headers["x-scenario-test-env"], undefined, "内部路由头不得转发给上游");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve 无 envs 且无任何代理目标时，携带环境 key 仍返回可读 502 而非 404", async () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-no-target-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        const unknown = await fetch(`http://127.0.0.1:${servePort}/api/unknown`, {
+            headers: { "X-Scenario-Test-Env": "prod" }
+        });
+        assert.equal(unknown.status, 502, "无任何代理目标时非法环境 key 仍应返回 502");
+        const message = await unknown.text();
+        assert.match(message, /未找到环境 prod/);
+        assert.match(message, /未声明任何环境/);
+
+        // 不带环境头的普通未命中请求保持既有 404，不凭空产生代理
+        const plain = await fetch(`http://127.0.0.1:${servePort}/api/plain`);
+        assert.equal(plain.status, 404);
+    } finally {
+        child.kill();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

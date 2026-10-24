@@ -7,6 +7,23 @@ export { contract, CONTRACT_VERSION } from "./contract.js";
 // 选择配置中的 baseUrl。该头只用于本地代理路由，serve 转发上游前会剔除。
 export const SERVE_ENV_HEADER = "x-scenario-test-env";
 
+// Fetch 头值必须是 ByteString，合法配置里的非 ASCII 环境 key（如「生产」）必须先
+// URL 编码才能作为头值；serve 解码后再与 config.envs 的 key 匹配。
+export function encodeServeEnvKey(key) {
+    return encodeURIComponent(String(key));
+}
+
+export function decodeServeEnvKey(value) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    const text = String(raw === undefined || raw === null ? "" : raw);
+    // 手工请求可能直接传未编码 key；非法百分号序列按原值处理，不让代理 500
+    try {
+        return decodeURIComponent(text);
+    } catch {
+        return text;
+    }
+}
+
 // 全局参数支持的类型：追加到每个请求的 header / cookie / query（来自 contract）
 export const GLOBAL_TYPES = [...contract.globals.types];
 

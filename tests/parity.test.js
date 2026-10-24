@@ -8,7 +8,7 @@ import fs from "node:fs";
 import test from "node:test";
 import * as nodeCore from "../src/core.js";
 import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
-import { applyCurlProxyHeaders } from "../src/browser/ui/runtime.js";
+import { applyCurlProxyHeaders, buildProxyEnvHeaders } from "../src/browser/ui/runtime.js";
 
 function runtimeWith(vars = {}) {
     return { vars, lastResponse: null, lastResponseBody: null };
@@ -509,6 +509,17 @@ test("serve 代理 curl 头：同名头大小写不敏感覆盖，模板解析�
     const direct = { "X-Trace": "t" };
     nodeCore.setHeaderValue(direct, "x-trace", "override");
     assert.deepEqual(direct, { "x-trace": "override" });
+});
+
+test("serve 环境路由头：非 ASCII / 特殊字符 key 经 URL 编码后可安全作为 Fetch 头值", () => {
+    const chineseHeaders = buildProxyEnvHeaders("生产");
+    assert.deepEqual(chineseHeaders, { "x-scenario-test-env": encodeURIComponent("生产") });
+    assert.equal(nodeCore.decodeServeEnvKey(chineseHeaders["x-scenario-test-env"]), "生产");
+    assert.deepEqual(buildProxyEnvHeaders("prod"), { "x-scenario-test-env": "prod" });
+    assert.equal(buildProxyEnvHeaders(""), null);
+    // 手工请求传未编码值（含非法百分号序列）时按原值处理，不抛错
+    assert.equal(nodeCore.decodeServeEnvKey("a%b"), "a%b");
+    assert.equal(nodeCore.decodeServeEnvKey(["本地/测试"]), "本地/测试");
 });
 
 test("ui-utils：copyText 在无 DOM 的 Node 环境中返回 false", async () => {

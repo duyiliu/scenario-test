@@ -281,8 +281,10 @@ __export(node_exports, {
   createEngine: () => createEngine,
   createNodeIo: () => createNodeIo,
   createRuntime: () => createRuntime,
+  decodeServeEnvKey: () => decodeServeEnvKey,
   defineConfig: () => defineConfig,
   defineScenario: () => defineScenario,
+  encodeServeEnvKey: () => encodeServeEnvKey,
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
   evaluateWhen: () => evaluateWhen,
@@ -526,6 +528,18 @@ var contract = Object.freeze({
 
 // src/core.js
 var SERVE_ENV_HEADER = "x-scenario-test-env";
+function encodeServeEnvKey(key) {
+  return encodeURIComponent(String(key));
+}
+function decodeServeEnvKey(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = String(raw === void 0 || raw === null ? "" : raw);
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
   return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -4349,8 +4363,7 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   };
 }
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-  const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
-  const requestedKey = String(raw || "").trim();
+  const requestedKey = decodeServeEnvKey(requestedEnvKey).trim();
   if (!proxy.environments.length) {
     if (!requestedKey) return { target: proxy.target };
     return {
@@ -4498,8 +4511,9 @@ async function serveCommand(args) {
       }
       import_node_fs6.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
-          if (proxy.target || proxy.environments.length) {
-            const route = resolveServeRequestTarget(proxy, request.headers[SERVE_ENV_HEADER]);
+          const requestedEnvHeader = request.headers[SERVE_ENV_HEADER];
+          if (proxy.target || proxy.environments.length || requestedEnvHeader !== void 0) {
+            const route = resolveServeRequestTarget(proxy, requestedEnvHeader);
             if (route.error) {
               respondProxyError(response, route.error);
               return;
