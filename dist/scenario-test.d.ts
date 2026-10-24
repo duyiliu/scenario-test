@@ -190,6 +190,8 @@ export interface RequestDefinition {
     headers?: Record<string, string>;
     /** HTTP 方法（缺省 GET）；支持 {{ }} 模板——动态方法写这里（step.method 不做模板解析） */
     method?: string;
+    /** 超时毫秒数（正数）；支持整串 {{ }} 模板（如 "{{vars.timeout}}"），与 step.timeoutMs 同一超时链路（step 优先） */
+    timeoutMs?: number | string;
     body?: unknown;
     credentials?: "include" | "omit" | "same-origin";
     redirect?: "follow" | "error" | "manual";

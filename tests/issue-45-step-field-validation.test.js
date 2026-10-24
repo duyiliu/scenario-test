@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createEngine } from "../src/index.js";
 import { defineScenario } from "../src/registry.js";
 
 // Issue #45：step 的 timeoutMs / saveResponseAs / path / request.path / request.headers
@@ -34,6 +35,38 @@ test("#45 timeoutMs：合法正数放行（含小数）", () => {
     assert.doesNotThrow(() => defineStep({ path: "/x", timeoutMs: 1 }));
     assert.doesNotThrow(() => defineStep({ path: "/x", timeoutMs: 0.5, method: "POST" }));
     assert.doesNotThrow(() => defineStep({ path: "/x", timeoutMs: 30000 }));
+});
+
+// request.timeoutMs 与 step.timeoutMs 共用运行期超时链（step 优先），但 request 对象会整体
+// resolve，因此整串 {{ }} 模板是合法写法；非数字/0/负数/非模板字符串仍会被静默钳制为 30000ms。
+test("#45 request.timeoutMs：非数字/0/负数/非模板字符串定义期拒绝", () => {
+    for (const timeoutMs of [0, -1, -0.5, NaN, Infinity, -Infinity, "5000", "0", "abc", "{{vars.t}}000", null, true, [], {}]) {
+        assertStepError({ path: "/x", request: { timeoutMs } }, /request\.timeoutMs 必须是正数或整串 \{\{ \}\} 模板/);
+    }
+});
+
+test("#45 request.timeoutMs：正数与整串 {{ }} 模板放行，模板在运行期解析后生效", async () => {
+    assert.doesNotThrow(() => defineStep({ path: "/x", request: { timeoutMs: 5000 } }));
+    assert.doesNotThrow(() => defineStep({ path: "/x", request: { timeoutMs: 0.5, method: "POST" } }));
+    assert.doesNotThrow(() => defineStep({ path: "/x", request: { timeoutMs: "{{vars.timeout}}" } }));
+    // step.timeoutMs 与 request.timeoutMs 各自独立校验：step 优先不代表非法 request 值可静默
+    assert.doesNotThrow(() => defineStep({ path: "/x", timeoutMs: 1000, request: { timeoutMs: "{{vars.timeout}}" } }));
+    assertStepError({ path: "/x", timeoutMs: 1000, request: { timeoutMs: "0" } }, /request\.timeoutMs 必须是正数或整串/);
+
+    // 模板解析后确实参与超时链路：挂起的 fetch 在 vars.timeout 毫秒后被中止并归类 TIMEOUT
+    const scenario = defineScenario({
+        name: "request.timeoutMs 模板",
+        vars: { timeout: 30 },
+        steps: [{ name: "挂起", path: "/x", request: { timeoutMs: "{{vars.timeout}}" }, assertions: [{ path: "code", equals: 200 }] }]
+    });
+    const report = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (_url, options) => new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(options.signal.reason || new Error("aborted")));
+        })
+    }).runScenario(scenario);
+    assert.equal(report.results[0].status, "TIMEOUT");
+    assert.equal(report.results[0].timedOut, true);
 });
 
 test("#45 saveResponseAs：空串/空白/非字符串定义期拒绝", () => {

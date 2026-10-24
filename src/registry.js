@@ -376,9 +376,9 @@ export function defineScenario(input) {
             rejectedKeys.length === 0,
             unknownKeysMessage(`场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`, rejectedKeys, contract.scenario.stepKeys)
         );
-        // timeoutMs/saveResponseAs/path/request.path/request.headers 的定义期类型校验统一
-        // 放在既有校验（request/params/adapter/method/GET 带体/assertions/retryUntil/
-        // extract/when/未知键）之后，保持既有报错优先级不回归。
+        // timeoutMs/saveResponseAs/path/request.path/request.timeoutMs/request.headers 的定义期
+        // 类型校验统一放在既有校验（request/params/adapter/method/GET 带体/assertions/
+        // retryUntil/extract/when/未知键）之后，保持既有报错优先级不回归。
         // timeoutMs 不做 {{ }} 解析（executeHttp/executeAdapter 直接用原始值），
         // 非数字/0/负数/字符串会在运行期被静默钳制为 30000ms，超时配置实际失效。
         // 显式 0 不做「使用默认值」语义：省略字段即默认值，写 0 属死写法，定义期拒绝。
@@ -386,6 +386,18 @@ export function defineScenario(input) {
             invariant(
                 typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
                 `${stepLabel} 的 timeoutMs 必须是正数（毫秒，且不支持 {{ }} 模板；当前 ${describeValue(step.timeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
+            );
+        }
+        // request.timeoutMs 与 step.timeoutMs 共用运行期超时链（step 优先），区别是 request 对象
+        // 会整体 resolve：支持整串 {{ }} 模板（CHANGELOG「request.timeoutMs 支持模板变量」）。
+        // 其余值（非数字/0/负数/非模板字符串）同样会被 Number()+钳制静默降级为 30000ms，定义期拒绝。
+        if (requestDef.timeoutMs !== undefined) {
+            const requestTimeoutMs = requestDef.timeoutMs;
+            const isWholeTemplate = typeof requestTimeoutMs === "string"
+                && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(requestTimeoutMs);
+            invariant(
+                isWholeTemplate || (typeof requestTimeoutMs === "number" && Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0),
+                `${stepLabel} 的 request.timeoutMs 必须是正数或整串 {{ }} 模板（当前 ${describeValue(requestTimeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
             );
         }
         // saveResponseAs 空串会被 readResponse 的 truthiness 判断静默跳过保存，
