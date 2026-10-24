@@ -402,6 +402,7 @@ var contract = Object.freeze({
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },

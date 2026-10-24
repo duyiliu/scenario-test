@@ -179,6 +179,7 @@ export const contract = Object.freeze({
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
+            concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
             "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },
