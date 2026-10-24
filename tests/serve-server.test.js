@@ -230,6 +230,10 @@ test("proxyTransport：按协议选择 http/https，未知协议返回 null", ()
     assert.equal(proxyTransport("https://127.0.0.1:8443"), https);
     assert.equal(proxyTransport("ftp://127.0.0.1"), null);
     assert.equal(proxyTransport("127.0.0.1:8080"), null);
+    // 注入的 transports 应覆盖默认模块，并同样按协议选路
+    const injected = { http: { request() {} }, https: { request() {} } };
+    assert.equal(proxyTransport("http://127.0.0.1:8080", injected), injected.http);
+    assert.equal(proxyTransport("https://127.0.0.1:8443", injected), injected.https);
 });
 
 test("proxyRequest：请求/响应双向剥离并转发 body，http 目标不携带 TLS 放宽项", async () => {
@@ -275,6 +279,60 @@ test("proxyRequest：请求/响应双向剥离并转发 body，http 目标不携
     assert.equal(response.headers["Keep-Alive"], undefined);
     assert.equal(response.headers["Transfer-Encoding"], undefined);
     assert.equal(response.text(), "upstream-body");
+});
+
+test("proxyRequest：仅经 options.transports 注入传输层时按协议选路、双向剥离并降级 502", async () => {
+    let captured;
+    const transport = createFakeTransport(({ url, options, callback, upstream }) => {
+        captured = { url, options, upstream };
+        process.nextTick(() => callback(fakeUpstreamResponse({
+            statusCode: 202,
+            headers: {
+                "Content-Type": "text/plain",
+                Connection: "X-Upstream-Hop",
+                "X-Upstream-Hop": "leak",
+                "Keep-Alive": "timeout=5"
+            },
+            body: ["via-transports"]
+        })));
+    });
+    const request = Readable.from([Buffer.from("request-body")]);
+    request.method = "POST";
+    request.url = "/api/orders";
+    request.headers = {
+        Host: "127.0.0.1:4300",
+        Connection: "X-Req-Hop",
+        "X-Req-Hop": "1",
+        "Keep-Alive": "timeout=5",
+        "Content-Type": "text/plain"
+    };
+    const response = new MockResponse();
+    // 只传 options.transports（不传 options.transport）：必须走注入的 http 传输层
+    proxyRequest(request, response, "http://backend:8080", {
+        transports: { http: transport },
+        timeoutMs: 321
+    });
+
+    await Promise.all([once(response, "finish"), once(captured.upstream, "finish")]);
+    assert.equal(captured.url, "http://backend:8080/api/orders");
+    assert.deepEqual(captured.options.headers, { "Content-Type": "text/plain" });
+    assert.equal(captured.options.rejectUnauthorized, undefined);
+    assert.equal(captured.upstream.timeoutMs, 321);
+    assert.equal(captured.upstream.body.toString(), "request-body");
+    assert.equal(response.statusCode, 202);
+    assert.equal(response.headers["X-Upstream-Hop"], undefined);
+    assert.equal(response.headers["Keep-Alive"], undefined);
+    assert.equal(response.text(), "via-transports");
+
+    // 同一注入方式下上游失败仍按 502 降级
+    let failingUpstream;
+    const failingTransport = createFakeTransport((context) => { failingUpstream = context.upstream; });
+    const failed = new MockResponse();
+    proxyRequest(fakeProxyRequest(), failed, "http://backend", { transports: { http: failingTransport } });
+    failingUpstream.destroy(new Error("ECONNREFUSED"));
+    await once(failed, "finish");
+    assert.equal(failed.statusCode, 502);
+    assert.match(failed.text(), /无法连接接口代理目标或代理超时/);
 });
 
 test("proxyRequest：https 目标放宽上游自签证书校验（rejectUnauthorized: false）", async () => {
