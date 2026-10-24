@@ -1345,6 +1345,12 @@ function invariant(condition, message) {
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
 }
+function describeValue(value) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return "\u6570\u7EC4";
+  if (isPlainObject(value)) return "\u5BF9\u8C61";
+  return String(value);
+}
 function describeUnknownKeys(input, allowed) {
   const allowedSet = new Set(allowed);
   return Object.keys(input).filter((key) => !allowedSet.has(key));
@@ -1459,6 +1465,7 @@ function defineScenario(input) {
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    const stepLabel = `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`;
     if (step.request !== void 0) {
       invariant(
         isPlainObject(step.request),
@@ -1615,6 +1622,36 @@ function defineScenario(input) {
       rejectedKeys.length === 0,
       unknownKeysMessage(`\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`, rejectedKeys, contract.scenario.stepKeys)
     );
+    if (step.timeoutMs !== void 0) {
+      invariant(
+        typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
+        `${stepLabel} \u7684 timeoutMs \u5FC5\u987B\u662F\u6B63\u6570\uFF08\u6BEB\u79D2\uFF0C\u4E14\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.timeoutMs)}\u2014\u2014\u975E\u6CD5\u503C\u4F1A\u88AB\u8FD0\u884C\u671F\u9759\u9ED8\u94B3\u5236\u4E3A 30000ms\uFF09`
+      );
+    }
+    if (step.saveResponseAs !== void 0) {
+      invariant(
+        nonEmptyString(step.saveResponseAs),
+        `${stepLabel} \u7684 saveResponseAs \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.saveResponseAs)}\u2014\u2014\u7A7A\u4E32\u4F1A\u9759\u9ED8\u4E0D\u4FDD\u5B58\uFF09`
+      );
+    }
+    if (step.path !== void 0) {
+      invariant(
+        typeof step.path === "string",
+        `${stepLabel} \u7684 path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.path)}\uFF09`
+      );
+    }
+    if (requestDef.path !== void 0) {
+      invariant(
+        typeof requestDef.path === "string",
+        `${stepLabel} \u7684 request.path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(requestDef.path)}\uFF09`
+      );
+    }
+    if (requestDef.headers !== void 0) {
+      invariant(
+        isPlainObject(requestDef.headers),
+        `${stepLabel} \u7684 request.headers \u5FC5\u987B\u662F\u666E\u901A\u5BF9\u8C61\uFF08\u5F53\u524D ${describeValue(requestDef.headers)}\u2014\u2014\u975E\u5BF9\u8C61\u4F1A\u88AB\u5C55\u5F00\u6210\u5B57\u7B26\u4E32\u4E0B\u6807\u952E\uFF0C\u4EA7\u751F\u65E0\u6548\u8BF7\u6C42\u5934\uFF09`
+      );
+    }
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");

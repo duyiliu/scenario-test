@@ -893,20 +893,32 @@ test("读体阶段受超时控制：响应头到达后 body 挂起也会 TIMEOUT
     assert.match(result.error, /请求超时/);
 });
 
-test("负 / 字符串 \"0\" / Infinity 超时值不触发即时超时且不崩溃（钳制为默认值）", async () => {
-    // 这些非法值都经 || 链或 Number.isFinite 钳制为默认 30000；此处仅验证
-    // 不会误判为"立即超时"或抛异常，正常响应仍通过（钳制逻辑见 executeHttp）
+test("非法 timeoutMs 定义期拒绝；绕过定义期直接 runStep 仍钳制为默认值", async () => {
+    // Issue #45：负 / 字符串 "0" / Infinity 此前被 executeHttp 的 || 链或 Number.isFinite
+    // 静默钳制为默认 30000ms，超时配置实际失效——现在定义期即拒
+    for (const timeoutMs of [-5, "0", Infinity, 0, NaN, "5000"]) {
+        assert.throws(
+            () => defineScenario({
+                name: "钳制",
+                steps: [{ name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] }]
+            }),
+            /timeoutMs 必须是正数/,
+            `timeoutMs=${JSON.stringify(timeoutMs)} 应在定义期被拒绝`
+        );
+    }
+    // 运行期兜底不变：直接 runStep（未经 defineScenario）的非法值仍钳制为默认 30000，
+    // 不会「立即超时」或抛异常，正常响应仍通过
     for (const timeoutMs of [-5, "0", Infinity]) {
-        const scenario = defineScenario({
-            name: "钳制",
-            steps: [{ name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] }]
-        });
-        const report = await createEngine({
+        const engine = createEngine({
             baseUrl: "https://mock.local",
             fetch: async () => new Promise((resolve) => setTimeout(() => resolve(jsonResponse({ code: 200 })), 20))
-        }).runScenario(scenario);
-        assert.equal(report.failed, 0, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
-        assert.equal(report.results[0].status, 200);
+        });
+        const result = await engine.runStep(
+            { name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] },
+            { vars: {}, lastResponse: null, lastResponseBody: null }
+        );
+        assert.equal(result.passed, true, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
+        assert.equal(result.status, 200);
     }
 });
 
