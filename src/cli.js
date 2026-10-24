@@ -878,9 +878,18 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
 // 单个代理请求的环境路由：未知/未配置的环境 key 必须拒绝并给出可选环境，
 // 绝不接受浏览器传入任意 URL——目标只能来自 config.envs 的 baseUrl 或 --base-url。
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-    if (!proxy.environments.length) return { target: proxy.target };
     const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
-    const key = String(raw || "").trim() || proxy.defaultEnvKey;
+    const requestedKey = String(raw || "").trim();
+    if (!proxy.environments.length) {
+        // 无 envs 时默认 config.baseUrl/--base-url 仍是旧行为，但明确携带任意环境 key
+        // 都属于未配置环境：不能静默代理到默认后端，否则非法 key 会被当成默认环境。
+        if (!requestedKey) return { target: proxy.target };
+        return {
+            error: `Bad Gateway: 未找到环境 ${requestedKey}\n` +
+                "配置中未声明任何环境（envs 为空），请移除环境路由头或先在配置中声明 envs。"
+        };
+    }
+    const key = requestedKey || proxy.defaultEnvKey;
     const environment = proxy.environments.find((item) => item.key === key);
     if (!environment) {
         const keys = proxy.environments.map((item) => item.key);

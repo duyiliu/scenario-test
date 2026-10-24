@@ -316,6 +316,7 @@ var ScenarioTest = (() => {
     sanitizeSensitive: () => sanitizeSensitive,
     seedToIndex: () => seedToIndex,
     seedToUnit: () => seedToUnit,
+    setHeaderValue: () => setHeaderValue,
     tokenizePath: () => tokenizePath,
     unregisterAdapter: () => unregisterAdapter,
     usccCheckChar: () => usccCheckChar,
@@ -723,6 +724,14 @@ var ScenarioTest = (() => {
   }
   function hasHeader(headers, name) {
     return headerValue(headers, name) !== void 0;
+  }
+  function setHeaderValue(headers, name, value) {
+    const target = String(name);
+    const lower = target.toLowerCase();
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === lower) delete headers[key];
+    }
+    headers[target] = value;
   }
   function headersToObject(headers) {
     const result = {};
@@ -1994,7 +2003,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...request.headers || {} };
     const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
-    if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
+    if (!absoluteUrl && options.requestHeaders) {
+      for (const [name, value] of Object.entries(options.requestHeaders)) setHeaderValue(headers, name, value);
+    }
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
@@ -5062,6 +5073,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   var ui_adhoc_default = workbenchAdhoc;
 
   // src/browser/ui/runtime.js
+  function applyCurlProxyHeaders(headers, requestPath, proxyHeaders) {
+    if (!proxyHeaders) return headers;
+    if (/^(?:https?:)?\/\//i.test(String(requestPath || ""))) return headers;
+    Object.keys(proxyHeaders).forEach(function(key) {
+      setHeaderValue(headers, key, proxyHeaders[key]);
+    });
+    return headers;
+  }
   function createWorkbenchRuntime(options) {
     "use strict";
     var uiStyle = ui_style_default;
@@ -6341,12 +6360,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         if (cookieKey) headers[cookieKey] = mergedCookie;
         else headers.Cookie = mergedCookie;
       }
-      var proxyHeaders = getProxyRequestHeaders();
-      if (proxyHeaders && !/^(?:https?:)?\/\//i.test(stepPath)) {
-        Object.keys(proxyHeaders).forEach(function(key) {
-          headers[key] = proxyHeaders[key];
-        });
-      }
+      applyCurlProxyHeaders(headers, requestPath, getProxyRequestHeaders());
       var fullUrl = joinUrl(baseUrl, requestPath);
       var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
       Object.keys(headers).forEach(function(key) {

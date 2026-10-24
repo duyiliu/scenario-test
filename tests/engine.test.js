@@ -422,10 +422,11 @@ test("runOptions.requestHeaders 附加运行时头并优先于步骤同名头，
             },
             { name: "绝对 URL", path: "https://external.local/api" }
         ]
-    }), { requestHeaders: { "X-Scenario-Test-Env": "prod" } });
-    assert.equal(captured[0].headers["X-Scenario-Test-Env"], "prod", "运行时路由头必须优先于场景文件声明");
+    }), { requestHeaders: { "x-scenario-test-env": "prod" } });
+    assert.equal(captured[0].headers["x-scenario-test-env"], "prod", "运行时路由头必须大小写不敏感地覆盖场景头");
+    assert.equal(Object.keys(captured[0].headers).filter((key) => key.toLowerCase() === "x-scenario-test-env").length, 1, "不得同时保留大小写不同的同名头");
     assert.equal(captured[0].headers["X-Other"], "1");
-    assert.equal(report.results[0].request.headers["X-Scenario-Test-Env"], "prod", "诊断请求快照应包含注入后的路由头");
+    assert.equal(report.results[0].request.headers["x-scenario-test-env"], "prod", "诊断请求快照应包含注入后的路由头");
     assert.equal(captured[1].headers["X-Scenario-Test-Env"], undefined, "绝对 URL 直连外部服务时不得泄漏本地代理路由头");
 });
 

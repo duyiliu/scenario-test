@@ -319,6 +319,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setHeaderValue: () => setHeaderValue,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -727,6 +728,14 @@ function getHeaderByPath(headers, valuePath) {
 }
 function hasHeader(headers, name) {
   return headerValue(headers, name) !== void 0;
+}
+function setHeaderValue(headers, name, value) {
+  const target = String(name);
+  const lower = target.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) delete headers[key];
+  }
+  headers[target] = value;
 }
 function headersToObject(headers) {
   const result = {};
@@ -1998,7 +2007,9 @@ async function executeHttp(step, runtime, options) {
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
   const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
-  if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
+  if (!absoluteUrl && options.requestHeaders) {
+    for (const [name, value] of Object.entries(options.requestHeaders)) setHeaderValue(headers, name, value);
+  }
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -2691,6 +2702,7 @@ function createApp() {
   sanitizeSensitive,
   seedToIndex,
   seedToUnit,
+  setHeaderValue,
   tokenizePath,
   unregisterAdapter,
   usccCheckChar,

@@ -297,6 +297,17 @@ export function hasHeader(headers, name) {
     return headerValue(headers, name) !== undefined;
 }
 
+// HTTP 头名大小写不敏感：写入前删除同名不同大小写的键，避免对象里同时保留
+// x-scenario-test-env / X-Scenario-Test-Env 两个头，被 Fetch 合并成无法识别的值。
+export function setHeaderValue(headers, name, value) {
+    const target = String(name);
+    const lower = target.toLowerCase();
+    for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === lower) delete headers[key];
+    }
+    headers[target] = value;
+}
+
 export function headersToObject(headers) {
     const result = {};
     if (headers && typeof headers.forEach === "function") {

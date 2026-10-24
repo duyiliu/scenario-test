@@ -328,6 +328,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setHeaderValue: () => setHeaderValue,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -735,6 +736,14 @@ function getHeaderByPath(headers, valuePath) {
 }
 function hasHeader(headers, name) {
   return headerValue(headers, name) !== void 0;
+}
+function setHeaderValue(headers, name, value) {
+  const target = String(name);
+  const lower = target.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === lower) delete headers[key];
+  }
+  headers[target] = value;
 }
 function headersToObject(headers) {
   const result = {};
@@ -2101,7 +2110,9 @@ async function executeHttp(step, runtime, options) {
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
   const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
-  if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
+  if (!absoluteUrl && options.requestHeaders) {
+    for (const [name, value] of Object.entries(options.requestHeaders)) setHeaderValue(headers, name, value);
+  }
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -4338,9 +4349,16 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   };
 }
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-  if (!proxy.environments.length) return { target: proxy.target };
   const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
-  const key = String(raw || "").trim() || proxy.defaultEnvKey;
+  const requestedKey = String(raw || "").trim();
+  if (!proxy.environments.length) {
+    if (!requestedKey) return { target: proxy.target };
+    return {
+      error: `Bad Gateway: \u672A\u627E\u5230\u73AF\u5883 ${requestedKey}
+\u914D\u7F6E\u4E2D\u672A\u58F0\u660E\u4EFB\u4F55\u73AF\u5883\uFF08envs \u4E3A\u7A7A\uFF09\uFF0C\u8BF7\u79FB\u9664\u73AF\u5883\u8DEF\u7531\u5934\u6216\u5148\u5728\u914D\u7F6E\u4E2D\u58F0\u660E envs\u3002`
+    };
+  }
+  const key = requestedKey || proxy.defaultEnvKey;
   const environment = proxy.environments.find((item) => item.key === key);
   if (!environment) {
     const keys = proxy.environments.map((item) => item.key);

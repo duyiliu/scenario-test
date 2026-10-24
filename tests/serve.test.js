@@ -6,6 +6,7 @@ import http from "node:http";
 import https from "node:https";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
+import { createEngine, defineScenario } from "../src/index.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const cli = path.join(root, "src/cli.js");
@@ -646,6 +647,79 @@ test("serve --base-url 覆盖所有环境目标，但仍拒绝未知环境 key",
     } finally {
         child.kill();
         mock.server.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve 端到端：运行时路由头大小写不同也覆盖步骤同名头，上游收到正确环境", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-mixed-case-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" },
+            { key: "prod", name: "生产", baseUrl: "http://127.0.0.1:${mockPort}" }
+        ],
+        defaultEnvKey: "prod",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        // 走真实 Fetch -> serve 路径：引擎注入小写路由头，步骤声明大小写不同的同名头。
+        // 若两个键同时保留，Fetch 会合并成非法环境值并得到 502。
+        const engine = createEngine({ baseUrl: `http://127.0.0.1:${servePort}` });
+        const report = await engine.runScenario(defineScenario({
+            name: "混合大小写路由头",
+            steps: [{
+                name: "请求 prod",
+                path: "api/mixed-case",
+                request: { headers: { "X-Scenario-Test-Env": "local" } }
+            }]
+        }), { requestHeaders: { "x-scenario-test-env": "prod" } });
+        assert.equal(report.passed, true, report.results[0].error);
+        assert.equal(received.length, 1, "请求应成功转发到 prod 环境");
+        assert.equal(received[0].url, "/api/mixed-case");
+        assert.equal(received[0].headers["x-scenario-test-env"], undefined, "内部路由头不得转发给上游");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve 无 envs 时默认 baseUrl 保留，但携带任意环境 key 返回 502 且不转发", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-no-envs-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        baseUrl: "http://127.0.0.1:${mockPort}",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "接口代理: default -> ");
+        const legacy = await fetch(`http://127.0.0.1:${servePort}/api/default`);
+        assert.equal(legacy.status, 200, "不带环境头的旧默认请求仍应代理到 config.baseUrl");
+        assert.equal(received.length, 1);
+
+        const unknown = await fetch(`http://127.0.0.1:${servePort}/api/unknown`, {
+            headers: { "X-Scenario-Test-Env": "prod" }
+        });
+        assert.equal(unknown.status, 502, "未配置 envs 时任意环境 key 都应拒绝");
+        const message = await unknown.text();
+        assert.match(message, /未找到环境 prod/);
+        assert.match(message, /未声明任何环境/);
+        assert.equal(received.length, 1, "非法环境 key 不应转发到默认 baseUrl");
+    } finally {
+        child.kill();
+        mock.close();
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

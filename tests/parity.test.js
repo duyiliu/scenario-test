@@ -8,6 +8,7 @@ import fs from "node:fs";
 import test from "node:test";
 import * as nodeCore from "../src/core.js";
 import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
+import { applyCurlProxyHeaders } from "../src/browser/ui/runtime.js";
 
 function runtimeWith(vars = {}) {
     return { vars, lastResponse: null, lastResponseBody: null };
@@ -487,6 +488,27 @@ test("generatedVars 双端同源：浏览器 runtime 复用 core.applyGeneratedV
         nodeCore.applyGeneratedVar(definition, vars, identifiers);
         assert.ok(vars.x !== undefined, `类型 ${type} 应产出 vars.x`);
     }
+});
+
+test("serve 代理 curl 头：同名头大小写不敏感覆盖，模板解析为外部绝对 URL 时不附带内部路由头", () => {
+    const headers = { "X-Scenario-Test-Env": "local", "X-Other": "1" };
+    applyCurlProxyHeaders(headers, "api/health?source=test", { "x-scenario-test-env": "prod" });
+    assert.equal(headers["x-scenario-test-env"], "prod", "运行时路由头必须覆盖大小写不同的步骤同名头");
+    assert.equal(headers["X-Scenario-Test-Env"], undefined, "不得同时保留大小写不同的同名头");
+    assert.equal(Object.keys(headers).filter((key) => key.toLowerCase() === "x-scenario-test-env").length, 1);
+    assert.equal(headers["X-Other"], "1");
+
+    // 模板路径解析后是外部绝对 URL：即便声明了同名步骤头，也不注入本地环境路由头
+    for (const absolutePath of ["https://external.example/api", "http://external.example/api", "//external.example/api"]) {
+        const externalHeaders = { "X-Scenario-Test-Env": "local" };
+        applyCurlProxyHeaders(externalHeaders, absolutePath, { "x-scenario-test-env": "prod" });
+        assert.equal(externalHeaders["x-scenario-test-env"], undefined, `${absolutePath} 不应附带内部路由头`);
+        assert.equal(externalHeaders["X-Scenario-Test-Env"], "local", "步骤自身同名头保持原样");
+    }
+
+    const direct = { "X-Trace": "t" };
+    nodeCore.setHeaderValue(direct, "x-trace", "override");
+    assert.deepEqual(direct, { "x-trace": "override" });
 });
 
 test("ui-utils：copyText 在无 DOM 的 Node 环境中返回 false", async () => {

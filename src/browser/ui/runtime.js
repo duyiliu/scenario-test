@@ -5,6 +5,18 @@ import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
 
+// 生成 curl 时合并代理路由头：requestPath 必须传模板解析后的真实路径——
+// 模板可能把看起来相对的 stepPath 解析成外部绝对 URL，此时不能附带本地路由头。
+// 同名头按 HTTP 语义大小写不敏感覆盖，避免生成两个同名头导致 serve 无法识别环境。
+export function applyCurlProxyHeaders(headers, requestPath, proxyHeaders) {
+    if (!proxyHeaders) return headers;
+    if (/^(?:https?:)?\/\//i.test(String(requestPath || ''))) return headers;
+    Object.keys(proxyHeaders).forEach(function (key) {
+        core.setHeaderValue(headers, key, proxyHeaders[key]);
+    });
+    return headers;
+}
+
 export function createWorkbenchRuntime(options) {
     'use strict';
 
@@ -1427,11 +1439,8 @@ export function createWorkbenchRuntime(options) {
         }
 
         // 复制出的 curl 要复现工作台当前所选环境：代理模式下同样携带环境路由头；
-        // 绝对 URL 直连外部服务时不附加，避免复制命令把本地路由头打到第三方
-        var proxyHeaders = getProxyRequestHeaders();
-        if (proxyHeaders && !/^(?:https?:)?\/\//i.test(stepPath)) {
-            Object.keys(proxyHeaders).forEach(function (key) { headers[key] = proxyHeaders[key]; });
-        }
+        // 用解析后的 requestPath 判断绝对 URL，模板解析出的外部地址不得附带本地路由头
+        applyCurlProxyHeaders(headers, requestPath, getProxyRequestHeaders());
 
         var fullUrl = core.joinUrl(baseUrl, requestPath);
         var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];

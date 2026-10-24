@@ -14,7 +14,8 @@ import {
     queryPairs,
     resolve,
     resolveClone,
-    resolveString
+    resolveString,
+    setHeaderValue
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
@@ -238,7 +239,9 @@ async function executeHttp(step, runtime, options) {
     // 与全局参数/环境 Authorization 同口径，避免把本地代理路由头泄漏给第三方。
     const headers = { ...(request.headers || {}) };
     const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
-    if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
+    if (!absoluteUrl && options.requestHeaders) {
+        for (const [name, value] of Object.entries(options.requestHeaders)) setHeaderValue(headers, name, value);
+    }
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
