@@ -40,7 +40,11 @@ export function validateAdapterResponse(response, adapterName = "unknown") {
         throw new TypeError(`适配器 ${adapterName} 响应缺少 status 字段`);
     }
     
-    if (actualResponse.headers !== undefined && typeof actualResponse.headers !== "object") {
+    // headers 声明了就必须是非 null 对象：typeof null === "object"，
+    // 仅靠 typeof 判型会把 null 放过（引擎层 response.headers || {} 会兜底，
+    // 但校验层应如实拒绝而非静默改写适配器返回值）
+    if (actualResponse.headers !== undefined
+        && (actualResponse.headers === null || typeof actualResponse.headers !== "object")) {
         throw new TypeError(`适配器 ${adapterName} 响应的 headers 必须是对象`);
     }
     

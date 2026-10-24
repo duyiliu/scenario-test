@@ -1348,6 +1348,12 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
+    // POSIX shell 单引号转义：单引号内不做 $VAR/$(...)/反引号展开，值中的 ' 用 '\'' 收尾再续开。
+    // 复制出的命令与工作台实际发送值一致，也避免变量值借复制粘贴注入命令。
+    function shellSingleQuote(value) {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
     function generateStepCurl(step, stepIndex) {
         if (!step) return '';
         var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
@@ -1412,17 +1418,17 @@ export function createWorkbenchRuntime(options) {
         }
 
         var fullUrl = core.joinUrl(baseUrl, requestPath);
-        var parts = ['curl -X ' + method + ' "' + fullUrl + '"'];
+        var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
 
         Object.keys(headers).forEach(function (key) {
-            parts.push('-H "' + key + ': ' + String(headers[key]).replace(/"/g, '\\"') + '"');
+            parts.push('-H ' + shellSingleQuote(key + ': ' + String(headers[key])));
         });
 
         if (step.request && step.request.body != null) {
             var bodyVal = step.request.body;
             var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
             bodyStr = core.resolveString(bodyStr, runtime);
-            parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
+            parts.push('-d ' + shellSingleQuote(bodyStr));
         }
         return parts.join(' \\\n  ');
     }

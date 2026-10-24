@@ -1423,7 +1423,7 @@ function validateAdapterResponse(response, adapterName = "unknown") {
   if (actualResponse.status === void 0 || actualResponse.status === null) {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7F3A\u5C11 status \u5B57\u6BB5`);
   }
-  if (actualResponse.headers !== void 0 && typeof actualResponse.headers !== "object") {
+  if (actualResponse.headers !== void 0 && (actualResponse.headers === null || typeof actualResponse.headers !== "object")) {
     throw new TypeError(`\u9002\u914D\u5668 ${adapterName} \u54CD\u5E94\u7684 headers \u5FC5\u987B\u662F\u5BF9\u8C61`);
   }
   return true;
@@ -6184,6 +6184,9 @@ function createWorkbenchRuntime(options) {
       }, 1500);
     }
   }
+  function shellSingleQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+  }
   function generateStepCurl(step, stepIndex) {
     if (!step) return "";
     var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
@@ -6244,15 +6247,15 @@ function createWorkbenchRuntime(options) {
       else headers.Cookie = mergedCookie;
     }
     var fullUrl = joinUrl(baseUrl, requestPath);
-    var parts = ["curl -X " + method + ' "' + fullUrl + '"'];
+    var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
     Object.keys(headers).forEach(function(key) {
-      parts.push('-H "' + key + ": " + String(headers[key]).replace(/"/g, '\\"') + '"');
+      parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
     });
     if (step.request && step.request.body != null) {
       var bodyVal = step.request.body;
       var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
       bodyStr = resolveString(bodyStr, runtime);
-      parts.push("-d '" + bodyStr.replace(/'/g, "'\\''") + "'");
+      parts.push("-d " + shellSingleQuote(bodyStr));
     }
     return parts.join(" \\\n  ");
   }

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 浏览器工作台
+
+- 「复制 cURL」shell 转义补齐（issue #26 B6）：header/URL/body 统一改用 POSIX 单引号包裹 + `'\''` 转义，双引号内的 `$VAR`/`$(...)`/反引号不再被 bash/zsh 展开——复制出的命令与工作台实际发送值保持一致，也封堵变量值借复制粘贴注入命令。
+
+### 核心
+
+- `validateAdapterResponse` 的 `headers` 检查不再把 `null` 当对象放过（issue #26 小观察）。
 ### DSL
 
 - `when` 对象形式扩展来源（contract v9 → v10）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。master 上 `run --json` 已先行占用 contract v9，故本次新增来源按不可变契约继续递增到 v10。
