@@ -222,6 +222,47 @@ function checkVersionLock(filePath) {
     };
 }
 
+// baseUrl 缺失本身不阻断 defineConfig（浏览器工作台可回退当前页面地址），但 CLI run
+// 没有 baseUrl 会在执行期才报错；doctor 提前用 WARN 暴露，并说明顶层 baseUrl 回退规则。
+// 已声明的 baseUrl 由 defineConfig 统一校验 http(s)://，非法值会在 config-load 阶段 FAIL。
+function checkConfigBaseUrl(config) {
+    const environments = Array.isArray(config.envs) ? config.envs : [];
+    const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
+    const missingKeys = environments
+        .filter((env) => !String(env.baseUrl || "").trim())
+        .map((env) => env.key);
+    if (environments.length === 0) {
+        if (fallback) {
+            return { name: "base-url", status: "PASS", message: `配置未声明 envs，顶层 baseUrl 可用: ${fallback}`, fix: "" };
+        }
+        return {
+            name: "base-url",
+            status: "WARN",
+            message: "配置未声明 envs 且顶层 baseUrl 为空：CLI run 需要 --base-url 或配置 baseUrl",
+            fix: "在 scenario.config.js 中补充 envs[].baseUrl 或顶层 baseUrl（http(s)://）"
+        };
+    }
+    if (fallback) {
+        return {
+            name: "base-url",
+            status: "PASS",
+            message: missingKeys.length
+                ? `环境 ${missingKeys.join(", ")} 未单独设置 baseUrl，将回退顶层 baseUrl: ${fallback}`
+                : `环境 baseUrl 已声明（http(s)://），顶层回退地址: ${fallback}`,
+            fix: ""
+        };
+    }
+    if (missingKeys.length) {
+        return {
+            name: "base-url",
+            status: "WARN",
+            message: `环境 ${missingKeys.join(", ")} 未设置 baseUrl，且顶层 baseUrl 为空：CLI run 需要 --base-url 或配置 baseUrl`,
+            fix: "为每个环境补充 http(s):// baseUrl，或声明顶层 baseUrl 作为回退"
+        };
+    }
+    return { name: "base-url", status: "PASS", message: "所有环境均已声明 http(s):// baseUrl", fix: "" };
+}
+
 // 缺省段按 0 参与比较：此前 map(Number) 对未命中的可选组产出 NaN（解构默认值只兜
 // undefined），NaN 参与比较恒 false——">=18" 在全部 v18.x（engines 声明的支持下限）
 // 上误判 FAIL，仅主版本高于下限时因短路偶然正确；v18.17.0 对 >=18.17 同病
@@ -294,17 +335,37 @@ export function buildDoctorReport(options) {
             config = loadConfigFile(configPath, api);
             checks.push({ name: "config-load", status: "PASS", message: `配置可加载: ${configPath}`, fix: "" });
         } catch (error) {
+            const reason = String(error?.message || error);
             checks.push({
                 name: "config-load",
                 status: "FAIL",
-                message: `配置文件加载失败: ${configPath}（原因: ${error.message}）`,
+                message: `配置文件加载失败: ${configPath}（原因: ${reason}）`,
                 fix: "检查配置语法与 defineConfig 调用；修复后重新运行 doctor"
             });
+            // defineConfig 已拒绝未知键/非法 baseUrl，doctor 在配置无法加载时补一条
+            // 针对性结论，避免只能从 config-load 的长原因里找字段名。
+            // 先判未知键：未知键报错里会列出 baseUrl 等允许字段，不能误判成 baseUrl 错误
+            if (/未知键/.test(reason)) {
+                checks.push({
+                    name: "config-keys",
+                    status: "FAIL",
+                    message: `配置字段校验失败: ${reason}`,
+                    fix: "按报错中「是否想写」或允许的键名修正拼写"
+                });
+            } else if (/baseUrl/.test(reason)) {
+                checks.push({
+                    name: "base-url",
+                    status: "FAIL",
+                    message: `baseUrl 校验失败: ${reason}`,
+                    fix: "将 envs[].baseUrl 或顶层 baseUrl 改为 http:// 或 https:// 开头的完整 URL"
+                });
+            }
         }
     }
 
     // 3/4/5. 场景清单与文件（config 加载成功才可安全继续）
     if (config) {
+        checks.push(checkConfigBaseUrl(config));
         const entries = config.scenarios || [];
         if (entries.length === 0) {
             checks.push({ name: "scenario-list", status: "PASS", message: "配置中暂无可检查的场景（scenarios 为空）", fix: "" });

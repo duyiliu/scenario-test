@@ -503,3 +503,65 @@ test("doctor --json：.scenario-test 被同名文件占位时 framework-director
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
+
+
+test("doctor：配置顶层拼写错误在 config-load/config-keys FAIL，并指出正确字段名", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            requestTimeoutsMs: 1000,
+            envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+            scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+        }));`, "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] config-load/);
+        assert.match(result.stdout, /未知键 "requestTimeoutsMs".*requestTimeoutMs/);
+        assert.match(result.stdout, /\[FAIL\] config-keys/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：非法 baseUrl 在 config-load/base-url FAIL", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "local", name: "本地", baseUrl: "localhost:8080" }],
+            scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+        }));`, "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] config-load/);
+        assert.match(result.stdout, /baseUrl 必须以 http:\/\/ 或 https:\/\//);
+        assert.match(result.stdout, /\[FAIL\] base-url/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：环境缺少 baseUrl 且无顶层回退时 base-url WARN；顶层回退时 PASS", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "local", name: "本地" }],
+            scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+        }));`, "utf8");
+        const missing = runDoctor(dir);
+        assert.equal(missing.status, 0, missing.stdout + missing.stderr);
+        assert.match(missing.stdout, /\[WARN\] base-url/);
+        assert.match(missing.stdout, /CLI run 需要 --base-url/);
+
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            baseUrl: "http://127.0.0.1:1",
+            envs: [{ key: "local", name: "本地" }],
+            scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+        }));`, "utf8");
+        const fallback = runDoctor(dir);
+        assert.equal(fallback.status, 0, fallback.stdout + fallback.stderr);
+        assert.match(fallback.stdout, /\[PASS\] base-url/);
+        assert.match(fallback.stdout, /回退顶层 baseUrl/);
+    } finally {
+        cleanup(project);
+    }
+});

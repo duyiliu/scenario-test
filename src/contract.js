@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -143,10 +143,22 @@ export const contract = Object.freeze({
     }),
 
     config: Object.freeze({
+        // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+        // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+        // 运行时实际消费的是场景级 envVars。
+        configKeys: Object.freeze([
+            "envs", "defaultEnvKey", "globals", "vars", "scenarioVars", "variables",
+            "scenarios", "requestTimeoutMs", "storagePrefix", "baseUrl", "authorization",
+            "nodePlugins", "envVars"
+        ]),
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
         scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
         environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
         variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+        baseUrl: Object.freeze({
+            protocol: "http(s)",
+            note: "环境 baseUrl 声明时必须是 http(s):// URL；未声明（或为空）时回退顶层 baseUrl，两者都为空时浏览器工作台使用当前页面地址，CLI run 仍需 --base-url 或配置 baseUrl"
+        }),
         manual: Object.freeze({
             type: "boolean",
             note: "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"

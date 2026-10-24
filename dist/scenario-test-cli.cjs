@@ -342,7 +342,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -459,10 +459,32 @@ var contract = Object.freeze({
     note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
   }),
   config: Object.freeze({
+    // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+    // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+    // 运行时实际消费的是场景级 envVars。
+    configKeys: Object.freeze([
+      "envs",
+      "defaultEnvKey",
+      "globals",
+      "vars",
+      "scenarioVars",
+      "variables",
+      "scenarios",
+      "requestTimeoutMs",
+      "storagePrefix",
+      "baseUrl",
+      "authorization",
+      "nodePlugins",
+      "envVars"
+    ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+    baseUrl: Object.freeze({
+      protocol: "http(s)",
+      note: "\u73AF\u5883 baseUrl \u58F0\u660E\u65F6\u5FC5\u987B\u662F http(s):// URL\uFF1B\u672A\u58F0\u660E\uFF08\u6216\u4E3A\u7A7A\uFF09\u65F6\u56DE\u9000\u9876\u5C42 baseUrl\uFF0C\u4E24\u8005\u90FD\u4E3A\u7A7A\u65F6\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4F7F\u7528\u5F53\u524D\u9875\u9762\u5730\u5740\uFF0CCLI run \u4ECD\u9700 --base-url \u6216\u914D\u7F6E baseUrl"
+    }),
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
@@ -1546,16 +1568,47 @@ function editDistance(a, b) {
   }
   return rows[a.length][b.length];
 }
-function looksLikeKeyTypo(key, allowed) {
+function findKeySuggestion(key, allowed) {
   const lower = key.toLowerCase();
-  return allowed.some((candidate) => {
+  return allowed.find((candidate) => {
     const target = candidate.toLowerCase();
     return target === lower || editDistance(lower, target) <= 1;
   });
 }
+function looksLikeKeyTypo(key, allowed) {
+  return findKeySuggestion(key, allowed) !== void 0;
+}
 var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-  return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  const described = unknownKeys.map((key) => {
+    const suggestion = findKeySuggestion(key, allowed);
+    return suggestion ? `"${key}"\uFF08\u662F\u5426\u60F3\u5199 "${suggestion}"\uFF1F\uFF09` : `"${key}"`;
+  });
+  return `${label} \u5305\u542B\u672A\u77E5\u952E ${described.join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+}
+function assertKnownKeys(input, allowed, label, hint = "") {
+  const unknownKeys = describeUnknownKeys(input, allowed);
+  invariant(unknownKeys.length === 0, unknownKeysMessage(label, unknownKeys, allowed, hint));
+}
+function validateBaseUrl(value, label) {
+  if (value === void 0 || value === null) return;
+  invariant(typeof value === "string", `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`);
+  const trimmed = value.trim();
+  if (!trimmed) return;
+  invariant(
+    /^https?:\/\//i.test(trimmed),
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`
+  );
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`);
+  }
+  invariant(
+    (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`
+  );
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1805,14 +1858,21 @@ function defineScenario(input) {
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+  assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
+  validateBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-  const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-    ...env,
-    globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-  })) : [];
+  const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+    invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
+    assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    return {
+      ...env,
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+    };
+  }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
+    validateBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -1834,7 +1894,10 @@ function defineConfig(input) {
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
     invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
     invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+    assertKnownKeys(item, contract.config.variableKeys, `\u53D8\u91CF ${item.name}`, "\uFF08\u53D8\u91CF\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (item.label !== void 0) invariant(typeof item.label === "string", `\u53D8\u91CF ${item.name} \u7684 label \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
     if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+    if (item.required !== void 0) invariant(typeof item.required === "boolean", `\u53D8\u91CF ${item.name} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     return { ...item };
   }) : [];
   assertUnique(variables, "name", "\u53D8\u91CF name");
@@ -2468,9 +2531,14 @@ function buildCapabilities(inputContract = contract) {
       note: globals.note
     },
     config: {
+      configKeys: [...config.configKeys],
       scenarioItemKeys: [...config.scenarioItemKeys],
       environmentKeys: [...config.environmentKeys],
       variableKeys: [...config.variableKeys],
+      baseUrl: {
+        protocol: config.baseUrl.protocol,
+        note: config.baseUrl.note
+      },
       manual: { ...config.manual }
     },
     scenario: {
@@ -2536,7 +2604,9 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
   lines.push("");
+  lines.push(`config \u9876\u5C42\u5B57\u6BB5: ${capabilities.config.configKeys.join(" / ")}`);
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+  lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
@@ -3379,6 +3449,39 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+function checkConfigBaseUrl(config) {
+  const environments = Array.isArray(config.envs) ? config.envs : [];
+  const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const missingKeys = environments.filter((env) => !String(env.baseUrl || "").trim()).map((env) => env.key);
+  if (environments.length === 0) {
+    if (fallback) {
+      return { name: "base-url", status: "PASS", message: `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u9876\u5C42 baseUrl \u53EF\u7528: ${fallback}`, fix: "" };
+    }
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: "\u914D\u7F6E\u672A\u58F0\u660E envs \u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl",
+      fix: "\u5728 scenario.config.js \u4E2D\u8865\u5145 envs[].baseUrl \u6216\u9876\u5C42 baseUrl\uFF08http(s)://\uFF09"
+    };
+  }
+  if (fallback) {
+    return {
+      name: "base-url",
+      status: "PASS",
+      message: missingKeys.length ? `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u5355\u72EC\u8BBE\u7F6E baseUrl\uFF0C\u5C06\u56DE\u9000\u9876\u5C42 baseUrl: ${fallback}` : `\u73AF\u5883 baseUrl \u5DF2\u58F0\u660E\uFF08http(s)://\uFF09\uFF0C\u9876\u5C42\u56DE\u9000\u5730\u5740: ${fallback}`,
+      fix: ""
+    };
+  }
+  if (missingKeys.length) {
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u8BBE\u7F6E baseUrl\uFF0C\u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl`,
+      fix: "\u4E3A\u6BCF\u4E2A\u73AF\u5883\u8865\u5145 http(s):// baseUrl\uFF0C\u6216\u58F0\u660E\u9876\u5C42 baseUrl \u4F5C\u4E3A\u56DE\u9000"
+    };
+  }
+  return { name: "base-url", status: "PASS", message: "\u6240\u6709\u73AF\u5883\u5747\u5DF2\u58F0\u660E http(s):// baseUrl", fix: "" };
+}
 function satisfiesNodeEngine(version, range) {
   const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
   if (!match) return false;
@@ -3437,15 +3540,32 @@ function buildDoctorReport(options) {
       config = loadConfigFile(configPath, api);
       checks.push({ name: "config-load", status: "PASS", message: `\u914D\u7F6E\u53EF\u52A0\u8F7D: ${configPath}`, fix: "" });
     } catch (error) {
+      const reason = String(error?.message || error);
       checks.push({
         name: "config-load",
         status: "FAIL",
-        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${error.message}\uFF09`,
+        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${reason}\uFF09`,
         fix: "\u68C0\u67E5\u914D\u7F6E\u8BED\u6CD5\u4E0E defineConfig \u8C03\u7528\uFF1B\u4FEE\u590D\u540E\u91CD\u65B0\u8FD0\u884C doctor"
       });
+      if (/未知键/.test(reason)) {
+        checks.push({
+          name: "config-keys",
+          status: "FAIL",
+          message: `\u914D\u7F6E\u5B57\u6BB5\u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u6309\u62A5\u9519\u4E2D\u300C\u662F\u5426\u60F3\u5199\u300D\u6216\u5141\u8BB8\u7684\u952E\u540D\u4FEE\u6B63\u62FC\u5199"
+        });
+      } else if (/baseUrl/.test(reason)) {
+        checks.push({
+          name: "base-url",
+          status: "FAIL",
+          message: `baseUrl \u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u5C06 envs[].baseUrl \u6216\u9876\u5C42 baseUrl \u6539\u4E3A http:// \u6216 https:// \u5F00\u5934\u7684\u5B8C\u6574 URL"
+        });
+      }
     }
   }
   if (config) {
+    checks.push(checkConfigBaseUrl(config));
     const entries = config.scenarios || [];
     if (entries.length === 0) {
       checks.push({ name: "scenario-list", status: "PASS", message: "\u914D\u7F6E\u4E2D\u6682\u65E0\u53EF\u68C0\u67E5\u7684\u573A\u666F\uFF08scenarios \u4E3A\u7A7A\uFF09", fix: "" });

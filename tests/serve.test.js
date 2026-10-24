@@ -254,21 +254,22 @@ test("serve：https 上游不再崩溃，连接失败返回 502 且进程存活"
     }
 });
 
-// 崩溃回归：无协议 baseUrl（如内网手滑写 "192.168.1.5:8080"）历史上同步抛
-// ERR_INVALID_URL 导致 serve 进程退出。现在必须降级 502 并保持存活。
-test("serve：无协议 baseUrl 不再崩溃，返回 502 且进程存活", async () => {
+// 崩溃回归：无协议代理目标（如内网手滑写 "192.168.1.5:8080"）历史上同步抛
+// ERR_INVALID_URL 导致 serve 进程退出。配置文件里的非法 baseUrl 现已由 defineConfig
+// 定义期拒绝，因此这里用 --base-url 覆盖进入同一代理路径，仍须降级 502 并保持存活。
+test("serve：无协议 --base-url 不再崩溃，返回 502 且进程存活", async () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-noproto-"));
     const dir = path.join(project, "scenario-test");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-        envs: [{ key: "lan", name: "内网", baseUrl: "192.168.1.5:8080" }],
+        envs: [{ key: "lan", name: "内网", baseUrl: "http://127.0.0.1:1" }],
         defaultEnvKey: "lan",
         scenarios: []
     }));`, "utf8");
     fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>scenario</title>", "utf8");
 
     const servePort = await freePort();
-    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--base-url", "192.168.1.5:8080", "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
     let exited = null;
     child.on("exit", (code) => { exited = code; });
     try {
