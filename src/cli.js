@@ -878,7 +878,9 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
 // 单个代理请求的环境路由：未知/未配置的环境 key 必须拒绝并给出可选环境，
 // 绝不接受浏览器传入任意 URL——目标只能来自 config.envs 的 baseUrl 或 --base-url。
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-    const requestedKey = decodeServeEnvKey(requestedEnvKey).trim();
+    // 不 trim：环境 key 按配置原值精确匹配，前后空格也是 key 的一部分；
+    // 只有完全空的头值才视为未携带 key 并回落到默认环境。
+    const requestedKey = decodeServeEnvKey(requestedEnvKey);
     if (!proxy.environments.length) {
         // 无 envs 时默认 config.baseUrl/--base-url 仍是旧行为，但明确携带任意环境 key
         // 都属于未配置环境：不能静默代理到默认后端，否则非法 key 会被当成默认环境。

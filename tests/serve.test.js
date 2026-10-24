@@ -608,6 +608,12 @@ test("serve 代理按请求环境 key 实时切换目标，--env 仅作默认，
         assert.match(message, /可用环境: local, prod/);
         assert.equal(local.received.length, 1, "未知环境不应转发到任何后端");
         assert.equal(prod.received.length, 2, "未知环境不应转发到任何后端");
+
+        // 环境 key 精确匹配：显式携带带前后空格的值不得被 trim 成 prod
+        const padded = await call("/api/padded", encodeURIComponent(" prod "));
+        assert.equal(padded.status, 502, "带空格的环境 key 应按未知环境拒绝，不能 trim 后转发");
+        assert.equal(local.received.length, 1);
+        assert.equal(prod.received.length, 2, "trim 后的已配置 key 不得被接受");
     } finally {
         child.kill();
         local.server.close();
@@ -781,6 +787,46 @@ test("serve 无 envs 且无任何代理目标时，携带环境 key 仍返回可
         assert.equal(plain.status, 404);
     } finally {
         child.kill();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve 环境 key 按解码后的原值精确匹配，支持配置中带前后空格的合法 key", async () => {
+    const plain = await startMockBackend();
+    const spaced = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-env-whitespace-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "prod", name: "无空格", baseUrl: "http://127.0.0.1:${plain.port}" },
+            { key: " prod ", name: "带空格", baseUrl: "http://127.0.0.1:${spaced.port}" }
+        ],
+        defaultEnvKey: " prod ",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        const padded = await fetch(`http://127.0.0.1:${servePort}/api/spaced`, {
+            headers: { "X-Scenario-Test-Env": encodeURIComponent(" prod ") }
+        });
+        assert.equal(padded.status, 200, "带前后空格的合法环境 key 应精确匹配");
+        assert.equal(spaced.received.length, 1);
+        assert.equal(plain.received.length, 0, "不得 trim 后落到无空格环境");
+
+        const direct = await fetch(`http://127.0.0.1:${servePort}/api/plain`, {
+            headers: { "X-Scenario-Test-Env": "prod" }
+        });
+        assert.equal(direct.status, 200);
+        assert.equal(plain.received.length, 1);
+        assert.equal(spaced.received.length, 1);
+    } finally {
+        child.kill();
+        plain.server.close();
+        spaced.server.close();
         fs.rmSync(project, { recursive: true, force: true });
     }
 });

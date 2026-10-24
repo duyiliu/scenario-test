@@ -4363,7 +4363,7 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   };
 }
 function resolveServeRequestTarget(proxy, requestedEnvKey) {
-  const requestedKey = decodeServeEnvKey(requestedEnvKey).trim();
+  const requestedKey = decodeServeEnvKey(requestedEnvKey);
   if (!proxy.environments.length) {
     if (!requestedKey) return { target: proxy.target };
     return {
