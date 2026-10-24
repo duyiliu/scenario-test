@@ -216,6 +216,54 @@ test("saveResponseStream：流式写入内容与 saveResponse 一致，失败时
     }
 });
 
+test("saveResponseStream：符号链接目标跟随链接更新真实文件并保留链接", async (t) => {
+    const workspace = makeWorkspace();
+    try {
+        const io = createNodeIo(workspace);
+        const targetPath = path.join(workspace, "target.bin");
+        const linkPath = path.join(workspace, "link.bin");
+        fs.writeFileSync(targetPath, "old-content", "utf8");
+        try {
+            // 相对链接：旧 writeFileSync 会跟随并更新 target.bin，链接本身保持不变
+            fs.symlinkSync("target.bin", linkPath, "file");
+        } catch (error) {
+            t.skip(`当前平台不支持文件符号链接: ${error.message}`);
+            return;
+        }
+        const data = new TextEncoder().encode("new-streamed-content");
+        const saved = await io.saveResponseStream("link.bin", new ReadableStream({
+            start(controller) {
+                controller.enqueue(data);
+                controller.close();
+            }
+        }), { contentType: "application/octet-stream" });
+        assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true, "链接本身应保留");
+        assert.equal(fs.readFileSync(targetPath, "utf8"), "new-streamed-content");
+        assert.equal(saved.savedTo, linkPath);
+        assert.equal(saved.size, data.byteLength);
+
+        // 失败时同样不破坏链接与其目标已有内容
+        fs.writeFileSync(targetPath, "keep-target", "utf8");
+        let sent = false;
+        const broken = new ReadableStream({
+            pull(controller) {
+                if (!sent) {
+                    sent = true;
+                    controller.enqueue(new Uint8Array([1, 2, 3]));
+                } else {
+                    controller.error(new Error("链接写入中断"));
+                }
+            }
+        });
+        await assert.rejects(() => io.saveResponseStream("link.bin", broken), /链接写入中断/);
+        assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true);
+        assert.equal(fs.readFileSync(targetPath, "utf8"), "keep-target");
+        assert.deepEqual(fs.readdirSync(workspace).sort(), ["link.bin", "sample.txt", "target.bin"]);
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
 test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半截文件", async () => {
     const workspace = makeWorkspace();
     try {

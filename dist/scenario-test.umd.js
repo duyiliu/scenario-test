@@ -1898,7 +1898,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     return error;
   }
   function resolveMaxResponseBytes(options = {}) {
-    return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
+    const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+    return normalizeByteLimit(value);
   }
   function resolveMaxUploadBytes(options = {}) {
     const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
@@ -2059,7 +2060,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         { maxUploadBytes: resolveMaxUploadBytes(options) }
       );
       fetchOptions.body = upload.body;
-      if (upload.body && typeof upload.body.getReader === "function") fetchOptions.duplex = "half";
+      if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+        fetchOptions.duplex = "half";
+      }
       for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
       for (const key of Object.keys(headers)) {
         if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];

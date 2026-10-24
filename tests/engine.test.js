@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
+import { Readable } from "node:stream";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -1326,6 +1327,38 @@ test("fileUpload：io 构造上传体，omitContentType 时删除步骤 Content-
     assert.match(noIoReport.results[0].error, /当前运行环境不支持 fileUpload/);
 });
 
+test("fileUpload：Node Readable/异步可迭代上传体补 duplex: half", async () => {
+    const seen = [];
+    let call = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async createUploadBody() {
+                call += 1;
+                return {
+                    body: call === 1
+                        ? Readable.from([Buffer.from("streamed")])
+                        : (async function* chunks() { yield "async-iterable"; })(),
+                    omitContentType: true
+                };
+            }
+        },
+        fetch: async (_url, options) => {
+            seen.push(options.duplex);
+            return jsonResponse({ ok: true });
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "流式上传",
+        steps: [
+            { name: "Node Readable", method: "POST", request: { fileUpload: { filePath: "a.txt" } } },
+            { name: "异步可迭代", method: "POST", request: { fileUpload: { filePath: "b.txt" } } }
+        ]
+    }));
+    assert.equal(report.failed, 0, JSON.stringify(report.results));
+    assert.deepEqual(seen, ["half", "half"]);
+});
+
 test("saveResponseAs：模板路径解析后调用 io.saveResponse，body 替换为保存信息", async () => {
     const saved = [];
     const engine = createEngine({
@@ -1484,6 +1517,14 @@ test("normalizeByteLimit：响应限制对 0/负数/NaN/Infinity/null 均视为�
     assert.equal(floorPass.results[0].passed, true);
     const floorFail = await withBody("123456", { maxResponseBytes: 5.9 }).runScenario(scenario);
     assert.deepEqual(floorFail.results[0].responseTooLarge, { actualBytes: 6, limitBytes: 5 });
+
+    // run options 显式 null 按归一化规则视为不限，必须覆盖引擎/配置的正数上限
+    const engineLimited = await withBody("123456", { maxResponseBytes: 5 })
+        .runScenario(scenario, { maxResponseBytes: null });
+    assert.equal(engineLimited.results[0].passed, true);
+    const configLimited = await withBody("123456", { config: { maxResponseBytes: 5 } })
+        .runScenario(scenario, { maxResponseBytes: null });
+    assert.equal(configLimited.results[0].passed, true);
 });
 
 test("maxUploadBytes：config/run options 透传给 io.createUploadBody", async () => {

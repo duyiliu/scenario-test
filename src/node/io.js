@@ -33,6 +33,28 @@ export function createNodeIo(workspace = process.cwd(), options = {}) {
         }
     }
 
+    // 与旧 writeFileSync 的口径一致：保存到符号链接时跟随链接更新目标，而不是
+    // 用临时文件 rename 替换链接本身。支持相对链接、链接链与指向尚未创建目标的情况。
+    function resolveWriteTarget(absolutePath) {
+        let current = absolutePath;
+        const seen = new Set();
+        for (let depth = 0; depth < 32; depth += 1) {
+            let stat;
+            try {
+                stat = fs.lstatSync(current);
+            } catch (error) {
+                if (error.code === "ENOENT") return current;
+                throw error;
+            }
+            if (!stat.isSymbolicLink()) return current;
+            if (seen.has(current)) throw new Error(`响应保存路径包含符号链接循环: ${absolutePath}`);
+            seen.add(current);
+            const linkTarget = fs.readlinkSync(current);
+            current = path.resolve(path.dirname(current), linkTarget);
+        }
+        throw new Error(`响应保存路径符号链接层级过深: ${absolutePath}`);
+    }
+
     return {
         async createUploadBody(definition, runtime, callOptions = {}) {
             const filePath = typeof definition === "string" ? definition : definition.filePath;
@@ -77,13 +99,26 @@ export function createNodeIo(workspace = process.cwd(), options = {}) {
         },
         async saveResponseStream(relativePath, body, metadata = {}) {
             const absolutePath = resolveSavePath(relativePath);
-            const directory = path.dirname(absolutePath);
+            const writeTarget = resolveWriteTarget(absolutePath);
+            // 链接链可能指向工作区外（包括悬空链接）：真实写入位置同样必须过边界检查
+            if (writeTarget !== absolutePath) {
+                try {
+                    validatePath(root, writeTarget, { allowAbsolute: true });
+                } catch (error) {
+                    throw new Error(
+                        `响应保存路径不安全: ${relativePath}\n` +
+                        `原因: ${error.message}\n` +
+                        `提示: 保存路径必须在工作区内 (${root})`
+                    );
+                }
+            }
+            const directory = path.dirname(writeTarget);
             fs.mkdirSync(directory, { recursive: true });
             // 先写同目录临时文件，成功后才原子替换目标：失败/超限只清理本次临时文件，
             // 不破坏目标路径上已有的完整文件
             const tempPath = path.join(
                 directory,
-                `.${path.basename(absolutePath)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+                `.${path.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
             );
             const file = fs.createWriteStream(tempPath);
             let size = 0;
@@ -98,7 +133,8 @@ export function createNodeIo(workspace = process.cwd(), options = {}) {
                     ? Readable.from([])
                     : (typeof body.getReader === "function" ? Readable.fromWeb(body) : body);
                 await pipeline(source, counter, file);
-                fs.renameSync(tempPath, absolutePath);
+                // 写到链接指向的真实文件：保留链接本身，内容与旧 writeFileSync 一致
+                fs.renameSync(tempPath, writeTarget);
             } catch (error) {
                 // 任何失败（含引擎包装流的 responseTooLarge / 超时取消 / 非 Error 拒绝值）
                 // 都不留下半截文件，也不影响目标路径原有文件

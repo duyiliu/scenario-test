@@ -222,7 +222,12 @@ function createResponseTooLargeError(actualBytes, limitBytes) {
 }
 
 function resolveMaxResponseBytes(options = {}) {
-    return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
+    // 只有 undefined 表示“未提供”，继续回落 config；显式 null/0/负数等按
+    // normalizeByteLimit 统一归一化为不限，避免 run options 无法覆盖引擎/配置上限
+    const value = options.maxResponseBytes === undefined
+        ? options.config?.maxResponseBytes
+        : options.maxResponseBytes;
+    return normalizeByteLimit(value);
 }
 
 // 上传上限要把“未声明”和“显式 0=不限制”区分开：前者回落到 createNodeIo 默认值，
@@ -400,9 +405,14 @@ async function executeHttp(step, runtime, options) {
             { maxUploadBytes: resolveMaxUploadBytes(options) }
         );
         fetchOptions.body = upload.body;
-        // 自定义 io 返回真正的流式请求体时，Node fetch 需要显式声明半双工；
-        // FormData（Blob/File）不受此限制
-        if (upload.body && typeof upload.body.getReader === "function") fetchOptions.duplex = "half";
+        // 自定义 io 返回 Web ReadableStream、Node Readable 或其他异步可迭代流时，
+        // Node fetch 必须显式声明半双工；FormData（Blob/File）不受此限制
+        if (upload.body && (
+            typeof upload.body.getReader === "function"
+            || typeof upload.body[Symbol.asyncIterator] === "function"
+        )) {
+            fetchOptions.duplex = "half";
+        }
         for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
         for (const key of Object.keys(headers)) {
             if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];

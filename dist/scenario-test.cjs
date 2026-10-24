@@ -1902,7 +1902,8 @@ function createResponseTooLargeError(actualBytes, limitBytes) {
   return error;
 }
 function resolveMaxResponseBytes(options = {}) {
-  return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
+  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value);
 }
 function resolveMaxUploadBytes(options = {}) {
   const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
@@ -2063,7 +2064,9 @@ async function executeHttp(step, runtime, options) {
       { maxUploadBytes: resolveMaxUploadBytes(options) }
     );
     fetchOptions.body = upload.body;
-    if (upload.body && typeof upload.body.getReader === "function") fetchOptions.duplex = "half";
+    if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+      fetchOptions.duplex = "half";
+    }
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -6912,6 +6915,25 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       );
     }
   }
+  function resolveWriteTarget(absolutePath) {
+    let current = absolutePath;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 32; depth += 1) {
+      let stat;
+      try {
+        stat = import_node_fs2.default.lstatSync(current);
+      } catch (error) {
+        if (error.code === "ENOENT") return current;
+        throw error;
+      }
+      if (!stat.isSymbolicLink()) return current;
+      if (seen.has(current)) throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u5305\u542B\u7B26\u53F7\u94FE\u63A5\u5FAA\u73AF: ${absolutePath}`);
+      seen.add(current);
+      const linkTarget = import_node_fs2.default.readlinkSync(current);
+      current = import_node_path2.default.resolve(import_node_path2.default.dirname(current), linkTarget);
+    }
+    throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u7B26\u53F7\u94FE\u63A5\u5C42\u7EA7\u8FC7\u6DF1: ${absolutePath}`);
+  }
   return {
     async createUploadBody(definition, runtime, callOptions = {}) {
       const filePath = typeof definition === "string" ? definition : definition.filePath;
@@ -6943,11 +6965,23 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
     },
     async saveResponseStream(relativePath, body, metadata = {}) {
       const absolutePath = resolveSavePath(relativePath);
-      const directory = import_node_path2.default.dirname(absolutePath);
+      const writeTarget = resolveWriteTarget(absolutePath);
+      if (writeTarget !== absolutePath) {
+        try {
+          validatePath(root, writeTarget, { allowAbsolute: true });
+        } catch (error) {
+          throw new Error(
+            `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+          );
+        }
+      }
+      const directory = import_node_path2.default.dirname(writeTarget);
       import_node_fs2.default.mkdirSync(directory, { recursive: true });
       const tempPath = import_node_path2.default.join(
         directory,
-        `.${import_node_path2.default.basename(absolutePath)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+        `.${import_node_path2.default.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
       );
       const file = import_node_fs2.default.createWriteStream(tempPath);
       let size = 0;
@@ -6960,7 +6994,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       try {
         const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
         await (0, import_promises.pipeline)(source, counter, file);
-        import_node_fs2.default.renameSync(tempPath, absolutePath);
+        import_node_fs2.default.renameSync(tempPath, writeTarget);
       } catch (error) {
         if (!file.closed) {
           await new Promise((resolveClose) => {
