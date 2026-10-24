@@ -4998,14 +4998,18 @@ function buildStepCurl(step, options) {
   var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
   var stepPath = step.path || step.request && step.request.path || "";
   var stepParams = step.params || step.request && step.request.params;
-  var requestPath = appendGlobalQuery(buildUrl(stepPath, stepParams, runtime), globals, runtime);
+  var requestPath = buildUrl(stepPath, stepParams, runtime);
+  var absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+  var allowEnvironment = !absoluteUrl || step.request && step.request.useEnvironmentAuthorization === true;
+  var environmentGlobals = allowEnvironment ? globals : [];
+  requestPath = appendGlobalQuery(requestPath, environmentGlobals, runtime);
   var headers = {};
-  var cookieParts = globals.filter(function(global) {
+  var cookieParts = environmentGlobals.filter(function(global) {
     return global.type === "cookie";
   }).map(function(global) {
     return global.name + "=" + resolveString(global.value, runtime);
   });
-  globals.forEach(function(g) {
+  environmentGlobals.forEach(function(g) {
     if (g.type === "header" && g.name) {
       headers[g.name] = resolveString(g.value || "", runtime);
     }

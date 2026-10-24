@@ -16,16 +16,22 @@ export function buildStepCurl(step, options) {
     var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
     var stepPath = step.path || (step.request && step.request.path) || '';
     var stepParams = step.params || (step.request && step.request.params);
-    var requestPath = core.appendGlobalQuery(core.buildUrl(stepPath, stepParams, runtime), globals, runtime);
+    var requestPath = core.buildUrl(stepPath, stepParams, runtime);
+    // 与引擎 executeHttp 同一判断：绝对/协议相对 URL 默认不注入环境 globals，
+    // 仅步骤显式声明 request.useEnvironmentAuthorization === true 时启用。
+    var absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+    var allowEnvironment = !absoluteUrl || (step.request && step.request.useEnvironmentAuthorization === true);
+    var environmentGlobals = allowEnvironment ? globals : [];
+    requestPath = core.appendGlobalQuery(requestPath, environmentGlobals, runtime);
     var headers = {};
 
     // 拼接 globals 的 cookie
-    var cookieParts = globals
+    var cookieParts = environmentGlobals
         .filter(function (global) { return global.type === 'cookie'; })
         .map(function (global) { return global.name + '=' + core.resolveString(global.value, runtime); });
 
     // headers
-    globals.forEach(function (g) {
+    environmentGlobals.forEach(function (g) {
         if (g.type === 'header' && g.name) {
             headers[g.name] = core.resolveString(g.value || '', runtime);
         }

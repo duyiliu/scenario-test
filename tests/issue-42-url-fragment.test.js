@@ -80,6 +80,66 @@ test("#42 cURL 预览：globals query 注入到 fragment 之前", () => {
     assert.equal(curl, "curl -X GET 'http://api.example.com/api/x?a=1&g=v#section'");
 });
 
+test("#42 绝对/协议相对 URL：引擎与 cURL 默认都不注入环境 globals", async () => {
+    const globals = [
+        { type: "query", name: "g", value: "{{vars.g}}" },
+        { type: "header", name: "X-Global", value: "{{vars.g}}" },
+        { type: "cookie", name: "session", value: "{{vars.g}}" }
+    ];
+    for (const path of [
+        "https://other.example.com/api/x#section",
+        "//other.example.com/api/x#section"
+    ]) {
+        const seen = [];
+        const engine = createEngine({
+            fetch: async (url) => {
+                seen.push(String(url));
+                return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+            },
+            baseUrl: "http://api.example.com",
+            vars: { g: "v" },
+            globals
+        });
+        await engine.runScenario({
+            name: "外链不注入环境参数",
+            steps: [{ name: "外链", path, params: { a: 1 } }]
+        });
+        const curl = buildStepCurl(
+            { method: "GET", path, params: { a: 1 } },
+            { baseUrl: "http://api.example.com", vars: { g: "v" }, globals }
+        );
+        const expected = `${path.slice(0, path.indexOf("#"))}?a=1${path.slice(path.indexOf("#"))}`;
+        assert.equal(seen[0], expected);
+        assert.equal(curl, `curl -X GET '${seen[0]}'`);
+        assert.ok(!curl.includes("X-Global"), "绝对 URL 不应注入全局 header");
+        assert.ok(!curl.includes("session="), "绝对 URL 不应注入全局 cookie");
+    }
+});
+
+test("#42 绝对 URL 显式 useEnvironmentAuthorization：引擎与 cURL 都注入 globals query", async () => {
+    const globals = [{ type: "query", name: "g", value: "{{vars.g}}" }];
+    const step = {
+        name: "外链显式启用",
+        method: "GET",
+        path: "https://other.example.com/api/x#section",
+        request: { useEnvironmentAuthorization: true }
+    };
+    const seen = [];
+    const engine = createEngine({
+        fetch: async (url) => {
+            seen.push(String(url));
+            return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+        },
+        baseUrl: "http://api.example.com",
+        vars: { g: "v" },
+        globals
+    });
+    await engine.runScenario({ name: "外链显式启用", steps: [step] });
+    const curl = buildStepCurl(step, { baseUrl: "http://api.example.com", vars: { g: "v" }, globals });
+    assert.equal(seen[0], "https://other.example.com/api/x?g=v#section");
+    assert.equal(curl, `curl -X GET '${seen[0]}'`);
+});
+
 test("#42 引擎与 cURL 预览对同一输入生成相同 URL", async () => {
     const globals = [
         { type: "query", name: "g", value: "{{vars.g}}" },
