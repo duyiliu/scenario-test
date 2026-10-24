@@ -105,7 +105,9 @@ assertions: [
     path: "/api/tasks/{{vars.taskId}}",
     retryUntil: {
         maxAttempts: 10,
-        intervalMs: 2000
+        intervalMs: 2000,
+        // 可选：assertion（默认）/ error / timeout；服务刚启动时让连接失败与单次超时也参与轮询
+        retryOn: ["assertion", "error", "timeout"]
     },
     assertions: [
         { path: "status", equals: "completed" }

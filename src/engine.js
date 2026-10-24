@@ -33,6 +33,24 @@ function timeoutErrorMessage(timeoutMs) {
     return `请求超时（${timeoutMs}ms）`;
 }
 
+// 单次执行失败是否由请求/适配器超时引起：优先看 createRequestSignal 写入的结构化标记，
+// 不依赖本地化错误文案。
+function isTimeoutError(error) {
+    return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+
+// 供 retryOn/onAttempt 与重试超时消息使用的错误文本：fetch 的 TypeError("fetch failed")
+// 把真实原因收在 cause，透出 ECONNREFUSED/ENOTFOUND 等，便于 CI 与进度行直接定位。
+function describeError(error) {
+    const message = String(error?.message || error || "请求执行失败");
+    const causeDetail = error?.cause
+        ? (error.cause.code || error.cause.message || String(error.cause))
+        : "";
+    return causeDetail && !message.includes(causeDetail)
+        ? `${message}（${causeDetail}）`
+        : message;
+}
+
 function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     // 与 createRequestSignal 对齐：signal 已中止时立即拒绝，否则 addEventListener 不会触发，
@@ -481,42 +499,78 @@ export function createEngine(engineOptions = {}) {
         // maxAttempts 语义 = 最大尝试总次数（含首次请求），与字段名一致；默认 10。
         // 历史实现为 maxAttempts + 1（重试次数语义），与字段名矛盾，v0.5.18 起对齐。
         const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+        // retryOn 默认 ["assertion"] 保持既有语义；未声明/非法值不会意外开启 error/timeout 重试。
+        const retryOn = new Set(
+            retry
+                ? (retry.retryOn === undefined
+                    ? contract.retryUntil.defaultRetryOn
+                    : (Array.isArray(retry.retryOn) ? retry.retryOn : []))
+                    .filter((type) => contract.retryUntil.retryOn.includes(type))
+                : []
+        );
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
+        let lastAttemptError = null;
         try {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
                 if (retry && (now() - retryStartTime) > maxElapsedMs) {
+                    const lastErrorText = lastAttemptError
+                        ? `\n最后错误: ${describeError(lastAttemptError)}`
+                        : "";
                     throw createTimeoutError(
                         maxElapsedMs,
-                        `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms\n` +
+                        `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms${lastErrorText}\n` +
                         `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
                     );
                 }
 
-                const selection = chooseAdapter(step, adapters);
-                const attemptStartedAt = now();
-                lastExecution = selection
-                    ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
-                    : await executeHttp(step, runtime, options);
-                // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
-                // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
-                if (lastExecution.response && typeof lastExecution.response === "object"
-                    && lastExecution.response.durationMs === undefined) {
-                    lastExecution.response.durationMs = now() - attemptStartedAt;
+                let attemptError = null;
+                let attemptErrorType = "";
+                try {
+                    const selection = chooseAdapter(step, adapters);
+                    const attemptStartedAt = now();
+                    lastExecution = selection
+                        ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
+                        : await executeHttp(step, runtime, options);
+                    // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
+                    // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
+                    if (lastExecution.response && typeof lastExecution.response === "object"
+                        && lastExecution.response.durationMs === undefined) {
+                        lastExecution.response.durationMs = now() - attemptStartedAt;
+                    }
+                    runtime.lastResponse = lastExecution.response;
+                    // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
+                    runtime.lastResponseBody = lastExecution.response.body;
+                    const extractResult = applyExtract(step, lastExecution.response, runtime);
+                    stepWarnings = extractResult.warnings;
+                    assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+                    // required: true 且路径不存在 → 当前步骤失败
+                    if (extractResult.failures.length) assertions.push(...extractResult.failures);
+                } catch (error) {
+                    // 取消始终立即终止，不参与重试（含等待间隔中的取消由 delay 拒绝）
+                    if (options.signal?.aborted) throw error;
+                    const errorType = isTimeoutError(error) ? "timeout" : "error";
+                    // 未开启对应 retryOn 或已是最后一次尝试：保持历史语义，直接交给外层 catch 归类
+                    if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+                    attemptError = error;
+                    attemptErrorType = errorType;
+                    lastAttemptError = error;
+                    // 失败尝试没有可信响应/断言结果：清掉上一轮值，避免 onAttempt 透出陈旧状态
+                    stepWarnings = [];
+                    assertions = [];
                 }
-                runtime.lastResponse = lastExecution.response;
-                // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
-                runtime.lastResponseBody = lastExecution.response.body;
-                const extractResult = applyExtract(step, lastExecution.response, runtime);
-                stepWarnings = extractResult.warnings;
-                assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-                // required: true 且路径不存在 → 当前步骤失败
-                if (extractResult.failures.length) assertions.push(...extractResult.failures);
-                if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+
+                const failedAssertion = attemptError
+                    ? ""
+                    : (assertions.find((item) => !item.passed)?.name || "");
+                if (!attemptError
+                    && (assertions.every((item) => item.passed)
+                        || attempt === totalAttempts
+                        || !retryOn.has("assertion"))) break;
 
                 // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
                 // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
@@ -525,14 +579,17 @@ export function createEngine(engineOptions = {}) {
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
                 // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
                 // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
+                // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
                 // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
                 await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
                     step,
                     attempt,
                     totalAttempts,
                     intervalMs,
-                    status: lastExecution.response?.status ?? null,
-                    failedAssertion: assertions.find((item) => !item.passed)?.name || ""
+                    status: attemptError ? null : (lastExecution.response?.status ?? null),
+                    failedAssertion,
+                    errorType: attemptErrorType,
+                    errorMessage: attemptError ? describeError(attemptError) : ""
                 });
                 await delay(intervalMs, options.signal);
             }

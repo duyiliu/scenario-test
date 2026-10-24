@@ -529,10 +529,13 @@ export function createWorkbenchRuntime(options) {
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
             onAttempt: function (info) {
-                var detail = 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
+                var label = info.errorType === 'timeout' ? '超时' : (info.errorType ? '连接失败' : '未通过');
+                var detail = info.errorType
+                    ? (info.errorMessage || '')
+                    : 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
                 uiView.setRunState('running',
                     '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
-                    + ' 次未通过（' + detail + '），' + info.intervalMs + 'ms 后重试');
+                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试');
             }
         });
     }

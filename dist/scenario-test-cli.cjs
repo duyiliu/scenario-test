@@ -491,6 +491,13 @@ var contract = Object.freeze({
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
     })
   }),
+  retryUntil: Object.freeze({
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+    retryOn: Object.freeze(["assertion", "error", "timeout"]),
+    defaultRetryOn: Object.freeze(["assertion"]),
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
+  }),
   scenario: Object.freeze({
     keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
     stepKeys: Object.freeze([
@@ -1775,6 +1782,18 @@ function defineScenario(input) {
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.retryOn !== void 0) {
+        invariant(
+          Array.isArray(step.retryUntil.retryOn),
+          `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF09`
+        );
+        for (const retryType of step.retryUntil.retryOn) {
+          invariant(
+            contract.retryUntil.retryOn.includes(retryType),
+            `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u9879\u53EA\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(retryType)}\uFF09`
+          );
+        }
+      }
     }
     if (step.extract !== void 0) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -2005,6 +2024,14 @@ function abortReason(signal) {
 }
 function timeoutErrorMessage(timeoutMs) {
   return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
+}
+function isTimeoutError(error) {
+  return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+function describeError(error) {
+  const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
+  const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+  return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
@@ -2381,31 +2408,51 @@ function createEngine(engineOptions = {}) {
     let stepWarnings = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+    const retryOn = new Set(
+      retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
+    );
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
+    let lastAttemptError = null;
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
         if (retry && now() - retryStartTime > maxElapsedMs) {
+          const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
           throw createTimeoutError(
             maxElapsedMs,
-            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
+            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
 \u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
           );
         }
-        const selection = chooseAdapter(step, adapters);
-        const attemptStartedAt = now();
-        lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
-        if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
-          lastExecution.response.durationMs = now() - attemptStartedAt;
+        let attemptError = null;
+        let attemptErrorType = "";
+        try {
+          const selection = chooseAdapter(step, adapters);
+          const attemptStartedAt = now();
+          lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
+          if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
+            lastExecution.response.durationMs = now() - attemptStartedAt;
+          }
+          runtime.lastResponse = lastExecution.response;
+          runtime.lastResponseBody = lastExecution.response.body;
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
+        } catch (error) {
+          if (options.signal?.aborted) throw error;
+          const errorType = isTimeoutError(error) ? "timeout" : "error";
+          if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+          attemptError = error;
+          attemptErrorType = errorType;
+          lastAttemptError = error;
+          stepWarnings = [];
+          assertions = [];
         }
-        runtime.lastResponse = lastExecution.response;
-        runtime.lastResponseBody = lastExecution.response.body;
-        const extractResult = applyExtract(step, lastExecution.response, runtime);
-        stepWarnings = extractResult.warnings;
-        assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-        if (extractResult.failures.length) assertions.push(...extractResult.failures);
-        if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+        const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
+        if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
         await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
@@ -2413,8 +2460,10 @@ function createEngine(engineOptions = {}) {
           attempt,
           totalAttempts,
           intervalMs,
-          status: lastExecution.response?.status ?? null,
-          failedAssertion: assertions.find((item) => !item.passed)?.name || ""
+          status: attemptError ? null : lastExecution.response?.status ?? null,
+          failedAssertion,
+          errorType: attemptErrorType,
+          errorMessage: attemptError ? describeError(attemptError) : ""
         });
         await delay(intervalMs, options.signal);
       }
@@ -2511,7 +2560,7 @@ async function runScenario(scenario, options = {}) {
 
 // src/capabilities.js
 function buildCapabilities(inputContract = contract) {
-  const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+  const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
   return {
     schema: "scenario-test-capabilities",
     version: inputContract.runtimeVersion,
@@ -2557,6 +2606,12 @@ function buildCapabilities(inputContract = contract) {
         note: config.baseUrl.note
       },
       manual: { ...config.manual }
+    },
+    retryUntil: {
+      keys: [...retryUntil.keys],
+      retryOn: [...retryUntil.retryOn],
+      defaultRetryOn: [...retryUntil.defaultRetryOn],
+      note: retryUntil.note
     },
     scenario: {
       keys: [...scenario.keys],
@@ -2628,6 +2683,10 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+  if (capabilities.retryUntil) {
+    lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
+    lines.push(`  ${capabilities.retryUntil.note}`);
+  }
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {
@@ -2833,7 +2892,7 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
-8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002
+8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
 10. \u4E0D\u4FEE\u6539\u4E1A\u52A1\u4EE3\u7801\u3001\u6784\u5EFA\u914D\u7F6E\u6216\u516C\u5171\u8FD0\u884C\u65F6\uFF1B\u4E0D\u5199\u5165\u751F\u4EA7\u5730\u5740\u3001\u4E2A\u4EBA\u6570\u636E\u3001\u56FA\u5B9A Token \u6216\u975E\u6D4B\u8BD5\u51ED\u636E\u3002
 11. \u843D\u76D8\u540E\u9010\u6587\u4EF6\u81EA\u68C0\uFF1A\u4E0D\u5F97\u51FA\u73B0\u65E0\u8BC1\u636E\u7684 SUCCESS\u3001PDF\u3001pdf\u3001\u9519\u8BEF\u5B57\u6BB5\u65AD\u8A00\u6216 \`retryUntil + exists\`\uFF1B\u6240\u6709\u5916\u90E8\u8F93\u5165\u53D8\u91CF\u5FC5\u987B\u5728\u914D\u7F6E\u4E2D\u58F0\u660E\uFF0C\u573A\u666F vars \u53EA\u4FDD\u5B58\u6D4B\u8BD5\u6807\u8BB0\u3001\u63D0\u53D6\u7ED3\u679C\u6216\u5185\u90E8\u72B6\u6001\u3002\u53D1\u73B0\u8FDD\u89C4\u5FC5\u987B\u5148\u4FEE\u6B63\u518D\u62A5\u544A\u3002
@@ -2924,7 +2983,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  "\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002",
+  '\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD ECONNREFUSED \u65F6\uFF0C\u53EF\u52A0 retryOn: ["assertion", "error", "timeout"] \u8BA9\u8FDE\u63A5\u5931\u8D25\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF1B\u9ED8\u8BA4 ["assertion"] \u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5148\u786E\u8BA4\u5B89\u5168\u3002',
   "",
   "## \u6A21\u5F0F\u4E94\uFF1A\u4E3A\u6821\u9A8C\u5931\u8D25\u4E0E\u6743\u9650\u62D2\u7EDD\u5206\u522B\u5EFA\u573A\u666F",
   "",
@@ -3138,7 +3197,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
 - \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
-- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
+- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
 - \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\uFF0C\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
 - SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
@@ -4286,8 +4345,9 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
       // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
       async onAttempt(info) {
-        const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-        print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        const label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
+        const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
+        print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
