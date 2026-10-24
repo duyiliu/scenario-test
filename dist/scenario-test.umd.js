@@ -1809,6 +1809,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     adapterRegistry.clear();
   }
 
+  // src/utils/safe-decode.js
+  function safeDecodeComponent(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
   // src/engine.js
   function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -2000,7 +2009,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (queryIndex >= 0) {
         for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
           const key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
+          if (key) existingKeys.add(safeDecodeComponent(key));
         }
       }
       const queryParts = [];
@@ -4293,8 +4302,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         queryPart.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           params.push({ name: key, value: val });
         });
       }
@@ -4798,8 +4807,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         searchStr.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           if (key) params[key] = val;
         });
       }
@@ -6291,7 +6300,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (queryIndex >= 0) {
         requestPath.slice(queryIndex + 1).split("&").forEach(function(pair) {
           var key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
+          if (key) existingKeys.add(safeDecodeComponent(key));
         });
       }
       var queryParts = [];
