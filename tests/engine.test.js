@@ -743,9 +743,12 @@ test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars �
     await assert.rejects(engineFor({ vars: { runId: "x" } }).runScenario(defineScenario({ name: "R", steps: [{ name: "s", path: "x" }] })), /保留变量/);
     // scenario.vars 定义期拒绝
     assert.throws(() => defineScenario({ name: "R", vars: { runNo: "x" }, steps: [{ name: "s", path: "x" }] }), /保留变量/);
-    // envVars / generatedVars 运行期拒绝
-    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", envVars: { runId: "ENV_X" }, steps: [{ name: "s", path: "x" }] })), /保留变量/);
-    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", generatedVars: [{ name: "runNo", type: "timestamp" }], steps: [{ name: "s", path: "x" }] })), /保留变量/);
+    // envVars / generatedVars 定义期拒绝；绕过定义期直接 runScenario 仍由运行期兜底
+    assert.throws(() => defineScenario({ name: "R", envVars: { runId: "ENV_X" }, steps: [{ name: "s", path: "x" }] }), /保留变量/);
+    assert.throws(() => defineScenario({ name: "R", generatedVars: [{ name: "runNo", type: "timestamp" }], steps: [{ name: "s", path: "x" }] }), /保留变量/);
+    const raw = (extra) => ({ name: "R", steps: [{ name: "s", path: "x" }], ...extra });
+    await assert.rejects(engineFor().runScenario(raw({ envVars: { runId: "ENV_X" } })), /保留变量/);
+    await assert.rejects(engineFor().runScenario(raw({ generatedVars: [{ name: "runNo", type: "timestamp" }] })), /保留变量/);
 });
 
 test("extract required:true 路径不存在时步骤失败；默认路径缺失产生 warning 并保持兼容", async () => {

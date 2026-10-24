@@ -327,6 +327,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setRuntimeVar: () => setRuntimeVar,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -1054,6 +1055,15 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
+function setRuntimeVar(vars, name, value) {
+  Object.defineProperty(vars, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return value;
+}
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
@@ -1073,7 +1083,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        runtime.vars[definition.name] = resolve(definition.default, runtime);
+        setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
         continue;
       }
       if (definition.required === true) {
@@ -1087,7 +1097,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    runtime.vars[definition.name] = value;
+    setRuntimeVar(runtime.vars, definition.name, value);
   }
   return { warnings, failures };
 }
@@ -1264,24 +1274,24 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
         throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
       }
-      vars[name] = formatTimestamp(base, definition.format);
+      setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
     } else if (definition.unit != null && definition.unit !== "ms") {
       if (definition.unit !== "s") {
         throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
       }
-      vars[name] = Math.floor(base / 1e3);
+      setRuntimeVar(vars, name, Math.floor(base / 1e3));
     } else {
-      vars[name] = base;
+      setRuntimeVar(vars, name, base);
     }
     return;
   }
   if (definition.type === "uuid") {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    vars[name] = globalThis.crypto.randomUUID();
+    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
     return;
   }
   if (definition.type === "uuidHex") {
-    vars[name] = uuidHex();
+    setRuntimeVar(vars, name, uuidHex());
     return;
   }
   if (definition.type === "idcard") {
@@ -1294,11 +1304,11 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
     }
     const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-    vars[name] = buildChinaIdNumber({
+    setRuntimeVar(vars, name, buildChinaIdNumber({
       regionCode,
       birthDate: definition.birthDate,
       sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-    });
+    }));
     return;
   }
   if (definition.type === "luhn") {
@@ -1315,7 +1325,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
     const first = `${prefix}${body}`;
-    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
     return;
   }
   if (definition.type === "phone") {
@@ -1327,7 +1337,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 8; i += 1) {
       tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
-    vars[name] = `${prefix}${tail}`;
+    setRuntimeVar(vars, name, `${prefix}${tail}`);
     return;
   }
   if (definition.type === "uscc") {
@@ -1339,12 +1349,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 9; i += 1) {
       orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
     }
-    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
     return;
   }
   if (definition.type === "md5") {
     const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-    vars[name] = md5(source);
+    setRuntimeVar(vars, name, md5(source));
     return;
   }
   if (definition.type === "signature") {
@@ -1353,12 +1363,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (!secret) {
       throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
     }
-    vars[name] = generateSignature(params, secret);
+    setRuntimeVar(vars, name, generateSignature(params, secret));
     return;
   }
   if (definition.type === "enum") {
     const { values, weights } = normalizeEnumDefinition(definition);
-    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1630,10 +1640,15 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+  let generatedVarIndex = 0;
   for (const definition of input.generatedVars || []) {
-    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    generatedVarIndex += 1;
+    const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+    invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+    assertNotReservedVar(definition.name, `${label} name`);
     invariant(
       contract.generatedVars.types.includes(definition.type),
       `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -1999,7 +2014,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         );
       }
     }
-    vars[name] = value;
+    setRuntimeVar(vars, name, value);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
