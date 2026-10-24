@@ -194,6 +194,9 @@ function chooseAdapter(step, adapters) {
 // 读取响应体并支持中途取消：fetch 的 signal abort 是否传播给 body 流随实现而异，
 // 这里显式监听 signal，保证"读体"阶段同样受超时/取消控制。
 function readBodyChunks(response, signal) {
+    // 无 body 的响应也必须先检查中止：fetch 忽略 abort 并在总时限后返回时，
+    // 不能继续进入 saveResponseAs 等后续副作用。
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     if (!response.body) return Promise.resolve([]);
     const reader = response.body.getReader();
     const chunks = [];
@@ -621,26 +624,60 @@ export function createEngine(engineOptions = {}) {
                 // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
                 const rawIntervalMs = Number(retry.intervalMs);
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
+                // 总时限已到：不再回调/等待，直接按 TO 结束。
+                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
+                // 回调前估算实际等待，仅用于进度提示；回调结束后会重新按剩余额度计算。
+                const waitBeforeCallback = retry
+                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
+                    : intervalMs;
+                const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+                if (attemptCallback) {
+                    const callbackInfo = {
+                        step,
+                        attempt,
+                        totalAttempts,
+                        intervalMs: waitBeforeCallback,
+                        status: attemptError ? null : (lastExecution.response?.status ?? null),
+                        failedAssertion,
+                        errorType: attemptErrorType,
+                        errorMessage: attemptError ? describeError(attemptError) : ""
+                    };
+                    // 异步 onAttempt 同样受总时限约束：回调挂起/耗时超限时不能拖过 maxElapsedMs。
+                    // 包一层 Promise 把同步抛错也纳入竞速；竞速后重新检查是否已到期。
+                    const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+                    if (retry) {
+                        const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+                        if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+                        const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+                        try {
+                            await raceWithSignal(callbackPromise, callbackDeadline.signal);
+                        } catch (error) {
+                            if (options.signal?.aborted) throw error;
+                            if (callbackDeadline.timedOut()
+                                || (now() - retryStartTime) >= maxElapsedMs) {
+                                throw retryTimeoutError(attempt);
+                            }
+                            throw error;
+                        } finally {
+                            callbackDeadline.dispose();
+                        }
+                    } else {
+                        await callbackPromise;
+                    }
+                }
+                // 回调可能已消耗掉剩余额度：重新计算等待时长，到期就直接 TO。
+                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
                 // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
                 // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
                 // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
                 const waitMs = retry
                     ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
                     : intervalMs;
-                // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
-                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
-                // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
-                await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-                    step,
-                    attempt,
-                    totalAttempts,
-                    intervalMs: waitMs,
-                    status: attemptError ? null : (lastExecution.response?.status ?? null),
-                    failedAssertion,
-                    errorType: attemptErrorType,
-                    errorMessage: attemptError ? describeError(attemptError) : ""
-                });
                 await delay(waitMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);

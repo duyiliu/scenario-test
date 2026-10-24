@@ -300,6 +300,14 @@ export function defineScenario(input) {
                 step.retryUntil.assertions === undefined,
                 `步骤 ${step.name} 的 retryUntil 不支持 assertions 字段（重试判定使用步骤顶层 assertions），请把断言移到步骤的 assertions`
             );
+            // 未知键即拒：retryOnn/interval 等拼写错误此前被静默忽略，
+            // 引擎回落默认 assertion 策略，网络错误重试完全不生效。
+            const unknownRetryKeys = Object.keys(step.retryUntil)
+                .filter((key) => !contract.retryUntil.keys.includes(key));
+            invariant(
+                unknownRetryKeys.length === 0,
+                `步骤 ${step.name} 的 retryUntil 包含未知键 ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${contract.retryUntil.keys.join("/")}`
+            );
             const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
             const intervalMs = Number(step.retryUntil.intervalMs ?? 2000);
             const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 300000);

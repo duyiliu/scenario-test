@@ -1673,6 +1673,11 @@ function defineScenario(input) {
         step.retryUntil.assertions === void 0,
         `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
       );
+      const unknownRetryKeys = Object.keys(step.retryUntil).filter((key) => !contract.retryUntil.keys.includes(key));
+      invariant(
+        unknownRetryKeys.length === 0,
+        `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.retryUntil.keys.join("/")}`
+      );
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
       const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);
@@ -2038,6 +2043,7 @@ function chooseAdapter(step, adapters) {
   return null;
 }
 function readBodyChunks(response, signal) {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
@@ -2376,17 +2382,46 @@ function createEngine(engineOptions = {}) {
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
+        if (retry && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const waitBeforeCallback = retry ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+        if (attemptCallback) {
+          const callbackInfo = {
+            step,
+            attempt,
+            totalAttempts,
+            intervalMs: waitBeforeCallback,
+            status: attemptError ? null : lastExecution.response?.status ?? null,
+            failedAssertion,
+            errorType: attemptErrorType,
+            errorMessage: attemptError ? describeError(attemptError) : ""
+          };
+          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          if (retry) {
+            const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+            if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+            const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+            try {
+              await raceWithSignal(callbackPromise, callbackDeadline.signal);
+            } catch (error) {
+              if (options.signal?.aborted) throw error;
+              if (callbackDeadline.timedOut() || now() - retryStartTime >= maxElapsedMs) {
+                throw retryTimeoutError(attempt);
+              }
+              throw error;
+            } finally {
+              callbackDeadline.dispose();
+            }
+          } else {
+            await callbackPromise;
+          }
+        }
+        if (retry && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
         const waitMs = retry ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
-        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-          step,
-          attempt,
-          totalAttempts,
-          intervalMs: waitMs,
-          status: attemptError ? null : lastExecution.response?.status ?? null,
-          failedAssertion,
-          errorType: attemptErrorType,
-          errorMessage: attemptError ? describeError(attemptError) : ""
-        });
         await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);

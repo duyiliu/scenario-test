@@ -246,6 +246,82 @@ test("maxElapsedMs 约束在途适配器：忽略 signal 的慢适配器按总�
     assert.equal(steps.length, 1);
 });
 
+test("maxElapsedMs 约束异步 onAttempt：回调耗时超限时按总时限 TIMEOUT", async () => {
+    let calls = 0;
+    let callbacks = 0;
+    const steps = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            calls += 1;
+            throw networkError("ECONNREFUSED");
+        }
+    });
+    const started = Date.now();
+    const report = await engine.runScenario(defineScenario({
+        name: "异步回调超时",
+        steps: [retryStep({ maxAttempts: 5, intervalMs: 10000, maxElapsedMs: 50, retryOn: ["error"] })]
+    }), {
+        onAttempt: async () => {
+            callbacks += 1;
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        },
+        onStep: (result) => { steps.push(result); }
+    });
+    const elapsed = Date.now() - started;
+    const result = report.results[0];
+
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.match(result.error, /重试超时/);
+    assert.match(result.error, /已尝试 1 次/);
+    assert.match(result.error, /最后错误: .*ECONNREFUSED/);
+    assert.equal(calls, 1);
+    assert.equal(callbacks, 1);
+    assert.equal(steps.length, 1);
+    assert.ok(elapsed < 300, `异步 onAttempt 应受总时限约束，实际耗时 ${elapsed}ms`);
+    // 等回调真正结束后：不得再发起尝试或触发额外 onAttempt/onStep
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    assert.equal(calls, 1);
+    assert.equal(callbacks, 1);
+    assert.equal(steps.length, 1);
+});
+
+test("maxElapsedMs 超时后迟到 HTTP 响应不触发 saveResponseAs", async () => {
+    let calls = 0;
+    let saves = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async saveResponse() {
+                saves += 1;
+                return { savedTo: "out.bin", size: 0 };
+            }
+        },
+        fetch: async () => {
+            calls += 1;
+            // 忽略 abort，在总时限后返回无响应体 Response（此前仍会进入 saveResponse）
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            return new Response(null, { status: 200 });
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "迟到响应不落盘",
+        steps: [retryStep(
+            { maxAttempts: 2, intervalMs: 100, maxElapsedMs: 50 },
+            { timeoutMs: 1000, saveResponseAs: "out.bin" }
+        )]
+    }));
+
+    assert.equal(report.results[0].status, "TIMEOUT");
+    assert.equal(calls, 1);
+    assert.equal(saves, 0);
+    // 等迟到 fetch 真正完成：中止后的读体不得继续调用 saveResponse
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(calls, 1);
+    assert.equal(saves, 0);
+});
+
 test("retryOn: ['error'] 适配器异常重试成功，onAttempt 与结果一致", async () => {
     let calls = 0;
     const attempts = [];
@@ -486,6 +562,8 @@ test("定义期拒绝非法 retryOn（非数组/未知取值）", () => {
 
     assert.throws(() => withRetry({ retryOn: "error" }), /retryOn 必须是数组/);
     assert.throws(() => withRetry({ retryOn: ["assertion", "bogus"] }), /retryOn 项只支持/);
+    // 拼错属性名不能被静默忽略（否则引擎按默认 assertion 策略，网络错误不重试）
+    assert.throws(() => withRetry({ retryOnn: ["error"] }), /retryUntil 包含未知键 "retryOnn"/);
     // 空数组合法：表示只尝试一次、不重试
     withRetry({ retryOn: [] });
 });
