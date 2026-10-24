@@ -2281,7 +2281,8 @@ async function executeHttp(step, runtime, options) {
 }
 var AdapterExecutionError = class extends Error {
   constructor(adapterName, originalError, step) {
-    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    const detail = originalError?.message || (originalError === void 0 ? "undefined" : String(originalError));
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${detail}`;
     super(message, { cause: originalError });
     this.name = "AdapterExecutionError";
     this.adapterName = adapterName;
@@ -2417,7 +2418,7 @@ function createEngine(engineOptions = {}) {
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
-        if (retry && now() - retryStartTime > maxElapsedMs) {
+        if (retry && now() - retryStartTime >= maxElapsedMs) {
           const lastErrorText = lastAttemptError ? `
 \u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
           throw createTimeoutError(
@@ -2455,17 +2456,18 @@ function createEngine(engineOptions = {}) {
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
+        const waitMs = retry ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
         await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
           step,
           attempt,
           totalAttempts,
-          intervalMs,
+          intervalMs: waitMs,
           status: attemptError ? null : lastExecution.response?.status ?? null,
           failedAssertion,
           errorType: attemptErrorType,
           errorMessage: attemptError ? describeError(attemptError) : ""
         });
-        await delay(intervalMs, options.signal);
+        await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
       return {

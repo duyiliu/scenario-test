@@ -340,7 +340,11 @@ async function executeHttp(step, runtime, options) {
 
 class AdapterExecutionError extends Error {
     constructor(adapterName, originalError, step) {
-        const message = `适配器 ${adapterName} 执行失败: ${originalError.message}`;
+        // 适配器可能 reject 非 Error 值（字符串/null 等）：直接读 .message 会抛 TypeError
+        // 或输出 undefined，掩盖真实失败原因；统一降级为 String()（null/undefined 保留可读文案）。
+        const detail = originalError?.message
+            || (originalError === undefined ? "undefined" : String(originalError));
+        const message = `适配器 ${adapterName} 执行失败: ${detail}`;
         // cause 保留原始错误链；结构化标记透传——适配器内部超时/请求现场被包装后
         // 仍按 TIMEOUT 归类并透出 method/path/request，不再降级为无上下文的 ERROR
         super(message, { cause: originalError });
@@ -517,7 +521,8 @@ export function createEngine(engineOptions = {}) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
-                if (retry && (now() - retryStartTime) > maxElapsedMs) {
+                // 用 >=：等待时已按剩余 maxElapsedMs 截断，到期即结束而不是再发起一次尝试
+                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
                     const lastErrorText = lastAttemptError
                         ? `\n最后错误: ${describeError(lastAttemptError)}`
                         : "";
@@ -577,6 +582,12 @@ export function createEngine(engineOptions = {}) {
                 // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
                 const rawIntervalMs = Number(retry.intervalMs);
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
+                // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
+                // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
+                // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
+                const waitMs = retry
+                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
+                    : intervalMs;
                 // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
                 // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
@@ -585,13 +596,13 @@ export function createEngine(engineOptions = {}) {
                     step,
                     attempt,
                     totalAttempts,
-                    intervalMs,
+                    intervalMs: waitMs,
                     status: attemptError ? null : (lastExecution.response?.status ?? null),
                     failedAssertion,
                     errorType: attemptErrorType,
                     errorMessage: attemptError ? describeError(attemptError) : ""
                 });
-                await delay(intervalMs, options.signal);
+                await delay(waitMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);
             return {
