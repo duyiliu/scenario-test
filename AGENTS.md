@@ -34,6 +34,21 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`。选项见 `--help`。
 
+## CI
+
+`.github/workflows/ci.yml` 在 `push master` 与所有 `pull_request` 上运行两个必需检查：
+
+- `unit`：Node 20/22 × ubuntu/windows 矩阵，依次执行 `npm ci` → `npm run build` → `npm test` → `npm run check:eol`。
+  矩阵子任务名为 `unit (os, node)`，聚合成稳定的 `unit` 检查供分支保护引用。
+- `browser`：ubuntu + Node 20，执行 `npm run build`、`npx playwright install --with-deps chromium`、`npm run test:browser`，
+  并以 `PLAYWRIGHT_CHANNEL=chromium` 使用 Playwright 安装的 Chromium（本地默认仍用本机 Chrome）。
+
+本地复现 unit：`npm run check && npm run check:eol`。本地复现 browser：先 `npx playwright install chromium`，再
+`PLAYWRIGHT_CHANNEL=chromium npm run test:browser`（PowerShell：`$env:PLAYWRIGHT_CHANNEL="chromium"; npm run test:browser`）。
+`unit` 与 `browser` 需在 GitHub 分支保护中设为 required status checks；分支保护属仓库设置，不在代码中声明。
+`check:eol` 只审计 CI 检出后的索引/工作区：CRLF 经生成物、外部工具或强制写入真正进入索引/工作区时 unit 变红；
+普通文本的 CRLF-only 编辑会在提交/检出时被 `.gitattributes` 归一为 LF，不会形成可审计的 PR 差异，应在提交前用本地 `npm run check:eol` 发现（`tests/eol.test.js` 已用临时仓库锁定该边界）。
+
 ## 架构
 
 核心思想：**`src/contract.js` 是 DSL 的唯一事实来源。** 它声明操作符列表、断言元键、`when`/`extract` 来源、保留变量、`generatedVars` 类型、globals 类型、config/scenario/scenario-step 键列表以及 CLI 选项。所有对外投射 DSL 的模块都从 `contract` 读取——`capabilities.js` → `dist/scenario-test-capabilities.json` 与 `capabilities` 命令；`scripts/generate-dts.mjs` → `dist/scenario-test.d.ts`；`init-templates.js` → AI 提示词 / 模式 / 项目 README；`doctor.js` → 其 DSL 检查。**切勿手写任何操作符/键列表的第二份副本**——构建与测试会校验一致性（`tests/contract.test.js`、`tests/dts.test.js`）。契约一经发布即不可变；新增能力时递增 `contractVersion` 并保留旧字段。

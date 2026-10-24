@@ -6,6 +6,8 @@ import { chromium } from "playwright";
 
 const root = path.resolve(import.meta.dirname, "..");
 const port = 4399;
+// 默认使用本机 Google Chrome；CI 通过 PLAYWRIGHT_CHANNEL=chromium 使用 Playwright 安装的 Chromium。
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL || "chrome";
 const artifacts = path.join(root, "test-results");
 fs.mkdirSync(artifacts, { recursive: true });
 
@@ -34,7 +36,7 @@ async function waitForServer() {
 let browser;
 try {
     await waitForServer();
-    browser = await chromium.launch({ channel: "chrome", headless: true });
+    browser = await chromium.launch({ channel: browserChannel, headless: true });
     // 仅桌面视口：工作台面向桌面浏览器，无移动端使用场景（2026-10-09 决策移除 mobile 视口）
     for (const viewport of [{ width: 1440, height: 900, name: "desktop" }]) {
         const page = await browser.newPage({ viewport });
