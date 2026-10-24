@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- 场景顶层与步骤顶层未知键定义期拒绝（contract v10 → v11，issue #26 B1；master 的 v9/v10 已被 run --json/when 扩展占用）：拼错的 `assertion`/`extracts`/`retryuntill`/`timeoutMS` 此前被 `defineScenario` 静默接受——业务断言消失、重试/超时失效，接口返回 2xx 即假绿。现消费既有的 `contract.scenario.keys`/`stepKeys` 名单校验（不另写副本）；未声明 HTTP 执行面的步骤（matches 自动分发适配器）与显式 `adapter` 步骤仍可携带适配器私有配置键，但拼写/大小写疑似 DSL 字段的键仍然拒绝。
+- 步骤 `request` / `params` / `request.params` 必须是对象（issue #26 B3）：非对象此前在运行期被静默忽略（headers/body/method 或整个 query 丢弃），请求照发且可能假绿；同时声明 `params` 与 `request.params` 时定义期要求二选一（运行期只取 `params`，另一份静默失效）。
+- `contract.config.environmentKeys` 补 `authorization`（issue #26 F3）：CLI `selectEnvironment` 与浏览器 `getEffectiveAuthorization` 一直消费 `environment.authorization`，此前契约未投射，AI/工具侧不可见。
+- 浏览器工作台移除死字段 `scenario.iterations` 的读取：引擎/工作台从不写入、也不在契约中，B1 未知键校验一并明确去留（统计口径完全由 `state.steps` 推导）。
+
 ### 核心
 
 - `joinUrl` 放行协议相对 URL（`//cdn.example.com/x`，issue #26 B4）：此前只识别 `^https?://`，前导 `//` 被 strip 后拼进 baseUrl，请求发往错误主机；`executeHttp` 的「绝对地址不发环境凭据」判定同步覆盖协议相对写法。

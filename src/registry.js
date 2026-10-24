@@ -15,6 +15,49 @@ function nonEmptyString(value) {
     return typeof value === "string" && Boolean(value.trim());
 }
 
+// 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。
+// 拼错的 assertions/retryUntil/timeoutMs 此前被 defineScenario 静默接受——业务断言
+// 消失、重试/超时静默失效，接口返回 2xx 即假绿；这里按契约名单定义期直接拒绝。
+function describeUnknownKeys(input, allowed) {
+    const allowedSet = new Set(allowed);
+    return Object.keys(input).filter((key) => !allowedSet.has(key));
+}
+
+// 轻量编辑距离：用于识别拼写/大小写错误（assertion→assertions、retryuntill→retryUntil、
+// timeoutMS→timeoutMs），但不把适配器私有配置键（如 prepareLocal）误判为未知 DSL 字段。
+function editDistance(a, b) {
+    const rows = Array.from({ length: a.length + 1 }, (_, index) => [index]);
+    for (let column = 1; column <= b.length; column += 1) rows[0][column] = column;
+    for (let row = 1; row <= a.length; row += 1) {
+        for (let column = 1; column <= b.length; column += 1) {
+            rows[row][column] = Math.min(
+                rows[row - 1][column] + 1,
+                rows[row][column - 1] + 1,
+                rows[row - 1][column - 1] + (a[row - 1] === b[column - 1] ? 0 : 1)
+            );
+        }
+    }
+    return rows[a.length][b.length];
+}
+
+function looksLikeKeyTypo(key, allowed) {
+    const lower = key.toLowerCase();
+    return allowed.some((candidate) => {
+        const target = candidate.toLowerCase();
+        return target === lower || editDistance(lower, target) <= 1;
+    });
+}
+
+// 步骤声明这些字段即视为 HTTP 执行面（或非适配器步骤）：未知键按拼写错误拒绝。
+// 名单从 contract 派生（只排除 name/adapter 这两个非执行字段），勿另写副本。
+// 未声明任何 HTTP 字段的步骤可能是 matches 自动分发的适配器步骤，其自定义配置键
+// （如 `{ name, prepareLocal: true }`）不属于 DSL，不在白名单校验范围。
+const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+
+function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
+    return `${label} 包含未知键 ${unknownKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${allowed.join("/")}${hint}`;
+}
+
 function assertUnique(items, field, label) {
     const seen = new Set();
     for (const item of items) {
@@ -99,6 +142,11 @@ export function defineScenario(input) {
     invariant(isPlainObject(input), "场景必须是对象");
     invariant(typeof input.name === "string" && input.name.trim(), "场景缺少 name");
     invariant(Array.isArray(input.steps), `场景 ${input.name} 缺少 steps 数组`);
+    const unknownScenarioKeys = describeUnknownKeys(input, contract.scenario.keys);
+    invariant(
+        unknownScenarioKeys.length === 0,
+        unknownKeysMessage(`场景 ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "（场景顶层只接受契约声明的字段）")
+    );
     // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
     assertTemplatePathsOnly(input, `场景 ${input.name}`);
@@ -115,6 +163,33 @@ export function defineScenario(input) {
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
+        // B3：request/params 非对象会在运行期被静默忽略（headers/body/method 或整个 query
+        // 丢弃），请求照发并可能 PASS——定义期直接拒绝，并禁止 step.params 与 request.params
+        // 双写（运行期只取 step.params，另一份静默失效）。
+        if (step.request !== undefined) {
+            invariant(
+                isPlainObject(step.request),
+                `步骤 ${step.name} 的 request 必须是对象（当前 ${JSON.stringify(step.request)}，非对象会在运行期被静默忽略）`
+            );
+            if (step.request.params !== undefined) {
+                invariant(
+                    isPlainObject(step.request.params),
+                    `步骤 ${step.name} 的 request.params 必须是对象（当前 ${JSON.stringify(step.request.params)}，非对象会导致整个 query 被静默丢弃）`
+                );
+            }
+        }
+        if (step.params !== undefined) {
+            invariant(
+                isPlainObject(step.params),
+                `步骤 ${step.name} 的 params 必须是对象（当前 ${JSON.stringify(step.params)}，非对象会导致整个 query 被静默丢弃）`
+            );
+        }
+        if (step.params !== undefined && isPlainObject(step.request) && step.request.params !== undefined) {
+            invariant(
+                false,
+                `步骤 ${step.name} 同时声明了 params 与 request.params，运行期只取 params（request.params 会被静默忽略），请二选一`
+            );
+        }
         if (step.method !== undefined) invariant(nonEmptyString(step.method), `步骤 ${step.name} 的 method 无效`);
         // step.method 不经 {{ }} 解析（executeHttp 用原始值），模板写法会按字面方法名
         // 发送——恒为死写法，定义期直接拒绝；request.method 在 request 对象内会解析，
@@ -277,6 +352,20 @@ export function defineScenario(input) {
                 );
             }
         }
+        // 未知键校验放在最后：既保留既有校验的报错优先级（如 adapter/match 豁免提示、
+        // GET 带体、method 模板等），又让纯拼写错误在这里明确失败。
+        // HTTP 步骤严格拒绝所有未知键；适配器步骤（显式 adapter 或未声明 HTTP 字段的
+        // matches 自动分发步骤）允许私有配置键（如 `{ name, prepareLocal: true }`），
+        // 但拼写/大小写疑似 DSL 字段的键仍然拒绝，避免假绿。
+        const unknownStepKeys = describeUnknownKeys(step, contract.scenario.stepKeys);
+        const hasHttpExecution = step.adapter === undefined && HTTP_STEP_KEYS.some((key) => step[key] !== undefined);
+        const rejectedKeys = hasHttpExecution
+            ? unknownStepKeys
+            : unknownStepKeys.filter((key) => looksLikeKeyTypo(key, contract.scenario.stepKeys));
+        invariant(
+            rejectedKeys.length === 0,
+            unknownKeysMessage(`场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`, rejectedKeys, contract.scenario.stepKeys)
+        );
     });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");

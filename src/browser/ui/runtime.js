@@ -467,8 +467,10 @@ export function createWorkbenchRuntime(options) {
         updateExecutionFooter();
     }
 
-    function renderStatsAll(iterations) {
-        uiView.renderStatsAll(state.steps, iterations, state.scenario, state.scenarioFile);
+    function renderStatsAll() {
+        // iterations 字段从未被引擎/工作台写入，也不在契约中（B1 未知键校验一并移除读取），
+        // 统计口径完全由 state.steps 推导；此处保留占位参数形状供 uiView 渲染。
+        uiView.renderStatsAll(state.steps, { run: 1, failed: 0 }, state.scenario, state.scenarioFile);
         updateExecutionFooter();
     }
 
@@ -611,7 +613,7 @@ export function createWorkbenchRuntime(options) {
     }
 
     function refreshStepSessionView() {
-        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
@@ -687,7 +689,7 @@ export function createWorkbenchRuntime(options) {
         state.executionMode = 'full';
         stepsFilterState.type = 'all';
         stepsFilterState.keyword = '';
-        renderStatsAll((state.scenario && state.scenario.iterations) || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
         renderReportPanel();
@@ -835,7 +837,6 @@ export function createWorkbenchRuntime(options) {
             return;
         }
         var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
-        var iterations = state.scenario.iterations || { run: 1, failed: 0 };
         var failurePolicy = state.scenario.failurePolicy || 'stop';
         state.running = true;
         state.activeRuntime = runtime;
@@ -864,7 +865,7 @@ export function createWorkbenchRuntime(options) {
                 result.stepNo = i + 1;
                 state.steps.push(result);
                 state.varsTrail[i] = { ...runtime.vars };
-                renderStatsAll(iterations);
+                renderStatsAll();
                 renderFilterAll();
                 uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
                 renderReportPanel();
@@ -928,7 +929,7 @@ export function createWorkbenchRuntime(options) {
             state.varsTrail[stepIndex] = { ...runtime.vars };
             state.nextStepIndex += 1;
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
-            renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+            renderStatsAll();
             renderFilterAll();
             uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
             expandStepDetails(stepIndex);
@@ -1240,7 +1241,7 @@ export function createWorkbenchRuntime(options) {
             persistSetting(keys.environment, envKey);
             syncSettingsInputs();
             updateHeader();
-            renderStatsAll(state.scenario ? state.scenario.iterations : { run: 1, failed: 0 });
+            renderStatsAll();
             renderFilterAll();
             renderStepsAll();
         }
@@ -1662,7 +1663,7 @@ export function createWorkbenchRuntime(options) {
                 syncSettingsInputs();
                 updateHeader();
                 renderScenarioSelect();
-                renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+                renderStatsAll();
                 renderFilterAll();
                 renderStepsAll();
                 renderReportPanel();

@@ -329,7 +329,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.7.1";
 
   // src/contract.js
-  var CONTRACT_VERSION = 10;
+  var CONTRACT_VERSION = 11;
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
     runtimeVersion: VERSION,
@@ -448,7 +448,7 @@ var ScenarioTest = (() => {
     config: Object.freeze({
       // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
       scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-      environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals"]),
+      environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
       variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
       manual: Object.freeze({
         type: "boolean",
@@ -1341,6 +1341,35 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   function nonEmptyString(value) {
     return typeof value === "string" && Boolean(value.trim());
   }
+  function describeUnknownKeys(input, allowed) {
+    const allowedSet = new Set(allowed);
+    return Object.keys(input).filter((key) => !allowedSet.has(key));
+  }
+  function editDistance(a, b) {
+    const rows = Array.from({ length: a.length + 1 }, (_, index) => [index]);
+    for (let column = 1; column <= b.length; column += 1) rows[0][column] = column;
+    for (let row = 1; row <= a.length; row += 1) {
+      for (let column = 1; column <= b.length; column += 1) {
+        rows[row][column] = Math.min(
+          rows[row - 1][column] + 1,
+          rows[row][column - 1] + 1,
+          rows[row - 1][column - 1] + (a[row - 1] === b[column - 1] ? 0 : 1)
+        );
+      }
+    }
+    return rows[a.length][b.length];
+  }
+  function looksLikeKeyTypo(key, allowed) {
+    const lower = key.toLowerCase();
+    return allowed.some((candidate) => {
+      const target = candidate.toLowerCase();
+      return target === lower || editDistance(lower, target) <= 1;
+    });
+  }
+  var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+  function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
+    return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  }
   function assertUnique(items, field, label) {
     const seen = /* @__PURE__ */ new Set();
     for (const item of items) {
@@ -1408,6 +1437,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     invariant(isPlainObject(input), "\u573A\u666F\u5FC5\u987B\u662F\u5BF9\u8C61");
     invariant(typeof input.name === "string" && input.name.trim(), "\u573A\u666F\u7F3A\u5C11 name");
     invariant(Array.isArray(input.steps), `\u573A\u666F ${input.name} \u7F3A\u5C11 steps \u6570\u7EC4`);
+    const unknownScenarioKeys = describeUnknownKeys(input, contract.scenario.keys);
+    invariant(
+      unknownScenarioKeys.length === 0,
+      unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
+    );
     assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
     assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
     for (const definition of input.generatedVars || []) {
@@ -1421,6 +1455,30 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     input.steps.forEach((step, index) => {
       invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
       invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+      if (step.request !== void 0) {
+        invariant(
+          isPlainObject(step.request),
+          `\u6B65\u9AA4 ${step.name} \u7684 request \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5728\u8FD0\u884C\u671F\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09`
+        );
+        if (step.request.params !== void 0) {
+          invariant(
+            isPlainObject(step.request.params),
+            `\u6B65\u9AA4 ${step.name} \u7684 request.params \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request.params)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5BFC\u81F4\u6574\u4E2A query \u88AB\u9759\u9ED8\u4E22\u5F03\uFF09`
+          );
+        }
+      }
+      if (step.params !== void 0) {
+        invariant(
+          isPlainObject(step.params),
+          `\u6B65\u9AA4 ${step.name} \u7684 params \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.params)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5BFC\u81F4\u6574\u4E2A query \u88AB\u9759\u9ED8\u4E22\u5F03\uFF09`
+        );
+      }
+      if (step.params !== void 0 && isPlainObject(step.request) && step.request.params !== void 0) {
+        invariant(
+          false,
+          `\u6B65\u9AA4 ${step.name} \u540C\u65F6\u58F0\u660E\u4E86 params \u4E0E request.params\uFF0C\u8FD0\u884C\u671F\u53EA\u53D6 params\uFF08request.params \u4F1A\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09\uFF0C\u8BF7\u4E8C\u9009\u4E00`
+        );
+      }
       if (step.method !== void 0) invariant(nonEmptyString(step.method), `\u6B65\u9AA4 ${step.name} \u7684 method \u65E0\u6548`);
       const isAdapterStep = step.adapter !== void 0;
       if (isAdapterStep) {
@@ -1546,6 +1604,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           );
         }
       }
+      const unknownStepKeys = describeUnknownKeys(step, contract.scenario.stepKeys);
+      const hasHttpExecution = step.adapter === void 0 && HTTP_STEP_KEYS.some((key) => step[key] !== void 0);
+      const rejectedKeys = hasHttpExecution ? unknownStepKeys : unknownStepKeys.filter((key) => looksLikeKeyTypo(key, contract.scenario.stepKeys));
+      invariant(
+        rejectedKeys.length === 0,
+        unknownKeysMessage(`\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`, rejectedKeys, contract.scenario.stepKeys)
+      );
     });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
@@ -5323,8 +5388,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
       updateExecutionFooter();
     }
-    function renderStatsAll(iterations) {
-      uiView.renderStatsAll(state.steps, iterations, state.scenario, state.scenarioFile);
+    function renderStatsAll() {
+      uiView.renderStatsAll(state.steps, { run: 1, failed: 0 }, state.scenario, state.scenarioFile);
       updateExecutionFooter();
     }
     function renderFilterAll() {
@@ -5448,7 +5513,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       runtime.cancelled = false;
     }
     function refreshStepSessionView() {
-      renderStatsAll(state.scenario && state.scenario.iterations || { run: 1, failed: 0 });
+      renderStatsAll();
       renderFilterAll();
       renderStepsAll();
       renderReportPanel();
@@ -5517,7 +5582,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       state.executionMode = "full";
       stepsFilterState.type = "all";
       stepsFilterState.keyword = "";
-      renderStatsAll(state.scenario && state.scenario.iterations || { run: 1, failed: 0 });
+      renderStatsAll();
       renderFilterAll();
       renderStepsAll();
       renderReportPanel();
@@ -5649,7 +5714,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         return;
       }
       var list = Array.isArray(state.scenario.steps) ? state.scenario.steps : [];
-      var iterations = state.scenario.iterations || { run: 1, failed: 0 };
       var failurePolicy = state.scenario.failurePolicy || "stop";
       state.running = true;
       state.activeRuntime = runtime;
@@ -5675,7 +5739,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           result.stepNo = i + 1;
           state.steps.push(result);
           state.varsTrail[i] = { ...runtime.vars };
-          renderStatsAll(iterations);
+          renderStatsAll();
           renderFilterAll();
           uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
           renderReportPanel();
@@ -5733,7 +5797,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         state.varsTrail[stepIndex] = { ...runtime.vars };
         state.nextStepIndex += 1;
         state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
-        renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
         expandStepDetails(stepIndex);
@@ -6009,7 +6073,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         persistSetting(keys.environment, envKey);
         syncSettingsInputs();
         updateHeader();
-        renderStatsAll(state.scenario ? state.scenario.iterations : { run: 1, failed: 0 });
+        renderStatsAll();
         renderFilterAll();
         renderStepsAll();
       }
@@ -6396,7 +6460,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           syncSettingsInputs();
           updateHeader();
           renderScenarioSelect();
-          renderStatsAll(state.scenario.iterations || { run: 1, failed: 0 });
+          renderStatsAll();
           renderFilterAll();
           renderStepsAll();
           renderReportPanel();
