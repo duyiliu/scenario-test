@@ -233,8 +233,12 @@ async function executeHttp(step, runtime, options) {
     const request = resolveClone(step.request || {}, runtime) || {};
     const method = String(step.method || request.method || "GET").toUpperCase();
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
+    // requestHeaders 为运行时附加头（工作台 serve 代理的环境路由头），优先于步骤声明的同名头；
+    // 内部路由信息必须由运行时决定，不能被场景文件覆盖。绝对 URL 直连外部服务时不附加，
+    // 与全局参数/环境 Authorization 同口径，避免把本地代理路由头泄漏给第三方。
     const headers = { ...(request.headers || {}) };
     const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+    if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {

@@ -318,6 +318,17 @@ export function createWorkbenchRuntime(options) {
         return getEffectiveBaseUrl();
     }
 
+    // serve 代理模式：把当前所选环境 key 随请求发给本地代理，由 serve 实时解析目标 baseUrl。
+    // 非代理模式返回 null，不影响直连场景。
+    function getProxyRequestHeaders() {
+        if (!window.__SCENARIO_TEST_SERVE_PROXY__) return null;
+        var environment = getSelectedEnvironment();
+        if (!environment || !environment.key) return null;
+        var headers = {};
+        headers[core.SERVE_ENV_HEADER] = environment.key;
+        return headers;
+    }
+
     function getEffectiveAuthorization() {
         var cfg = appConfig;
         var keys = getStorageKeys();
@@ -526,6 +537,8 @@ export function createWorkbenchRuntime(options) {
             baseUrl: runtime.baseUrl,
             authorization: runtime.authorization,
             globals: runtime.globals,
+            // 代理模式下由 serve 按所选环境实时选择 upstream，避免启动环境固定导致请求打到错误后端
+            requestHeaders: getProxyRequestHeaders(),
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
             onAttempt: function (info) {
@@ -1411,6 +1424,13 @@ export function createWorkbenchRuntime(options) {
             var mergedCookie = cookieKey ? (headers[cookieKey] + '; ' + cookieParts.join('; ')) : cookieParts.join('; ');
             if (cookieKey) headers[cookieKey] = mergedCookie;
             else headers.Cookie = mergedCookie;
+        }
+
+        // 复制出的 curl 要复现工作台当前所选环境：代理模式下同样携带环境路由头；
+        // 绝对 URL 直连外部服务时不附加，避免复制命令把本地路由头打到第三方
+        var proxyHeaders = getProxyRequestHeaders();
+        if (proxyHeaders && !/^(?:https?:)?\/\//i.test(stepPath)) {
+            Object.keys(proxyHeaders).forEach(function (key) { headers[key] = proxyHeaders[key]; });
         }
 
         var fullUrl = core.joinUrl(baseUrl, requestPath);

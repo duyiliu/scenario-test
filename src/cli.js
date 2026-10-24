@@ -12,7 +12,7 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
+import { SERVE_ENV_HEADER, mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 
@@ -848,22 +848,56 @@ function serveStaticFile(response, filePath) {
 }
 
 function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
-    // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
+    // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址。
+    // 代理目标按请求从 config.envs 实时解析：浏览器通过 SERVE_ENV_HEADER 声明当前所选环境，
+    // --env 仅作为未携带环境 key 时的默认环境，--base-url 仍为显式覆盖（与 run 模式一致）。
+    const override = String(baseUrlOverride || "").replace(/\/+$/, "");
     if (config.envs?.length) {
-        // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
+        // 与 run 的 selectEnvironment 一致：默认环境不存在时报错退出。
         // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
         const environment = selectEnvironment(config, envKey);
         // --base-url 临时覆盖代理目标（与 run 模式一致）；日志标注覆盖来源，避免与配置环境混淆
-        const overridden = Boolean(baseUrlOverride);
+        const overridden = Boolean(override);
         return {
             key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
-            target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+            target: String(overridden ? override : environment.baseUrl || "").replace(/\/+$/, ""),
+            defaultEnvKey: environment.key,
+            environments: config.envs,
+            override
         };
     }
     return {
         key: config.defaultEnvKey || "default",
-        target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
+        target: String(override || config.baseUrl || "").replace(/\/+$/, ""),
+        defaultEnvKey: "",
+        environments: [],
+        override
     };
+}
+
+// 单个代理请求的环境路由：未知/未配置的环境 key 必须拒绝并给出可选环境，
+// 绝不接受浏览器传入任意 URL——目标只能来自 config.envs 的 baseUrl 或 --base-url。
+function resolveServeRequestTarget(proxy, requestedEnvKey) {
+    if (!proxy.environments.length) return { target: proxy.target };
+    const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
+    const key = String(raw || "").trim() || proxy.defaultEnvKey;
+    const environment = proxy.environments.find((item) => item.key === key);
+    if (!environment) {
+        const keys = proxy.environments.map((item) => item.key);
+        return {
+            error: `Bad Gateway: 未找到环境 ${key}\n` +
+                `可用环境: ${keys.join(", ")}\n` +
+                "请在工作台选择配置中已声明的环境，或为 serve 传入 --env <key> 指定默认环境。"
+        };
+    }
+    const target = String(proxy.override || environment.baseUrl || "").replace(/\/+$/, "");
+    if (!target) {
+        return {
+            error: `Bad Gateway: 环境 ${key} 未配置 baseUrl\n` +
+                "请在配置中为该环境设置 baseUrl，或使用 --base-url 临时覆盖代理目标。"
+        };
+    }
+    return { target, key };
 }
 
 // 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
@@ -872,6 +906,8 @@ const HOP_BY_HOP_HEADERS = new Set([
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailer", "transfer-encoding", "upgrade", "host"
 ]);
+// 本地代理内部路由头不转发给上游：业务后端不应感知工作台的环境选择
+const SERVE_INTERNAL_HEADERS = new Set([SERVE_ENV_HEADER]);
 
 // 上游空闲超时：响应头尚未发出时返回 502；传输中途超时/断连则无法再写响应头，
 // 只能销毁下游连接。参数化（如 --proxy-timeout）需扩展 contract，暂以常量 + README 说明为准。
@@ -925,7 +961,7 @@ function proxyRequest(request, response, targetUrl) {
     const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
     for (const [name, value] of Object.entries(request.headers)) {
         const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
+        if (!HOP_BY_HOP_HEADERS.has(lower) && !SERVE_INTERNAL_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
     }
     let upstream;
     try {
@@ -979,7 +1015,7 @@ async function serveCommand(args) {
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
-    const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+    const proxy = resolveServeProxyTarget(config, args.env, args.baseUrl);
     const server = http.createServer((request, response) => {
         try {
             if (!isAllowedServeHost(request.headers.host, args.port)) {
@@ -1005,8 +1041,13 @@ async function serveCommand(args) {
             if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
             fs.stat(filePath, (error, stat) => {
                 if (error || !stat.isFile()) {
-                    // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
-                    if (proxyTarget) { proxyRequest(request, response, proxyTarget); return; }
+                    // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS。
+                    // 目标按请求携带的环境 key 实时解析，切换环境后无需重启 serve。
+                    if (proxy.target || proxy.environments.length) {
+                        const route = resolveServeRequestTarget(proxy, request.headers[SERVE_ENV_HEADER]);
+                        if (route.error) { respondProxyError(response, route.error); return; }
+                        if (route.target) { proxyRequest(request, response, route.target); return; }
+                    }
                     response.writeHead(404); response.end("Not Found"); return;
                 }
                 serveStaticFile(response, filePath);
@@ -1029,7 +1070,14 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
-        if (proxyTarget) console.log(`接口代理: ${proxyEnvKey} -> ${proxyTarget}`);
+        if (proxy.target || proxy.environments.length) {
+            console.log(`接口代理: ${proxy.key} -> ${proxy.target || "(未配置 baseUrl)"}`);
+            if (proxy.environments.length) {
+                const allowed = proxy.environments.map((item) => `${item.key} -> ${item.baseUrl || "(未配置 baseUrl)"}`);
+                console.log(`可用环境: ${allowed.join(", ")}`);
+                console.log(`提示: 工作台按当前所选环境实时切换代理目标（请求头 ${SERVE_ENV_HEADER}）；--env 仅设置默认环境。`);
+            }
+        }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }

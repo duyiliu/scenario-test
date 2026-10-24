@@ -251,6 +251,7 @@ var ScenarioTest = (() => {
     PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
     RESERVED_VARS: () => RESERVED_VARS,
     SAVED_RESPONSE: () => SAVED_RESPONSE,
+    SERVE_ENV_HEADER: () => SERVE_ENV_HEADER,
     TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
     TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
     USCC_ALPHABET: () => USCC_ALPHABET,
@@ -511,6 +512,7 @@ var ScenarioTest = (() => {
   });
 
   // src/core.js
+  var SERVE_ENV_HEADER = "x-scenario-test-env";
   var GLOBAL_TYPES = [...contract.globals.types];
   function isGlobalParam(item) {
     return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -1992,6 +1994,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...request.headers || {} };
     const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+    if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
@@ -5338,6 +5341,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       }
       return getEffectiveBaseUrl();
     }
+    function getProxyRequestHeaders() {
+      if (!window.__SCENARIO_TEST_SERVE_PROXY__) return null;
+      var environment = getSelectedEnvironment();
+      if (!environment || !environment.key) return null;
+      var headers = {};
+      headers[SERVE_ENV_HEADER] = environment.key;
+      return headers;
+    }
     function getEffectiveAuthorization() {
       var cfg = appConfig;
       var keys = getStorageKeys();
@@ -5523,6 +5534,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         baseUrl: runtime.baseUrl,
         authorization: runtime.authorization,
         globals: runtime.globals,
+        // 代理模式下由 serve 按所选环境实时选择 upstream，避免启动环境固定导致请求打到错误后端
+        requestHeaders: getProxyRequestHeaders(),
         requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4),
         // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
         onAttempt: function(info) {
@@ -6327,6 +6340,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         var mergedCookie = cookieKey ? headers[cookieKey] + "; " + cookieParts.join("; ") : cookieParts.join("; ");
         if (cookieKey) headers[cookieKey] = mergedCookie;
         else headers.Cookie = mergedCookie;
+      }
+      var proxyHeaders = getProxyRequestHeaders();
+      if (proxyHeaders && !/^(?:https?:)?\/\//i.test(stepPath)) {
+        Object.keys(proxyHeaders).forEach(function(key) {
+          headers[key] = proxyHeaders[key];
+        });
       }
       var fullUrl = joinUrl(baseUrl, requestPath);
       var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];

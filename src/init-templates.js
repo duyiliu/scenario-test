@@ -347,7 +347,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## 浏览器工作台
 
-双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
+双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再按当前所选环境转发到配置中该环境的 \`baseUrl\`（切换环境后实时生效，未知环境 key 返回 502）；\`--env\` 仅设置默认环境，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
 
 也可以在项目根目录执行：
 
