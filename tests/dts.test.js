@@ -48,6 +48,7 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "WhenTarget"), [...contract.when.targets].sort());
     assert.deepEqual(parseUnion(dts, "ExtractSource"), [...contract.extract.from].sort());
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
+    assert.deepEqual(parseUnion(dts, "RetryOn"), [...contract.retryUntil.retryOn].sort());
 });
 
 test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
@@ -76,6 +77,10 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     // WhenDefinition 的来源/响应级目标与 contract 一致
     assert.match(dts, /from\?: WhenSource/);
     assert.match(dts, /target\?: WhenTarget/);
+    // retryUntil.retryOn 与 onAttempt 错误信息由 contract/引擎行为投射
+    assert.match(dts, /retryOn\?: RetryOn\[\]/);
+    assert.match(dts, /errorType: "" \| "error" \| "timeout";/);
+    assert.match(dts, /errorMessage: string;/);
 });
 
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {

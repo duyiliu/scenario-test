@@ -251,6 +251,20 @@ export function defineScenario(input) {
             // 运行期在 engine.js 统一钳制下限 100ms（未声明/非法值按默认 2000ms）
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
+            // retryOn：声明哪些失败类型参与重试；默认 ["assertion"] 保持历史语义。
+            // 非数组/未知值定义期即拒，避免拼写错误使 error/timeout 重试静默失效。
+            if (step.retryUntil.retryOn !== undefined) {
+                invariant(
+                    Array.isArray(step.retryUntil.retryOn),
+                    `步骤 ${step.name} 的 retryOn 必须是数组（支持 ${contract.retryUntil.retryOn.join("/")}）`
+                );
+                for (const retryType of step.retryUntil.retryOn) {
+                    invariant(
+                        contract.retryUntil.retryOn.includes(retryType),
+                        `步骤 ${step.name} 的 retryOn 项只支持 ${contract.retryUntil.retryOn.join("/")}（当前 ${JSON.stringify(retryType)}）`
+                    );
+                }
+            }
         }
         // extract 项定义期校验：此前 extract 完全无校验——非对象项/缺 name 运行期
         // 静默跳过（连 warning 都没有），name 撞保留变量、required+default 互斥、

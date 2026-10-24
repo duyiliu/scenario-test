@@ -6,7 +6,7 @@
 import { contract, CONTRACT_VERSION } from "./contract.js";
 
 export function buildCapabilities(inputContract = contract) {
-    const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+    const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
     return {
         schema: "scenario-test-capabilities",
         version: inputContract.runtimeVersion,
@@ -47,6 +47,12 @@ export function buildCapabilities(inputContract = contract) {
             environmentKeys: [...config.environmentKeys],
             variableKeys: [...config.variableKeys],
             manual: { ...config.manual }
+        },
+        retryUntil: {
+            keys: [...retryUntil.keys],
+            retryOn: [...retryUntil.retryOn],
+            defaultRetryOn: [...retryUntil.defaultRetryOn],
+            note: retryUntil.note
         },
         scenario: {
             keys: [...scenario.keys],
@@ -118,6 +124,10 @@ export function renderCapabilitiesText(capabilities) {
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    if (capabilities.retryUntil) {
+        lines.push(`retryUntil 字段: ${capabilities.retryUntil.keys.join(" / ")}；retryOn: ${capabilities.retryUntil.retryOn.join(" / ")}（默认 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}）`);
+        lines.push(`  ${capabilities.retryUntil.note}`);
+    }
     lines.push("");
     lines.push("CLI 命令:");
     for (const command of capabilities.cli.commands) {
