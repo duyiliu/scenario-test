@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 引擎
+
+- 适配器步骤的 `timeoutMs` 生效（issue #26 B2）：此前只有 `executeHttp` 有超时链路，`executeAdapter` 完全无超时（`retryUntil.maxElapsedMs` 只在 attempt 之间检查）——挂死的适配器会让场景永久卡住。现复用 `createRequestSignal` 语义并与 signal 竞速（适配器可能完全不看 signal），超时按结构化 `TIMEOUT` 归类并透出 `method/path/timeoutMs`；超时后 `onError` 钩子仍被调用。
+  **⚠️ 存量影响（行为变更）**：此前适配器步骤声明的 `timeoutMs` 被忽略、且不受默认 `requestTimeoutMs`（30s）约束——两类存量场景升级后可能从 PASS 变 TIMEOUT：(1) 声明了较小 `timeoutMs` 但适配器实际耗时更长的步骤；(2) 适配器单次执行超过 30s 的步骤（未显式声明 `timeoutMs` 时）。升级前请用本版本回归全部适配器场景，慢适配器按真实耗时调大 `timeoutMs`。
+
 ### 浏览器工作台
 
 - 「复制 cURL」shell 转义补齐（issue #26 B6）：header/URL/body 统一改用 POSIX 单引号包裹 + `'\''` 转义，双引号内的 `$VAR`/`$(...)`/反引号不再被 bash/zsh 展开——复制出的命令与工作台实际发送值保持一致，也封堵变量值借复制粘贴注入命令。
