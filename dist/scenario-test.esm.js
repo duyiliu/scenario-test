@@ -421,6 +421,38 @@ var contract = Object.freeze({
   })
 });
 
+// src/utils/safe-decode.js
+function safeDecodeComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+// src/utils/url-query.js
+function splitFragment(requestPath) {
+  const text = String(requestPath || "");
+  const hashIndex = text.indexOf("#");
+  return hashIndex >= 0 ? { path: text.slice(0, hashIndex), fragment: text.slice(hashIndex) } : { path: text, fragment: "" };
+}
+function existingQueryKeys(requestPath) {
+  const { path } = splitFragment(requestPath);
+  const queryIndex = path.indexOf("?");
+  const keys = /* @__PURE__ */ new Set();
+  if (queryIndex < 0) return keys;
+  for (const pair of path.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(safeDecodeComponent(key));
+  }
+  return keys;
+}
+function appendQueryParams(requestPath, queryParts) {
+  if (!queryParts || !queryParts.length) return requestPath;
+  const { path, fragment } = splitFragment(requestPath);
+  return `${path}${path.includes("?") ? "&" : "?"}${queryParts.join("&")}${fragment}`;
+}
+
 // src/core.js
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
@@ -661,8 +693,7 @@ function buildUrl(requestPath, params, runtime) {
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
   const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-  if (!pairs.length) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+  return appendQueryParams(rawPath, pairs);
 }
 function parseBody(text, contentType) {
   if (!text) return null;
@@ -1699,38 +1730,6 @@ function clearAdapters() {
     }
   }
   adapterRegistry.clear();
-}
-
-// src/utils/safe-decode.js
-function safeDecodeComponent(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-// src/utils/url-query.js
-function splitFragment(requestPath) {
-  const text = String(requestPath || "");
-  const hashIndex = text.indexOf("#");
-  return hashIndex >= 0 ? { path: text.slice(0, hashIndex), fragment: text.slice(hashIndex) } : { path: text, fragment: "" };
-}
-function existingQueryKeys(requestPath) {
-  const { path } = splitFragment(requestPath);
-  const queryIndex = path.indexOf("?");
-  const keys = /* @__PURE__ */ new Set();
-  if (queryIndex < 0) return keys;
-  for (const pair of path.slice(queryIndex + 1).split("&")) {
-    const key = pair.split("=")[0];
-    if (key) keys.add(safeDecodeComponent(key));
-  }
-  return keys;
-}
-function appendQueryParams(requestPath, queryParts) {
-  if (!queryParts || !queryParts.length) return requestPath;
-  const { path, fragment } = splitFragment(requestPath);
-  return `${path}${path.includes("?") ? "&" : "?"}${queryParts.join("&")}${fragment}`;
 }
 
 // src/engine.js
