@@ -257,7 +257,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 
 ## 维护者
 
-要求：Node.js 20+（构建链含 Tailwind CSS 4 的 oxide；业务项目运行时消费仍为 Node.js 18+）。`test:coverage` 使用 Node.js 22+ 的内置覆盖率过滤与阈值参数。
+要求：Node.js 20.11+（构建/测试；`import.meta.dirname` 自 20.11 可用；Tailwind CSS 4 的 oxide 要求 20+；业务项目运行时消费仍为 Node.js 18+）。`test:coverage` 使用 Node.js 22+ 的内置覆盖率过滤与阈值参数。
 
 ```powershell
 npm install
