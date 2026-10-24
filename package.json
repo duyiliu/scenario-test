@@ -25,13 +25,15 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
-    "test": "node --test tests/*.test.js",
-    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
+    "test": "npm run test:unit",
+    "test:unit": "node --test tests/*.test.js tests/*.unit.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=\"src/**/*.js\" --test-coverage-lines=90 --test-coverage-branches=80 tests/*.test.js tests/*.unit.test.mjs",
     "test:browser": "node tests/browser.test.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
+    "test:all": "npm run test:unit && npm run test:browser && npm run test:ui-style",
     "check:eol": "node scripts/check-eol.mjs",
-    "check": "npm run build && npm test",
-    "check:all": "npm run check && npm run test:browser"
+    "check": "npm run build && npm run test:unit",
+    "check:all": "npm run build && npm run test:all"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0"

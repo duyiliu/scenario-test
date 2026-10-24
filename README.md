@@ -257,13 +257,15 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 
 ## 维护者
 
-要求：Node.js 20+（构建链含 Tailwind CSS 4 的 oxide；业务项目运行时消费仍为 Node.js 18+）。
+要求：Node.js 20+（构建链含 Tailwind CSS 4 的 oxide；业务项目运行时消费仍为 Node.js 18+）。`test:coverage` 使用 Node.js 22+ 的内置覆盖率过滤与阈值参数。
 
 ```powershell
 npm install
-npm run build
-npm test
-npm run test:browser
+npm run check:all      # 构建 + Node 单元测试 + Playwright 浏览器/样式测试
+npm run test:unit      # 仅 Node 单元/集成测试（.test.js 与 .unit.test.mjs）
+npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 门禁
 ```
+
+`test:coverage` 当前会因 `cli.js` 与浏览器 UI 未纳入 Node 单测覆盖而低于 line 阈值并返回非零；这两块分别由 #33 与 `test:browser` 跟踪，日常验证以 `check:all` 为准。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。

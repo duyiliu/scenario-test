@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 工程与测试
+
+- 测试脚本分层：`test:unit` 收集 `.test.js` 与 `*.unit.test.mjs`，`test:browser` / `test:ui-style` 显式执行 Playwright `.mjs`，`test:all` 汇总；`check` 保持快速单元门禁，`check:all` = `build + test:all`，新增 GitHub Actions CI 直接执行 `check:all`，不再出现“只跑 check 漏掉 `.mjs`”的默认路径。
+- `test:coverage` 改用 Node 内置 `--test-coverage-include="src/**/*.js"`，不再统计 `dist/`、`tests/`、`scripts/`，并设置 line 90% / branch 80% 阈值；当前因 `cli.js`（#33）与浏览器 UI 未纳入 Node 单测覆盖而按预期失败。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
