@@ -2,12 +2,15 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const packageInfo = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const scripts = packageInfo.scripts;
+const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
+const supportsCoverageThresholds = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 8);
 
 test("test:unit 同时收集 .test.js 与 .unit.test.mjs，浏览器 .mjs 用例由独立脚本显式执行", () => {
     assert.match(scripts["test:unit"], /tests\/\*\.test\.js/);
@@ -33,6 +36,41 @@ test("test:coverage 仅统计 src/，并启用 line 90 / branch 80 阈值", () =
     assert.match(scripts["test:coverage"], /--test-coverage-branches=80/);
     assert.match(scripts["test:coverage"], /tests\/\*\.test\.js/);
     assert.match(scripts["test:coverage"], /tests\/\*\.unit\.test\.mjs/);
+});
+
+test("test:coverage 实际只报告 src/，并因阈值不足以非零状态退出", {
+    skip: supportsCoverageThresholds ? false : "需要 Node.js 22.8+ 的覆盖率过滤与阈值参数"
+}, () => {
+    const include = scripts["test:coverage"].match(/--test-coverage-include="([^"]+)"/);
+    const lines = scripts["test:coverage"].match(/--test-coverage-lines=(\d+)/);
+    const branches = scripts["test:coverage"].match(/--test-coverage-branches=(\d+)/);
+    assert.ok(include && lines && branches, "覆盖率脚本缺少 include 或阈值参数");
+
+    const env = { ...process.env };
+    for (const key of Object.keys(env)) {
+        if (key.startsWith("NODE_TEST")) delete env[key];
+    }
+
+    // 用只加载 src/ 入口的探针复现真实命令：避免递归运行整套单测，同时锁定
+    // “报告不包含 dist/tests/scripts”与“阈值不足必须失败”两个验收行为。
+    const result = spawnSync(process.execPath, [
+        "--test",
+        "--experimental-test-coverage",
+        `--test-coverage-include=${include[1]}`,
+        `--test-coverage-lines=${lines[1]}`,
+        `--test-coverage-branches=${branches[1]}`,
+        path.join(root, "tests/fixtures/coverage-probe.mjs")
+    ], { cwd: root, env, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    assert.notEqual(result.status, 0, output);
+    assert.match(output, new RegExp(`line coverage does not meet threshold of ${lines[1]}%`));
+    const start = output.indexOf("# start of coverage report");
+    const end = output.indexOf("# end of coverage report", start);
+    assert.ok(start >= 0 && end > start, output);
+    const report = output.slice(start, end);
+    assert.match(report, /^# src\s/m, "覆盖率报告应包含 src/");
+    assert.doesNotMatch(report, /^# (?:dist|tests|scripts)(?:\s|$)/m, "覆盖率报告不得混入 dist/tests/scripts");
 });
 
 test("CI 执行全量验证命令而不是仅跑 check", () => {

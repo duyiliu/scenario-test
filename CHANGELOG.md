@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 
 ### 工程与测试
 
-- 测试脚本分层：`test:unit` 收集 `.test.js` 与 `*.unit.test.mjs`，`test:browser` / `test:ui-style` 显式执行 Playwright `.mjs`，`test:all` 汇总；`check` 保持快速单元门禁，`check:all` = `build + test:all`，新增 GitHub Actions CI 直接执行 `check:all`，不再出现“只跑 check 漏掉 `.mjs`”的默认路径。构建/测试最低版本明确为 Node.js 20.11+（`import.meta.dirname`），覆盖率命令需 Node.js 22+。
+- 测试脚本分层：`test:unit` 收集 `.test.js` 与 `*.unit.test.mjs`，`test:browser` / `test:ui-style` 显式执行 Playwright `.mjs`，`test:all` 汇总；`check` 保持快速单元门禁，`check:all` = `build + test:all`，新增 GitHub Actions CI 直接执行 `check:all`，不再出现“只跑 check 漏掉 `.mjs`”的默认路径。构建/测试最低版本明确为 Node.js 20.11+（`import.meta.dirname`），覆盖率命令需 Node.js 22.8+。
 - `test:coverage` 改用 Node 内置 `--test-coverage-include="src/**/*.js"`，不再统计 `dist/`、`tests/`、`scripts/`，并设置 line 90% / branch 80% 阈值；当前因 `cli.js`（#33）与浏览器 UI 未纳入 Node 单测覆盖而按预期失败。
 
 ### CLI

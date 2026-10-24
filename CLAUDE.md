@@ -10,7 +10,7 @@
 
 ## 常用命令
 
-构建/测试要求 Node.js 20.11+（`import.meta.dirname` 自 20.11 可用；Tailwind CSS 4 的 oxide 要求 20+）；业务项目运行时消费仍为 Node.js 18+。`test:coverage` 使用 Node.js 22+ 的内置覆盖率过滤与阈值参数。
+构建/测试要求 Node.js 20.11+（`import.meta.dirname` 自 20.11 可用；Tailwind CSS 4 的 oxide 要求 20+）；业务项目运行时消费仍为 Node.js 18+。`test:coverage` 使用 Node.js 22.8+ 的内置覆盖率过滤与阈值参数。
 
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
