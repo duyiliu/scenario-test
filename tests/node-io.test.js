@@ -102,6 +102,30 @@ test("createUploadBody：maxUploadBytes 超限返回结构化错误，边界值�
             () => overridden.createUploadBody("sample.txt", null, { maxUploadBytes: sampleSize - 1 }),
             /上传文件超过大小上限/
         );
+
+        // 显式 0/负数/NaN/Infinity 覆盖 IO 默认上限，全部按“不限制”处理
+        const disabled = createNodeIo(workspace, { maxUploadBytes: sampleSize - 1 });
+        for (const limit of [0, -1, Number.NaN, Infinity]) {
+            const allowed = await disabled.createUploadBody("sample.txt", null, { maxUploadBytes: limit });
+            assert.equal(allowed.body.get("file").size, sampleSize, `maxUploadBytes=${String(limit)} 应覆盖默认上限`);
+        }
+        // undefined/null 表示未声明，回落到 IO 默认上限
+        for (const limit of [undefined, null]) {
+            await assert.rejects(
+                () => disabled.createUploadBody("sample.txt", null, { maxUploadBytes: limit }),
+                /上传文件超过大小上限/,
+                `maxUploadBytes=${String(limit)} 应回落默认上限`
+            );
+        }
+        // 正数小数按字节向下取整
+        const floored = createNodeIo(workspace, { maxUploadBytes: sampleSize - 0.1 });
+        await assert.rejects(
+            () => floored.createUploadBody("sample.txt"),
+            (error) => {
+                assert.deepEqual(error.uploadTooLarge, { actualBytes: sampleSize, limitBytes: sampleSize - 1 });
+                return true;
+            }
+        );
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -142,6 +166,51 @@ test("saveResponseStream：流式写入内容与 saveResponse 一致，失败时
         });
         await assert.rejects(() => io.saveResponseStream("responses/broken.bin", broken), /模拟流中断/);
         assert.equal(fs.existsSync(path.join(workspace, "responses", "broken.bin")), false);
+
+        // 目标文件已存在时，失败只清理本次临时文件，原文件内容保持完整
+        const existingPath = path.join(workspace, "responses", "existing.bin");
+        fs.writeFileSync(existingPath, "sentinel-content", "utf8");
+        let sentExisting = false;
+        const brokenExisting = new ReadableStream({
+            pull(controller) {
+                if (!sentExisting) {
+                    sentExisting = true;
+                    controller.enqueue(new Uint8Array([9, 9, 9]));
+                } else {
+                    controller.error(new Error("已有文件写入中断"));
+                }
+            }
+        });
+        await assert.rejects(() => io.saveResponseStream("responses/existing.bin", brokenExisting), /已有文件写入中断/);
+        assert.equal(fs.readFileSync(existingPath, "utf8"), "sentinel-content");
+
+        // 非 Error 拒绝值同样必须收尾：不挂起、原文件不被破坏、不残留临时文件
+        const nonErrorPath = path.join(workspace, "responses", "nonerror.bin");
+        fs.writeFileSync(nonErrorPath, "keep-me", "utf8");
+        let sentString = false;
+        const brokenString = new ReadableStream({
+            pull(controller) {
+                if (!sentString) {
+                    sentString = true;
+                    controller.enqueue(new Uint8Array([7, 7, 7]));
+                } else {
+                    controller.error("模拟非 Error 中断");
+                }
+            }
+        });
+        await assert.rejects(
+            () => io.saveResponseStream("responses/nonerror.bin", brokenString),
+            (error) => {
+                assert.equal(error, "模拟非 Error 中断");
+                return true;
+            }
+        );
+        assert.equal(fs.readFileSync(nonErrorPath, "utf8"), "keep-me");
+        // 无 .part 临时文件残留
+        assert.deepEqual(
+            fs.readdirSync(path.join(workspace, "responses")).sort(),
+            ["buffered.bin", "existing.bin", "nonerror.bin", "streamed.bin"]
+        );
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -165,6 +234,18 @@ test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半�
         assert.deepEqual(result.responseTooLarge, { actualBytes: 10, limitBytes: 5 });
         assert.equal(fs.existsSync(path.join(workspace, "out", "big.bin")), false);
 
+        // 目标文件已存在时超限失败不得破坏原文件
+        const existingPath = path.join(workspace, "out", "existing.bin");
+        fs.mkdirSync(path.dirname(existingPath), { recursive: true });
+        fs.writeFileSync(existingPath, "sentinel-content", "utf8");
+        const existingReport = await engine.runScenario(defineScenario({
+            name: "超限保存到已有文件",
+            steps: [{ name: "下载", path: "big", saveResponseAs: "out/existing.bin" }]
+        }));
+        assert.equal(existingReport.results[0].errorCode, "responseTooLarge");
+        assert.equal(fs.readFileSync(existingPath, "utf8"), "sentinel-content");
+        assert.deepEqual(fs.readdirSync(path.join(workspace, "out")), ["existing.bin"]);
+
         // 恰好等于上限时完整落盘（流式路径与旧 saveResponse 内容一致）
         const exactEngine = createEngine({
             baseUrl: "https://mock.local",
@@ -178,6 +259,53 @@ test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半�
         }));
         assert.equal(exactReport.results[0].passed, true);
         assert.equal(fs.readFileSync(path.join(workspace, "out", "exact.bin"), "utf8"), "1234567890");
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
+test("saveResponseStream：流式保存响应体挂起时超时/用户取消均及时返回并清理在途文件", async () => {
+    const workspace = makeWorkspace();
+    const createHangingResponse = () => new Response(new ReadableStream({
+        start(controller) {
+            controller.enqueue(new TextEncoder().encode("partial"));
+        },
+        pull() {
+            // 模拟完全不感知 fetch signal 的服务端：首块后永不结束
+            return new Promise(() => {});
+        }
+    }), { headers: { "Content-Type": "application/octet-stream" } });
+    const scenario = defineScenario({
+        name: "流式挂起",
+        steps: [{ name: "下载", path: "hang", saveResponseAs: "out/hang.bin" }]
+    });
+    const noHang = (promise, label) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label}未及时返回`)), 2000))
+    ]);
+    try {
+        const timeoutEngine = createEngine({
+            baseUrl: "https://mock.local",
+            requestTimeoutMs: 50,
+            io: createNodeIo(workspace),
+            fetch: async () => createHangingResponse()
+        });
+        const timedOut = await noHang(timeoutEngine.runScenario(scenario), "超时");
+        assert.equal(timedOut.results[0].status, "TIMEOUT");
+        assert.equal(fs.existsSync(path.join(workspace, "out", "hang.bin")), false);
+
+        const controller = new AbortController();
+        const cancelEngine = createEngine({
+            baseUrl: "https://mock.local",
+            io: createNodeIo(workspace),
+            fetch: async () => createHangingResponse()
+        });
+        const pending = cancelEngine.runScenario(scenario, { signal: controller.signal });
+        setTimeout(() => controller.abort(), 50);
+        const cancelled = await noHang(pending, "取消");
+        assert.equal(cancelled.results[0].status, "CANCELLED");
+        assert.equal(fs.existsSync(path.join(workspace, "out", "hang.bin")), false);
+        assert.deepEqual(fs.readdirSync(path.join(workspace, "out")), []);
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
     }

@@ -991,3 +991,38 @@ test("CLI run --json：stdout 纯净可解析，单场景输出 report、多场�
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI run --json：上传超限保留结构化 uploadTooLarge 且退出码非零", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-upload-"));
+    let hits = 0;
+    const server = http.createServer((_request, response) => {
+        hits += 1;
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end("{}");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        const upload = Buffer.from("0123456789", "utf8");
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "upload.bin"), upload);
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],maxUploadBytes:5,scenarios:[{id:"upload",name:"Upload",url:"scenarios/upload.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/upload.js"),
+            `ScenarioTest.registerScenario("upload",ScenarioTest.defineScenario({name:"Upload",steps:[{name:"上传",method:"POST",path:"upload",request:{fileUpload:{filePath:"upload.bin",fieldName:"file"}}}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "upload", "--json"]);
+        assert.notEqual(result.code, 0, "上传超限应使 CLI 退出码非 0");
+        const report = JSON.parse(result.stdout);
+        const step = report.results[0];
+        assert.equal(report.status, "FAILED");
+        assert.equal(step.passed, false);
+        assert.equal(step.errorCode, "uploadTooLarge");
+        assert.deepEqual(step.uploadTooLarge, { actualBytes: upload.byteLength, limitBytes: 5 });
+        assert.match(step.error, /上传文件超过大小上限/);
+        assert.match(result.stderr, /\[FAIL\] 上传/);
+        assert.equal(hits, 0, "超限应在发起上传前被拒绝");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

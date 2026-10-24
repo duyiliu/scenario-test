@@ -1901,21 +1901,70 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
   }
   function resolveMaxUploadBytes(options = {}) {
-    return normalizeByteLimit(options.maxUploadBytes ?? options.config?.maxUploadBytes);
+    const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
+    return value === void 0 || value === null ? void 0 : normalizeByteLimit(value);
   }
-  function limitResponseBody(body, maxBytes) {
-    if (!body || maxBytes <= 0) return body;
-    let totalBytes = 0;
-    return body.pipeThrough(new TransformStream({
-      transform(chunk, controller) {
-        totalBytes += chunk?.byteLength ?? chunk?.length ?? 0;
-        if (totalBytes > maxBytes) {
-          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
-          return;
+  function createSaveBodyStream(body, signal, maxBytes) {
+    if (!body) {
+      return new ReadableStream({
+        start(controller) {
+          if (signal?.aborted) controller.error(abortReason(signal));
+          else controller.close();
         }
-        controller.enqueue(chunk);
+      });
+    }
+    const reader = body.getReader();
+    let totalBytes = 0;
+    let finished = false;
+    let onAbort = null;
+    const cleanup = () => {
+      finished = true;
+      if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    };
+    const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+    });
+    return new ReadableStream({
+      start(controller) {
+        if (!signal) return;
+        onAbort = () => {
+          if (finished) return;
+          cleanup();
+          cancelReader(abortReason(signal));
+          controller.error(abortReason(signal));
+        };
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      },
+      async pull(controller) {
+        if (finished) return;
+        try {
+          const { done, value } = await reader.read();
+          if (finished) return;
+          if (done) {
+            cleanup();
+            controller.close();
+            return;
+          }
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            cleanup();
+            cancelReader();
+            controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+            return;
+          }
+          controller.enqueue(value);
+        } catch (error) {
+          if (finished) return;
+          cleanup();
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        cleanup();
+        return cancelReader(reason);
       }
-    }));
+    });
   }
   function decoderForContentType(contentType) {
     const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
@@ -1933,10 +1982,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (step.saveResponseAs) {
       const relativePath = resolveString(step.saveResponseAs, runtime);
       const metadata = { contentType, headers, maxResponseBytes };
-      if (io?.saveResponseStream && response.body) {
+      if (io?.saveResponseStream) {
         const saved = await io.saveResponseStream(
           relativePath,
-          limitResponseBody(response.body, maxResponseBytes),
+          createSaveBodyStream(response.body, signal, maxResponseBytes),
           metadata
         );
         return { status: response.status, headers, body: saved, bodyText: null };

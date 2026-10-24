@@ -2008,21 +2008,70 @@ function resolveMaxResponseBytes(options = {}) {
   return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
 }
 function resolveMaxUploadBytes(options = {}) {
-  return normalizeByteLimit(options.maxUploadBytes ?? options.config?.maxUploadBytes);
+  const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
+  return value === void 0 || value === null ? void 0 : normalizeByteLimit(value);
 }
-function limitResponseBody(body, maxBytes) {
-  if (!body || maxBytes <= 0) return body;
-  let totalBytes = 0;
-  return body.pipeThrough(new TransformStream({
-    transform(chunk, controller) {
-      totalBytes += chunk?.byteLength ?? chunk?.length ?? 0;
-      if (totalBytes > maxBytes) {
-        controller.error(createResponseTooLargeError(totalBytes, maxBytes));
-        return;
+function createSaveBodyStream(body, signal, maxBytes) {
+  if (!body) {
+    return new ReadableStream({
+      start(controller) {
+        if (signal?.aborted) controller.error(abortReason(signal));
+        else controller.close();
       }
-      controller.enqueue(chunk);
+    });
+  }
+  const reader = body.getReader();
+  let totalBytes = 0;
+  let finished = false;
+  let onAbort = null;
+  const cleanup = () => {
+    finished = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    onAbort = null;
+  };
+  const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+  });
+  return new ReadableStream({
+    start(controller) {
+      if (!signal) return;
+      onAbort = () => {
+        if (finished) return;
+        cleanup();
+        cancelReader(abortReason(signal));
+        controller.error(abortReason(signal));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          cleanup();
+          controller.close();
+          return;
+        }
+        totalBytes += value.byteLength;
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          cleanup();
+          cancelReader();
+          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (finished) return;
+        cleanup();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return cancelReader(reason);
     }
-  }));
+  });
 }
 function decoderForContentType(contentType2) {
   const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType2 || ""));
@@ -2040,10 +2089,10 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
   if (step.saveResponseAs) {
     const relativePath = resolveString(step.saveResponseAs, runtime);
     const metadata = { contentType: contentType2, headers, maxResponseBytes };
-    if (io?.saveResponseStream && response.body) {
+    if (io?.saveResponseStream) {
       const saved = await io.saveResponseStream(
         relativePath,
-        limitResponseBody(response.body, maxResponseBytes),
+        createSaveBodyStream(response.body, signal, maxResponseBytes),
         metadata
       );
       return { status: response.status, headers, body: saved, bodyText: null };
@@ -6981,7 +7030,8 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
       const stat = import_node_fs2.default.statSync(absolutePath);
       if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
-      const maxUploadBytes = normalizeByteLimit(callOptions?.maxUploadBytes) || defaultMaxUploadBytes;
+      const callMaxUploadBytes = callOptions?.maxUploadBytes;
+      const maxUploadBytes = callMaxUploadBytes === void 0 || callMaxUploadBytes === null ? defaultMaxUploadBytes : normalizeByteLimit(callMaxUploadBytes);
       if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
         const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
         error.scenarioUploadTooLarge = true;
@@ -7004,8 +7054,13 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
     },
     async saveResponseStream(relativePath, body, metadata = {}) {
       const absolutePath = resolveSavePath(relativePath);
-      import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
-      const file = import_node_fs2.default.createWriteStream(absolutePath);
+      const directory = import_node_path2.default.dirname(absolutePath);
+      import_node_fs2.default.mkdirSync(directory, { recursive: true });
+      const tempPath = import_node_path2.default.join(
+        directory,
+        `.${import_node_path2.default.basename(absolutePath)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+      const file = import_node_fs2.default.createWriteStream(tempPath);
       let size = 0;
       const counter = new import_node_stream.Transform({
         transform(chunk, _encoding, callback) {
@@ -7016,6 +7071,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       try {
         const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
         await (0, import_promises.pipeline)(source, counter, file);
+        import_node_fs2.default.renameSync(tempPath, absolutePath);
       } catch (error) {
         if (!file.closed) {
           await new Promise((resolveClose) => {
@@ -7023,7 +7079,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
             file.destroy();
           });
         }
-        import_node_fs2.default.rmSync(absolutePath, { force: true });
+        import_node_fs2.default.rmSync(tempPath, { force: true });
         throw error;
       }
       return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };

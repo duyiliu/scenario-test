@@ -225,25 +225,77 @@ function resolveMaxResponseBytes(options = {}) {
     return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
 }
 
+// 上传上限要把“未声明”和“显式 0=不限制”区分开：前者回落到 createNodeIo 默认值，
+// 后者必须覆盖默认值。返回 undefined 表示调用方未声明上限。
 function resolveMaxUploadBytes(options = {}) {
-    return normalizeByteLimit(options.maxUploadBytes ?? options.config?.maxUploadBytes);
+    const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
+    return value === undefined || value === null ? undefined : normalizeByteLimit(value);
 }
 
-// 流式保存时用 TransformStream 边转发边计数：超过上限让流进入错误态，
-// node io 收到错误后删除半截文件；未超限时响应体不会在引擎层整体缓冲。
-function limitResponseBody(body, maxBytes) {
-    if (!body || maxBytes <= 0) return body;
-    let totalBytes = 0;
-    return body.pipeThrough(new TransformStream({
-        transform(chunk, controller) {
-            totalBytes += chunk?.byteLength ?? chunk?.length ?? 0;
-            if (totalBytes > maxBytes) {
-                controller.error(createResponseTooLargeError(totalBytes, maxBytes));
-                return;
+// 流式保存的响应体包装：边转发边计数字节、监听取消/超时 signal，并把读取错误
+// （包括字符串等非 Error 拒绝值）传给下游流水线。body 为空时也返回已关闭的空流，
+// 保证只实现 saveResponseStream 的 io 仍能创建零字节文件。
+function createSaveBodyStream(body, signal, maxBytes) {
+    if (!body) {
+        return new ReadableStream({
+            start(controller) {
+                if (signal?.aborted) controller.error(abortReason(signal));
+                else controller.close();
             }
-            controller.enqueue(chunk);
+        });
+    }
+    const reader = body.getReader();
+    let totalBytes = 0;
+    let finished = false;
+    let onAbort = null;
+    const cleanup = () => {
+        finished = true;
+        if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+        onAbort = null;
+    };
+    const cancelReader = (reason) => reader.cancel(reason).catch(() => {});
+    return new ReadableStream({
+        start(controller) {
+            if (!signal) return;
+            onAbort = () => {
+                if (finished) return;
+                cleanup();
+                cancelReader(abortReason(signal));
+                controller.error(abortReason(signal));
+            };
+            if (signal.aborted) onAbort();
+            else signal.addEventListener("abort", onAbort, { once: true });
+        },
+        async pull(controller) {
+            if (finished) return;
+            try {
+                const { done, value } = await reader.read();
+                // 等待读取期间可能已被取消，此时不再 enqueue/close
+                if (finished) return;
+                if (done) {
+                    cleanup();
+                    controller.close();
+                    return;
+                }
+                totalBytes += value.byteLength;
+                if (maxBytes > 0 && totalBytes > maxBytes) {
+                    cleanup();
+                    cancelReader();
+                    controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+                    return;
+                }
+                controller.enqueue(value);
+            } catch (error) {
+                if (finished) return;
+                cleanup();
+                controller.error(error);
+            }
+        },
+        cancel(reason) {
+            cleanup();
+            return cancelReader(reason);
         }
-    }));
+    });
 }
 
 // 按 content-type 的 charset 构造解码器（如 GBK 老系统）；缺省或非法/不支持的 charset 回退 UTF-8
@@ -261,11 +313,11 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
         const relativePath = resolveString(step.saveResponseAs, runtime);
         const metadata = { contentType, headers, maxResponseBytes };
         // 优先流式落盘：response.body 直接接到 io 的文件流，避免响应体全量驻留内存；
-        // maxResponseBytes 由包装流边转发边校验（超限时 io 删除半截文件）
-        if (io?.saveResponseStream && response.body) {
+        // 包装流同时负责 maxResponseBytes 校验与超时/取消，失败时 io 只清理本次临时文件
+        if (io?.saveResponseStream) {
             const saved = await io.saveResponseStream(
                 relativePath,
-                limitResponseBody(response.body, maxResponseBytes),
+                createSaveBodyStream(response.body, signal, maxResponseBytes),
                 metadata
             );
             return { status: response.status, headers, body: saved, bodyText: null };

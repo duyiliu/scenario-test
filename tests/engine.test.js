@@ -1400,6 +1400,37 @@ test("saveResponseAs：io 提供 saveResponseStream 时直接流式保存，不�
     assert.equal(report.results[0].response.bodyText, null);
 });
 
+test("saveResponseAs：仅实现 saveResponseStream 的 IO 在无响应体时仍保存零字节文件", async () => {
+    const saved = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async saveResponseStream(relativePath, stream, metadata) {
+                const reader = stream.getReader();
+                let size = 0;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    size += value.byteLength;
+                }
+                saved.push({ relativePath, size, metadata });
+                return { savedTo: `/workspace/${relativePath}`, size, contentType: metadata.contentType };
+            }
+        },
+        fetch: async () => new Response(null, { status: 204 })
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "无响应体保存",
+        steps: [{ name: "下载", path: "empty", saveResponseAs: "out/empty.bin" }]
+    }));
+    assert.equal(report.results[0].passed, true, JSON.stringify(report.results));
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].relativePath, "out/empty.bin");
+    assert.equal(saved[0].size, 0);
+    assert.equal(report.results[0].response.body.savedTo, "/workspace/out/empty.bin");
+    assert.equal(report.results[0].response.bodyText, null);
+});
+
 test("maxResponseBytes：超限返回结构化 responseTooLarge，边界值通过，未设置保持不限", async () => {
     const scenario = defineScenario({
         name: "响应上限",
@@ -1432,6 +1463,27 @@ test("maxResponseBytes：超限返回结构化 responseTooLarge，边界值通�
     // 未设置上限时维持既有行为（大响应照常通过）
     const unlimited = await withBody("1234567890").runScenario(scenario);
     assert.equal(unlimited.results[0].passed, true);
+});
+
+test("normalizeByteLimit：响应限制对 0/负数/NaN/Infinity/null 均视为不限，正数向下取整", async () => {
+    const scenario = defineScenario({
+        name: "上限归一化",
+        steps: [{ name: "下载", path: "files/report" }]
+    });
+    const withBody = (body, options = {}) => createEngine({
+        baseUrl: "https://mock.local",
+        ...options,
+        fetch: async () => new Response(body)
+    });
+    for (const limit of [0, -1, Number.NaN, Infinity, null]) {
+        const report = await withBody("123456", { maxResponseBytes: limit }).runScenario(scenario);
+        assert.equal(report.results[0].passed, true, `maxResponseBytes=${String(limit)} 应视为不限制`);
+    }
+    // 正数小数按字节向下取整：5.9 → 5
+    const floorPass = await withBody("12345", { maxResponseBytes: 5.9 }).runScenario(scenario);
+    assert.equal(floorPass.results[0].passed, true);
+    const floorFail = await withBody("123456", { maxResponseBytes: 5.9 }).runScenario(scenario);
+    assert.deepEqual(floorFail.results[0].responseTooLarge, { actualBytes: 6, limitBytes: 5 });
 });
 
 test("maxUploadBytes：config/run options 透传给 io.createUploadBody", async () => {
