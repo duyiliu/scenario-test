@@ -78,7 +78,7 @@ function suggestOption(input) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -118,6 +118,9 @@ function parseArgs(argv) {
     if (args.all && args.scenario) throw new CliUsageError("--all 与 --scenario 不能同时使用", "请移除其中一个选项后重试。");
     if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
         throw new CliUsageError("--port 必须是 1-65535 的整数", "请为 --port 选择 1 到 65535 之间的整数。");
+    }
+    if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
+        throw new CliUsageError("--concurrency 必须是大于等于 1 的整数", "请为 --concurrency 选择 1 或更大的整数；默认 1 保持串行。");
     }
 
     // ✅ 环境变量优先于命令行参数
@@ -582,8 +585,23 @@ async function runCommand(args) {
     // --json：stdout 只承载最终 JSON 文档，所有人类可读进度/结论改走 stderr；
     // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
     const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-    const reports = [];
-    for (const entry of entries) {
+    const reports = new Array(entries.length);
+    const accumulateReport = (report) => {
+        total += report.planned;
+        passedTotal += report.passedSteps;
+        // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
+        const stoppedUnexecuted = report.planned - report.executed - report.skipped;
+        actualFailedTotal += report.failed;
+        stoppedUnexecutedTotal += stoppedUnexecuted;
+        failedTotal += report.failed + stoppedUnexecuted;
+        skippedTotal += report.skipped;
+    };
+    const reportSummary = (report) =>
+        `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`;
+    // 单场景执行抽成可复用单元：并发模式下 entryPrint 指向场景私有缓冲，
+    // 场景结束时一次性 flush，避免多个场景的 [PASS]/[FAIL]/[RETRY] 行交错。
+    // 顺序模式下 entryPrint 就是全局 print，行为与历史串行输出完全一致。
+    const runEntry = async (entry, entryPrint) => {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
         let scenarioPath;
@@ -603,20 +621,20 @@ async function runCommand(args) {
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
-        print(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+        entryPrint(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
                 const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
-                print(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
-                print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
+                entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
-                    print(`  [WARN] ${escapeInlineText(warning)}`);
+                    entryPrint(`  [WARN] ${escapeInlineText(warning)}`);
                 }
                 // each 失败明细：失败断言下逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                 // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
@@ -625,27 +643,27 @@ async function runCommand(args) {
                         const label = `${prefix}第 ${item.index + 1} 项`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            print(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+                            entryPrint(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
                             // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
-                            if (sub.reason) print(`        原因: ${escapeInlineText(sub.reason)}`);
+                            if (sub.reason) entryPrint(`        原因: ${escapeInlineText(sub.reason)}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
-                                print(line);
+                                entryPrint(line);
                             }
                             printEachDetail(sub.detail, `${label} › `);
                         }
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
-                    print(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+                    entryPrint(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
                     // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言；
                     // 静态文案同样过 escapeInlineText，防插件注入换行/CI 命令标记
-                    if (assertion.reason) print(`      原因: ${escapeInlineText(assertion.reason)}`);
+                    if (assertion.reason) entryPrint(`      原因: ${escapeInlineText(assertion.reason)}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
                     for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
-                        print(line);
+                        entryPrint(line);
                     }
                     printEachDetail(assertion.detail, "");
                 }
@@ -654,22 +672,54 @@ async function runCommand(args) {
                 // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志；
                 // 响应体可能回显 token（登录步骤断言失败时），日志合规敏感的团队可设
                 // SCENARIO_NO_BODY_PRINT=1 关闭本输出
-                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print);
+                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
             }
         });
         for (const plugin of plugins) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
-        reports.push(report);
-        total += report.planned;
-        passedTotal += report.passedSteps;
-        // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
-        const stoppedUnexecuted = report.planned - report.executed - report.skipped;
-        actualFailedTotal += report.failed;
-        stoppedUnexecutedTotal += stoppedUnexecuted;
-        failedTotal += report.failed + stoppedUnexecuted;
-        skippedTotal += report.skipped;
-        print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
+        return report;
+    };
+
+    if (args.concurrency <= 1) {
+        // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
+        for (let index = 0; index < entries.length; index += 1) {
+            const report = await runEntry(entries[index], print);
+            // JSON 输出按配置清单顺序收集，而非完成顺序
+            reports[index] = report;
+            accumulateReport(report);
+            print(reportSummary(report));
+        }
+    } else {
+        // 并发：每个场景先写入私有缓冲，场景结束一次性输出；reports 按 entries 下标回填，
+        // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
+        let nextIndex = 0;
+        let firstError = null;
+        const workerCount = Math.min(args.concurrency, entries.length);
+        const worker = async () => {
+            while (true) {
+                if (firstError) return;
+                const index = nextIndex;
+                nextIndex += 1;
+                if (index >= entries.length) return;
+                const bufferedLines = [];
+                const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+                try {
+                    const report = await runEntry(entries[index], bufferedPrint);
+                    reports[index] = report;
+                    accumulateReport(report);
+                    bufferedPrint(reportSummary(report));
+                } catch (error) {
+                    // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
+                    // 不再调度新场景，已在飞行的场景跑完后统一失败。
+                    if (!firstError) firstError = error;
+                } finally {
+                    for (const line of bufferedLines) print(line);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+        if (firstError) throw firstError;
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;

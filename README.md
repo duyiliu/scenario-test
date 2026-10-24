@@ -123,6 +123,10 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 # 指定场景
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --scenario <场景ID>
+
+# 多场景并发（默认 1 串行；并发只发生在场景之间，场景内步骤仍串行）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --all --concurrency 4
 ```
 
 ### 体检
@@ -184,6 +188,7 @@ scenario-test/
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
+- `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
 - 支持 `--fail-on-skip`、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 

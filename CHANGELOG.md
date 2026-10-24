@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### CLI
+
+- 新增 `run --concurrency <N>`（contract v11 → v12，`contract.cli.options` 投射）：多场景并发执行，
+  默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
+  场景结束时整块输出，避免 `[PASS]`/`[FAIL]`/`[RETRY]` 交错；`--json` 报告按配置清单顺序收集
+  （不按完成顺序），汇总统计与退出码逻辑不变。`onStep`/`onAttempt` 并发安全由调用方保证；
+  进程级共享的适配器注册表在并发下要求 `matches`/`execute` 可重入，详见 `docs/ADAPTER_GUIDE.md`。
+
 ## [0.8.0] - 2026-10-24
 
 ### Migration Guide: v0.7.1 → v0.8.0

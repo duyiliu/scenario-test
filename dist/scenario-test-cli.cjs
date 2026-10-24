@@ -341,7 +341,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 11;
+var CONTRACT_VERSION = 12;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -494,6 +494,7 @@ var contract = Object.freeze({
       "base-url": { kind: "value", prop: "baseUrl", description: "\u4E34\u65F6\u8986\u76D6 Base URL" },
       scenario: { kind: "value", prop: "scenario", description: "\u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -7878,7 +7879,7 @@ function suggestOption(input) {
   return best.option;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -7920,6 +7921,9 @@ function parseArgs(argv) {
   if (args.all && args.scenario) throw new CliUsageError("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u8BF7\u79FB\u9664\u5176\u4E2D\u4E00\u4E2A\u9009\u9879\u540E\u91CD\u8BD5\u3002");
   if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
     throw new CliUsageError("--port \u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570", "\u8BF7\u4E3A --port \u9009\u62E9 1 \u5230 65535 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
+  }
+  if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
+    throw new CliUsageError("--concurrency \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u8BF7\u4E3A --concurrency \u9009\u62E9 1 \u6216\u66F4\u5927\u7684\u6574\u6570\uFF1B\u9ED8\u8BA4 1 \u4FDD\u6301\u4E32\u884C\u3002");
   }
   if (process.env.SCENARIO_AUTH) {
     args.authorization = process.env.SCENARIO_AUTH;
@@ -8325,8 +8329,18 @@ ${choices.join("\n")}${remaining > 0 ? `
   let skippedTotal = 0;
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-  const reports = [];
-  for (const entry of entries) {
+  const reports = new Array(entries.length);
+  const accumulateReport = (report) => {
+    total += report.planned;
+    passedTotal += report.passedSteps;
+    const stoppedUnexecuted = report.planned - report.executed - report.skipped;
+    actualFailedTotal += report.failed;
+    stoppedUnexecutedTotal += stoppedUnexecuted;
+    failedTotal += report.failed + stoppedUnexecuted;
+    skippedTotal += report.skipped;
+  };
+  const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
+  const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
     if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
@@ -8343,7 +8357,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-    print(`
+    entryPrint(`
 # ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
@@ -8351,51 +8365,77 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
       async onAttempt(info) {
         const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-        print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-        print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
+        entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
-          print(`  [WARN] ${escapeInlineText(warning)}`);
+          entryPrint(`  [WARN] ${escapeInlineText(warning)}`);
         }
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              print(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
-              if (sub.reason) print(`        \u539F\u56E0: ${escapeInlineText(sub.reason)}`);
+              entryPrint(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+              if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(sub.reason)}`);
               for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
-                print(line);
+                entryPrint(line);
               }
               printEachDetail(sub.detail, `${label} \u203A `);
             }
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          print(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
-          if (assertion.reason) print(`      \u539F\u56E0: ${escapeInlineText(assertion.reason)}`);
+          entryPrint(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+          if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(assertion.reason)}`);
           for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
-            print(line);
+            entryPrint(line);
           }
           printEachDetail(assertion.detail, "");
         }
-        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print);
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
       }
     });
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
-    reports.push(report);
-    total += report.planned;
-    passedTotal += report.passedSteps;
-    const stoppedUnexecuted = report.planned - report.executed - report.skipped;
-    actualFailedTotal += report.failed;
-    stoppedUnexecutedTotal += stoppedUnexecuted;
-    failedTotal += report.failed + stoppedUnexecuted;
-    skippedTotal += report.skipped;
-    print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
+    return report;
+  };
+  if (args.concurrency <= 1) {
+    for (let index = 0; index < entries.length; index += 1) {
+      const report = await runEntry(entries[index], print);
+      reports[index] = report;
+      accumulateReport(report);
+      print(reportSummary(report));
+    }
+  } else {
+    let nextIndex = 0;
+    let firstError = null;
+    const workerCount = Math.min(args.concurrency, entries.length);
+    const worker = async () => {
+      while (true) {
+        if (firstError) return;
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= entries.length) return;
+        const bufferedLines = [];
+        const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+        try {
+          const report = await runEntry(entries[index], bufferedPrint);
+          reports[index] = report;
+          accumulateReport(report);
+          bufferedPrint(reportSummary(report));
+        } catch (error) {
+          if (!firstError) firstError = error;
+        } finally {
+          for (const line of bufferedLines) print(line);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    if (firstError) throw firstError;
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);

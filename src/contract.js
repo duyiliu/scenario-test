@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 11;
+export const CONTRACT_VERSION = 12;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -171,6 +171,7 @@ export const contract = Object.freeze({
             "base-url": { kind: "value", prop: "baseUrl", description: "临时覆盖 Base URL" },
             scenario: { kind: "value", prop: "scenario", description: "执行指定场景（可执行 manual:true 场景）" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
+            concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
             "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },
