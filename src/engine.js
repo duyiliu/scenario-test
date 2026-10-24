@@ -20,7 +20,7 @@ import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
 import { validateAdapterResponse } from "./adapter-types.js";
 import { escapeInlineText } from "./utils/failure-diff.js";
-import { safeDecodeComponent } from "./utils/safe-decode.js";
+import { appendQueryParams, existingQueryKeys } from "./utils/url-query.js";
 
 function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -239,22 +239,15 @@ async function executeHttp(step, runtime, options) {
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
-        // query：追加 URL 参数，跳过步骤参数已存在的 key
-        const existingKeys = new Set();
-        const queryIndex = requestPath.indexOf("?");
-        if (queryIndex >= 0) {
-            for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-                const key = pair.split("=")[0];
-                if (key) existingKeys.add(safeDecodeComponent(key));
-            }
-        }
+        // query：追加 URL 参数，跳过步骤参数已存在的 key（fragment 保留在末尾）
+        const existingKeys = existingQueryKeys(requestPath);
         const queryParts = [];
         for (const global of globals) {
             if (global.type !== "query" || existingKeys.has(global.name)) continue;
             // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
             queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
         }
-        if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+        if (queryParts.length) requestPath = appendQueryParams(requestPath, queryParts);
         // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
         const cookieParts = globals
             .filter((global) => global.type === "cookie")

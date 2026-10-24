@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createEngine, defineScenario } from "../src/index.js";
 import { safeDecodeComponent } from "../src/utils/safe-decode.js";
+import { appendQueryParams, existingQueryKeys } from "../src/utils/url-query.js";
 import workbenchView from "../src/browser/ui/ui-view.js";
 import workbenchAdhoc from "../src/browser/ui/ui-adhoc.js";
 
@@ -19,6 +20,14 @@ test("safeDecodeComponent 对畸形编码回退原串，合法编码保持解码
     assert.equal(safeDecodeComponent("100%"), "100%");
     assert.equal(safeDecodeComponent("%E4%B8%AD"), "中");
     assert.equal(safeDecodeComponent("a+b"), "a+b", "不得把 + 当空格，保持 query 既有语义");
+});
+
+// Issue #44：全局 query 必须拼在 fragment 之前，否则参数成为 fragment 内容、不随请求发送
+test("url-query：fragment 保留且 query 参数始终追加在 # 之前", () => {
+    assert.equal(appendQueryParams("api#frag", ["source=x"]), "api?source=x#frag");
+    assert.equal(appendQueryParams("api?x=1#frag", ["source=x"]), "api?x=1&source=x#frag");
+    assert.equal(appendQueryParams("api?x=1", ["source=x"]), "api?x=1&source=x");
+    assert.deepEqual([...existingQueryKeys("api?bad%zz=1&%E4%B8%AD=2#frag")], ["bad%zz", "中"]);
 });
 
 test("globals query 注入：路径中畸形 % 编码不再使步骤 ERROR，请求正常发出", async () => {
@@ -41,6 +50,31 @@ test("globals query 注入：路径中畸形 % 编码不再使步骤 ERROR，请
     assert.equal(result.passed, true);
     assert.equal(result.error, "");
     assert.equal(captured, "https://mock.local/api?bad%zz=1&source=scenario-test");
+});
+
+test("globals query 注入：fragment 保留，参数位于 # 之前", async () => {
+    const cases = [
+        ["api#frag", "https://mock.local/api?source=scenario-test#frag"],
+        ["api?x=1#frag", "https://mock.local/api?x=1&source=scenario-test#frag"],
+        ["api?bad%zz=1#frag", "https://mock.local/api?bad%zz=1&source=scenario-test#frag"]
+    ];
+    for (const [path, expected] of cases) {
+        let captured;
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            globals: [{ type: "query", name: "source", value: "scenario-test" }],
+            fetch: async (url) => {
+                captured = String(url);
+                return jsonResponse();
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "fragment query",
+            steps: [{ name: "请求", path }]
+        }));
+        assert.equal(report.results[0].status, 200, `${path} 请求必须正常发出`);
+        assert.equal(captured, expected);
+    }
 });
 
 test("globals query 注入：合法编码 key 的去重行为保持不变", async () => {
