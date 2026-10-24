@@ -147,14 +147,19 @@ export function defineScenario(input) {
         unknownScenarioKeys.length === 0,
         unknownKeysMessage(`场景 ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "（场景顶层只接受契约声明的字段）")
     );
-    // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
+    // 保留变量 runId/runNo 与原型链安全键由运行时自动生成/占位，定义期拒绝场景 vars/envVars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
+    assertNoReservedVars(input.envVars, `场景 ${input.name} 的 envVars`);
     assertTemplatePathsOnly(input, `场景 ${input.name}`);
-    // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）；
-    // 保留变量与字段完整性仍由运行时（engine）校验，保持 0.4.0 报错时机不变
+    // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）与保留变量名；
+    // 字段完整性仍由运行时（engine）校验
+    let generatedVarIndex = 0;
     for (const definition of input.generatedVars || []) {
-        invariant(isPlainObject(definition), `场景 ${input.name} 的 generatedVars 项必须是对象`);
-        invariant(nonEmptyString(definition.name), `场景 ${input.name} 的 generatedVars 项缺少 name`);
+        generatedVarIndex += 1;
+        const label = `场景 ${input.name} 的 generatedVars 第 ${generatedVarIndex} 项`;
+        invariant(isPlainObject(definition), `${label} 必须是对象`);
+        invariant(nonEmptyString(definition.name), `${label} 缺少 name`);
+        assertNotReservedVar(definition.name, `${label} name`);
         invariant(
             contract.generatedVars.types.includes(definition.type),
             `场景 ${input.name} 的 generatedVars 类型不支持: ${definition.type}（支持 ${contract.generatedVars.types.join("/")}）`
