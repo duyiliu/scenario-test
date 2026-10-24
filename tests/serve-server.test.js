@@ -166,6 +166,9 @@ test("filterProxyHeaders：双向剔除 hop-by-hop 与 Connection 点名头（�
     });
     assert.deepEqual(filtered, { "Content-Type": "application/json" });
     assert.equal(HOP_BY_HOP_HEADERS.has("host"), true);
+    // 缺省/空 headers 不应抛错：代理实现允许调用方传入 undefined
+    assert.deepEqual(filterProxyHeaders(undefined), {});
+    assert.deepEqual(filterProxyHeaders(null), {});
 });
 
 test("isAllowedServeHost：仅放行本机回环 Host，阻断 DNS rebinding", () => {
@@ -188,6 +191,37 @@ test("safeFile：拒绝路径穿越并返回工作区内真实文件", () => {
         assert.equal(safeFile(workspace, ""), null);
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
+test("safeFile：junction/符号链接实路径越界返回 null，处理器回 403", async (t) => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-safe-link-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-safe-outside-"));
+    try {
+        fs.writeFileSync(path.join(outside, "secret.txt"), "out-of-bounds", "utf8");
+        const link = path.join(workspace, "link");
+        try {
+            // Windows junction 不需要管理员权限；其他平台退回符号链接语义一致
+            fs.symlinkSync(outside, link, "junction");
+        } catch (error) {
+            t.skip(`当前平台不支持目录链接: ${error.message}`);
+            return;
+        }
+        // link/secret.txt 词法在工作区内，但实路径越界——必须按 realpath 判越界
+        assert.equal(safeFile(workspace, "link/secret.txt"), null);
+        assert.equal(safeFile(workspace, "link"), null);
+
+        const { port, close } = await startServe({ workspace, libraryDist: workspace });
+        try {
+            const escaped = await requestRaw(port, "/link/secret.txt");
+            assert.equal(escaped.status, 403, "链接目标文件不得经 serve 读出");
+            assert.doesNotMatch(escaped.body, /out-of-bounds/);
+        } finally {
+            await close();
+        }
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
     }
 });
 
@@ -278,6 +312,16 @@ test("proxyRequest：无效目标/构造异常/上游错误均降级 502", async
     await once(failed, "finish");
     assert.equal(failed.statusCode, 502);
     assert.match(failed.text(), /无法连接接口代理目标或代理超时/);
+
+    // 上游未提供状态码（畸形响应）时按 502 兜底，不能写出无效状态码
+    const noStatusTransport = createFakeTransport(({ callback }) => {
+        process.nextTick(() => callback(fakeUpstreamResponse({ statusCode: 0, body: ["no-status"] })));
+    });
+    const noStatus = new MockResponse();
+    proxyRequest(fakeProxyRequest(), noStatus, "http://backend", { transport: noStatusTransport });
+    await once(noStatus, "finish");
+    assert.equal(noStatus.statusCode, 502);
+    assert.equal(noStatus.text(), "no-status");
 });
 
 test("proxyRequest：上游超时销毁后按 502 降级，默认超时常量生效", async () => {
@@ -332,6 +376,25 @@ test("proxyRequest：响应开始后上游 error 只销毁连接，不写 502 �
     assert.doesNotMatch(response.text(), /Bad Gateway/);
 });
 
+test("proxyRequest：响应开始后上游 aborted 只销毁连接，不再补写响应头", async () => {
+    const upstreamResponse = new PassThrough();
+    upstreamResponse.statusCode = 200;
+    upstreamResponse.headers = { "Content-Type": "text/plain" };
+    const transport = createFakeTransport(({ callback }) => {
+        process.nextTick(() => callback(upstreamResponse));
+    });
+    const response = new MockResponse();
+    proxyRequest(fakeProxyRequest(), response, "http://backend", { transport });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(response.headersSent, true);
+
+    // Node 上游连接中断时只发 aborted（不保证发 error）；同样只能销毁下游连接
+    upstreamResponse.emit("aborted");
+    await once(response, "close");
+    assert.equal(response.destroyCalls, 1);
+    assert.deepEqual(response.writeHeadCalls, [200]);
+});
+
 test("serveStaticFile：HTML 注入代理标记、非 HTML 流式返回、缺失文件 500", async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-static-"));
     try {
@@ -370,6 +433,13 @@ test("serveStaticFile：HTML 注入代理标记、非 HTML 流式返回、缺失
         serveStaticFile(missingHtml, path.join(workspace, "missing.html"));
         await once(missingHtml, "finish");
         assert.equal(missingHtml.statusCode, 500);
+
+        // 已写响应头后读流报错：不能再 writeHead(500)（会抛 ERR_HTTP_HEADERS_SENT），只销毁连接
+        const afterHeaders = new MockResponse({ headersSent: true });
+        serveStaticFile(afterHeaders, path.join(workspace, "missing.txt"));
+        await once(afterHeaders, "close");
+        assert.deepEqual(afterHeaders.writeHeadCalls, []);
+        assert.equal(afterHeaders.destroyCalls, 1);
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
     }
