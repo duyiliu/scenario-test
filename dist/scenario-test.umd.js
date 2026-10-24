@@ -309,6 +309,7 @@ var ScenarioTest = (() => {
     registerScenario: () => registerScenario,
     renderCapabilitiesText: () => renderCapabilitiesText,
     resolve: () => resolve,
+    resolveClone: () => resolveClone,
     resolveString: () => resolveString,
     runScenario: () => runScenario,
     sanitizeSensitive: () => sanitizeSensitive,
@@ -481,6 +482,14 @@ var ScenarioTest = (() => {
         env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
         "base-url": { kind: "value", prop: "baseUrl", description: "\u4E34\u65F6\u8986\u76D6 Base URL" },
         scenario: { kind: "value", prop: "scenario", description: "\u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09" },
+        vars: {
+          kind: "value",
+          prop: "vars",
+          parse: "keyValue",
+          repeatable: true,
+          description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
+        },
+        timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
         port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
         concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
         project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
@@ -638,6 +647,58 @@ var ScenarioTest = (() => {
       return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolve(item, runtime)]));
     }
     return resolveString(value, runtime);
+  }
+  var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
+  function resolveClone(value, runtime) {
+    const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
+    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+  }
+  function resolveCloneFast(value, runtime, ancestors) {
+    if (typeof value === "string") return resolveString(value, runtime);
+    if (value === null) return null;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+      return value === 0 ? 0 : value;
+    }
+    if (typeof value === "boolean") return value;
+    if (value === void 0) return void 0;
+    if (typeof value !== "object") return RESOLVE_CLONE_FALLBACK;
+    if (ancestors.has(value)) return RESOLVE_CLONE_FALLBACK;
+    if (Array.isArray(value)) {
+      if (typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+      ancestors.add(value);
+      try {
+        const result = new Array(value.length);
+        for (let index = 0; index < value.length; index += 1) {
+          const item = resolveCloneFast(value[index], runtime, ancestors);
+          if (item === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+          result[index] = item === void 0 ? null : item;
+        }
+        return result;
+      } finally {
+        ancestors.delete(value);
+      }
+    }
+    if (!isPlainObject(value) || typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+    ancestors.add(value);
+    try {
+      const result = {};
+      for (const key of Object.keys(value)) {
+        const item = value[key];
+        if (item === void 0) continue;
+        const resolved = resolveCloneFast(item, runtime, ancestors);
+        if (resolved === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+        if (resolved === void 0) continue;
+        if (key === "__proto__") {
+          Object.defineProperty(result, key, { value: resolved, enumerable: true, writable: true, configurable: true });
+        } else {
+          result[key] = resolved;
+        }
+      }
+      return result;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
@@ -1908,7 +1969,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
   }
   async function executeHttp(step, runtime, options) {
-    const request = resolve(clone(step.request || {}), runtime) || {};
+    const request = resolveClone(step.request || {}, runtime) || {};
     const method = String(step.method || request.method || "GET").toUpperCase();
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...request.headers || {} };
@@ -2029,7 +2090,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         if (typeof adapter.beforeExecute === "function") {
           await adapter.beforeExecute({ step, runtime, options: adapterOptions });
         }
-        let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
+        let result = await adapter.execute({ step: resolveClone(step, runtime), runtime, options: adapterOptions });
         if (typeof adapter.afterExecute === "function") {
           result = await adapter.afterExecute({ step, runtime, options: adapterOptions, output: result }) || result;
         }
@@ -2297,7 +2358,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         options: Object.fromEntries(
           Object.entries(cli.options).map(([name, spec]) => [
             name,
-            { kind: spec.kind, description: spec.description, ...spec.aliases ? { aliases: [...spec.aliases] } : {} }
+            {
+              kind: spec.kind,
+              description: spec.description,
+              ...spec.parse ? { parse: spec.parse } : {},
+              ...spec.repeatable ? { repeatable: true } : {},
+              ...spec.aliases ? { aliases: [...spec.aliases] } : {}
+            }
           ])
         )
       }

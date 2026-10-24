@@ -7,13 +7,17 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
-- 新增 `run --concurrency <N>`（contract v11 → v12，`contract.cli.options` 投射）：多场景并发执行，
+- 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
   默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
   场景结束时整块输出，避免 `[PASS]`/`[FAIL]`/`[RETRY]` 交错；`--json` 报告按配置清单顺序收集
   （不按完成顺序），汇总统计与退出码逻辑不变。`onStep`/`onAttempt` 并发安全由调用方保证；
   进程级共享的适配器注册表在并发下要求 `matches`/`execute` 可重入，详见 `docs/ADAPTER_GUIDE.md`。
   `nodePlugins` 的 `transformScenario`/`afterScenario` 也会被并发调用，同样要求可重入无状态；
   任一场景执行链（含插件钩子）拒绝均中断调度并以非零退出码终止，与串行一致。
+
+- `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
+
+- `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
 
 ## [0.8.0] - 2026-10-24
 

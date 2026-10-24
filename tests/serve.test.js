@@ -490,3 +490,68 @@ test("serve：--base-url 临时覆盖代理目标并在日志中标注", async (
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+// 崩溃回归：上游在响应已 writeHead 且 pipe 进行中时断开（传输中途重置/超时销毁）。
+// 历史上该分支会无条件 respondProxyError → 二次 writeHead(502)，抛 ERR_HTTP_HEADERS_SENT
+// 并作为 uncaughtException 杀死 serve 进程；现在必须销毁下游连接、进程保持存活，
+// 浏览器侧收到连接中断而不是挂起或收到半截 200 + 502 响应体。
+test("serve：响应已开始后上游中途断连，销毁连接而非二次写头", async () => {
+    const mock = http.createServer((request, response) => {
+        // 声明 1024 字节但只发一部分，随后像上游重置连接一样直接销毁 socket
+        response.writeHead(200, { "Content-Type": "text/plain", "Content-Length": "1024" });
+        response.write("partial-body");
+        setTimeout(() => { response.socket.destroy(); }, 30);
+    });
+    await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
+    const mockPort = mock.address().port;
+
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-midstream-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:${mockPort}" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    let exited = null;
+    let stderr = "";
+    child.on("exit", (code) => { exited = code; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        const outcome = await new Promise((resolve, reject) => {
+            // 看门狗：若连接既不结束也不断开（pipe 源错误被吞），用例必须快速失败而非挂死
+            const timer = setTimeout(() => {
+                request.destroy();
+                reject(new Error("上游中途断连后代理连接未关闭（可能二次写头或挂起）"));
+            }, 8000);
+            const settle = (value) => { clearTimeout(timer); resolve(value); };
+            const request = http.request({ host: "127.0.0.1", port: servePort, path: "/api/midstream" }, (response) => {
+                let body = "";
+                response.on("data", (chunk) => { body += chunk; });
+                response.on("end", () => settle({ kind: "end", status: response.statusCode, body }));
+                response.on("aborted", () => settle({ kind: "aborted", status: response.statusCode, body }));
+                response.on("error", (error) => settle({ kind: "error", status: response.statusCode, body, code: error.code }));
+            });
+            request.on("error", (error) => settle({ kind: "request-error", code: error.code }));
+            request.end();
+        });
+
+        assert.notEqual(outcome.kind, "end", "上游中途断连不应伪装成完整响应");
+        assert.doesNotMatch(outcome.body || "", /Bad Gateway/, "已发送响应头后不得再写 502 响应体");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.equal(exited, null, `serve 进程不应退出（实际退出码 ${exited}）`);
+        assert.doesNotMatch(stderr, /ERR_HTTP_HEADERS_SENT|Uncaught|uncaughtException/, `serve 不应抛出未捕获异常: ${stderr}`);
+        // 进程存活验证：关闭 mock 后同一 serve 仍能继续处理代理请求并降级 502
+        await new Promise((resolve) => mock.close(resolve));
+        const stillAlive = await fetch(`http://127.0.0.1:${servePort}/api/anything`);
+        assert.equal(stillAlive.status, 502, "连接断开后 serve 应继续可用（mock 已关闭，返回 502）");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

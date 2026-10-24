@@ -5,7 +5,6 @@ import {
     assertNotReservedVar,
     buildAssertions,
     buildUrl,
-    clone,
     hasHeader,
     headersToObject,
     isPlainObject,
@@ -14,6 +13,7 @@ import {
     evaluateWhen,
     queryPairs,
     resolve,
+    resolveClone,
     resolveString
 } from "./core.js";
 import { contract } from "./contract.js";
@@ -229,7 +229,8 @@ async function readResponse(response, step, io, runtime, signal) {
 }
 
 async function executeHttp(step, runtime, options) {
-    const request = resolve(clone(step.request || {}), runtime) || {};
+    // resolveClone 单遍历等价于 resolve(clone(...))：容器全新、模板解析，语义见 core.js
+    const request = resolveClone(step.request || {}, runtime) || {};
     const method = String(step.method || request.method || "GET").toUpperCase();
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...(request.headers || {}) };
@@ -374,7 +375,7 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
             }
 
             // 执行主逻辑（step 为变量替换后的副本）
-            let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
+            let result = await adapter.execute({ step: resolveClone(step, runtime), runtime, options: adapterOptions });
 
             // 后置钩子（step 为原始定义；返回值可覆盖 result）
             if (typeof adapter.afterExecute === "function") {
