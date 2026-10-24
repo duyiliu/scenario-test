@@ -831,8 +831,19 @@ const HOP_BY_HOP_HEADERS = new Set([
     "te", "trailer", "transfer-encoding", "upgrade", "host"
 ]);
 
+// 上游空闲超时：响应头尚未发出时返回 502；传输中途超时/断连则无法再写响应头，
+// 只能销毁下游连接。参数化（如 --proxy-timeout）需扩展 contract，暂以常量 + README 说明为准。
+const PROXY_TIMEOUT_MS = 30000;
+
+function abortProxyResponse(response) {
+    if (response.destroyed || response.writableEnded) return;
+    response.destroy();
+}
+
 function respondProxyError(response, message) {
-    if (response.headersSent) { response.destroy(); return; }
+    // 响应已开始（writeHead + pipe 进行中）时二次 writeHead 会抛 ERR_HTTP_HEADERS_SENT，
+    // 从事件回调冒泡成 uncaughtException 直接杀死 serve 进程；此时只能断开连接
+    if (response.headersSent) { abortProxyResponse(response); return; }
     response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
     response.end(message);
 }
@@ -893,6 +904,10 @@ function proxyRequest(request, response, targetUrl) {
                 if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
             }
             response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+            // 响应已开始后上游传输中途断连/重置：不能再写 502（二次 writeHead 会抛
+            // ERR_HTTP_HEADERS_SENT），直接销毁下游连接，让浏览器立即失败而不是无限等待
+            upstreamResponse.on("error", () => abortProxyResponse(response));
+            upstreamResponse.on("aborted", () => abortProxyResponse(response));
             upstreamResponse.pipe(response);
         });
     } catch (error) {
@@ -900,7 +915,7 @@ function proxyRequest(request, response, targetUrl) {
         respondProxyError(response, `Bad Gateway: 接口代理请求构造失败: ${error.message}`);
         return;
     }
-    upstream.setTimeout(30000, () => {
+    upstream.setTimeout(PROXY_TIMEOUT_MS, () => {
         upstream.destroy(new Error("接口代理超时"));
     });
     upstream.on("error", () => {

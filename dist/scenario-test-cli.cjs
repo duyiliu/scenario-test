@@ -8539,9 +8539,14 @@ var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "upgrade",
   "host"
 ]);
+var PROXY_TIMEOUT_MS = 3e4;
+function abortProxyResponse(response) {
+  if (response.destroyed || response.writableEnded) return;
+  response.destroy();
+}
 function respondProxyError(response, message) {
   if (response.headersSent) {
-    response.destroy();
+    abortProxyResponse(response);
     return;
   }
   response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
@@ -8592,13 +8597,15 @@ function proxyRequest(request, response, targetUrl) {
         if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
       }
       response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+      upstreamResponse.on("error", () => abortProxyResponse(response));
+      upstreamResponse.on("aborted", () => abortProxyResponse(response));
       upstreamResponse.pipe(response);
     });
   } catch (error) {
     respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
     return;
   }
-  upstream.setTimeout(3e4, () => {
+  upstream.setTimeout(PROXY_TIMEOUT_MS, () => {
     upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
   });
   upstream.on("error", () => {
