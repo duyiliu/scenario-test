@@ -77,8 +77,27 @@ function suggestOption(input) {
     return best.option;
 }
 
+function parseKeyValueOption(raw, option) {
+    // 只按首个 = 分隔：值本身可含 =（如签名/URL query），不截断
+    const separator = raw.indexOf("=");
+    const key = separator > 0 ? raw.slice(0, separator).trim() : "";
+    if (!key) {
+        throw new CliUsageError(
+            `${option} 需要 key=value 格式`,
+            `示例：${option} tenant=test ${option} expectedStatus=UP；值可包含 = 且支持 {{ }} 模板。`
+        );
+    }
+    return [key, raw.slice(separator + 1)];
+}
+
+function parseOptionValue(raw, spec, option) {
+    if (spec.parse === "number") return Number(raw);
+    if (spec.parse === "keyValue") return parseKeyValueOption(raw, option);
+    return raw;
+}
+
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -89,7 +108,18 @@ function parseArgs(argv) {
         const valueOption = VALUE_OPTIONS.get(item);
         if (valueOption) {
             const raw = argumentValue(argv, index++, item);
-            args[valueOption.prop] = valueOption.spec.parse === "number" ? Number(raw) : raw;
+            const parsed = parseOptionValue(raw, valueOption.spec, item);
+            if (valueOption.spec.repeatable) {
+                // 可重复选项按出现顺序叠加；同 key 后者覆盖前者。
+                // 用 Object.fromEntries 而非直接赋值：--vars __proto__=x 必须成为
+                // 自有键并由引擎 assertNoReservedVars 拒绝，不能改写对象原型。
+                args[valueOption.prop] = Object.fromEntries([
+                    ...Object.entries(args[valueOption.prop] || {}),
+                    parsed
+                ]);
+            } else {
+                args[valueOption.prop] = parsed;
+            }
             if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
             continue;
         }
@@ -118,6 +148,12 @@ function parseArgs(argv) {
     if (args.all && args.scenario) throw new CliUsageError("--all 与 --scenario 不能同时使用", "请移除其中一个选项后重试。");
     if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
         throw new CliUsageError("--port 必须是 1-65535 的整数", "请为 --port 选择 1 到 65535 之间的整数。");
+    }
+    if (args.timeout !== undefined && (!Number.isFinite(args.timeout) || args.timeout <= 0)) {
+        throw new CliUsageError(
+            "--timeout 必须是大于 0 的毫秒数",
+            "示例：--timeout 5000；该值会覆盖配置中的 requestTimeoutMs。"
+        );
     }
 
     // ✅ 环境变量优先于命令行参数
@@ -490,21 +526,27 @@ function selectEnvironment(config, key) {
     return environment;
 }
 
-function configVariables(config) {
+function configVariables(config, overrides = {}) {
     const values = { ...(config.vars || {}) };
+    const provided = overrides && typeof overrides === "object" ? overrides : {};
     for (const definition of config.variables || []) {
         const environmentName = definition.env;
         const value = environmentName ? process.env[environmentName] : undefined;
         if (value !== undefined) values[definition.name] = value;
         else if (values[definition.name] === undefined && definition.defaultValue !== undefined) values[definition.name] = definition.defaultValue;
-        if (definition.required && (values[definition.name] === undefined || values[definition.name] === "")) {
+        // 命令行 --vars 优先级最高：必填校验也必须看到命令行的临时注入，
+        // 否则 CI 里为一次运行覆盖必填变量仍会被配置校验提前拒绝。
+        const effective = Object.prototype.hasOwnProperty.call(provided, definition.name)
+            ? provided[definition.name]
+            : values[definition.name];
+        if (definition.required && (effective === undefined || effective === "")) {
             throw new CliUsageError(
                 `缺少变量 ${definition.name}${environmentName ? `，请设置环境变量 ${environmentName}` : ""}`,
-                environmentName ? `设置 ${environmentName} 后重新运行。` : "请在配置的 vars 或 variables.defaultValue 中提供该变量。"
+                environmentName ? `设置 ${environmentName} 或通过 --vars ${definition.name}=<value> 后重新运行。` : `请在配置的 vars 或 variables.defaultValue 中提供该变量，或通过 --vars ${definition.name}=<value> 临时注入。`
             );
         }
     }
-    return values;
+    return { ...values, ...provided };
 }
 
 async function runCommand(args) {
@@ -561,8 +603,8 @@ async function runCommand(args) {
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
         authorization: args.authorization || environment.authorization || config.authorization || "",
         globals: mergeGlobals(config.globals, environment.globals, envGlobals),
-        requestTimeoutMs: config.requestTimeoutMs,
-        vars: configVariables(config),
+        requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
+        vars: configVariables(config, args.vars),
         environmentVariables: process.env,
         io: ScenarioTest.createNodeIo(configDir),
         adapters

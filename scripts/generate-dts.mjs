@@ -388,7 +388,7 @@ export declare const contract: {
     };
     cli: {
         commands: readonly string[];
-        options: Record<string, { kind: "value" | "flag"; prop: string; description: string; aliases?: readonly string[] }>;
+        options: Record<string, { kind: "value" | "flag"; prop: string; description: string; parse?: "number" | "keyValue"; repeatable?: boolean; aliases?: readonly string[] }>;
     };
 };
 
