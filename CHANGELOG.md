@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
   场景结束时整块输出，避免 `[PASS]`/`[FAIL]`/`[RETRY]` 交错；`--json` 报告按配置清单顺序收集
   （不按完成顺序），汇总统计与退出码逻辑不变。`onStep`/`onAttempt` 并发安全由调用方保证；
   进程级共享的适配器注册表在并发下要求 `matches`/`execute` 可重入，详见 `docs/ADAPTER_GUIDE.md`。
+  `nodePlugins` 的 `transformScenario`/`afterScenario` 也会被并发调用，同样要求可重入无状态；
+  任一场景执行链（含插件钩子）拒绝均中断调度并以非零退出码终止，与串行一致。
 
 ## [0.8.0] - 2026-10-24
 

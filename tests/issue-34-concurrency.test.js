@@ -192,3 +192,75 @@ test("--concurrency 必须为正整数", async () => {
         assert.match(result.stderr, /--concurrency 必须是大于等于 1 的整数/);
     }
 });
+
+// 并发 worker 的 catch 不能靠 `firstError` 的真值判断：插件钩子可能以假值拒绝
+// （throw null/undefined/""），那也必须与串行一致地中断调度、以非零退出码终止，
+// 且不得输出带 null 空洞的 --json 报告。
+async function createFailingPluginFixture(directory, ids) {
+    fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+    fs.mkdirSync(path.join(directory, "plugins"), { recursive: true });
+    fs.writeFileSync(
+        path.join(directory, "plugins/throw-plugin.js"),
+        `export default {
+            async transformScenario(scenario) {
+                const mode = process.env.SCENARIO_ISSUE34_THROW;
+                if (mode === "error") throw new Error("plugin boom");
+                if (mode === "null") throw null;
+                if (mode === "undefined") throw undefined;
+                if (mode === "empty") throw "";
+                return scenario;
+            }
+        };`,
+        "utf8"
+    );
+    fs.writeFileSync(
+        path.join(directory, "scenario.config.js"),
+        `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            nodePlugins: ["plugins/throw-plugin.js"],
+            envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:1" }],
+            scenarios: [${ids.map((id) => `{ id: "${id}", name: "${id}", url: "scenarios/${id}.js" }`).join(", ")}]
+        }));`,
+        "utf8"
+    );
+    for (const id of ids) {
+        fs.writeFileSync(
+            path.join(directory, `scenarios/${id}.js`),
+            `ScenarioTest.registerScenario("${id}", ScenarioTest.defineScenario({
+                name: "${id}",
+                steps: [{ name: "${id}-step", path: "work", status: 200 }]
+            }));`,
+            "utf8"
+        );
+    }
+}
+
+test("插件钩子拒绝（含假值）时并发与串行退出码/输出一致，不产出空洞报告", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-concurrency-throw-"));
+    try {
+        await createFailingPluginFixture(directory, ["a", "b", "c"]);
+        const configPath = path.join(directory, "scenario.config.js");
+
+        const cases = [
+            { mode: "error", expectStderr: /plugin boom/ },
+            { mode: "null", expectStderr: /^null$/m },
+            { mode: "undefined", expectStderr: /^undefined$/m },
+            { mode: "empty", expectStderr: /^\s*$/m }
+        ];
+        for (const { mode, expectStderr } of cases) {
+            const env = { SCENARIO_ISSUE34_THROW: mode };
+            const serial = await runCli(["--config", configPath, "--all", "--json"], env);
+            const concurrent = await runCli(["--config", configPath, "--all", "--json", "--concurrency", "3"], env);
+            // 场景本身全部可通过：退出码必须只由插件钩子的拒绝决定
+            assert.notEqual(serial.code, 0, `串行 ${mode} 应非零退出`);
+            assert.equal(concurrent.code, serial.code, `并发 ${mode} 退出码必须与串行一致（stderr: ${concurrent.stderr}）`);
+            assert.match(concurrent.stderr, expectStderr, `并发 ${mode} 应输出被拒绝的值`);
+            // 串行在遇到拒绝时不输出 --json 文档；并发同样不得输出半成品报告
+            assert.equal(serial.stdout.trim(), "", `串行 ${mode} 不应输出 --json 文档`);
+            assert.equal(concurrent.stdout.trim(), "", `并发 ${mode} 不得输出带空洞的 --json 文档`);
+            assert.doesNotMatch(concurrent.stdout, /null/, `并发 ${mode} 报告不得含 null 空洞`);
+            assert.doesNotMatch(concurrent.stderr, /Overall:/, `并发 ${mode} 不应继续打印汇总`);
+        }
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});

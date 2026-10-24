@@ -695,10 +695,14 @@ async function runCommand(args) {
         // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
         let nextIndex = 0;
         let firstError = null;
+        // 单独用布尔标记而不是靠 firstError 的真值判断：执行链可能以假值拒绝
+        // （插件 transformScenario/afterScenario 抛 null/undefined/空串），
+        // 那也必须与串行一致地中断并让退出码为 1，否则并发路径会静默产出带空洞的报告。
+        let hasError = false;
         const workerCount = Math.min(args.concurrency, entries.length);
         const worker = async () => {
             while (true) {
-                if (firstError) return;
+                if (hasError) return;
                 const index = nextIndex;
                 nextIndex += 1;
                 if (index >= entries.length) return;
@@ -712,14 +716,17 @@ async function runCommand(args) {
                 } catch (error) {
                     // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
                     // 不再调度新场景，已在飞行的场景跑完后统一失败。
-                    if (!firstError) firstError = error;
+                    if (!hasError) {
+                        hasError = true;
+                        firstError = error;
+                    }
                 } finally {
                     for (const line of bufferedLines) print(line);
                 }
             }
         };
         await Promise.all(Array.from({ length: workerCount }, () => worker()));
-        if (firstError) throw firstError;
+        if (hasError) throw firstError;
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;

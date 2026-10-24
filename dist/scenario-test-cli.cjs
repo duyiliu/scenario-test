@@ -8413,10 +8413,11 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
   } else {
     let nextIndex = 0;
     let firstError = null;
+    let hasError = false;
     const workerCount = Math.min(args.concurrency, entries.length);
     const worker = async () => {
       while (true) {
-        if (firstError) return;
+        if (hasError) return;
         const index = nextIndex;
         nextIndex += 1;
         if (index >= entries.length) return;
@@ -8428,14 +8429,17 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           accumulateReport(report);
           bufferedPrint(reportSummary(report));
         } catch (error) {
-          if (!firstError) firstError = error;
+          if (!hasError) {
+            hasError = true;
+            firstError = error;
+          }
         } finally {
           for (const line of bufferedLines) print(line);
         }
       }
     };
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    if (firstError) throw firstError;
+    if (hasError) throw firstError;
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
