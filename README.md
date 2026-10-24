@@ -1,5 +1,7 @@
 # scenario-test
 
+[![CI](https://github.com/duyiliu/scenario-test/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/duyiliu/scenario-test/actions/workflows/ci.yml)
+
 为 AI 协作打造的 HTTP 场景测试工具：开发者只需告诉 AI 要测试的业务功能，就能自动生成并维护接口测试场景；免 npm 安装、不侵入业务项目，浏览器工作台与命令行共享同一套场景，开箱即测。
 
 `scenario-test` 是面向业务项目的 HTTP 场景测试工具，提供统一 DSL、浏览器工作台和 Node.js CLI。默认采用免 npm 接入，不修改业务项目依赖，也不要求克隆本仓库。
@@ -254,6 +256,15 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 `doctor` 全部 PASS（尤其 version-lock、capabilities 版本一致）即升级成功。
 
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 持续集成
+
+GitHub Actions 工作流 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在 `push master` 与所有 `pull_request` 上运行：
+
+- **unit**：Node.js 20/22 × Ubuntu/Windows 矩阵，依次执行 `npm ci` → `npm run build` → `npm test` → `npm run check:eol`；Windows 组合覆盖路径、CRLF 与 PowerShell 相关用例。
+- **browser**：Ubuntu + Node.js 20，安装 Playwright Chromium 后执行 `npm run test:browser`。
+
+`master` 分支保护需将 `unit`、`browser` 设为 required status checks（属 GitHub 仓库设置，不在代码中声明）。故意破坏断言会令 `unit` 变红；制造 CRLF 幻影改动会令 `unit` 的 `check:eol` 步骤变红。
 
 ## 维护者
 

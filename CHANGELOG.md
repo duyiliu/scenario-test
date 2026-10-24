@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### CI
+
+- 新增 GitHub Actions 工作流 `.github/workflows/ci.yml`：`push master` 与所有 `pull_request` 触发。`unit` 覆盖 Node 20/22 × Ubuntu/Windows，执行 `npm ci` → `npm run build` → `npm test` → `npm run check:eol`；`browser` 在 Ubuntu 安装 Playwright Chromium 后执行 `npm run test:browser`。两 job 均启用 npm 缓存，并以稳定的 `unit` 聚合检查汇总矩阵结果，便于设为分支保护必需检查。
+- 浏览器测试支持 `PLAYWRIGHT_CHANNEL` 覆盖浏览器通道；默认仍用本机 Chrome，CI 使用 Playwright 安装的 Chromium。README/AGENTS 补充 CI 说明与徽章，新增 `tests/ci-config.test.js` 校验工作流触发条件、矩阵与命令。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
