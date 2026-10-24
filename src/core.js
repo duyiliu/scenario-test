@@ -325,13 +325,56 @@ export function queryPairs(key, value) {
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 
+// 按 fragment（#）拆分 URL。查询参数必须拼在 fragment 之前：浏览器 fetch 不会发送
+// fragment 之后的内容，拼到 # 之后会让参数静默丢失。
+export function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0
+        ? { path: text, fragment: "" }
+        : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+
+// 读取 URL 已有 query 的 key 集合（只看 fragment 之前的部分）。
+export function queryKeys(url) {
+    const keys = new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+        const key = pair.split("=")[0];
+        if (key) keys.add(decodeURIComponent(key));
+    }
+    return keys;
+}
+
+// 把已序列化的 query 对拼到 URL 上：保留原 fragment，参数总是追加在 fragment 之前。
+export function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+
+// 注入环境 globals query（跳过 URL 中已存在的 key）。引擎执行与浏览器 cURL 预览共用，
+// 保证两边拼接位置（含 fragment 处理）始终一致。
+export function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+        if (global.type !== "query" || existingKeys.has(global.name)) continue;
+        // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
+        pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+}
+
 export function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
 }
 
 export function parseBody(text, contentType) {

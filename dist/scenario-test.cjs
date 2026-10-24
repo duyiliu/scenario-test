@@ -254,6 +254,8 @@ __export(node_exports, {
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
   VERSION: () => VERSION,
+  appendGlobalQuery: () => appendGlobalQuery,
+  appendQueryPairs: () => appendQueryPairs,
   applyExtract: () => applyExtract,
   applyGeneratedVar: () => applyGeneratedVar,
   assertNoReservedVars: () => assertNoReservedVars,
@@ -306,6 +308,7 @@ __export(node_exports, {
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
+  queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -318,6 +321,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  splitUrlFragment: () => splitUrlFragment,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -749,13 +753,43 @@ function queryPairs(key, value) {
   if (value === void 0 || value === null) return [];
   return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
+function splitUrlFragment(url) {
+  const text = String(url || "");
+  const fragmentIndex = text.indexOf("#");
+  return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+function queryKeys(url) {
+  const keys = /* @__PURE__ */ new Set();
+  const { path: path4 } = splitUrlFragment(url);
+  const queryIndex = path4.indexOf("?");
+  if (queryIndex < 0) return keys;
+  for (const pair of path4.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(decodeURIComponent(key));
+  }
+  return keys;
+}
+function appendQueryPairs(url, pairs) {
+  const text = String(url || "");
+  if (!pairs || !pairs.length) return text;
+  const { path: path4, fragment } = splitUrlFragment(text);
+  return `${path4}${path4.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+function appendGlobalQuery(url, globals, runtime) {
+  const existingKeys = queryKeys(url);
+  const pairs = [];
+  for (const global of globals || []) {
+    if (global.type !== "query" || existingKeys.has(global.name)) continue;
+    pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+  }
+  return appendQueryPairs(url, pairs);
+}
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
   const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-  if (!pairs.length) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+  return appendQueryPairs(rawPath, pairs);
 }
 function parseBody(text, contentType) {
   if (!text) return null;
@@ -1999,20 +2033,7 @@ async function executeHttp(step, runtime, options) {
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
-    const existingKeys = /* @__PURE__ */ new Set();
-    const queryIndex = requestPath.indexOf("?");
-    if (queryIndex >= 0) {
-      for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-        const key = pair.split("=")[0];
-        if (key) existingKeys.add(decodeURIComponent(key));
-      }
-    }
-    const queryParts = [];
-    for (const global of globals) {
-      if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-    }
-    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+    requestPath = appendGlobalQuery(requestPath, globals, runtime);
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -2623,6 +2644,8 @@ function createApp() {
   TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET,
   VERSION,
+  appendGlobalQuery,
+  appendQueryPairs,
   applyExtract,
   applyGeneratedVar,
   assertNoReservedVars,
@@ -2675,6 +2698,7 @@ function createApp() {
   parseBody,
   parseTimestampOffset,
   pickWeightedIndex,
+  queryKeys,
   queryPairs,
   registerAdapter,
   registerConfig,
@@ -2687,6 +2711,7 @@ function createApp() {
   sanitizeSensitive,
   seedToIndex,
   seedToUnit,
+  splitUrlFragment,
   tokenizePath,
   unregisterAdapter,
   usccCheckChar,
