@@ -858,6 +858,7 @@ var ScenarioTest = (() => {
   }
   function stableStringify(value) {
     if (value === void 0) return "undefined";
+    if (typeof value === "bigint") return `bigint:${value.toString()}`;
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
     const entries = [];
@@ -868,8 +869,26 @@ var ScenarioTest = (() => {
     return `{${entries.join(",")}}`;
   }
   var INCLUDES_OBJECT_ACTUAL_REASON = 'includes \u4E0D\u652F\u6301\u5BF9\u8C61\u7C7B\u578B\u7684\u5B9E\u9645\u503C\uFF08String(actual) \u6052\u4E3A "[object Object]"\uFF0C\u65AD\u8A00\u5FC5\u7136\u5931\u8D25\uFF09\uFF1A\u5BF9\u8C61\u6DF1\u6BD4\u8F83\u8BF7\u6539\u7528 equals\uFF0C\u6216\u5BF9\u5177\u4F53\u5B57\u6BB5\u7528 path \u65AD\u8A00\uFF08\u5982 path: "data.id"\uFF09';
+  var validatedAssertions = /* @__PURE__ */ new WeakSet();
+  var MATCHES_PATTERN_CACHE_LIMIT = 128;
+  var matchesPatternCache = /* @__PURE__ */ new Map();
+  function compiledMatchesPattern(expected) {
+    const key = String(expected);
+    let compiled = matchesPatternCache.get(key);
+    if (!compiled) {
+      compiled = new RegExp(key);
+      if (matchesPatternCache.size >= MATCHES_PATTERN_CACHE_LIMIT) {
+        matchesPatternCache.delete(matchesPatternCache.keys().next().value);
+      }
+      matchesPatternCache.set(key, compiled);
+    }
+    return compiled;
+  }
   function evaluateAssertion(definition, response, runtime, context) {
-    validateAssertion(definition, context);
+    if (!validatedAssertions.has(definition)) {
+      validateAssertion(definition, context);
+      validatedAssertions.add(definition);
+    }
     return evaluateValidatedAssertion(definition, response, runtime, context);
   }
   function evaluateValidatedAssertion(definition, response, runtime, context) {
@@ -926,7 +945,7 @@ var ScenarioTest = (() => {
       expected = resolve(definition.matches, runtime);
       if (!(definition.implicit === true && typeof actual !== "number")) {
         try {
-          passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual));
+          passed = passed && compiledMatchesPattern(expected).test(String(actual == null ? "" : actual));
         } catch {
           passed = false;
         }
@@ -4651,7 +4670,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
       steps = steps || [];
-      var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
       var node = document.getElementById("reportPanel");
       var reportTab = document.getElementById("reportTab");
       var reportTabBadge = document.getElementById("reportTabBadge");
@@ -4664,7 +4682,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         reportTabBadge.classList.toggle("is-alert", failedCount > 0);
         reportTabBadge.style.display = failedCount > 0 ? "" : "none";
       }
-      if (!node) return report;
+      if (!node) return null;
+      if (node.classList.contains("hidden")) return null;
+      var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
       if (!steps.length) {
         node.innerHTML = '<div class="report-empty"><div class="report-empty__title">\u6267\u884C\u540E\u751F\u6210\u62A5\u544A</div><div class="report-empty__hint">\u7ED3\u679C\u6458\u8981\u4E0E\u5931\u8D25\u8BCA\u65AD\u5C06\u5728\u8FD9\u91CC\u5C55\u793A</div></div>';
         return report;
@@ -5465,7 +5485,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function renderReportPanel() {
       state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
-    function setSidePanelTab(tabName) {
+    function setSidePanelTab(tabName, options2) {
       var showReport = tabName === "report";
       var statsTab = document.getElementById("statsTab");
       var reportTab = document.getElementById("reportTab");
@@ -5482,6 +5502,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         reportTab.classList.toggle("is-active", showReport);
         reportTab.setAttribute("aria-selected", showReport ? "true" : "false");
       }
+      if (showReport && !(options2 && options2.preservePanel)) renderReportPanel();
     }
     function bindSidePanelTabs() {
       var statsTab = document.getElementById("statsTab");
@@ -5493,15 +5514,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         setSidePanelTab("report");
       });
       setSidePanelTab("stats");
-    }
-    function expandStepDetails(stepIndex) {
-      var items = document.querySelectorAll("#stepsList li");
-      var item = items[stepIndex];
-      if (!item) return;
-      var panel = item.querySelector(".details-panel");
-      var chevron = item.querySelector(".chevron");
-      if (panel) panel.classList.add("open");
-      if (chevron) chevron.classList.add("rotate-180");
     }
     var engine = createEngine({ config: appConfig });
     async function executeStep(step, runtime, cfg) {
@@ -5673,7 +5685,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (reportPanel) {
         reportPanel.innerHTML = '<div class="report-content"><div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-800 space-y-2"><div class="font-bold text-xs flex items-center gap-1.5 text-rose-700"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span>' + esc(runState) + '</span></div><div class="text-xs text-rose-700 leading-relaxed font-mono whitespace-pre-wrap break-all">' + esc(message) + '</div><div class="text-[11px] text-rose-600/80 pt-1 border-t border-rose-200/60">\u53EF\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u6309\u94AE\u68C0\u67E5\u73AF\u5883\u53C2\u6570\uFF0C\u6216\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002</div></div></div>';
       }
-      setSidePanelTab("report");
+      setSidePanelTab("report", { preservePanel: true });
     }
     function showExecutionConfigError(error) {
       showDiagnosticError(error, /缺少场景凭据|配置/.test(error && error.message ? error.message : "") ? "\u914D\u7F6E\u7F3A\u5931" : "\u6267\u884C\u524D\u5931\u8D25");

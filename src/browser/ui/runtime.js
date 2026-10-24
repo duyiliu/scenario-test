@@ -482,7 +482,7 @@ export function createWorkbenchRuntime(options) {
         state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
 
-    function setSidePanelTab(tabName) {
+    function setSidePanelTab(tabName, options) {
         var showReport = tabName === 'report';
         var statsTab = document.getElementById('statsTab');
         var reportTab = document.getElementById('reportTab');
@@ -499,6 +499,10 @@ export function createWorkbenchRuntime(options) {
             reportTab.classList.toggle('is-active', showReport);
             reportTab.setAttribute('aria-selected', showReport ? 'true' : 'false');
         }
+        // 报告面板由隐藏转可见时补一次全量渲染：面板隐藏期间 renderReportPanel 只更新
+        // 徽标不重建 DOM（见 ui-view 同名函数注释），切回时需用最新 steps 重新填充；
+        // preservePanel 用于调用方已自行写入面板内容的场景（showDiagnosticError），跳过重建
+        if (showReport && !(options && options.preservePanel)) renderReportPanel();
     }
 
     function bindSidePanelTabs() {
@@ -507,16 +511,6 @@ export function createWorkbenchRuntime(options) {
         if (statsTab) statsTab.addEventListener('click', function () { setSidePanelTab('stats'); });
         if (reportTab) reportTab.addEventListener('click', function () { setSidePanelTab('report'); });
         setSidePanelTab('stats');
-    }
-
-    function expandStepDetails(stepIndex) {
-        var items = document.querySelectorAll('#stepsList li');
-        var item = items[stepIndex];
-        if (!item) return;
-        var panel = item.querySelector('.details-panel');
-        var chevron = item.querySelector('.chevron');
-        if (panel) panel.classList.add('open');
-        if (chevron) chevron.classList.add('rotate-180');
     }
 
     // ===== 执行调度引擎 =====
@@ -725,7 +719,8 @@ export function createWorkbenchRuntime(options) {
                     '</div>' +
                 '</div>';
         }
-        setSidePanelTab('report');
+        // 面板内容已按诊断形态手工写入：切页签时跳过常规重建，否则诊断被覆盖
+        setSidePanelTab('report', { preservePanel: true });
     }
 
     function showExecutionConfigError(error) {

@@ -10,7 +10,24 @@ All notable changes to this project will be documented in this file.
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
+### 产物
 
+- `node.js` 入口不再透传 `index.js` 的 `createApp`：改为逐项枚举核心导出 + 浏览器占位函数（`typeof` 仍为 `function`，调用时报「仅在浏览器环境可用」而非 `document is not defined`）。Node/CLI 产物随之不再打进浏览器工作台与 Tailwind 内联样式（此前 `cli.js` 把 `import * as ScenarioTest` 整个命名空间对象传入 loader/插件工厂，esbuild 无法 tree-shake）；`scenario-test.cjs`/`scenario-test-cli.cjs` 显著瘦身。UMD/ESM 浏览器产物的 `createApp` 不变。
+
+### 引擎与断言
+
+- `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
+- `matches` 断言正则编译缓存：retryUntil 轮询与同值静态正则不再每次尝试重复 `new RegExp`；按解析后的期望值字符串键控（模板值变化互不串扰），有界 FIFO。
+- `evaluateAssertion` 执行期校验 WeakSet 去重：同一定义对象在轮询重试中不再重复 `validateAssertion`；each 子断言为每次 resolve 新建对象，仍逐次校验，口径不变。
+
+### CLI/加载
+
+- `loadScenarioFile` 场景缓存按「id + 文件路径」判定：同进程加载同名 id 的另一个文件不再返回首个文件的陈旧场景，同名不同路径时重新执行文件、由 `registerScenario` 后注册覆盖。
+
+### 浏览器工作台
+
+- 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
+- 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。
 
 ## [0.8.0] - 2026-10-24
 

@@ -469,6 +469,10 @@ function assertionActual(definition, response, runtime) {
 // 值语义与 JSON 对齐：对象里值为 undefined 的键与 JSON.stringify 一样忽略（{a:undefined} ≡ {}）。
 function stableStringify(value) {
     if (value === undefined) return "undefined";
+    // BigInt 等 JSON 不可表示值此前经 JSON.stringify 抛 TypeError，把 equals/notEquals
+    // 的「断言失败」升级为步骤 ERROR——与 includes/oneOf 已修的口径不一致。bigint:
+    // 前缀与字符串 "1"、数字 1 区分开（1n ≠ 1 ≠ "1"），适配器返回的 BigInt 字段可正常比较
+    if (typeof value === "bigint") return `bigint:${value.toString()}`;
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
     // 单趟组装：此前 filter+map 各序列化一次同一子树——每层 2× 冗余，
@@ -488,9 +492,39 @@ const INCLUDES_OBJECT_ACTUAL_REASON =
     "includes 不支持对象类型的实际值（String(actual) 恒为 \"[object Object]\"，断言必然失败）：" +
     "对象深比较请改用 equals，或对具体字段用 path 断言（如 path: \"data.id\"）";
 
+// 断言定义执行期校验去重：retryUntil 轮询里同一定义对象每次尝试都会重新进
+// evaluateAssertion——同一对象的校验结果不变（插件 transform 在 runScenario 前完成，
+// 步内定义不会被改写），WeakSet 记忆已校验对象，把 N 次尝试 × M 条断言降为 M 次。
+// each 子断言是每次 resolve() 新建的独立对象，天然不命中缓存，仍由 each 分支逐次校验。
+const validatedAssertions = new WeakSet();
+
+// matches 正则编译缓存：retryUntil 轮询与同值静态正则（如隐式 ^2\d\d$）此前
+// 每条断言每次尝试都重新 new RegExp。按解析后的期望值字符串缓存编译结果；
+// new RegExp 不携带 /g /y flag，.test() 无 lastIndex 状态，共享安全。
+// 有界 FIFO 防模板期望值无限增长占内存（与 tokenizePath 缓存同思路）。
+const MATCHES_PATTERN_CACHE_LIMIT = 128;
+const matchesPatternCache = new Map();
+
+function compiledMatchesPattern(expected) {
+    const key = String(expected);
+    let compiled = matchesPatternCache.get(key);
+    if (!compiled) {
+        compiled = new RegExp(key);
+        if (matchesPatternCache.size >= MATCHES_PATTERN_CACHE_LIMIT) {
+            matchesPatternCache.delete(matchesPatternCache.keys().next().value);
+        }
+        matchesPatternCache.set(key, compiled);
+    }
+    return compiled;
+}
+
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
-    validateAssertion(definition, context);
+    if (!validatedAssertions.has(definition)) {
+        validateAssertion(definition, context);
+        // 走到这里定义必是 plain object（否则上一行已抛），WeakSet 只收对象
+        validatedAssertions.add(definition);
+    }
     return evaluateValidatedAssertion(definition, response, runtime, context);
 }
 
@@ -568,7 +602,7 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
         // HTTP 状态码生效；本地适配器（返回 status: "LOCAL"）不参与匹配
         if (!(definition.implicit === true && typeof actual !== "number")) {
-            try { passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual)); }
+            try { passed = passed && compiledMatchesPattern(expected).test(String(actual == null ? "" : actual)); }
             catch { passed = false; }
         }
     }
