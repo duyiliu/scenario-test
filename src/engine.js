@@ -11,6 +11,7 @@ import {
     joinUrl,
     parseBody,
     evaluateWhen,
+    normalizeByteLimit,
     queryPairs,
     resolve,
     resolveClone,
@@ -175,10 +176,13 @@ function chooseAdapter(step, adapters) {
 
 // 读取响应体并支持中途取消：fetch 的 signal abort 是否传播给 body 流随实现而异，
 // 这里显式监听 signal，保证"读体"阶段同样受超时/取消控制。
-function readBodyChunks(response, signal) {
+// maxBytes > 0 时边读边计数：超过上限立即取消读取并抛出结构化错误，
+// 不把超限响应完整读进内存（非 saveResponseAs 路径同样受上限保护）。
+function readBodyChunks(response, signal, maxBytes = 0) {
     if (!response.body) return Promise.resolve([]);
     const reader = response.body.getReader();
     const chunks = [];
+    let totalBytes = 0;
     return new Promise((resolve, reject) => {
         const onAbort = () => {
             reader.cancel().catch(() => {});
@@ -193,6 +197,11 @@ function readBodyChunks(response, signal) {
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+                    totalBytes += value.byteLength;
+                    if (maxBytes > 0 && totalBytes > maxBytes) {
+                        reader.cancel().catch(() => {});
+                        throw createResponseTooLargeError(totalBytes, maxBytes);
+                    }
                     chunks.push(value);
                 }
                 resolve(chunks);
@@ -205,6 +214,90 @@ function readBodyChunks(response, signal) {
     });
 }
 
+function createResponseTooLargeError(actualBytes, limitBytes) {
+    const error = new Error(`响应体超过大小上限: 实际 ${actualBytes} 字节，限制 ${limitBytes} 字节`);
+    error.scenarioResponseTooLarge = true;
+    error.responseTooLarge = { actualBytes, limitBytes };
+    return error;
+}
+
+function resolveMaxResponseBytes(options = {}) {
+    return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
+}
+
+// 上传上限要把“未声明”和“显式 0=不限制”区分开：前者回落到 createNodeIo 默认值，
+// 后者必须覆盖默认值。返回 undefined 表示调用方未声明上限。
+function resolveMaxUploadBytes(options = {}) {
+    const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
+    return value === undefined || value === null ? undefined : normalizeByteLimit(value);
+}
+
+// 流式保存的响应体包装：边转发边计数字节、监听取消/超时 signal，并把读取错误
+// （包括字符串等非 Error 拒绝值）传给下游流水线。body 为空时也返回已关闭的空流，
+// 保证只实现 saveResponseStream 的 io 仍能创建零字节文件。
+function createSaveBodyStream(body, signal, maxBytes) {
+    if (!body) {
+        return new ReadableStream({
+            start(controller) {
+                if (signal?.aborted) controller.error(abortReason(signal));
+                else controller.close();
+            }
+        });
+    }
+    const reader = body.getReader();
+    let totalBytes = 0;
+    let finished = false;
+    let onAbort = null;
+    const cleanup = () => {
+        finished = true;
+        if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+        onAbort = null;
+    };
+    const cancelReader = (reason) => reader.cancel(reason).catch(() => {});
+    return new ReadableStream({
+        start(controller) {
+            if (!signal) return;
+            onAbort = () => {
+                if (finished) return;
+                cleanup();
+                cancelReader(abortReason(signal));
+                controller.error(abortReason(signal));
+            };
+            if (signal.aborted) onAbort();
+            else signal.addEventListener("abort", onAbort, { once: true });
+        },
+        async pull(controller) {
+            if (finished) return;
+            try {
+                const { done, value } = await reader.read();
+                // 等待读取期间可能已被取消，此时不再 enqueue/close
+                if (finished) return;
+                if (done) {
+                    cleanup();
+                    controller.close();
+                    return;
+                }
+                totalBytes += value.byteLength;
+                if (maxBytes > 0 && totalBytes > maxBytes) {
+                    cleanup();
+                    cancelReader();
+                    controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+                    return;
+                }
+                controller.enqueue(value);
+            } catch (error) {
+                if (finished) return;
+                cleanup();
+                controller.error(error);
+            }
+        },
+        cancel(reason) {
+            cleanup();
+            return cancelReader(reason);
+        }
+    });
+}
+
 // 按 content-type 的 charset 构造解码器（如 GBK 老系统）；缺省或非法/不支持的 charset 回退 UTF-8
 function decoderForContentType(contentType) {
     const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
@@ -212,17 +305,39 @@ function decoderForContentType(contentType) {
     try { return new TextDecoder(match[1]); } catch { return new TextDecoder(); }
 }
 
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
     const headers = headersToObject(response.headers);
     const contentType = String(headers["content-type"] || "");
-    const chunks = await readBodyChunks(response, signal);
-    if (step.saveResponseAs && io?.saveResponse) {
-        const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-        let offset = 0;
-        for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-        const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-        return { status: response.status, headers, body: saved, bodyText: null };
+    const maxResponseBytes = resolveMaxResponseBytes(options);
+    if (step.saveResponseAs) {
+        const relativePath = resolveString(step.saveResponseAs, runtime);
+        const metadata = { contentType, headers, maxResponseBytes };
+        // 优先流式落盘：response.body 直接接到 io 的文件流，避免响应体全量驻留内存；
+        // 包装流同时负责 maxResponseBytes 校验与超时/取消，失败时 io 只清理本次临时文件
+        if (io?.saveResponseStream) {
+            const saved = await io.saveResponseStream(
+                relativePath,
+                createSaveBodyStream(response.body, signal, maxResponseBytes),
+                metadata
+            );
+            return { status: response.status, headers, body: saved, bodyText: null };
+        }
+        // 回退：环境仅实现 saveResponse 时仍先缓冲，但上限检查发生在写盘之前
+        if (io?.saveResponse) {
+            const chunks = await readBodyChunks(response, signal, maxResponseBytes);
+            const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            // 单块响应直接复用（fetch 的 chunk 已是独立 Uint8Array），多块才合并；
+            // 避免旧实现无论块数都再复制一份造成的峰值翻倍
+            const data = chunks.length === 1 ? chunks[0] : new Uint8Array(total);
+            if (chunks.length > 1) {
+                let offset = 0;
+                for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+            }
+            const saved = await io.saveResponse(relativePath, data, metadata);
+            return { status: response.status, headers, body: saved, bodyText: null };
+        }
     }
+    const chunks = await readBodyChunks(response, signal, maxResponseBytes);
     const decoder = decoderForContentType(contentType);
     const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
@@ -280,8 +395,15 @@ async function executeHttp(step, runtime, options) {
     if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
         if (!options.io?.createUploadBody) throw new Error("当前运行环境不支持 fileUpload");
-        const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+        const upload = await options.io.createUploadBody(
+            resolve(request.fileUpload, runtime),
+            runtime,
+            { maxUploadBytes: resolveMaxUploadBytes(options) }
+        );
         fetchOptions.body = upload.body;
+        // 自定义 io 返回真正的流式请求体时，Node fetch 需要显式声明半双工；
+        // FormData（Blob/File）不受此限制
+        if (upload.body && typeof upload.body.getReader === "function") fetchOptions.duplex = "half";
         for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
         for (const key of Object.keys(headers)) {
             if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -300,7 +422,7 @@ async function executeHttp(step, runtime, options) {
     fetchOptions.signal = requestSignal.signal;
     try {
         const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-        const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+        const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
         return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
     } catch (error) {
         // 失败也返回注入后的最终请求（Authorization/全局头/合并 cookie/query）与超时标记，
@@ -332,6 +454,8 @@ class AdapterExecutionError extends Error {
         this.stepName = step?.name || "未命名步骤";
         if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
         if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+        if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+        if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
     }
 }
 
@@ -570,6 +694,10 @@ export function createEngine(engineOptions = {}) {
             const method = (context && context.method)
                 || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
             const path = (context && context.path) || resolveString(step.path || "", runtime);
+            // 大小上限错误以结构化字段随结果透出（CLI/工作台可直接读取，无需解析本地化文案）
+            const responseTooLarge = error?.responseTooLarge || null;
+            const uploadTooLarge = error?.uploadTooLarge || null;
+            const errorCode = responseTooLarge ? "responseTooLarge" : (uploadTooLarge ? "uploadTooLarge" : "");
             return {
                 name: step.name || "未命名步骤",
                 method,
@@ -579,6 +707,9 @@ export function createEngine(engineOptions = {}) {
                 passed: false,
                 cancelled,
                 timedOut,
+                errorCode,
+                ...(responseTooLarge ? { responseTooLarge } : {}),
+                ...(uploadTooLarge ? { uploadTooLarge } : {}),
                 error: errorMessage,
                 warnings: [],
                 assertions: [{ name: cancelled ? "执行未取消" : (timedOut ? "请求未超时" : "请求执行成功"), passed: false, actual: errorMessage, expected: "无异常" }],

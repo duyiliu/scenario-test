@@ -39,6 +39,14 @@ export function isPlainObject(value) {
 // JSON 序列化不可表达 Symbol，服务端/适配器业务数据无法伪造
 export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
 
+// 字节上限归一化：仅有限正数生效（向下取整），其余（0/负数/NaN/Infinity/空值）
+// 统一视为“不限制”以保持既有行为。config 与 run options 共用同一口径
+// （engine 的 maxResponseBytes/maxUploadBytes、node io 的 maxUploadBytes）。
+export function normalizeByteLimit(value) {
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
+
 // 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
 // \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
 // getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被静默忽略剩余字符，
