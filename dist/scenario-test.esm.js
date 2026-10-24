@@ -1,4 +1,4 @@
-/*! scenario-test v0.7.1 */
+/*! scenario-test v0.8.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -238,7 +238,7 @@ var require_md5 = __commonJS({
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.7.1";
+var VERSION = "0.8.0";
 
 // src/contract.js
 var CONTRACT_VERSION = 11;

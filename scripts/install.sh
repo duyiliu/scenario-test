@@ -5,8 +5,8 @@
 # 使用方法：
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
-#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.7.1/dist"
-#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.7.1/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.8.0/dist"
+#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.8.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
 # 原理：默认免 npm 安装 —— 从 npm Registry 下载固定版本 tarball，解压后从本地 dist 初始化，
 #       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
@@ -25,7 +25,7 @@ TARGET_DIR="${2:-scenario-test}"
 SOURCE="${3:-${SCENARIO_TEST_SOURCE:-}}"
 USE_NPM="${SCENARIO_TEST_USE_NPM:-false}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
-SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.7.1}"
+SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.8.0}"
 PACKAGE_TARBALL="https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-${SCENARIO_TEST_VERSION}.tgz"
 RUNTIME_FILES=(
     "scenario-test-cli.cjs"

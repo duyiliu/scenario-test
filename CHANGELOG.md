@@ -3,33 +3,30 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.8.0] - 2026-10-24
+
+### Migration Guide: v0.7.1 → v0.8.0
+
+本版本把多处「静默失败」收紧为定义期报错，并使适配器超时生效。正常写法的场景不受影响（114 个下游真实场景实测 0 违规、12 组 v0.7.1 典型写法结果一致）：
+
+1. **场景/步骤未知键**：拼错（`assertion`/`timeoutMS` 等）或自定义元数据键（`description`/`tags` 等）定义期报「包含未知键」——修正拼写；元数据请放注释。适配器步骤的私有配置键不受影响。
+2. **适配器 `timeoutMs`**：此前声明被忽略，现生效——慢适配器按真实耗时声明（默认上限 30s，可调大）。
+3. **数组 query 参数**：`tags: [1,2]` 从 `tags=1%2C2` 变为 `tags=1&tags=2`（标准数组语义）；后端按旧逗号格式解析的需确认。
+4. **`params` 与 `request.params` 双写**：定义期要求二选一。
+5. **`run --json`**：stdout 变为纯 JSON（进度走 stderr）；解析 stdout 文本的 CI 脚本需改用文本模式或解析 JSON。
+
+**契约版本 v8 → v11**（v9 `run --json`、v10 `when` 扩展、v11 未知键校验）。
+
 
 ### DSL
 
 - 场景顶层与步骤顶层未知键定义期拒绝（contract v10 → v11，issue #26 B1；master 的 v9/v10 已被 run --json/when 扩展占用）：拼错的 `assertion`/`extracts`/`retryuntill`/`timeoutMS` 此前被 `defineScenario` 静默接受——业务断言消失、重试/超时失效，接口返回 2xx 即假绿。现消费既有的 `contract.scenario.keys`/`stepKeys` 名单校验（不另写副本）；未声明 HTTP 执行面的步骤（matches 自动分发适配器）与显式 `adapter` 步骤仍可携带适配器私有配置键，但拼写/大小写疑似 DSL 字段的键仍然拒绝。
+
 - 步骤 `request` / `params` / `request.params` 必须是对象（issue #26 B3）：非对象此前在运行期被静默忽略（headers/body/method 或整个 query 丢弃），请求照发且可能假绿；同时声明 `params` 与 `request.params` 时定义期要求二选一（运行期只取 `params`，另一份静默失效）。
+
 - `contract.config.environmentKeys` 补 `authorization`（issue #26 F3）：CLI `selectEnvironment` 与浏览器 `getEffectiveAuthorization` 一直消费 `environment.authorization`，此前契约未投射，AI/工具侧不可见。
+
 - 浏览器工作台移除死字段 `scenario.iterations` 的读取：引擎/工作台从不写入、也不在契约中，B1 未知键校验一并明确去留（统计口径完全由 `state.steps` 推导）。
-
-### 核心
-
-- `joinUrl` 放行协议相对 URL（`//cdn.example.com/x`，issue #26 B4）：此前只识别 `^https?://`，前导 `//` 被 strip 后拼进 baseUrl，请求发往错误主机；`executeHttp` 的「绝对地址不发环境凭据」判定同步覆盖协议相对写法。
-- `buildUrl` 数组参数展开为重复 key（`tags=1&tags=2`，issue #26 B5）：此前 `String([1, 2])` 拼成 `tags=1%2C2`，把 `"1,2"` 当单值传给后端，与 Spring 等主流服务端数组语义静默偏差。执行期全局 query 注入与浏览器 cURL 预览共用同一 `queryPairs` 实现（已导出，d.ts 同步）。
-
-### 引擎
-
-- 适配器步骤的 `timeoutMs` 生效（issue #26 B2）：此前只有 `executeHttp` 有超时链路，`executeAdapter` 完全无超时（`retryUntil.maxElapsedMs` 只在 attempt 之间检查）——挂死的适配器会让场景永久卡住。现复用 `createRequestSignal` 语义并与 signal 竞速（适配器可能完全不看 signal），超时按结构化 `TIMEOUT` 归类并透出 `method/path/timeoutMs`；超时后 `onError` 钩子仍被调用。
-  **⚠️ 存量影响（行为变更）**：此前适配器步骤声明的 `timeoutMs` 被忽略、且不受默认 `requestTimeoutMs`（30s）约束——两类存量场景升级后可能从 PASS 变 TIMEOUT：(1) 声明了较小 `timeoutMs` 但适配器实际耗时更长的步骤；(2) 适配器单次执行超过 30s 的步骤（未显式声明 `timeoutMs` 时）。升级前请用本版本回归全部适配器场景，慢适配器按真实耗时调大 `timeoutMs`。
-
-### 浏览器工作台
-
-- 「复制 cURL」shell 转义补齐（issue #26 B6）：header/URL/body 统一改用 POSIX 单引号包裹 + `'\''` 转义，双引号内的 `$VAR`/`$(...)`/反引号不再被 bash/zsh 展开——复制出的命令与工作台实际发送值保持一致，也封堵变量值借复制粘贴注入命令。
-
-### 核心
-
-- `validateAdapterResponse` 的 `headers` 检查不再把 `null` 当对象放过（issue #26 小观察）。
-### DSL
 
 - `when` 对象形式扩展来源（contract v9 → v10）：新增 `from: "lastResponse"`（上一步响应 body，`path` 子路径口径与 extract `from: "body"` / 模板 `{{lastResponse.*}}` 一致）与 `from: "status"`（上一步 HTTP 状态码，数值），并支持等价的 `target: "status"`。此前「按上一步响应状态/响应体决定是否执行下一步」需先 `extract` 临时变量再让 `when` 引用变量。未新增其他响应来源（headers/bodyText/duration 仍仅用于 assertions/extract），来源名称与断言 `from`/`target` 白名单保持可映射关系。第一步（无上一步响应）引用 `lastResponse`/`status` 时按来源缺失处理：条件不成立、步骤 SKIP，不抛错中断场景。投射同步：capabilities JSON/文本、`dist/scenario-test.d.ts`（`WhenSource`/`WhenTarget`）、AI Prompt/模式库/项目 README 模板、内部使用指南。master 上 `run --json` 已先行占用 contract v9，故本次新增来源按不可变契约继续递增到 v10。
 
@@ -39,15 +36,38 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎
 
+- 适配器步骤的 `timeoutMs` 生效（issue #26 B2）：此前只有 `executeHttp` 有超时链路，`executeAdapter` 完全无超时（`retryUntil.maxElapsedMs` 只在 attempt 之间检查）——挂死的适配器会让场景永久卡住。现复用 `createRequestSignal` 语义并与 signal 竞速（适配器可能完全不看 signal），超时按结构化 `TIMEOUT` 归类并透出 `method/path/timeoutMs`；超时后 `onError` 钩子仍被调用。
+  **⚠️ 存量影响（行为变更）**：此前适配器步骤声明的 `timeoutMs` 被忽略、且不受默认 `requestTimeoutMs`（30s）约束——两类存量场景升级后可能从 PASS 变 TIMEOUT：(1) 声明了较小 `timeoutMs` 但适配器实际耗时更长的步骤；(2) 适配器单次执行超过 30s 的步骤（未显式声明 `timeoutMs` 时）。升级前请用本版本回归全部适配器场景，慢适配器按真实耗时调大 `timeoutMs`。
+
 - `AdapterExecutionError` 改用 `cause` 链接原始错误并透传结构化标记：适配器内部抛出的 `scenarioTimedOut`/`scenarioContext` 此前被包装吞掉，超时步骤降级为无请求现场的 ERROR；现按 TIMEOUT 归类并透出 method/path/request。失败消息的 cause 透出（`（ECONNREFUSED）` 等）增加去重：cause 文本已被包装进 message 时不再重复拼接。
+
 - `retryUntil.intervalMs` 显式 `0` 语义修正：此前 `intervalMs || 2000` 把显式 0 静默吞回默认 2000ms；现按「0 = 按最小间隔执行」钳到下限 100ms（与定义期 `≥0` 校验口径对齐），未声明/非法值仍按默认 2000ms。
+
 - `retryUntil` 轮询 `delay` 修复 abort 监听泄漏：正常到期只 resolve 不摘监听，监听器随尝试次数在同一父 signal 上累积——工作台整场执行复用单个 `abortController`、长轮询场景在 Node 下 ≥11 个监听器即打 `MaxListenersExceededWarning` 污染 stderr，亦构成内存泄漏。现到期即摘除，与 `readBodyChunks`/`createRequestSignal` 的清理口径对齐。
+
 - `each` 子断言执行期校验收敛：子断言定义在单次 `evaluateAssertion` 内由 `resolve()` 新鲜生成且不逃逸同步遍历，逐元素 `validateAssertion` 是纯浪费——N 元素 × M 子断言次校验降为 M 次（校验/求值输出完全同口径），大数组逐项断言的 CPU 开销显著下降。
+
 - `stableStringify` 单趟组装：对象分支 `filter`+`map` 各序列化一次同一子树，每层 2× 冗余在深层嵌套上指数放大；`includes`/`oneOf` 同步把 actual/expected 的稳定序列化移出逐项比较循环。
+
 - `resolveString` 无模板文本快速返回：`{{` 子串预检一次即返回，跳过整串 match+replace+test 三轮正则；`tokenizePath` 分词结果按路径字符串缓存（有界 FIFO、缓存数组冻结防改写污染）——模板/断言/extract 裸路径在多步骤与轮询重试间反复分词。
+
 - `tokenizePath` 兼容性回归修复：缓存内部数组仍然冻结（防调用方改写污染），但对外按公开声明 `string[] | null` 返回**可变副本**——调用方 `push`/`splice` 不再在 ESM/严格模式下抛 `TypeError`，公开 API 约定与旧版一致。
+
 - `includes`/`oneOf` 序列化短路：仅在累计结果仍可能通过、且候选/实际集合非空时才做稳定序列化——`oneOf: []`、空数组 `includes` 恢复为普通断言失败，不再因不可 JSON 序列化的实际值（如适配器返回的 `body: 1n`）把断言失败升级为步骤异常；前序操作符已失败时同样跳过后续无谓序列化。
+
 - 断言键白名单查询 Set 化（每次求值都过 `validateAssertion`）；`gt/gte/lt/lte` 循环复用 `contract.assertions.numericOperators` 名单，不再手写第二份。
+
+### 核心
+
+- `joinUrl` 放行协议相对 URL（`//cdn.example.com/x`，issue #26 B4）：此前只识别 `^https?://`，前导 `//` 被 strip 后拼进 baseUrl，请求发往错误主机；`executeHttp` 的「绝对地址不发环境凭据」判定同步覆盖协议相对写法。
+
+- `buildUrl` 数组参数展开为重复 key（`tags=1&tags=2`，issue #26 B5）：此前 `String([1, 2])` 拼成 `tags=1%2C2`，把 `"1,2"` 当单值传给后端，与 Spring 等主流服务端数组语义静默偏差。执行期全局 query 注入与浏览器 cURL 预览共用同一 `queryPairs` 实现（已导出，d.ts 同步）。
+
+- `validateAdapterResponse` 的 `headers` 检查不再把 `null` 当对象放过（issue #26 小观察）。
+
+### 浏览器工作台
+
+- 「复制 cURL」shell 转义补齐（issue #26 B6）：header/URL/body 统一改用 POSIX 单引号包裹 + `'\''` 转义，双引号内的 `$VAR`/`$(...)`/反引号不再被 bash/zsh 展开——复制出的命令与工作台实际发送值保持一致，也封堵变量值借复制粘贴注入命令。
 
 ### 诊断
 
@@ -59,16 +79,17 @@ All notable changes to this project will be documented in this file.
 
 - `registry.normalizeGlobals` 与 CLI `SCENARIO_GLOBALS` 解析复用 `core.normalizeGlobalParam`，消除两处同形规范化副本。
 
+- Tailwind CSS 3.4 → 4.3（#5）：构建链依赖从 `tailwindcss`（v3 PostCSS 插件）换成 `@tailwindcss/postcss`，`build.mjs` 输入改为 CSS 优先的 `@import "tailwindcss" source(none)` + `@source` 显式指向三个 UI 源文件（与原 `content` 列表一一对应）。v3 `important: "#scenario-test-root"` 在 v4 无等价配置（v4 important 只做 `!important`），改由构建内联 PostCSS 步骤对 `@layer utilities`/`components` 的选择器统一加 `#scenario-test-root` 前缀，theme/base（变量与 preflight）保持全局，与 v3 作用域口径一致。默认外观差异逐项还原：`@theme` 钩子恢复 `--default-ring-width: 3px` 与 `--default-ring-color: rgb(59 130 246 / 0.5)`，base 层补 `border-color: var(--color-gray-200)`（v4 默认改为 1px 与 currentColor）；UI 源文件 `outline-none` 更名 `outline-hidden`（v4 里 `outline-none` 变为彻底移除 outline，旧语义归 `outline-hidden`）。其余旧类（`flex-shrink-0`、`rounded`、`shadow`、`placeholder-slate-*`、`divide-*`、`space-*` 等）v4 均有兼容输出无需改名。同步收益：此前 v3 里不存在而静默失效的 `shadow-2xs`/`shadow-xs` 类在 v4 恢复生效。`npm audit` 8 个漏洞（6 high/2 moderate，全部位于 tailwind 3.x 传递链与 source-map-js）随升级清零；仓库构建链要求随之升为 Node.js 20+（@tailwindcss/oxide），业务项目运行时消费仍为 Node.js 18+。
+
+- 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
+
+- 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
+
 ### 测试基建
 
 - `build.mjs` 的 dist 发布与孤儿清理抽到 `scripts/build-dist.mjs`，fs/sleep/pid 存活判断均可注入；新增 `tests/build.test.js` 用 EPERM 故障注入覆盖 rename 重试（250ms × 3）、持续失败回退 `cpSync` 到 swap、失败回滚还原旧产物，以及孤儿目录仅在 pid 确认死亡（ESRCH）时清理、存活/pid 复用与 EPERM 一律不误删、backup 自动还原遇活跃构建推迟。相比 `mock.module`，依赖注入无需加载 esbuild/tailwind 构建依赖即可确定性复现瞬时 OS 锁。
+
 - `doctor.test.js` 子进程统一剥离 `*_proxy` 环境变量：宿主设了 `HTTP_PROXY` 等代理时，Node undici `EnvHttpProxyAgent` 会向 stderr 打 `UNDICI-EHPA` 实验警告，导致「stderr 应为空」类断言在本机环境必然失败。
-
-### 工程
-
-- Tailwind CSS 3.4 → 4.3（#5）：构建链依赖从 `tailwindcss`（v3 PostCSS 插件）换成 `@tailwindcss/postcss`，`build.mjs` 输入改为 CSS 优先的 `@import "tailwindcss" source(none)` + `@source` 显式指向三个 UI 源文件（与原 `content` 列表一一对应）。v3 `important: "#scenario-test-root"` 在 v4 无等价配置（v4 important 只做 `!important`），改由构建内联 PostCSS 步骤对 `@layer utilities`/`components` 的选择器统一加 `#scenario-test-root` 前缀，theme/base（变量与 preflight）保持全局，与 v3 作用域口径一致。默认外观差异逐项还原：`@theme` 钩子恢复 `--default-ring-width: 3px` 与 `--default-ring-color: rgb(59 130 246 / 0.5)`，base 层补 `border-color: var(--color-gray-200)`（v4 默认改为 1px 与 currentColor）；UI 源文件 `outline-none` 更名 `outline-hidden`（v4 里 `outline-none` 变为彻底移除 outline，旧语义归 `outline-hidden`）。其余旧类（`flex-shrink-0`、`rounded`、`shadow`、`placeholder-slate-*`、`divide-*`、`space-*` 等）v4 均有兼容输出无需改名。同步收益：此前 v3 里不存在而静默失效的 `shadow-2xs`/`shadow-xs` 类在 v4 恢复生效。`npm audit` 8 个漏洞（6 high/2 moderate，全部位于 tailwind 3.x 传递链与 source-map-js）随升级清零；仓库构建链要求随之升为 Node.js 20+（@tailwindcss/oxide），业务项目运行时消费仍为 Node.js 18+。
-- 行尾策略从「仅声明」升级为「声明 + 审计」：`.gitattributes` 补上 `dist/**`、`src/version.generated.js`、`src/browser/tailwind.generated.js` 的显式 LF 口径与更多二进制扩展名；新增 `npm run check:eol`（`scripts/check-eol.mjs`，只读 `git ls-files --eol`）检测索引/工作区行尾漂移，并作为 `tests/eol.test.js` 纳入 `npm test`——CRLF 幻影（`git status` 标 M 而 `git diff` 为空）会在测试中显式失败并给出修复命令，不再靠人工 `git checkout --` 取证。
-- 移除 `NEXT_STEPS.md` 交接文件：轮次交接改由提交信息与 CHANGELOG `## [Unreleased]` 承载，`docs/OPTIMIZATION_BRIEF.md` 的工作循环同步更新。
 
 ### 决策
 
