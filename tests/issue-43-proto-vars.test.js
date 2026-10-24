@@ -56,25 +56,41 @@ test("applyGeneratedVar 直接写入 __proto__ 不改变原型，且普通值不
     assert.deepEqual(Object.keys(vars), ["__proto__"]);
 });
 
-test("绕过定义期直接 runScenario：generatedVars/envVars 的 __proto__ 仍在运行期被拒绝且不污染原型", async () => {
+test("真正绕过定义期：createRuntime/runStep 仍拒绝保留名且不污染原型", async () => {
     const engine = createEngine({
         baseUrl: "https://mock.local",
-        fetch: async () => jsonResponse({ ok: true })
+        fetch: async () => jsonResponse({ id: "1" })
     });
+    const ownProto = (value) => JSON.parse(`{"__proto__":${JSON.stringify(value)}}`);
 
-    await assert.rejects(
-        engine.runScenario(rawScenario({ generatedVars: [{ name: "__proto__", type: "enum", values: ["x"] }] })),
+    // createRuntime 不经过 defineScenario：覆盖 vars/envVars/generatedVars 的运行期兜底
+    assert.throws(
+        () => engine.createRuntime(rawScenario({ vars: ownProto({ polluted: true }) })),
         /保留变量/
     );
-    await assert.rejects(
-        engine.runScenario(rawScenario({ envVars: JSON.parse('{"__proto__":"ENV_X"}') })),
+    assert.throws(
+        () => engine.createRuntime(rawScenario({ envVars: ownProto("ENV_X") })),
         /保留变量/
     );
-    await assert.rejects(
-        engine.runScenario(rawScenario({ vars: JSON.parse('{"__proto__":{"polluted":true}}') })),
+    assert.throws(
+        () => engine.createRuntime(rawScenario({ generatedVars: [{ name: "__proto__", type: "enum", values: ["x"] }] })),
         /保留变量/
     );
     assert.equal(Object.prototype.polluted, undefined, "运行期拒绝前不得发生原型污染");
+
+    // runStep 同样不经过 defineScenario：extract 的 __proto__ 声明应使步骤失败且不写入变量
+    const runtime = engine.createRuntime(rawScenario());
+    const result = await engine.runStep({
+        name: "extract proto",
+        path: "x",
+        extract: [{ name: "__proto__", path: "id" }]
+    }, runtime);
+    assert.equal(result.passed, false);
+    assert.equal(result.status, "ERROR");
+    assert.match(result.error, /保留变量/);
+    assert.equal(Object.prototype.hasOwnProperty.call(runtime.vars, "__proto__"), false);
+    assert.equal(Object.getPrototypeOf(runtime.vars), Object.prototype);
+    assert.equal(Object.prototype.polluted, undefined);
 });
 
 test("JSON 响应体中的自有 __proto__ 字段仍可按普通路径读取", () => {
