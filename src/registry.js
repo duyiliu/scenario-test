@@ -24,6 +24,18 @@ function describeValue(value) {
     return String(value);
 }
 
+// request.headers 要求「普通对象」：core.isPlainObject 只按 toString 标签判定，
+// 自定义类实例同样返回 [object Object]——这里额外检查原型链，拒绝 Foo 实例。
+// 同时兼容 node:vm 沙箱中创建的对象：跨 realm 的 Object.prototype 原型为 null，
+// 但 constructor 仍是对方 realm 的 Object（name === "Object"）。
+function isPlainHeadersObject(value) {
+    if (!isPlainObject(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null) return true;
+    if (Object.getPrototypeOf(prototype) !== null) return false;
+    return typeof prototype.constructor === "function" && prototype.constructor.name === "Object";
+}
+
 // 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。
 // 拼错的 assertions/retryUntil/timeoutMs 此前被 defineScenario 静默接受——业务断言
 // 消失、重试/超时静默失效，接口返回 2xx 即假绿；这里按契约名单定义期直接拒绝。
@@ -427,7 +439,7 @@ export function defineScenario(input) {
         // 产生无效请求头（如 headers: "X-A: 1" → {0:"X",1:":",...}）
         if (requestDef.headers !== undefined) {
             invariant(
-                isPlainObject(requestDef.headers),
+                isPlainHeadersObject(requestDef.headers),
                 `${stepLabel} 的 request.headers 必须是普通对象（当前 ${describeValue(requestDef.headers)}——非对象会被展开成字符串下标键，产生无效请求头）`
             );
         }

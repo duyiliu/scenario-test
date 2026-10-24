@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
 import { createEngine } from "../src/index.js";
 import { defineScenario } from "../src/registry.js";
 
@@ -104,17 +105,26 @@ test("#45 path / request.path：普通路径、空串（根路径）与 {{ }} �
 });
 
 test("#45 request.headers：非普通对象定义期拒绝", () => {
-    for (const headers of ["X-A: 1", 123, true, null, [], new Map([["X-A", "1"]])]) {
+    class CustomHeaders {
+        constructor() {
+            this["X-Test"] = "1";
+        }
+    }
+    for (const headers of ["X-A: 1", 123, true, null, [], new Map([["X-A", "1"]]), new CustomHeaders()]) {
         assertStepError({ path: "/x", request: { headers } }, /request\.headers 必须是普通对象/);
     }
 });
 
 test("#45 request.headers：普通对象（含模板值）放行", () => {
     assert.doesNotThrow(() => defineStep({ path: "/x", request: { headers: {} } }));
+    assert.doesNotThrow(() => defineStep({ path: "/x", request: { headers: Object.create(null) } }));
     assert.doesNotThrow(() => defineStep({
         path: "/x",
         request: { headers: { "X-Token": "{{vars.token}}", "Content-Type": "application/json" } }
     }));
+    // node:vm 沙箱场景文件里的普通对象来自另一 realm，不能被原型严格判定误伤
+    const crossRealmHeaders = vm.runInNewContext('({ "X-Token": "{{vars.token}}" })');
+    assert.doesNotThrow(() => defineStep({ path: "/x", request: { headers: crossRealmHeaders } }));
 });
 
 test("#45 适配器步骤：私有配置键仍放行，DSL 字段校验与 HTTP 步骤一致", () => {
@@ -132,6 +142,73 @@ test("#45 适配器步骤：私有配置键仍放行，DSL 字段校验与 HTTP 
     // 适配器步骤的 DSL 字段也按同一契约校验
     assertStepError({ adapter: "local", saveResponseAs: "" }, /saveResponseAs 必须是非空字符串/);
     assertStepError({ adapter: "local", path: 123 }, /的 path 必须是字符串/);
+});
+
+test("#45 适配器的 request.timeoutMs 模板在运行期解析后生效", async () => {
+    const scenario = defineScenario({
+        name: "适配器模板超时",
+        vars: { timeout: 30 },
+        steps: [{ name: "挂起", adapter: "hung", request: { timeoutMs: "{{vars.timeout}}" } }]
+    });
+    const startedAt = Date.now();
+    const report = await createEngine({
+        adapters: {
+            hung: {
+                async execute() {
+                    await new Promise(() => {});
+                }
+            }
+        }
+    }).runScenario(scenario);
+    const result = report.results[0];
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.match(result.error, /请求超时（30ms）/);
+    assert.ok(Date.now() - startedAt < 1000, "适配器应按解析后的模板值超时，而不是退回 30000ms");
+});
+
+test("#45 request.timeoutMs 模板解析为非法值时发请求前明确报错", async () => {
+    for (const timeout of [-1, 0, "abc"]) {
+        let fetchCalled = false;
+        const scenario = defineScenario({
+            name: "非法模板超时",
+            vars: { timeout },
+            steps: [{ name: "步骤", path: "/x", request: { timeoutMs: "{{vars.timeout}}" } }]
+        });
+        const report = await createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => {
+                fetchCalled = true;
+                return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+            }
+        }).runScenario(scenario);
+        const result = report.results[0];
+        assert.equal(fetchCalled, false, `timeout=${JSON.stringify(timeout)} 不应发起请求`);
+        assert.equal(result.status, "ERROR");
+        assert.match(result.error, /request\.timeoutMs 解析后不是有效的正数毫秒/);
+    }
+});
+
+test("#45 超过 setTimeout 上限的正数 timeoutMs 不会立即超时", async () => {
+    const scenario = defineScenario({
+        name: "大超时",
+        steps: [{
+            name: "慢响应",
+            path: "/x",
+            timeoutMs: 2147483648,
+            assertions: [{ path: "ok", equals: true }]
+        }]
+    });
+    const report = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => new Promise((resolve) => setTimeout(() => resolve(new Response(
+            JSON.stringify({ ok: true }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+        )), 20))
+    }).runScenario(scenario);
+    const result = report.results[0];
+    assert.equal(result.status, 200);
+    assert.equal(result.timedOut, undefined);
 });
 
 test("#45 既有报错优先级不回归：GET 带体 / 断言未知键仍先于新增校验报错", () => {
