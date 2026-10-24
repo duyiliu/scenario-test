@@ -1,6 +1,4 @@
 import fs from "node:fs";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createInterface } from "node:readline/promises";
@@ -11,10 +9,11 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
-import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
+import { validatePath } from "./utils/path-validator.js";
 import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { createServeServer } from "./cli/serve-server.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -755,56 +754,6 @@ function printFailedStepBody(result, print = console.log) {
     for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
 
-function safeFile(root, relativePath) {
-    const candidate = path.resolve(root, relativePath);
-    const relative = path.relative(root, candidate);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
-    // serve 真实读文件：junction/符号链接在词法层不可见，按真实位置再判一次
-    return isRealPathWithinRoot(root, candidate) ? candidate : null;
-}
-
-function contentType(filePath) {
-    return ({
-        ".html": "text/html; charset=utf-8",
-        ".js": "application/javascript; charset=utf-8",
-        ".json": "application/json; charset=utf-8",
-        ".css": "text/css; charset=utf-8",
-        ".svg": "image/svg+xml",
-        ".txt": "text/plain; charset=utf-8"
-    })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
-}
-
-function serveStaticFile(response, filePath) {
-    const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-    if (path.extname(filePath).toLowerCase() !== ".html") {
-        const stream = fs.createReadStream(filePath);
-        stream.on("error", () => {
-            if (response.headersSent) { response.destroy(); return; }
-            response.writeHead(500);
-            response.end("Internal Server Error");
-        });
-        stream.on("open", () => {
-            response.writeHead(200, headers);
-            stream.pipe(response);
-        });
-        return;
-    }
-    fs.readFile(filePath, "utf8", function (error, html) {
-        if (error) {
-            response.writeHead(500);
-            response.end("Internal Server Error");
-            return;
-        }
-        const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
-        const headPattern = /<head(?:\s[^>]*)?>/i;
-        const content = headPattern.test(html)
-            ? html.replace(headPattern, function (head) { return head + marker; })
-            : marker + html;
-        response.writeHead(200, headers);
-        response.end(content);
-    });
-}
-
 function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
     // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
     if (config.envs?.length) {
@@ -824,141 +773,13 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
     };
 }
 
-// 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
-// Node 会按 targetUrl 重建 host/connection，显式删除可防止冲突。
-const HOP_BY_HOP_HEADERS = new Set([
-    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailer", "transfer-encoding", "upgrade", "host"
-]);
-
-function respondProxyError(response, message) {
-    if (response.headersSent) { response.destroy(); return; }
-    response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end(message);
-}
-
-// 按代理目标协议选择转发模块；无法识别（缺 http(s):// 前缀或非法 URL）时返回 null，
-// 由调用方降级为 502 提示——代理目标错误属于配置问题，不应让 serve 进程退出。
-function proxyTransport(targetUrl) {
-    try {
-        const protocol = new URL(targetUrl).protocol;
-        if (protocol === "https:") return https;
-        if (protocol === "http:") return http;
-    } catch {
-        return null;
-    }
-    return null;
-}
-
-// RFC 7230 §6.1：Connection 头点名的字段同样是逐跳的，需随静态名单一并剔除
-function connectionNamedHeaders(connectionValue) {
-    return String(connectionValue || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean);
-}
-
-function proxyRequest(request, response, targetUrl) {
-    const transport = proxyTransport(targetUrl);
-    if (!transport) {
-        respondProxyError(
-            response,
-            `Bad Gateway: 接口代理目标无效: ${targetUrl}\n` +
-            "请检查环境 baseUrl，必须带协议前缀（http:// 或 https://）"
-        );
-        return;
-    }
-    const headers = {};
-    const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
-    for (const [name, value] of Object.entries(request.headers)) {
-        const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
-    }
-    let upstream;
-    try {
-        // 保持原拼接语义：targetUrl 已去尾部斜杠，若带路径前缀则原样保留
-        upstream = transport.request(targetUrl + request.url, {
-            method: request.method,
-            headers,
-            // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-            // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-            ...(transport === https ? { rejectUnauthorized: false } : {})
-        }, (upstreamResponse) => {
-            // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器；
-            // Connection 点名的自定义字段同样剔除
-            const responseHeaders = {};
-            const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
-            for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-                const lower = String(name).toLowerCase();
-                if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
-            }
-            response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-            upstreamResponse.pipe(response);
-        });
-    } catch (error) {
-        // 请求构造阶段（非法 URL 等）可能同步抛错，此处兜底为 502
-        respondProxyError(response, `Bad Gateway: 接口代理请求构造失败: ${error.message}`);
-        return;
-    }
-    upstream.setTimeout(30000, () => {
-        upstream.destroy(new Error("接口代理超时"));
-    });
-    upstream.on("error", () => {
-        respondProxyError(response, "Bad Gateway: 无法连接接口代理目标或代理超时");
-    });
-    request.pipe(upstream);
-}
-
-// Host 白名单：serve 绑定 127.0.0.1 仅供本机回环访问。校验 Host 头可阻断 DNS rebinding 等
-// 跨源读取（攻击域名解析到 127.0.0.1 后，浏览器请求仍会携带攻击者的 Host），
-// 与 vite/webpack-dev-server 的 host 校验同类加固
-function isAllowedServeHost(hostHeader, port) {
-    const host = String(hostHeader || "").trim().toLowerCase();
-    return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
-}
-
 async function serveCommand(args) {
     const configPath = resolveConfigPath(args.config);
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
     const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
-    const server = http.createServer((request, response) => {
-        try {
-            if (!isAllowedServeHost(request.headers.host, args.port)) {
-                response.writeHead(403);
-                response.end("Forbidden");
-                return;
-            }
-            const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-            let filePath;
-            if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
-            else if (pathname === "/dist/scenario-test.umd.js") {
-                // 仓库内示例的 index.html 引用 ../../dist/scenario-test.umd.js（浏览器规范化为 /dist/...）
-                filePath = path.join(libraryDist, "scenario-test.umd.js");
-            }
-            else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-                // 兼容 npm 包路径引用；运行时副本优先由项目 .scenario-test/ 提供
-                filePath = path.join(libraryDist, "scenario-test.umd.js");
-            }
-            else {
-                const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-                filePath = safeFile(workspace, relativePath);
-            }
-            if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
-            fs.stat(filePath, (error, stat) => {
-                if (error || !stat.isFile()) {
-                    // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
-                    if (proxyTarget) { proxyRequest(request, response, proxyTarget); return; }
-                    response.writeHead(404); response.end("Not Found"); return;
-                }
-                serveStaticFile(response, filePath);
-            });
-        } catch {
-            response.writeHead(400);
-            response.end("Bad Request");
-        }
-    });
+    const server = createServeServer({ workspace, libraryDist, port: args.port, proxyTarget });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
             console.error(`错误：端口 ${args.port} 已被占用`);

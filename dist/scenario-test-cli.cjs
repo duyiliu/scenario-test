@@ -240,10 +240,8 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs6 = __toESM(require("node:fs"), 1);
-var import_node_http = __toESM(require("node:http"), 1);
-var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises = require("node:readline/promises");
 var import_node_url = require("node:url");
@@ -2280,11 +2278,11 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path7 = context && context.path || resolveString(step.path || "", runtime);
+      const path8 = context && context.path || resolveString(step.path || "", runtime);
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path7,
+        path: path8,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -4847,21 +4845,21 @@ var workbenchAdhoc = function() {
     };
   }
   function buildAdhocStep(values) {
-    var path7 = String(values.path || "").trim();
-    if (!path7) throw new Error("\u8BF7\u6C42\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+    var path8 = String(values.path || "").trim();
+    if (!path8) throw new Error("\u8BF7\u6C42\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
     var params = values.params;
     var headers = parseJsonEditor(values.headers, "\u8BF7\u6C42\u5934");
     var bodyText = String(values.body || "").trim();
     var body = bodyText ? parseJsonEditor(bodyText, "\u8BF7\u6C42\u4F53") : void 0;
     if (params && !isPlainObject(params)) throw new Error("Query \u53C2\u6570\u5FC5\u987B\u662F Key-Value \u5BF9\u8C61");
     if (!isPlainObject(headers)) throw new Error("\u8BF7\u6C42\u5934\u5FC5\u987B\u662F JSON \u5BF9\u8C61");
-    if (hasAdhocTemplate(path7) || hasAdhocTemplate(params) || hasAdhocTemplate(headers) || hasAdhocTemplate(body)) {
+    if (hasAdhocTemplate(path8) || hasAdhocTemplate(params) || hasAdhocTemplate(headers) || hasAdhocTemplate(body)) {
       throw new Error("\u4ECD\u6709\u672A\u89E3\u6790\u7684 {{vars.xxx}} \u53C2\u6570\uFF0C\u8BF7\u586B\u5199\u5B9E\u9645\u503C\u540E\u518D\u6267\u884C");
     }
     return {
       name: values.name || "\u4E34\u65F6\u8BF7\u6C42",
       method: String(values.method || "GET").toUpperCase(),
-      path: path7,
+      path: path8,
       params,
       request: { headers, body },
       timeoutMs: Number(appConfig.requestTimeoutMs || 3e4)
@@ -6480,12 +6478,12 @@ function createWorkbenchRuntime(options) {
     if (window.location.protocol === "file:") return;
     var results = await Promise.all(
       list.map(async function(item, i) {
-        var path7 = String(item.file || "").replace(/^\.\//, "");
-        if (!path7) return { i, displayName: null };
-        var url = "./" + path7 + (path7.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
+        var path8 = String(item.file || "").replace(/^\.\//, "");
+        if (!path8) return { i, displayName: null };
+        var url = "./" + path8 + (path8.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now();
         try {
           var response = await fetch(url);
-          if (!response.ok) throw new Error("fetch " + path7);
+          if (!response.ok) throw new Error("fetch " + path8);
           var text = await response.text();
           return { i, displayName: extractScenarioDisplayName(text) };
         } catch (error) {
@@ -7823,6 +7821,206 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/cli/serve-server.js
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_http = __toESM(require("node:http"), 1);
+var import_node_https = __toESM(require("node:https"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
+var PROXY_TIMEOUT_MS = 3e4;
+var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host"
+]);
+function connectionNamedHeaders(connectionValue) {
+  return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+function headerValue2(headers, name) {
+  if (!headers) return void 0;
+  if (headers[name] !== void 0) return headers[name];
+  const matched = Object.keys(headers).find((key) => key.toLowerCase() === name);
+  return matched === void 0 ? void 0 : headers[matched];
+}
+function filterProxyHeaders(headers, hopByHopHeaders = HOP_BY_HOP_HEADERS) {
+  const named = new Set(connectionNamedHeaders(headerValue2(headers, "connection")));
+  const filtered = {};
+  for (const [name, value] of Object.entries(headers || {})) {
+    const lower = String(name).toLowerCase();
+    if (!hopByHopHeaders.has(lower) && !named.has(lower)) filtered[name] = value;
+  }
+  return filtered;
+}
+function abortProxyResponse(response) {
+  if (response.destroyed || response.writableEnded) return;
+  response.destroy();
+}
+function respondProxyError(response, message) {
+  if (response.headersSent) {
+    abortProxyResponse(response);
+    return;
+  }
+  response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(message);
+}
+function proxyTransport(targetUrl, transports = { http: import_node_http.default, https: import_node_https.default }) {
+  try {
+    const protocol = new URL(targetUrl).protocol;
+    if (protocol === "https:") return transports.https;
+    if (protocol === "http:") return transports.http;
+  } catch {
+    return null;
+  }
+  return null;
+}
+function proxyRequest(request, response, targetUrl, options = {}) {
+  const transport = options.transport || proxyTransport(targetUrl, options.transports);
+  if (!transport) {
+    respondProxyError(
+      response,
+      `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u65E0\u6548: ${targetUrl}
+\u8BF7\u68C0\u67E5\u73AF\u5883 baseUrl\uFF0C\u5FC5\u987B\u5E26\u534F\u8BAE\u524D\u7F00\uFF08http:// \u6216 https://\uFF09`
+    );
+    return;
+  }
+  const hopByHopHeaders = options.hopByHopHeaders || HOP_BY_HOP_HEADERS;
+  const headers = filterProxyHeaders(request.headers, hopByHopHeaders);
+  const timeoutMs = options.timeoutMs ?? PROXY_TIMEOUT_MS;
+  const secure = options.secure ?? transport === import_node_https.default;
+  let upstream;
+  try {
+    upstream = transport.request(targetUrl + request.url, {
+      method: request.method,
+      headers,
+      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
+      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
+      ...secure ? { rejectUnauthorized: false } : {}
+    }, (upstreamResponse) => {
+      response.writeHead(
+        upstreamResponse.statusCode || 502,
+        filterProxyHeaders(upstreamResponse.headers, hopByHopHeaders)
+      );
+      upstreamResponse.on("error", () => abortProxyResponse(response));
+      upstreamResponse.on("aborted", () => abortProxyResponse(response));
+      upstreamResponse.pipe(response);
+    });
+  } catch (error) {
+    respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
+    return;
+  }
+  upstream.setTimeout(timeoutMs, () => {
+    upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
+  });
+  upstream.on("error", () => {
+    respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
+  });
+  request.pipe(upstream);
+}
+function isAllowedServeHost(hostHeader, port) {
+  const host = String(hostHeader || "").trim().toLowerCase();
+  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
+}
+function safeFile(root, relativePath) {
+  const candidate = import_node_path6.default.resolve(root, relativePath);
+  const relative = import_node_path6.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) return null;
+  return isRealPathWithinRoot(root, candidate) ? candidate : null;
+}
+function contentType(filePath) {
+  return {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8"
+  }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+function serveStaticFile(response, filePath) {
+  const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
+  if (import_node_path6.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs6.default.createReadStream(filePath);
+    stream.on("error", () => {
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      response.writeHead(500);
+      response.end("Internal Server Error");
+    });
+    stream.on("open", () => {
+      response.writeHead(200, headers);
+      stream.pipe(response);
+    });
+    return;
+  }
+  import_node_fs6.default.readFile(filePath, "utf8", function(error, html) {
+    if (error) {
+      response.writeHead(500);
+      response.end("Internal Server Error");
+      return;
+    }
+    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+    const headPattern = /<head(?:\s[^>]*)?>/i;
+    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
+      return head + marker;
+    }) : marker + html;
+    response.writeHead(200, headers);
+    response.end(content);
+  });
+}
+function resolveStaticPath(pathname, { workspace, libraryDist }) {
+  if (pathname === "/__scenario-test__/scenario-test.umd.js") return import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+  if (pathname === "/dist/scenario-test.umd.js") return import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+  if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
+    return import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+  }
+  const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  return safeFile(workspace, relativePath);
+}
+function createServeRequestHandler(options = {}) {
+  const { workspace, libraryDist, port, proxyTarget = "" } = options;
+  return function handleServeRequest(request, response) {
+    try {
+      if (!isAllowedServeHost(request.headers.host, port)) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
+      const filePath = resolveStaticPath(pathname, { workspace, libraryDist });
+      if (!filePath) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      import_node_fs6.default.stat(filePath, (error, stat) => {
+        if (error || !stat.isFile()) {
+          if (proxyTarget) {
+            proxyRequest(request, response, proxyTarget, options);
+            return;
+          }
+          response.writeHead(404);
+          response.end("Not Found");
+          return;
+        }
+        serveStaticFile(response, filePath);
+      });
+    } catch {
+      response.writeHead(400);
+      response.end("Bad Request");
+    }
+  };
+}
+function createServeServer(options = {}) {
+  return import_node_http.default.createServer(createServeRequestHandler(options));
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -8010,17 +8208,17 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path6.default.resolve(projectRoot, relativePath);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, content, "utf8");
+  const target = import_node_path7.default.resolve(projectRoot, relativePath);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path6.default.resolve(projectRoot, directory);
-  const relative = import_node_path6.default.relative(projectRoot, target);
-  if (!directory || import_node_path6.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) {
+  const target = import_node_path7.default.resolve(projectRoot, directory);
+  const relative = import_node_path7.default.relative(projectRoot, target);
+  if (!directory || import_node_path7.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
   }
   return directory;
@@ -8045,30 +8243,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs6.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs7.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), fileName),
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), fileName),
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = import_node_path6.default.resolve(process.argv[1]);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = import_node_path7.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.copyFileSync(source, target);
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs6.default.existsSync(candidate));
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs7.default.existsSync(candidate));
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs6.default.copyFileSync(source, target);
+    import_node_fs7.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -8077,7 +8275,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs6.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs7.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -8090,7 +8288,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs6.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs7.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -8103,20 +8301,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs6.default.existsSync(lockPath)) return true;
+  if (!import_node_fs7.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs6.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs7.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -8132,14 +8330,14 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path7.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path6.default.basename(projectRoot).trim() || "project";
+  const projectName = import_node_path7.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs6.default.existsSync(import_node_path6.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs7.default.existsSync(import_node_path7.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -8171,7 +8369,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -8183,12 +8381,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path7.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs6.default.existsSync(candidate)) {
+  const candidate = import_node_path7.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs7.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -8208,7 +8406,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path6.default.isAbsolute(pluginPath) ? pluginPath : import_node_path6.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path7.default.isAbsolute(pluginPath) ? pluginPath : import_node_path7.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -8263,7 +8461,7 @@ function configVariables(config) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path6.default.dirname(configPath);
+  const configDir = import_node_path7.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -8329,7 +8527,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   for (const entry of entries) {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path7.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -8465,55 +8663,6 @@ function printFailedStepBody(result, print = console.log) {
   print(`  \u54CD\u5E94\u4F53${note}:`);
   for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
-function safeFile(root, relativePath) {
-  const candidate = import_node_path6.default.resolve(root, relativePath);
-  const relative = import_node_path6.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) return null;
-  return isRealPathWithinRoot(root, candidate) ? candidate : null;
-}
-function contentType(filePath) {
-  return {
-    ".html": "text/html; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".txt": "text/plain; charset=utf-8"
-  }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
-}
-function serveStaticFile(response, filePath) {
-  const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path6.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs6.default.createReadStream(filePath);
-    stream.on("error", () => {
-      if (response.headersSent) {
-        response.destroy();
-        return;
-      }
-      response.writeHead(500);
-      response.end("Internal Server Error");
-    });
-    stream.on("open", () => {
-      response.writeHead(200, headers);
-      stream.pipe(response);
-    });
-    return;
-  }
-  import_node_fs6.default.readFile(filePath, "utf8", function(error, html) {
-    if (error) {
-      response.writeHead(500);
-      response.end("Internal Server Error");
-      return;
-    }
-    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
-    const headPattern = /<head(?:\s[^>]*)?>/i;
-    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
-      return head + marker;
-    }) : marker + html;
-    response.writeHead(200, headers);
-    response.end(content);
-  });
-}
 function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   if (config.envs?.length) {
     const environment = selectEnvironment(config, envKey);
@@ -8528,134 +8677,13 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
     target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
   };
 }
-var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "host"
-]);
-function respondProxyError(response, message) {
-  if (response.headersSent) {
-    response.destroy();
-    return;
-  }
-  response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-  response.end(message);
-}
-function proxyTransport(targetUrl) {
-  try {
-    const protocol = new URL(targetUrl).protocol;
-    if (protocol === "https:") return import_node_https.default;
-    if (protocol === "http:") return import_node_http.default;
-  } catch {
-    return null;
-  }
-  return null;
-}
-function connectionNamedHeaders(connectionValue) {
-  return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-}
-function proxyRequest(request, response, targetUrl) {
-  const transport = proxyTransport(targetUrl);
-  if (!transport) {
-    respondProxyError(
-      response,
-      `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u65E0\u6548: ${targetUrl}
-\u8BF7\u68C0\u67E5\u73AF\u5883 baseUrl\uFF0C\u5FC5\u987B\u5E26\u534F\u8BAE\u524D\u7F00\uFF08http:// \u6216 https://\uFF09`
-    );
-    return;
-  }
-  const headers = {};
-  const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
-  for (const [name, value] of Object.entries(request.headers)) {
-    const lower = String(name).toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
-  }
-  let upstream;
-  try {
-    upstream = transport.request(targetUrl + request.url, {
-      method: request.method,
-      headers,
-      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-      ...transport === import_node_https.default ? { rejectUnauthorized: false } : {}
-    }, (upstreamResponse) => {
-      const responseHeaders = {};
-      const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
-      for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-        const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
-      }
-      response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-      upstreamResponse.pipe(response);
-    });
-  } catch (error) {
-    respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
-    return;
-  }
-  upstream.setTimeout(3e4, () => {
-    upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
-  });
-  upstream.on("error", () => {
-    respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
-  });
-  request.pipe(upstream);
-}
-function isAllowedServeHost(hostHeader, port) {
-  const host = String(hostHeader || "").trim().toLowerCase();
-  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
-}
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path6.default.dirname(configPath);
-  const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
+  const workspace = import_node_path7.default.dirname(configPath);
+  const libraryDist = import_node_path7.default.dirname(import_node_path7.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
-  const server = import_node_http.default.createServer((request, response) => {
-    try {
-      if (!isAllowedServeHost(request.headers.host, args.port)) {
-        response.writeHead(403);
-        response.end("Forbidden");
-        return;
-      }
-      const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-      let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
-      else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
-      } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
-      } else {
-        const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-        filePath = safeFile(workspace, relativePath);
-      }
-      if (!filePath) {
-        response.writeHead(403);
-        response.end("Forbidden");
-        return;
-      }
-      import_node_fs6.default.stat(filePath, (error, stat) => {
-        if (error || !stat.isFile()) {
-          if (proxyTarget) {
-            proxyRequest(request, response, proxyTarget);
-            return;
-          }
-          response.writeHead(404);
-          response.end("Not Found");
-          return;
-        }
-        serveStaticFile(response, filePath);
-      });
-    } catch {
-      response.writeHead(400);
-      response.end("Bad Request");
-    }
-  });
+  const server = createServeServer({ workspace, libraryDist, port: args.port, proxyTarget });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
       console.error(`\u9519\u8BEF\uFF1A\u7AEF\u53E3 ${args.port} \u5DF2\u88AB\u5360\u7528`);
@@ -8687,10 +8715,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path6.default.dirname(configPath);
+    configDir = import_node_path7.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path6.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path6.default.dirname(configPath);
+    configPath = import_node_path7.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path7.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
