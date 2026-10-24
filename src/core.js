@@ -188,6 +188,79 @@ export function resolve(value, runtime) {
     return resolveString(value, runtime);
 }
 
+// resolve(clone(value)) 的单遍历等价实现（引擎热路径：步骤 request/step 每次尝试都要复制+解析）。
+// 容器（对象/数组）全新、叶子共享——字符串不可变，整串模板解析出的对象仍与旧实现一样按引用返回。
+// 语义必须与 clone 完全一致：undefined 键剥离、数组空位/undefined 补 null、非有限数字转 null、
+// -0 归零、__proto__ 按自有数据键保留（不污染原型）、循环引用抛 TypeError。
+// 非纯 JSON 数据（Date/Map/Set/BigInt/带 toJSON 的对象等）与循环引用一律回退到
+// resolve(clone(value))：这些少见形态的标准化与报错行为（Date → ISO 串、原生
+// "Converting circular structure to JSON"）逐字不变，无需在此重复实现 JSON.stringify 的细节。
+const RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
+
+export function resolveClone(value, runtime) {
+    const fast = resolveCloneFast(value, runtime, new Set());
+    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+}
+
+// ancestors 只记录当前递归路径（进入时入栈、退出时出栈）：兄弟节点重复引用不是循环，
+// 与 JSON.stringify 的 circular 判定口径一致。遇到需要回退的形态立即整体回退，
+// 保证回退后的 clone 能看到完整输入、报错/标准化与旧实现完全相同。
+function resolveCloneFast(value, runtime, ancestors) {
+    if (typeof value === "string") return resolveString(value, runtime);
+    if (value === null) return null;
+    if (typeof value === "number") {
+        // JSON.stringify 把 NaN/Infinity 写成 null，-0 写成 0
+        if (!Number.isFinite(value)) return null;
+        return value === 0 ? 0 : value;
+    }
+    if (typeof value === "boolean") return value;
+    if (value === undefined) return undefined;
+    // function / symbol / bigint：交由 clone 处理（对象键被丢弃、数组元素变 null、BigInt 抛 TypeError）
+    if (typeof value !== "object") return RESOLVE_CLONE_FALLBACK;
+    if (ancestors.has(value)) return RESOLVE_CLONE_FALLBACK;
+    if (Array.isArray(value)) {
+        // 数组自带 toJSON 时 JSON.stringify 会调用它，交回旧实现
+        if (typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+        ancestors.add(value);
+        try {
+            const result = new Array(value.length);
+            for (let index = 0; index < value.length; index += 1) {
+                const item = resolveCloneFast(value[index], runtime, ancestors);
+                if (item === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+                // 稀疏数组空位与 undefined 在 JSON 中都序列化为 null
+                result[index] = item === undefined ? null : item;
+            }
+            return result;
+        } finally {
+            ancestors.delete(value);
+        }
+    }
+    // 非普通对象（Date/Map/Set/类数组宿主对象等）或带 toJSON 的对象：交回旧实现
+    if (!isPlainObject(value) || typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+    ancestors.add(value);
+    try {
+        const result = {};
+        for (const key of Object.keys(value)) {
+            const item = value[key];
+            // 自有 undefined 值键被 JSON.stringify 丢弃
+            if (item === undefined) continue;
+            const resolved = resolveCloneFast(item, runtime, ancestors);
+            if (resolved === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+            // function / symbol 值同样被丢弃
+            if (resolved === undefined) continue;
+            if (key === "__proto__") {
+                // 直接赋值会改写结果对象的原型（原型链污染），按数据键定义
+                Object.defineProperty(result, key, { value: resolved, enumerable: true, writable: true, configurable: true });
+            } else {
+                result[key] = resolved;
+            }
+        }
+        return result;
+    } finally {
+        ancestors.delete(value);
+    }
+}
+
 function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
     return Object.keys(headers || {}).find((item) => item.toLowerCase() === target);

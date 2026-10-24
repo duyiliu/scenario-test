@@ -309,6 +309,7 @@ var ScenarioTest = (() => {
     registerScenario: () => registerScenario,
     renderCapabilitiesText: () => renderCapabilitiesText,
     resolve: () => resolve,
+    resolveClone: () => resolveClone,
     resolveString: () => resolveString,
     runScenario: () => runScenario,
     sanitizeSensitive: () => sanitizeSensitive,
@@ -637,6 +638,58 @@ var ScenarioTest = (() => {
       return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolve(item, runtime)]));
     }
     return resolveString(value, runtime);
+  }
+  var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
+  function resolveClone(value, runtime) {
+    const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
+    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+  }
+  function resolveCloneFast(value, runtime, ancestors) {
+    if (typeof value === "string") return resolveString(value, runtime);
+    if (value === null) return null;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+      return value === 0 ? 0 : value;
+    }
+    if (typeof value === "boolean") return value;
+    if (value === void 0) return void 0;
+    if (typeof value !== "object") return RESOLVE_CLONE_FALLBACK;
+    if (ancestors.has(value)) return RESOLVE_CLONE_FALLBACK;
+    if (Array.isArray(value)) {
+      if (typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+      ancestors.add(value);
+      try {
+        const result = new Array(value.length);
+        for (let index = 0; index < value.length; index += 1) {
+          const item = resolveCloneFast(value[index], runtime, ancestors);
+          if (item === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+          result[index] = item === void 0 ? null : item;
+        }
+        return result;
+      } finally {
+        ancestors.delete(value);
+      }
+    }
+    if (!isPlainObject(value) || typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+    ancestors.add(value);
+    try {
+      const result = {};
+      for (const key of Object.keys(value)) {
+        const item = value[key];
+        if (item === void 0) continue;
+        const resolved = resolveCloneFast(item, runtime, ancestors);
+        if (resolved === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+        if (resolved === void 0) continue;
+        if (key === "__proto__") {
+          Object.defineProperty(result, key, { value: resolved, enumerable: true, writable: true, configurable: true });
+        } else {
+          result[key] = resolved;
+        }
+      }
+      return result;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
@@ -1907,7 +1960,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
   }
   async function executeHttp(step, runtime, options) {
-    const request = resolve(clone(step.request || {}), runtime) || {};
+    const request = resolveClone(step.request || {}, runtime) || {};
     const method = String(step.method || request.method || "GET").toUpperCase();
     let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
     const headers = { ...request.headers || {} };
@@ -2028,7 +2081,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         if (typeof adapter.beforeExecute === "function") {
           await adapter.beforeExecute({ step, runtime, options: adapterOptions });
         }
-        let result = await adapter.execute({ step: resolve(clone(step), runtime), runtime, options: adapterOptions });
+        let result = await adapter.execute({ step: resolveClone(step, runtime), runtime, options: adapterOptions });
         if (typeof adapter.afterExecute === "function") {
           result = await adapter.afterExecute({ step, runtime, options: adapterOptions, output: result }) || result;
         }

@@ -194,7 +194,7 @@ export function defineScenario(input) {
         // step.method 不经 {{ }} 解析（executeHttp 用原始值），模板写法会按字面方法名
         // 发送——恒为死写法，定义期直接拒绝；request.method 在 request 对象内会解析，
         // 动态方法应写在那里。
-        // 仅显式 adapter 的步骤跳过 HTTP 相容校验（adapter.execute 收到 resolve(clone(step))，
+        // 仅显式 adapter 的步骤跳过 HTTP 相容校验（adapter.execute 收到 resolveClone(step)，
         // method 模板会被解析、request 语义由适配器自行定义）。matches 自动认领不能用于
         // 此处放行：定义期可见的是全局注册表，运行期用的是引擎创建时的快照 + 实例
         // 适配器（createEngine({adapters})/isolateAdapters），两个集合可能不同——
