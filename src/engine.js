@@ -62,6 +62,59 @@ function createTimeoutError(timeoutMs, message) {
     return error;
 }
 
+// Node/浏览器 setTimeout 单次延时上限（2^31-1ms）：超过会被实现截断为 1ms。
+// 大超时按剩余时间分段续排，避免「配置 2147483648ms 却约 1ms 就超时」。
+const MAX_TIMER_DELAY_MS = 2147483647;
+
+function scheduleTimeout(callback, timeoutMs) {
+    let timer = null;
+    let disposed = false;
+    const deadline = now() + timeoutMs;
+    const tick = () => {
+        if (disposed) return;
+        const remaining = deadline - now();
+        if (remaining <= 0) {
+            callback();
+            return;
+        }
+        timer = setTimeout(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
+    };
+    tick();
+    return {
+        clear() {
+            disposed = true;
+            if (timer) clearTimeout(timer);
+        }
+    };
+}
+
+// 超时链：step.timeoutMs（定义期已校验正数）→ request.timeoutMs（整串模板在
+// 运行期解析）→ 配置默认值。request.timeoutMs 解析后的非法值不能继续静默钳制，
+// 否则超时配置失效且无法定位——在发请求前明确报错。
+function resolveTimeoutMs(step, request, options) {
+    // step.timeoutMs 不解析模板；直接 runStep 绕过定义期时保留既有兜底：
+    // 非法值按 30000ms，避免负数/Infinity/字符串 "0" 导致永不超时
+    const stepTimeoutSource = step.timeoutMs || undefined;
+    if (stepTimeoutSource !== undefined) {
+        const stepTimeout = Number(stepTimeoutSource);
+        return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 30000;
+    }
+    if (request.timeoutMs !== undefined) {
+        const requestTimeout = Number(request.timeoutMs);
+        if (!Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+            const value = typeof request.timeoutMs === "string"
+                ? JSON.stringify(request.timeoutMs)
+                : String(request.timeoutMs);
+            throw new Error(
+                `步骤 ${step.name || "未命名步骤"} 的 request.timeoutMs 解析后不是有效的正数毫秒（当前 ${value}），请检查变量值`
+            );
+        }
+        return requestTimeout;
+    }
+    const configuredTimeout = Number(options.requestTimeoutMs);
+    return Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 30000;
+}
+
 function createRequestSignal(parentSignal, timeoutMs) {
     const controller = new AbortController();
     // 超时状态由 signal 内部维护，不依赖浏览器是否把 abort reason 传播为 fetch 拒绝原因
@@ -70,7 +123,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
     if (parentSignal?.aborted) abort();
     else parentSignal?.addEventListener("abort", abort, { once: true });
     const timer = timeoutMs > 0
-        ? setTimeout(() => { timedOut = true; controller.abort(createTimeoutError(timeoutMs)); }, timeoutMs)
+        ? scheduleTimeout(() => { timedOut = true; controller.abort(createTimeoutError(timeoutMs)); }, timeoutMs)
         : null;
     return {
         signal: controller.signal,
@@ -78,7 +131,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
             return timedOut;
         },
         dispose() {
-            if (timer) clearTimeout(timer);
+            if (timer) timer.clear();
             parentSignal?.removeEventListener("abort", abort);
         }
     };
@@ -293,9 +346,7 @@ async function executeHttp(step, runtime, options) {
             fetchOptions.body = JSON.stringify(request.body);
         }
     }
-    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
-    // 非法/非正超时统一钳制为默认值，避免负数/Infinity/字符串"0"导致永不超时
-    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
+    const timeoutMs = resolveTimeoutMs(step, request, options);
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     fetchOptions.signal = requestSignal.signal;
     try {
@@ -355,11 +406,13 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
     if (!adapter) throw new Error(`未注册步骤适配器: ${adapterName || "unknown"}`);
 
     let output;
-    const request = isPlainObject(step.request) ? step.request : {};
+    // request 对象整体 resolve 后再取 timeoutMs：request.timeoutMs 支持整串 {{ }} 模板
+    // （如 "{{vars.timeout}}"），与 executeHttp 同口径；其余字段仍在 execute 前按
+    // beforeExecute 修改后的 step 重新解析，钩子语义不变
+    const request = isPlainObject(step.request) ? resolve(clone(step.request), runtime) : {};
     // 与 executeHttp 同一超时链路口径：step.timeoutMs → request.timeoutMs → 配置默认值；
-    // 非法/非正值钳制为 30000，避免 "0"/负数/Infinity 导致永不超时
-    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
-    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
+    // 模板解析后的非法值明确报错，直接 runStep 的非法 step.timeoutMs 仍钳制为 30000
+    const timeoutMs = resolveTimeoutMs(step, request, options);
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     // 适配器钩子与 execute 都拿到带超时的 signal（原 options.signal 仍可由父级取消）
     const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
