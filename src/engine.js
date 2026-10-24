@@ -20,6 +20,7 @@ import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
 import { validateAdapterResponse } from "./adapter-types.js";
 import { escapeInlineText } from "./utils/failure-diff.js";
+import { safeDecodeComponent } from "./utils/safe-decode.js";
 
 function now() {
     return globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -244,7 +245,7 @@ async function executeHttp(step, runtime, options) {
         if (queryIndex >= 0) {
             for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
                 const key = pair.split("=")[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
+                if (key) existingKeys.add(safeDecodeComponent(key));
             }
         }
         const queryParts = [];

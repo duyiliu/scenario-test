@@ -1,6 +1,7 @@
 import * as core from "../../core.js";
 import { createEngine } from "../../engine.js";
 import { esc, safeJson, copyText } from "./ui-utils.js";
+import { safeDecodeComponent } from "../../utils/safe-decode.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
@@ -1380,7 +1381,7 @@ export function createWorkbenchRuntime(options) {
         if (queryIndex >= 0) {
             requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
                 var key = pair.split('=')[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
+                if (key) existingKeys.add(safeDecodeComponent(key));
             });
         }
         var queryParts = [];

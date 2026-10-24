@@ -1,4 +1,5 @@
 import { esc, fmt, safeJson } from './ui-utils.js';
+import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
 const workbenchView = (function () {
     'use strict';
@@ -565,8 +566,8 @@ const workbenchView = (function () {
             queryPart.split('&').forEach(function (pair) {
                 if (!pair) return;
                 var parts = pair.split('=');
-                var key = decodeURIComponent(parts[0] || '');
-                var val = decodeURIComponent(parts.slice(1).join('=') || '');
+                var key = safeDecodeComponent(parts[0] || '');
+                var val = safeDecodeComponent(parts.slice(1).join('=') || '');
                 params.push({ name: key, value: val });
             });
         }
