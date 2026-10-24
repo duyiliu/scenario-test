@@ -250,6 +250,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SERVE_ENV_HEADER: () => SERVE_ENV_HEADER,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -515,6 +516,7 @@ var contract = Object.freeze({
 });
 
 // src/core.js
+var SERVE_ENV_HEADER = "x-scenario-test-env";
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
   return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -1996,6 +1998,7 @@ async function executeHttp(step, runtime, options) {
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
   const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+  if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -2619,6 +2622,7 @@ function createApp() {
   PHONE_TEST_PREFIXES,
   RESERVED_VARS,
   SAVED_RESPONSE,
+  SERVE_ENV_HEADER,
   TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET,

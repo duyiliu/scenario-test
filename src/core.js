@@ -3,6 +3,10 @@ import { contract } from "./contract.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
 
+// serve 同源代理的环境路由头：工作台按当前所选环境附带环境 key，serve 据此按请求实时
+// 选择配置中的 baseUrl。该头只用于本地代理路由，serve 转发上游前会剔除。
+export const SERVE_ENV_HEADER = "x-scenario-test-env";
+
 // 全局参数支持的类型：追加到每个请求的 header / cookie / query（来自 contract）
 export const GLOBAL_TYPES = [...contract.globals.types];
 

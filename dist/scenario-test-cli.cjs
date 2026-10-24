@@ -259,6 +259,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SERVE_ENV_HEADER: () => SERVE_ENV_HEADER,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -523,6 +524,7 @@ var contract = Object.freeze({
 });
 
 // src/core.js
+var SERVE_ENV_HEADER = "x-scenario-test-env";
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
   return Boolean(item && GLOBAL_TYPES.includes(item.type) && typeof item.name === "string" && item.name.trim());
@@ -2099,6 +2101,7 @@ async function executeHttp(step, runtime, options) {
   let requestPath = buildUrl(step.path || request.path || "", step.params || request.params, runtime);
   const headers = { ...request.headers || {} };
   const absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+  if (!absoluteUrl && options.requestHeaders) Object.assign(headers, options.requestHeaders);
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
@@ -3060,7 +3063,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0
 
-\u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\u3002\`serve\` \u4F1A\u5728\u9875\u9762\u4E2D\u542F\u7528\u540C\u6E90\u4EE3\u7406\u6A21\u5F0F\uFF0C\u6D4F\u89C8\u5668\u8BF7\u6C42\u5148\u53D1\u9001\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\uFF0C\u518D\u8F6C\u53D1\u5230\u6240\u9009\u73AF\u5883\u7684 \`baseUrl\`\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\uFF0C\u4E5F\u65E0\u9700\u624B\u5DE5\u6E05\u7A7A\u6216\u8986\u76D6\u9875\u9762\u5730\u5740\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
+\u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\u3002\`serve\` \u4F1A\u5728\u9875\u9762\u4E2D\u542F\u7528\u540C\u6E90\u4EE3\u7406\u6A21\u5F0F\uFF0C\u6D4F\u89C8\u5668\u8BF7\u6C42\u5148\u53D1\u9001\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\uFF0C\u518D\u6309\u5F53\u524D\u6240\u9009\u73AF\u5883\u8F6C\u53D1\u5230\u914D\u7F6E\u4E2D\u8BE5\u73AF\u5883\u7684 \`baseUrl\`\uFF08\u5207\u6362\u73AF\u5883\u540E\u5B9E\u65F6\u751F\u6548\uFF0C\u672A\u77E5\u73AF\u5883 key \u8FD4\u56DE 502\uFF09\uFF1B\`--env\` \u4EC5\u8BBE\u7F6E\u9ED8\u8BA4\u73AF\u5883\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\uFF0C\u4E5F\u65E0\u9700\u624B\u5DE5\u6E05\u7A7A\u6216\u8986\u76D6\u9875\u9762\u5730\u5740\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
 
 \u4E5F\u53EF\u4EE5\u5728\u9879\u76EE\u6839\u76EE\u5F55\u6267\u884C\uFF1A
 
@@ -4314,18 +4317,47 @@ function serveStaticFile(response, filePath) {
   });
 }
 function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
+  const override = String(baseUrlOverride || "").replace(/\/+$/, "");
   if (config.envs?.length) {
     const environment = selectEnvironment(config, envKey);
-    const overridden = Boolean(baseUrlOverride);
+    const overridden = Boolean(override);
     return {
       key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
-      target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+      target: String(overridden ? override : environment.baseUrl || "").replace(/\/+$/, ""),
+      defaultEnvKey: environment.key,
+      environments: config.envs,
+      override
     };
   }
   return {
     key: config.defaultEnvKey || "default",
-    target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
+    target: String(override || config.baseUrl || "").replace(/\/+$/, ""),
+    defaultEnvKey: "",
+    environments: [],
+    override
   };
+}
+function resolveServeRequestTarget(proxy, requestedEnvKey) {
+  if (!proxy.environments.length) return { target: proxy.target };
+  const raw = Array.isArray(requestedEnvKey) ? requestedEnvKey[0] : requestedEnvKey;
+  const key = String(raw || "").trim() || proxy.defaultEnvKey;
+  const environment = proxy.environments.find((item) => item.key === key);
+  if (!environment) {
+    const keys = proxy.environments.map((item) => item.key);
+    return {
+      error: `Bad Gateway: \u672A\u627E\u5230\u73AF\u5883 ${key}
+\u53EF\u7528\u73AF\u5883: ${keys.join(", ")}
+\u8BF7\u5728\u5DE5\u4F5C\u53F0\u9009\u62E9\u914D\u7F6E\u4E2D\u5DF2\u58F0\u660E\u7684\u73AF\u5883\uFF0C\u6216\u4E3A serve \u4F20\u5165 --env <key> \u6307\u5B9A\u9ED8\u8BA4\u73AF\u5883\u3002`
+    };
+  }
+  const target = String(proxy.override || environment.baseUrl || "").replace(/\/+$/, "");
+  if (!target) {
+    return {
+      error: `Bad Gateway: \u73AF\u5883 ${key} \u672A\u914D\u7F6E baseUrl
+\u8BF7\u5728\u914D\u7F6E\u4E2D\u4E3A\u8BE5\u73AF\u5883\u8BBE\u7F6E baseUrl\uFF0C\u6216\u4F7F\u7528 --base-url \u4E34\u65F6\u8986\u76D6\u4EE3\u7406\u76EE\u6807\u3002`
+    };
+  }
+  return { target, key };
 }
 var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "connection",
@@ -4338,6 +4370,7 @@ var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "upgrade",
   "host"
 ]);
+var SERVE_INTERNAL_HEADERS = /* @__PURE__ */ new Set([SERVE_ENV_HEADER]);
 var PROXY_TIMEOUT_MS = 3e4;
 function abortProxyResponse(response) {
   if (response.destroyed || response.writableEnded) return;
@@ -4378,7 +4411,7 @@ function proxyRequest(request, response, targetUrl) {
   const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
   for (const [name, value] of Object.entries(request.headers)) {
     const lower = String(name).toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
+    if (!HOP_BY_HOP_HEADERS.has(lower) && !SERVE_INTERNAL_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
   }
   let upstream;
   try {
@@ -4421,7 +4454,7 @@ async function serveCommand(args) {
   const workspace = import_node_path6.default.dirname(configPath);
   const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
-  const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+  const proxy = resolveServeProxyTarget(config, args.env, args.baseUrl);
   const server = import_node_http.default.createServer((request, response) => {
     try {
       if (!isAllowedServeHost(request.headers.host, args.port)) {
@@ -4447,9 +4480,16 @@ async function serveCommand(args) {
       }
       import_node_fs6.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
-          if (proxyTarget) {
-            proxyRequest(request, response, proxyTarget);
-            return;
+          if (proxy.target || proxy.environments.length) {
+            const route = resolveServeRequestTarget(proxy, request.headers[SERVE_ENV_HEADER]);
+            if (route.error) {
+              respondProxyError(response, route.error);
+              return;
+            }
+            if (route.target) {
+              proxyRequest(request, response, route.target);
+              return;
+            }
           }
           response.writeHead(404);
           response.end("Not Found");
@@ -4475,7 +4515,14 @@ async function serveCommand(args) {
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
-    if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxyEnvKey} -> ${proxyTarget}`);
+    if (proxy.target || proxy.environments.length) {
+      console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxy.key} -> ${proxy.target || "(\u672A\u914D\u7F6E baseUrl)"}`);
+      if (proxy.environments.length) {
+        const allowed = proxy.environments.map((item) => `${item.key} -> ${item.baseUrl || "(\u672A\u914D\u7F6E baseUrl)"}`);
+        console.log(`\u53EF\u7528\u73AF\u5883: ${allowed.join(", ")}`);
+        console.log(`\u63D0\u793A: \u5DE5\u4F5C\u53F0\u6309\u5F53\u524D\u6240\u9009\u73AF\u5883\u5B9E\u65F6\u5207\u6362\u4EE3\u7406\u76EE\u6807\uFF08\u8BF7\u6C42\u5934 ${SERVE_ENV_HEADER}\uFF09\uFF1B--env \u4EC5\u8BBE\u7F6E\u9ED8\u8BA4\u73AF\u5883\u3002`);
+      }
+    }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }

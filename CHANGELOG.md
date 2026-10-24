@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
+- `serve` 代理目标按请求实时路由：工作台随请求发送当前所选环境 key（内部头 `x-scenario-test-env`，不转发上游），serve 从配置 `envs` 解析该环境的 `baseUrl`，切换环境后不再固定打到启动环境。`--env` 仅作为未携带环境 key 时的默认环境，`--base-url` 仍为显式覆盖；未知/未配置的环境 key 返回 502 并列出可用环境，代理不接受浏览器传入任意 URL。
+
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。

@@ -555,3 +555,97 @@ test("serve：响应已开始后上游中途断连，销毁连接而非二次写
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+test("serve 代理按请求环境 key 实时切换目标，--env 仅作默认，未知 key 返回 502", async () => {
+    const local = await startMockBackend();
+    const prod = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-route-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "local", name: "本地", baseUrl: "http://127.0.0.1:${local.port}" },
+            { key: "prod", name: "生产", baseUrl: "http://127.0.0.1:${prod.port}" }
+        ],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    // --env prod 只改变默认环境：未携带环境头的请求走 prod，携带时按请求头切换
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--env", "prod", "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "接口代理: prod -> ");
+        await waitForOutput(child, "可用环境: local -> ");
+
+        const call = (pathname, envKey) => {
+            const headers = envKey ? { "X-Scenario-Test-Env": envKey } : {};
+            return fetch(`http://127.0.0.1:${servePort}${pathname}`, { headers });
+        };
+
+        const defaultRoute = await call("/api/default");
+        assert.equal(defaultRoute.status, 200);
+        assert.equal((await defaultRoute.json()).url, "/api/default");
+        assert.equal(prod.received.length, 1, "未带环境头时应走 --env 指定的默认环境");
+        assert.equal(local.received.length, 0);
+
+        assert.equal((await call("/api/switched", "local")).status, 200);
+        assert.equal(local.received.length, 1, "切换环境后请求应转发到该环境的 baseUrl");
+        assert.equal(prod.received.length, 1);
+        assert.equal(local.received[0].url, "/api/switched");
+        // 内部路由头不能泄漏给业务后端
+        assert.equal(local.received[0].headers["x-scenario-test-env"], undefined);
+
+        assert.equal((await call("/api/back", "prod")).status, 200);
+        assert.equal(prod.received.length, 2, "切回原环境后请求应再次转发到该环境");
+        assert.equal(prod.received[1].headers["x-scenario-test-env"], undefined);
+
+        const unknown = await call("/api/unknown", "missing");
+        assert.equal(unknown.status, 502, "未知环境 key 必须拒绝");
+        const message = await unknown.text();
+        assert.match(message, /未找到环境 missing/);
+        assert.match(message, /可用环境: local, prod/);
+        assert.equal(local.received.length, 1, "未知环境不应转发到任何后端");
+        assert.equal(prod.received.length, 2, "未知环境不应转发到任何后端");
+    } finally {
+        child.kill();
+        local.server.close();
+        prod.server.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+test("serve --base-url 覆盖所有环境目标，但仍拒绝未知环境 key", async () => {
+    const mock = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-route-override-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [
+            { key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" },
+            { key: "prod", name: "生产", baseUrl: "http://127.0.0.1:2" }
+        ],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--base-url", `http://127.0.0.1:${mock.port}`, "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "--base-url 覆盖");
+        for (const envKey of ["local", "prod"]) {
+            const response = await fetch(`http://127.0.0.1:${servePort}/api/${envKey}`, { headers: { "X-Scenario-Test-Env": envKey } });
+            assert.equal(response.status, 200, `--base-url 应覆盖 ${envKey} 的目标`);
+        }
+        assert.equal(mock.received.length, 2, "所有已声明环境的请求都应转发到 --base-url 指定目标");
+
+        const unknown = await fetch(`http://127.0.0.1:${servePort}/api/unknown`, { headers: { "X-Scenario-Test-Env": "missing" } });
+        assert.equal(unknown.status, 502, "覆盖目标不应绕过环境 key 校验");
+        assert.match(await unknown.text(), /可用环境: local, prod/);
+        assert.equal(mock.received.length, 2, "未知环境不应转发到覆盖目标");
+    } finally {
+        child.kill();
+        mock.server.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
