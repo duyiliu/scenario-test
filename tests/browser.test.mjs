@@ -317,7 +317,7 @@ try {
     await curlPage.route(/\/scenarios\/health\.js(?:\?.*)?$/, (route) => route.fulfill({
         status: 200,
         contentType: "text/javascript",
-        body: 'ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({ name: "cURL fragment", steps: [{ name: "带 fragment 的步骤", method: "GET", path: "health?bad%zz=1#frag" }] }));'
+        body: 'ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({ name: "cURL fragment", steps: [{ name: "带 fragment 的步骤", method: "GET", path: "health?bad%zz=1#frag", params: { id: "42" } }] }));'
     }));
     await curlPage.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
     await curlPage.waitForFunction(() => document.querySelectorAll("[data-curl-step]").length === 1);
@@ -331,7 +331,7 @@ try {
     await curlPage.waitForFunction(() => document.querySelector("[data-curl-step='0']").textContent.includes("已复制"));
     const curlText = await curlPage.evaluate(() => window.__lastCopiedText);
     const curlUrl = /curl -X GET '([^']+)'/.exec(curlText)?.[1] || "";
-    assert.match(curlUrl, /\/health\?bad%zz=1&source=scenario-test#frag$/, `cURL URL 应保留 fragment 并把全局 query 放在 # 之前: ${curlText}`);
+    assert.match(curlUrl, /\/health\?bad%zz=1&id=42&source=scenario-test#frag$/, `cURL URL 应保留 fragment 并把 step.params/全局 query 放在 # 之前: ${curlText}`);
     assert.deepEqual(curlPageErrors, [], `cURL 预览不应产生 pageerror: ${curlPageErrors.join(", ")}`);
     await curlPage.close();
 

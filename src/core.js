@@ -1,5 +1,6 @@
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
+import { appendQueryParams } from "./utils/url-query.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
 
@@ -330,8 +331,8 @@ export function buildUrl(requestPath, params, runtime) {
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    // step.params 同样只能落在 fragment 之前，否则会成为 fragment 内容不随请求发送
+    return appendQueryParams(rawPath, pairs);
 }
 
 export function parseBody(text, contentType) {

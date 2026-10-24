@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEngine, defineScenario } from "../src/index.js";
+import { buildUrl, createEngine, defineScenario } from "../src/index.js";
 import { safeDecodeComponent } from "../src/utils/safe-decode.js";
 import { appendQueryParams, existingQueryKeys } from "../src/utils/url-query.js";
 import workbenchView from "../src/browser/ui/ui-view.js";
@@ -28,6 +28,12 @@ test("url-query：fragment 保留且 query 参数始终追加在 # 之前", () =
     assert.equal(appendQueryParams("api?x=1#frag", ["source=x"]), "api?x=1&source=x#frag");
     assert.equal(appendQueryParams("api?x=1", ["source=x"]), "api?x=1&source=x");
     assert.deepEqual([...existingQueryKeys("api?bad%zz=1&%E4%B8%AD=2#frag")], ["bad%zz", "中"]);
+});
+
+test("buildUrl：step.params 追加在 fragment 之前", () => {
+    assert.equal(buildUrl("api#frag", { id: 1 }, runtime()), "api?id=1#frag");
+    assert.equal(buildUrl("api?x=1#frag", { id: 1 }, runtime()), "api?x=1&id=1#frag");
+    assert.equal(buildUrl("api?x=1", { id: 1 }, runtime()), "api?x=1&id=1");
 });
 
 test("globals query 注入：路径中畸形 % 编码不再使步骤 ERROR，请求正常发出", async () => {
@@ -73,6 +79,30 @@ test("globals query 注入：fragment 保留，参数位于 # 之前", async () 
             steps: [{ name: "请求", path }]
         }));
         assert.equal(report.results[0].status, 200, `${path} 请求必须正常发出`);
+        assert.equal(captured, expected);
+    }
+});
+
+test("globals query 注入：step.params 与 fragment 同时存在时参数不落入 fragment", async () => {
+    const cases = [
+        [{ path: "api#frag", params: { id: 1 } }, "https://mock.local/api?id=1&source=scenario-test#frag"],
+        [{ path: "api?x=1#frag", params: { id: 1 } }, "https://mock.local/api?x=1&id=1&source=scenario-test#frag"]
+    ];
+    for (const [step, expected] of cases) {
+        let captured;
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            globals: [{ type: "query", name: "source", value: "scenario-test" }],
+            fetch: async (url) => {
+                captured = String(url);
+                return jsonResponse();
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "fragment params",
+            steps: [{ name: "请求", ...step }]
+        }));
+        assert.equal(report.results[0].status, 200, `${step.path} 请求必须正常发出`);
         assert.equal(captured, expected);
     }
 });

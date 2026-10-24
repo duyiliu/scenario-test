@@ -1,7 +1,8 @@
 import { safeDecodeComponent } from "./safe-decode.js";
 
 // 全局 query 只能拼在 URL fragment 之前：拼到 # 之后会成为 fragment 内容，
-// 不会随 HTTP 请求发送。引擎实际请求与工作台 cURL 预览共用这两个函数，避免逻辑分叉。
+// 不会随 HTTP 请求发送。core.buildUrl（step.params）、引擎全局参数注入与工作台 cURL 预览
+// 共用这两个函数，避免逻辑分叉。
 function splitFragment(requestPath) {
     const text = String(requestPath || "");
     const hashIndex = text.indexOf("#");
