@@ -2098,7 +2098,11 @@ var AdapterExecutionError = class extends Error {
 };
 function raceWithSignal(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  if (signal.aborted) {
+    promise.catch(() => {
+    });
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise((resolveRace, rejectRace) => {
     const onAbort = () => rejectRace(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
@@ -2219,24 +2223,35 @@ function createEngine(engineOptions = {}) {
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     let lastAttemptError = null;
+    const retryTimeoutError = (attemptCount) => {
+      const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
+      return createTimeoutError(
+        maxElapsedMs,
+        `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attemptCount} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+      );
+    };
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
         if (retry && now() - retryStartTime >= maxElapsedMs) {
-          const lastErrorText = lastAttemptError ? `
-\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
-          throw createTimeoutError(
-            maxElapsedMs,
-            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
-\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
-          );
+          throw retryTimeoutError(attempt - 1);
+        }
+        let attemptDeadline = null;
+        if (retry) {
+          const remainingMs = maxElapsedMs - (now() - retryStartTime);
+          if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+          attemptDeadline = createRequestSignal(options.signal, remainingMs);
         }
         let attemptError = null;
         let attemptErrorType = "";
         try {
           const selection = chooseAdapter(step, adapters);
           const attemptStartedAt = now();
-          lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
+          const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
+          const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
+          lastExecution = attemptDeadline ? await raceWithSignal(execution, attemptDeadline.signal) : await execution;
           if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
             lastExecution.response.durationMs = now() - attemptStartedAt;
           }
@@ -2248,6 +2263,9 @@ function createEngine(engineOptions = {}) {
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
           if (options.signal?.aborted) throw error;
+          if (attemptDeadline?.timedOut() || retry && now() - retryStartTime >= maxElapsedMs) {
+            throw retryTimeoutError(attempt);
+          }
           const errorType = isTimeoutError(error) ? "timeout" : "error";
           if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
           attemptError = error;
@@ -2255,6 +2273,11 @@ function createEngine(engineOptions = {}) {
           lastAttemptError = error;
           stepWarnings = [];
           assertions = [];
+        } finally {
+          attemptDeadline?.dispose();
+        }
+        if (retry && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          throw retryTimeoutError(attempt);
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;

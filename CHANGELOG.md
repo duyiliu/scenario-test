@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎与断言
 
-- `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误，重试等待间隔按剩余总时限截断（避免总时限已到仍白等完整 interval）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度。未声明 `retryOn` 时行为与旧版完全一致。
+- `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误，重试等待间隔与单次在途执行均按剩余总时限截断（避免总时限已到仍白等完整 interval 或让慢请求 PASS）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度。未声明 `retryOn` 时行为与旧版完全一致。
 
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
 - `matches` 断言正则编译缓存：retryUntil 轮询与同值静态正则不再每次尝试重复 `new RegExp`；按解析后的期望值字符串键控（模板值变化互不串扰），有界 FIFO。

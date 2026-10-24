@@ -163,6 +163,89 @@ test("maxElapsedMs 截断重试等待：interval 远大于总时限时按总时�
     assert.ok(attempts[0].intervalMs <= 100, `onAttempt 应报告截断后的等待时长，实际 ${attempts[0].intervalMs}ms`);
 });
 
+test("maxElapsedMs 约束在途 HTTP 请求：超过总时限后才返回的成功响应按 TIMEOUT 处理", async () => {
+    let calls = 0;
+    const steps = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            calls += 1;
+            // 忽略 abort 且迟到的成功响应：即使满足断言也不能在总时限后 PASSED
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            return jsonResponse({ ready: true });
+        }
+    });
+    const started = Date.now();
+    const report = await engine.runScenario(defineScenario({
+        name: "在途 HTTP 超时",
+        steps: [retryStep({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 }, { timeoutMs: 1000 })]
+    }), {
+        onStep: (result) => { steps.push(result); }
+    });
+    const elapsed = Date.now() - started;
+    const result = report.results[0];
+
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.notEqual(result.passed, true);
+    assert.match(result.error, /重试超时/);
+    assert.match(result.error, /已尝试 1 次/);
+    assert.equal(calls, 1);
+    assert.ok(elapsed < 500, `在途请求应受总时限约束，实际耗时 ${elapsed}ms`);
+    assert.equal(steps.length, 1);
+    // 等底层迟到响应真正落地：不应再次执行请求或触发额外 onStep
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(calls, 1);
+    assert.equal(steps.length, 1);
+});
+
+test("maxElapsedMs 约束在途适配器：忽略 signal 的慢适配器按总时限 TIMEOUT", async () => {
+    let calls = 0;
+    const steps = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => { throw new Error("适配器步骤不应发起 HTTP 请求"); },
+        adapters: {
+            slowSuccess: {
+                async execute() {
+                    calls += 1;
+                    // 完全忽略 signal，超时后仍会延迟返回成功结果
+                    await new Promise((resolve) => setTimeout(resolve, 120));
+                    return { status: 200, headers: {}, body: { ready: true }, bodyText: null };
+                }
+            }
+        }
+    });
+    const started = Date.now();
+    const report = await engine.runScenario(defineScenario({
+        name: "在途适配器超时",
+        steps: [{
+            name: "适配器轮询",
+            adapter: "slowSuccess",
+            timeoutMs: 1000,
+            retryUntil: { maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 },
+            assertions: [{ name: "就绪", path: "ready", equals: true }]
+        }]
+    }), {
+        onStep: (result) => { steps.push(result); }
+    });
+    const elapsed = Date.now() - started;
+    const result = report.results[0];
+
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.notEqual(result.passed, true);
+    assert.match(result.error, /重试超时/);
+    assert.match(result.error, /已尝试 1 次/);
+    assert.equal(calls, 1);
+    assert.ok(elapsed < 500, `在途适配器应受总时限约束，实际耗时 ${elapsed}ms`);
+    assert.equal(steps.length, 1);
+    // 底层适配器 Promise 迟到完成后不得产生额外尝试/回调
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(calls, 1);
+    assert.equal(steps.length, 1);
+});
+
 test("retryOn: ['error'] 适配器异常重试成功，onAttempt 与结果一致", async () => {
     let calls = 0;
     const attempts = [];
