@@ -300,6 +300,7 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   normalizeWhenDefinition: () => normalizeWhenDefinition,
@@ -530,6 +531,10 @@ function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+function normalizeByteLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 var PATH_SEGMENT = /[^.\[\]]+/y;
 var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
@@ -1850,10 +1855,11 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-function readBodyChunks(response, signal) {
+function readBodyChunks(response, signal, maxBytes = 0) {
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
+  let totalBytes = 0;
   return new Promise((resolve2, reject) => {
     const onAbort = () => {
       reader.cancel().catch(() => {
@@ -1872,6 +1878,12 @@ function readBodyChunks(response, signal) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            reader.cancel().catch(() => {
+            });
+            throw createResponseTooLargeError(totalBytes, maxBytes);
+          }
           chunks.push(value);
         }
         resolve2(chunks);
@@ -1883,6 +1895,32 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function createResponseTooLargeError(actualBytes, limitBytes) {
+  const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${actualBytes} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  error.scenarioResponseTooLarge = true;
+  error.responseTooLarge = { actualBytes, limitBytes };
+  return error;
+}
+function resolveMaxResponseBytes(options = {}) {
+  return normalizeByteLimit(options.maxResponseBytes ?? options.config?.maxResponseBytes);
+}
+function resolveMaxUploadBytes(options = {}) {
+  return normalizeByteLimit(options.maxUploadBytes ?? options.config?.maxUploadBytes);
+}
+function limitResponseBody(body, maxBytes) {
+  if (!body || maxBytes <= 0) return body;
+  let totalBytes = 0;
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      totalBytes += chunk?.byteLength ?? chunk?.length ?? 0;
+      if (totalBytes > maxBytes) {
+        controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+        return;
+      }
+      controller.enqueue(chunk);
+    }
+  }));
+}
 function decoderForContentType(contentType) {
   const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
   if (!match) return new TextDecoder();
@@ -1892,20 +1930,37 @@ function decoderForContentType(contentType) {
     return new TextDecoder();
   }
 }
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType = String(headers["content-type"] || "");
-  const chunks = await readBodyChunks(response, signal);
-  if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
+  const maxResponseBytes = resolveMaxResponseBytes(options);
+  if (step.saveResponseAs) {
+    const relativePath = resolveString(step.saveResponseAs, runtime);
+    const metadata = { contentType, headers, maxResponseBytes };
+    if (io?.saveResponseStream && response.body) {
+      const saved = await io.saveResponseStream(
+        relativePath,
+        limitResponseBody(response.body, maxResponseBytes),
+        metadata
+      );
+      return { status: response.status, headers, body: saved, bodyText: null };
     }
-    const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-    return { status: response.status, headers, body: saved, bodyText: null };
+    if (io?.saveResponse) {
+      const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+      const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+      if (chunks2.length > 1) {
+        let offset = 0;
+        for (const chunk of chunks2) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+      const saved = await io.saveResponse(relativePath, data, metadata);
+      return { status: response.status, headers, body: saved, bodyText: null };
+    }
   }
+  const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
@@ -1953,8 +2008,13 @@ async function executeHttp(step, runtime, options) {
   if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-    const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+    const upload = await options.io.createUploadBody(
+      resolve(request.fileUpload, runtime),
+      runtime,
+      { maxUploadBytes: resolveMaxUploadBytes(options) }
+    );
     fetchOptions.body = upload.body;
+    if (upload.body && typeof upload.body.getReader === "function") fetchOptions.duplex = "half";
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -1972,7 +2032,7 @@ async function executeHttp(step, runtime, options) {
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -1999,6 +2059,8 @@ var AdapterExecutionError = class extends Error {
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
     if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+    if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+    if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
   }
 };
 function raceWithSignal(promise, signal) {
@@ -2178,6 +2240,9 @@ function createEngine(engineOptions = {}) {
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path4 = context && context.path || resolveString(step.path || "", runtime);
+      const responseTooLarge = error?.responseTooLarge || null;
+      const uploadTooLarge = error?.uploadTooLarge || null;
+      const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
@@ -2187,6 +2252,9 @@ function createEngine(engineOptions = {}) {
         passed: false,
         cancelled,
         timedOut,
+        errorCode,
+        ...responseTooLarge ? { responseTooLarge } : {},
+        ...uploadTooLarge ? { uploadTooLarge } : {},
         error: errorMessage,
         warnings: [],
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -6706,6 +6774,8 @@ function createApp(options = {}) {
 // src/node/io.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_stream = require("node:stream");
+var import_promises = require("node:stream/promises");
 
 // src/utils/path-validator.js
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -6768,43 +6838,84 @@ function validatePath(root, userPath, options = {}) {
 }
 
 // src/node/io.js
-function createNodeIo(workspace = process.cwd()) {
+function createNodeIo(workspace = process.cwd(), options = {}) {
   const root = import_node_path2.default.resolve(workspace);
-  return {
-    async createUploadBody(definition) {
-      const filePath = typeof definition === "string" ? definition : definition.filePath;
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, filePath);
-      } catch (error) {
-        throw new Error(
-          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+  const defaultMaxUploadBytes = normalizeByteLimit(options.maxUploadBytes);
+  function resolveUploadPath(filePath) {
+    try {
+      return validatePath(root, filePath);
+    } catch (error) {
+      throw new Error(
+        `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
 \u539F\u56E0: ${error.message}
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      );
+    }
+  }
+  function resolveSavePath(relativePath) {
+    try {
+      return validatePath(root, relativePath);
+    } catch (error) {
+      throw new Error(
+        `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+      );
+    }
+  }
+  return {
+    async createUploadBody(definition, runtime, callOptions = {}) {
+      const filePath = typeof definition === "string" ? definition : definition.filePath;
+      const absolutePath = resolveUploadPath(filePath);
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      const stat = import_node_fs2.default.statSync(absolutePath);
+      if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
+      const maxUploadBytes = normalizeByteLimit(callOptions?.maxUploadBytes) || defaultMaxUploadBytes;
+      if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
+        const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
+        error.scenarioUploadTooLarge = true;
+        error.uploadTooLarge = { actualBytes: stat.size, limitBytes: maxUploadBytes };
+        throw error;
+      }
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
+      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, relativePath);
-      } catch (error) {
-        throw new Error(
-          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
-\u539F\u56E0: ${error.message}
-\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      const absolutePath = resolveSavePath(relativePath);
       import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
+    },
+    async saveResponseStream(relativePath, body, metadata = {}) {
+      const absolutePath = resolveSavePath(relativePath);
+      import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
+      const file = import_node_fs2.default.createWriteStream(absolutePath);
+      let size = 0;
+      const counter = new import_node_stream.Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.byteLength;
+          callback(null, chunk);
+        }
+      });
+      try {
+        const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
+        await (0, import_promises.pipeline)(source, counter, file);
+      } catch (error) {
+        if (!file.closed) {
+          await new Promise((resolveClose) => {
+            file.once("close", resolveClose);
+            file.destroy();
+          });
+        }
+        import_node_fs2.default.rmSync(absolutePath, { force: true });
+        throw error;
+      }
+      return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -6913,6 +7024,7 @@ function loadScenarioFile(filePath, id, api) {
   maskSecret,
   md5,
   mergeGlobals,
+  normalizeByteLimit,
   normalizeEnumDefinition,
   normalizeGlobalParam,
   normalizeWhenDefinition,

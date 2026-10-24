@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createNodeIo } from "../src/node.js";
+import { createEngine, defineScenario } from "../src/index.js";
 
 function makeWorkspace() {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-io-"));
@@ -72,6 +73,111 @@ test("createUploadBody：工作区内不存在的文件报错", async () => {
     try {
         const io = createNodeIo(workspace);
         await assert.rejects(() => io.createUploadBody("missing.txt"), /上传文件不存在/);
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
+test("createUploadBody：maxUploadBytes 超限返回结构化错误，边界值与调用级覆盖生效", async () => {
+    const workspace = makeWorkspace();
+    try {
+        const sampleSize = fs.statSync(path.join(workspace, "sample.txt")).size;
+        const exact = createNodeIo(workspace, { maxUploadBytes: sampleSize });
+        const upload = await exact.createUploadBody("sample.txt");
+        assert.equal(upload.body.get("file").size, sampleSize);
+
+        const limited = createNodeIo(workspace, { maxUploadBytes: sampleSize - 1 });
+        await assert.rejects(
+            () => limited.createUploadBody("sample.txt"),
+            (error) => {
+                assert.match(error.message, /上传文件超过大小上限/);
+                assert.deepEqual(error.uploadTooLarge, { actualBytes: sampleSize, limitBytes: sampleSize - 1 });
+                return true;
+            }
+        );
+
+        // 本次运行传入的上限优先于 createNodeIo 默认值
+        const overridden = createNodeIo(workspace, { maxUploadBytes: 1024 });
+        await assert.rejects(
+            () => overridden.createUploadBody("sample.txt", null, { maxUploadBytes: sampleSize - 1 }),
+            /上传文件超过大小上限/
+        );
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
+// ==================== 安全边界 ====================
+
+test("saveResponseStream：流式写入内容与 saveResponse 一致，失败时删除半截文件", async () => {
+    const workspace = makeWorkspace();
+    try {
+        const io = createNodeIo(workspace);
+        const data = new TextEncoder().encode("streamed-content-".repeat(500));
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(data.subarray(0, 1024));
+                controller.enqueue(data.subarray(1024));
+                controller.close();
+            }
+        });
+        const streamed = await io.saveResponseStream("responses/streamed.bin", stream, { contentType: "application/octet-stream" });
+        const buffered = await io.saveResponse("responses/buffered.bin", data, { contentType: "application/octet-stream" });
+        assert.equal(streamed.size, data.byteLength);
+        assert.equal(streamed.contentType, "application/octet-stream");
+        assert.deepEqual(fs.readFileSync(streamed.savedTo), Buffer.from(data));
+        assert.deepEqual(fs.readFileSync(streamed.savedTo), fs.readFileSync(buffered.savedTo));
+
+        // 流中途失败（引擎的 responseTooLarge 包装流同样走此路径）不得留下半截文件
+        let sent = false;
+        const broken = new ReadableStream({
+            pull(controller) {
+                if (!sent) {
+                    sent = true;
+                    controller.enqueue(new Uint8Array([1, 2, 3]));
+                } else {
+                    controller.error(new Error("模拟流中断"));
+                }
+            }
+        });
+        await assert.rejects(() => io.saveResponseStream("responses/broken.bin", broken), /模拟流中断/);
+        assert.equal(fs.existsSync(path.join(workspace, "responses", "broken.bin")), false);
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
+test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半截文件", async () => {
+    const workspace = makeWorkspace();
+    try {
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            maxResponseBytes: 5,
+            io: createNodeIo(workspace),
+            fetch: async () => new Response("1234567890", { headers: { "Content-Type": "application/octet-stream" } })
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "超限保存",
+            steps: [{ name: "下载", path: "big", saveResponseAs: "out/big.bin" }]
+        }));
+        const result = report.results[0];
+        assert.equal(result.errorCode, "responseTooLarge");
+        assert.deepEqual(result.responseTooLarge, { actualBytes: 10, limitBytes: 5 });
+        assert.equal(fs.existsSync(path.join(workspace, "out", "big.bin")), false);
+
+        // 恰好等于上限时完整落盘（流式路径与旧 saveResponse 内容一致）
+        const exactEngine = createEngine({
+            baseUrl: "https://mock.local",
+            maxResponseBytes: 10,
+            io: createNodeIo(workspace),
+            fetch: async () => new Response("1234567890")
+        });
+        const exactReport = await exactEngine.runScenario(defineScenario({
+            name: "边界保存",
+            steps: [{ name: "下载", path: "exact", saveResponseAs: "out/exact.bin" }]
+        }));
+        assert.equal(exactReport.results[0].passed, true);
+        assert.equal(fs.readFileSync(path.join(workspace, "out", "exact.bin"), "utf8"), "1234567890");
     } finally {
         fs.rmSync(workspace, { recursive: true, force: true });
     }
