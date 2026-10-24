@@ -1382,13 +1382,13 @@ export function createWorkbenchRuntime(options) {
                 if (key) existingKeys.add(decodeURIComponent(key));
             });
         }
-        var queryPairs = [];
+        var queryParts = [];
         globals.forEach(function (global) {
             if (global.type !== 'query' || existingKeys.has(global.name)) return;
-            queryPairs.push(encodeURIComponent(global.name) + '=' + encodeURIComponent(String(core.resolveString(global.value, runtime))));
+            queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
         });
-        if (queryPairs.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryPairs.join('&');
+        if (queryParts.length) {
+            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
         }
 
         // 拼接 globals 的 cookie

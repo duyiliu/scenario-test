@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 核心
+
+- `joinUrl` 放行协议相对 URL（`//cdn.example.com/x`，issue #26 B4）：此前只识别 `^https?://`，前导 `//` 被 strip 后拼进 baseUrl，请求发往错误主机；`executeHttp` 的「绝对地址不发环境凭据」判定同步覆盖协议相对写法。
+- `buildUrl` 数组参数展开为重复 key（`tags=1&tags=2`，issue #26 B5）：此前 `String([1, 2])` 拼成 `tags=1%2C2`，把 `"1,2"` 当单值传给后端，与 Spring 等主流服务端数组语义静默偏差。执行期全局 query 注入与浏览器 cURL 预览共用同一 `queryPairs` 实现（已导出，d.ts 同步）。
+
 ### 引擎
 
 - 适配器步骤的 `timeoutMs` 生效（issue #26 B2）：此前只有 `executeHttp` 有超时链路，`executeAdapter` 完全无超时（`retryUntil.maxElapsedMs` 只在 attempt 之间检查）——挂死的适配器会让场景永久卡住。现复用 `createRequestSignal` 语义并与 signal 竞速（适配器可能完全不看 signal），超时按结构化 `TIMEOUT` 归类并透出 `method/path/timeoutMs`；超时后 `onError` 钩子仍被调用。

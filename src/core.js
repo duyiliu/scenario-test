@@ -229,22 +229,36 @@ export function headersToObject(headers) {
 }
 
 export function joinUrl(baseUrl, requestPath) {
-    if (/^https?:\/\//i.test(requestPath || "")) return requestPath;
+    // 绝对 URL 与协议相对 URL（//host/path）都自带主机：不得再拼到 baseUrl 上。
+    // 协议相对写法此前只被 ^https?:// 识别，前导 // 被 strip 后拼成
+    // "http://base/cdn.example.com/x" —— 形式有效但发往错误主机。
+    if (/^(?:https?:)?\/\//i.test(requestPath || "")) return requestPath;
     const base = String(baseUrl || "").replace(/\/+$/, "");
     const tail = String(requestPath || "").replace(/^\/+/, "");
     return base ? `${base}/${tail}` : tail;
+}
+
+// 单个查询参数（含数组值）序列化为 key=value 对：数组展开为重复 key（tags=1&tags=2），
+// 与 Spring 等主流服务端数组语义一致。buildUrl、执行期 globals query 注入与浏览器
+// cURL 预览共用本实现，避免三处各自 String() 造成静默语义偏差。
+export function queryPairs(key, value) {
+    const encodedKey = encodeURIComponent(key);
+    if (Array.isArray(value)) {
+        return value
+            .filter((item) => item !== undefined && item !== null)
+            .map((item) => `${encodedKey}=${encodeURIComponent(String(item))}`);
+    }
+    if (value === undefined || value === null) return [];
+    return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 
 export function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
-    const query = Object.entries(resolved)
-        .filter(([, value]) => value !== undefined && value !== null)
-        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-        .join("&");
-    if (!query) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${query}`;
+    const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
+    if (!pairs.length) return rawPath;
+    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
 }
 
 export function parseBody(text, contentType) {
