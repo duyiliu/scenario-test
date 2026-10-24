@@ -110,7 +110,15 @@ test("#45 request.headers：非普通对象定义期拒绝", () => {
             this["X-Test"] = "1";
         }
     }
-    for (const headers of ["X-A: 1", 123, true, null, [], new Map([["X-A", "1"]]), new CustomHeaders()]) {
+    // 特制原型绕过：proto 自身无原型、constructor 伪装成 Object，且 X-Test 为继承的可枚举
+    // 属性——运行期 clone 只保留自有属性，X-Test 会静默丢失，必须定义期拒绝
+    const forgedPrototype = Object.create(null);
+    forgedPrototype.constructor = Object;
+    forgedPrototype["X-Test"] = "1";
+    for (const headers of [
+        "X-A: 1", 123, true, null, [], new Map([["X-A", "1"]]), new CustomHeaders(),
+        Object.create(forgedPrototype)
+    ]) {
         assertStepError({ path: "/x", request: { headers } }, /request\.headers 必须是普通对象/);
     }
 });

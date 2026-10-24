@@ -27,13 +27,22 @@ function describeValue(value) {
 // request.headers 要求「普通对象」：core.isPlainObject 只按 toString 标签判定，
 // 自定义类实例同样返回 [object Object]——这里额外检查原型链，拒绝 Foo 实例。
 // 同时兼容 node:vm 沙箱中创建的对象：跨 realm 的 Object.prototype 原型为 null，
-// 但 constructor 仍是对方 realm 的 Object（name === "Object"）。
+// 但 constructor 仍是对方 realm 的 Object，且 Object.prototype === prototype。
+// 继承的可枚举属性会被运行期 clone 的 JSON 序列化丢弃（只保留自有属性），
+// 必须同样拒绝，避免「定义期接受但请求头静默缺失」。
 function isPlainHeadersObject(value) {
     if (!isPlainObject(value)) return false;
     const prototype = Object.getPrototypeOf(value);
     if (prototype === null) return true;
     if (Object.getPrototypeOf(prototype) !== null) return false;
-    return typeof prototype.constructor === "function" && prototype.constructor.name === "Object";
+    // constructor 必须是「自己的」Object 构造器：伪装成 proto.constructor = Object
+    // 的自定义原型会因 Object.prototype !== proto 被识别
+    if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+    if (prototype.constructor.prototype !== prototype) return false;
+    for (const key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
+    }
+    return true;
 }
 
 // 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。

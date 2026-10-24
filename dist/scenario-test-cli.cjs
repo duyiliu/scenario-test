@@ -1459,7 +1459,12 @@ function isPlainHeadersObject(value) {
   const prototype = Object.getPrototypeOf(value);
   if (prototype === null) return true;
   if (Object.getPrototypeOf(prototype) !== null) return false;
-  return typeof prototype.constructor === "function" && prototype.constructor.name === "Object";
+  if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+  if (prototype.constructor.prototype !== prototype) return false;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
+  }
+  return true;
 }
 function describeUnknownKeys(input, allowed) {
   const allowedSet = new Set(allowed);
