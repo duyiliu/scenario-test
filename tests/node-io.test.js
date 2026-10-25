@@ -359,6 +359,46 @@ test("saveResponseStream：流式保存响应体挂起时超时/用户取消均�
     }
 });
 
+test("run options 显式 undefined 不覆盖引擎级 maxResponseBytes/maxUploadBytes", async () => {
+    const workspace = makeWorkspace();
+    try {
+        const sampleSize = fs.statSync(path.join(workspace, "sample.txt")).size;
+        let fetchCalls = 0;
+        const uploadEngine = createEngine({
+            baseUrl: "https://mock.local",
+            maxUploadBytes: 5,
+            io: createNodeIo(workspace),
+            fetch: async () => {
+                fetchCalls += 1;
+                return new Response("{}");
+            }
+        });
+        const uploadReport = await uploadEngine.runScenario(defineScenario({
+            name: "上传限额",
+            steps: [{ name: "上传", method: "POST", request: { fileUpload: { filePath: "sample.txt" } } }]
+        }), { maxUploadBytes: undefined });
+        const uploadResult = uploadReport.results[0];
+        assert.equal(uploadResult.errorCode, "uploadTooLarge");
+        assert.deepEqual(uploadResult.uploadTooLarge, { actualBytes: sampleSize, limitBytes: 5 });
+        assert.equal(fetchCalls, 0, "超限应在发起上传前被拒绝");
+
+        const responseEngine = createEngine({
+            baseUrl: "https://mock.local",
+            maxResponseBytes: 5,
+            fetch: async () => new Response("123456")
+        });
+        const responseReport = await responseEngine.runScenario(defineScenario({
+            name: "下载限额",
+            steps: [{ name: "下载", path: "big" }]
+        }), { maxResponseBytes: undefined });
+        const responseResult = responseReport.results[0];
+        assert.equal(responseResult.errorCode, "responseTooLarge");
+        assert.deepEqual(responseResult.responseTooLarge, { bytesRead: 6, limitBytes: 5 });
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
 test("saveResponse：递归建目录写入并返回 savedTo/size/contentType", async () => {
     const workspace = makeWorkspace();
     try {

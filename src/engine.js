@@ -590,6 +590,11 @@ export function createEngine(engineOptions = {}) {
             adapters,
             requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 30000
         };
+        // 常见写法会把可选配置字段（值为 undefined）整体透传进 run options；
+        // 展开会用它覆盖引擎级上限，导致已配置的限制被静默绕过。只有 undefined
+        // 才回填引擎级值，显式 null/0 仍保留为“运行级不限”。
+        if (options.maxResponseBytes === undefined) options.maxResponseBytes = engineOptions.maxResponseBytes;
+        if (options.maxUploadBytes === undefined) options.maxUploadBytes = engineOptions.maxUploadBytes;
         if (step.when !== undefined) {
             const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
             if (!shouldRun) {
