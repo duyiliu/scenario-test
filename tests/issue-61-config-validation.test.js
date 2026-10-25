@@ -8,6 +8,7 @@ import { contract } from "../src/contract.js";
 // 错误也直到真正执行才报错。这里锁定定义期校验与契约投射。
 test("config 契约声明顶层/env/variable 白名单与 baseUrl 回退规则", () => {
     assert.ok(contract.config.configKeys.includes("requestTimeoutMs"));
+    assert.ok(contract.config.configKeys.includes("storageKeys"));
     assert.ok(contract.config.configKeys.includes("baseUrl"));
     assert.ok(contract.config.environmentKeys.includes("baseUrl"));
     assert.ok(contract.config.variableKeys.includes("required"));
@@ -68,6 +69,7 @@ test("合法旧配置不受影响：环境可省略 baseUrl 回退顶层 baseUrl
     const config = defineConfig({
         baseUrl: "https://api.example.com",
         envs: [{ key: "local", name: "本地" }],
+        storageKeys: { theme: "custom.theme" },
         envVars: { legacyToken: "LEGACY_TOKEN" },
         variables: [{ name: "token", required: true }],
         scenarios: [{ id: "health", url: "scenarios/health.js", manual: true }]
@@ -75,6 +77,7 @@ test("合法旧配置不受影响：环境可省略 baseUrl 回退顶层 baseUrl
     assert.equal(config.envs[0].baseUrl, undefined);
     assert.equal(config.baseUrl, "https://api.example.com");
     assert.equal(config.variables[0].required, true);
+    assert.deepEqual(config.storageKeys, { theme: "custom.theme" });
     assert.doesNotThrow(() => defineConfig({
         envs: [{ key: "local", name: "本地", baseUrl: "http://localhost:8080" }],
         vars: { token: "t" }

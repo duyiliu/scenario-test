@@ -7,9 +7,11 @@ All notable changes to this project will be documented in this file.
 
 ### DSL 与诊断
 
-- 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，缺省时按顶层 `baseUrl` 回退（浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。
+- 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，缺省时按顶层 `baseUrl` 回退（浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。
 
 ### CLI
+
+- `serve` 代理目标回退（issue #61）：配置存在 `envs` 但所选环境未声明（或为空）`baseUrl` 时，回退顶层 `config.baseUrl`，与 `run`/`doctor` 的回退口径一致，不再得到空代理目标。
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 

@@ -472,6 +472,7 @@ var contract = Object.freeze({
       "scenarios",
       "requestTimeoutMs",
       "storagePrefix",
+      "storageKeys",
       "baseUrl",
       "authorization",
       "nodePlugins",
@@ -4437,9 +4438,10 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   if (config.envs?.length) {
     const environment = selectEnvironment(config, envKey);
     const overridden = Boolean(baseUrlOverride);
+    const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
     return {
       key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
-      target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+      target: String(target).replace(/\/+$/, "")
     };
   }
   return {

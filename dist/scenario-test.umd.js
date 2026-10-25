@@ -460,6 +460,7 @@ var ScenarioTest = (() => {
         "scenarios",
         "requestTimeoutMs",
         "storagePrefix",
+        "storageKeys",
         "baseUrl",
         "authorization",
         "nodePlugins",

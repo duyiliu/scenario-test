@@ -57,6 +57,16 @@ export interface ScenarioConfig {
     scenarios?: ScenarioListItem[];
     requestTimeoutMs?: number;
     storagePrefix?: string;
+    /** 浏览器工作台 LocalStorage 键覆盖；未声明的键沿用 storagePrefix 生成的默认值 */
+    storageKeys?: {
+        baseUrl?: string;
+        authorization?: string;
+        globals?: string;
+        environment?: string;
+        theme?: string;
+        scenarioVars?: string;
+        pinnedScenarios?: string;
+    };
     /** 顶层回退地址：环境未声明 baseUrl 时使用；声明时必须是 http(s):// URL */
     baseUrl?: string;
     authorization?: string;

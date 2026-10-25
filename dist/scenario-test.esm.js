@@ -371,6 +371,7 @@ var contract = Object.freeze({
       "scenarios",
       "requestTimeoutMs",
       "storagePrefix",
+      "storageKeys",
       "baseUrl",
       "authorization",
       "nodePlugins",
