@@ -36,7 +36,10 @@ const workbenchView = (function () {
     function eachDetailRows(detail, prefix) {
         var html = '';
         (Array.isArray(detail) ? detail : []).forEach(function (d) {
-            var label = (prefix ? prefix + ' › ' : '') + '第 ' + (d.index + 1) + ' 项';
+            var label = (prefix ? prefix + ' › ' : '') +
+                (d.path !== undefined && d.path !== null && d.path !== ''
+                    ? d.path
+                    : '第 ' + (d.index + 1) + ' 项');
             d.assertions.forEach(function (sub) {
                 if (sub.passed) return;
                 html += '<tr class="bg-rose-50/40">' +
@@ -62,7 +65,10 @@ const workbenchView = (function () {
     // depth 为列表嵌套深度（1 级 4 空格缩进，与既有明细行一致），值经 mdInline 转义
     function pushEachDetailLines(lines, detail, prefix, depth) {
         (Array.isArray(detail) ? detail : []).forEach(function (d) {
-            var label = (prefix ? prefix + ' › ' : '') + '第 ' + (d.index + 1) + ' 项';
+            var label = (prefix ? prefix + ' › ' : '') +
+                (d.path !== undefined && d.path !== null && d.path !== ''
+                    ? d.path
+                    : '第 ' + (d.index + 1) + ' 项');
             d.assertions.forEach(function (sub) {
                 if (sub.passed) return;
                 lines.push('    '.repeat(depth) + '- ' + label + '失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));

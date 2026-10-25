@@ -23,7 +23,8 @@ const valueTypeToTs = {
     string: "string",
     array: "unknown[]",
     finiteNumber: "number",
-    assertion: "Assertion | Assertion[]"
+    assertion: "Assertion | Assertion[]",
+    shape: "ShapeDefinition"
 };
 
 const operatorMembers = (indent) => Object.entries(contract.assertions.operators).map(([name, spec]) => {
@@ -48,6 +49,7 @@ export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
 export type RetryOn = ${quote(contract.retryUntil.retryOn)};
+export type ShapeType = ${quote(contract.assertions.shape.types)};
 
 export interface GlobalParam {
     type: GlobalParamType;
@@ -112,6 +114,21 @@ export interface ScenarioConfig {
     nodePlugins?: string[];
     /** 兼容历史配置字段；运行时实际消费的是场景级 envVars */
     envVars?: Record<string, string>;
+}
+
+/** shape 断言（jsonSchema-lite）子 schema：键集合与类型名单由 contract 投影，未识别键定义期即拒 */
+export interface ShapeDefinition {
+    type?: ShapeType;
+    /** 对象必填键数组 */
+    required?: string[];
+    /** 对象逐字段子 schema */
+    properties?: Record<string, ShapeDefinition>;
+    /** 数组元素子 schema */
+    items?: ShapeDefinition;
+    /** 候选值数组（深比较） */
+    enum?: unknown[];
+    /** 默认 true；声明 false 时未知键失败（动态字段响应可能误报） */
+    additionalProperties?: boolean;
 }
 
 /** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration */
@@ -233,6 +250,8 @@ export interface ScenarioDefinition {
 // （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）
 export interface AssertionEachFailure {
     index: number;
+    /** shape 失败字段路径（如 items[0].sku）；each 明细不携带 */
+    path?: string;
     actual?: unknown;
     assertions: AssertionResult[];
 }
@@ -242,7 +261,10 @@ export interface AssertionResult {
     passed: boolean;
     actual?: unknown;
     expected?: unknown;
-    /** 失败原因（语义化引导）：includes 命中对象实际值时提示改用 equals 或字段 path 断言，其余情况不携带 */
+    /** shape 失败明细的期望/实际类型（如 integer / string）；其余断言不携带 */
+    expectedType?: string;
+    actualType?: string;
+    /** 失败原因（语义化引导）：includes 命中对象实际值、shape 结构不符时给可操作说明，其余情况不携带 */
     reason?: string;
     detail?: AssertionEachFailure[];
 }
@@ -413,6 +435,7 @@ export declare const contract: {
         from: readonly AssertionSource[];
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
+        shape: { types: readonly ShapeType[]; keys: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };

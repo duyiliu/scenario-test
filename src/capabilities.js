@@ -19,7 +19,14 @@ export function buildCapabilities(inputContract = contract) {
             targets: [...(assertions.targets || [])],
             from: [...(assertions.from || [])],
             note: assertions.note,
-            numericOperators: [...assertions.numericOperators]
+            numericOperators: [...assertions.numericOperators],
+            ...(assertions.shape ? {
+                shape: {
+                    types: [...assertions.shape.types],
+                    keys: [...assertions.shape.keys],
+                    note: assertions.shape.note
+                }
+            } : {})
         },
         when: {
             sources: [...when.sources],
@@ -104,6 +111,10 @@ export function renderCapabilitiesText(capabilities) {
     }
     if (capabilities.assertions.note) {
         lines.push(`  ${capabilities.assertions.note}`);
+    }
+    if (capabilities.assertions.shape) {
+        lines.push(`  shape 支持: type = ${capabilities.assertions.shape.types.join(" / ")}；键 = ${capabilities.assertions.shape.keys.join(" / ")}`);
+        lines.push(`  ${capabilities.assertions.shape.note}`);
     }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);

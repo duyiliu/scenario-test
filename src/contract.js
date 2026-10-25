@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -53,6 +53,10 @@ export const contract = Object.freeze({
                 description: "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
                 valueType: "assertion"
             }),
+            shape: Object.freeze({
+                description: "结构断言（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构；失败时 detail 定位到字段路径、期望类型与实际类型/值；未识别 shape 键定义期即拒",
+                valueType: "shape"
+            }),
             matches: Object.freeze({
                 description: "正则表达式匹配字符串化后的实际值",
                 valueType: "string"
@@ -91,7 +95,14 @@ export const contract = Object.freeze({
             })
         }),
         // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
-        numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+        numericOperators: Object.freeze(["gt", "gte", "lt", "lte"]),
+        // shape 断言的 jsonSchema-lite 子集：键与类型名单唯一定义在此，
+        // capabilities/d.ts/init prompt 均从这里投影，勿另写副本
+        shape: Object.freeze({
+            types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
+            keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
+            note: "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言"
+        })
     }),
 
     when: Object.freeze({

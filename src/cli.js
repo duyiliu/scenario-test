@@ -685,7 +685,9 @@ async function runCommand(args) {
                 // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
                 const printEachDetail = (detail, prefix) => {
                     for (const item of detail || []) {
-                        const label = `${prefix}第 ${item.index + 1} 项`;
+                        const label = `${prefix}${item.path !== undefined && item.path !== null && item.path !== ""
+                            ? item.path
+                            : `第 ${item.index + 1} 项`}`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
                             entryPrint(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);

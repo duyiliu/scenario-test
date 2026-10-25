@@ -336,7 +336,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.8.0";
 
   // src/contract.js
-  var CONTRACT_VERSION = 13;
+  var CONTRACT_VERSION = 14;
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
     runtimeVersion: VERSION,
@@ -376,6 +376,10 @@ var ScenarioTest = (() => {
           description: "\u6570\u7EC4\u9010\u9879\u65AD\u8A00\uFF1A\u5B9E\u9645\u503C\u5FC5\u987B\u662F\u6570\u7EC4\uFF0Cexpected \u4E3A\u5B50\u65AD\u8A00\u5B9A\u4E49\u5BF9\u8C61\u6216\u5176\u6570\u7EC4\uFF0C\u5BF9\u6BCF\u4E2A\u5143\u7D20\u5957\u7528\u5B50\u65AD\u8A00\uFF08\u5B50\u65AD\u8A00 path \u76F8\u5BF9\u5143\u7D20\u81EA\u8EAB\uFF0C\u671F\u671B\u503C\u652F\u6301\u6A21\u677F\u53D8\u91CF\uFF09\uFF1B\u4EFB\u4E00\u5143\u7D20\u4EFB\u4E00\u5B50\u65AD\u8A00\u5931\u8D25\u5219\u6574\u4F53\u5931\u8D25\uFF0C\u7A7A\u6570\u7EC4\u6052\u901A\u8FC7\uFF0C\u975E\u6570\u7EC4\u5B9E\u9645\u503C\u76F4\u63A5\u5931\u8D25",
           valueType: "assertion"
         }),
+        shape: Object.freeze({
+          description: "\u7ED3\u6784\u65AD\u8A00\uFF08jsonSchema-lite\uFF09\uFF1A\u6309 type/required/properties/items/enum/additionalProperties \u6821\u9A8C\u54CD\u5E94\u7ED3\u6784\uFF1B\u5931\u8D25\u65F6 detail \u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\u3001\u671F\u671B\u7C7B\u578B\u4E0E\u5B9E\u9645\u7C7B\u578B/\u503C\uFF1B\u672A\u8BC6\u522B shape \u952E\u5B9A\u4E49\u671F\u5373\u62D2",
+          valueType: "shape"
+        }),
         matches: Object.freeze({
           description: "\u6B63\u5219\u8868\u8FBE\u5F0F\u5339\u914D\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C",
           valueType: "string"
@@ -414,7 +418,14 @@ var ScenarioTest = (() => {
         })
       }),
       // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
-      numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+      numericOperators: Object.freeze(["gt", "gte", "lt", "lte"]),
+      // shape 断言的 jsonSchema-lite 子集：键与类型名单唯一定义在此，
+      // capabilities/d.ts/init prompt 均从这里投影，勿另写副本
+      shape: Object.freeze({
+        types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
+        keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
+        note: "shape \u662F\u5BF9\u54CD\u5E94\u7ED3\u6784\u7684\u8F7B\u91CF JSON Schema \u5B50\u96C6\u6821\u9A8C\uFF1Atype \u652F\u6301 object/array/string/number/integer/boolean/null\uFF1Brequired \u4E3A\u5BF9\u8C61\u5FC5\u586B\u952E\u6570\u7EC4\uFF1Bproperties \u4E3A\u9010\u5B57\u6BB5\u5B50 schema\uFF1Bitems \u4E3A\u6570\u7EC4\u5143\u7D20\u5B50 schema\uFF1Benum \u4E3A\u6DF1\u6BD4\u8F83\u5019\u9009\u503C\u6570\u7EC4\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\u3002\u672A\u8BC6\u522B shape \u952E\u5B9A\u4E49\u671F\u5373\u62D2\u3002additionalProperties:false \u5BF9\u542B\u52A8\u6001\u5B57\u6BB5\u7684\u54CD\u5E94\u53EF\u80FD\u8BEF\u62A5\uFF0C\u52A8\u6001\u5B57\u6BB5\u573A\u666F\u8BF7\u4FDD\u7559\u9ED8\u8BA4\u6216\u6539\u7528\u9010\u5B57\u6BB5\u65AD\u8A00"
+      })
     }),
     when: Object.freeze({
       // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
@@ -852,6 +863,162 @@ var ScenarioTest = (() => {
   var ASSERTION_OPERATOR_SET = new Set(ASSERTION_OPERATORS);
   var ASSERTION_META_KEY_SET = new Set(ASSERTION_META_KEYS);
   var STRING_EDGE_OPERATORS = ["startsWith", "endsWith"];
+  var SHAPE_TYPE_SET = new Set(contract.assertions.shape.types);
+  var SHAPE_KEY_SET = new Set(contract.assertions.shape.keys);
+  function shapeActualType(value) {
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return "number";
+      return Number.isInteger(value) ? "integer" : "number";
+    }
+    if (typeof value === "string") return "string";
+    if (typeof value === "boolean") return "boolean";
+    if (typeof value === "undefined") return "undefined";
+    if (typeof value === "bigint") return "bigint";
+    if (isPlainObject(value)) return "object";
+    return typeof value;
+  }
+  function shapeTypeMatches(value, type) {
+    if (type === "null") return value === null;
+    if (type === "array") return Array.isArray(value);
+    if (type === "object") return isPlainObject(value);
+    if (type === "string") return typeof value === "string";
+    if (type === "number") return typeof value === "number" && Number.isFinite(value);
+    if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+    if (type === "boolean") return typeof value === "boolean";
+    return false;
+  }
+  function shapeChildPath(parent, key) {
+    const text = String(key);
+    const simple = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(text);
+    if (simple) return parent ? `${parent}.${text}` : text;
+    const bracket = `[${JSON.stringify(text)}]`;
+    return parent ? `${parent}${bracket}` : bracket;
+  }
+  function shapeIndexPath(parent, index) {
+    return parent ? `${parent}[${index}]` : `[${index}]`;
+  }
+  function validateShapeDefinition(schema, label, trail = "", ancestors = /* @__PURE__ */ new Set(), options = {}) {
+    const location = trail ? `shape ${trail}` : "shape";
+    if (!isPlainObject(schema)) {
+      throw new TypeError(`${label}: ${location} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(schema)}\uFF09`);
+    }
+    const unknown = Object.keys(schema).filter((key) => !SHAPE_KEY_SET.has(key));
+    if (unknown.length) {
+      throw new TypeError(
+        `${label}: ${location} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684 shape \u952E\u4E3A ${contract.assertions.shape.keys.join("/")}`
+      );
+    }
+    if (ancestors.has(schema)) {
+      throw new TypeError(`${label}: ${location} \u4E0D\u80FD\u5305\u542B\u5FAA\u73AF\u5F15\u7528`);
+    }
+    ancestors.add(schema);
+    try {
+      if (Object.prototype.hasOwnProperty.call(schema, "type")) {
+        const type = schema.type;
+        const templated = typeof type === "string" && type.includes("{{");
+        if (typeof type !== "string" || !SHAPE_TYPE_SET.has(type) && !(options.allowTemplateType && templated)) {
+          throw new TypeError(
+            `${label}: ${location}.type \u53EA\u652F\u6301 ${contract.assertions.shape.types.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(type)}\uFF09`
+          );
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(schema, "required")) {
+        if (!Array.isArray(schema.required) || schema.required.some((key) => typeof key !== "string" || key === "")) {
+          throw new TypeError(`${label}: ${location}.required \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\u6570\u7EC4`);
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(schema, "properties")) {
+        if (!isPlainObject(schema.properties)) {
+          throw new TypeError(`${label}: ${location}.properties \u5FC5\u987B\u662F\u5BF9\u8C61`);
+        }
+        for (const [key, child] of Object.entries(schema.properties)) {
+          validateShapeDefinition(child, label, `${trail ? `${trail}.` : ""}properties.${key}`, ancestors, options);
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(schema, "items")) {
+        validateShapeDefinition(schema.items, label, `${trail ? `${trail}.` : ""}items`, ancestors, options);
+      }
+      if (Object.prototype.hasOwnProperty.call(schema, "enum") && !Array.isArray(schema.enum)) {
+        throw new TypeError(`${label}: ${location}.enum \u5FC5\u987B\u662F\u6570\u7EC4`);
+      }
+      if (Object.prototype.hasOwnProperty.call(schema, "additionalProperties") && typeof schema.additionalProperties !== "boolean") {
+        throw new TypeError(`${label}: ${location}.additionalProperties \u53EA\u652F\u6301\u5E03\u5C14\u503C\uFF08\u9ED8\u8BA4 true\uFF0Cfalse \u8868\u793A\u672A\u77E5\u952E\u5931\u8D25\uFF09`);
+      }
+    } finally {
+      ancestors.delete(schema);
+    }
+  }
+  function pushShapeFailure(failures, failure) {
+    failures.push({
+      path: failure.path || "$",
+      expected: failure.expected,
+      actual: failure.actual,
+      reason: failure.reason,
+      expectedType: failure.expectedType,
+      actualType: failure.actualType || shapeActualType(failure.actual)
+    });
+  }
+  function collectShapeFailures(actual, schema, path, failures) {
+    const actualType = shapeActualType(actual);
+    if (schema.type !== void 0 && !shapeTypeMatches(actual, schema.type)) {
+      pushShapeFailure(failures, {
+        path,
+        expected: schema.type,
+        expectedType: schema.type,
+        actual,
+        actualType,
+        reason: `\u7C7B\u578B\u4E0D\u7B26\uFF1A\u671F\u671B ${schema.type}\uFF0C\u5B9E\u9645 ${actualType}`
+      });
+      return;
+    }
+    if (Array.isArray(schema.enum)) {
+      const actualText = stableStringify(actual);
+      if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
+        pushShapeFailure(failures, {
+          path,
+          expected: schema.enum,
+          actual,
+          actualType,
+          reason: `\u53D6\u503C\u4E0D\u5728 enum \u5141\u8BB8\u8303\u56F4\uFF08\u5B9E\u9645 ${actualType}\uFF09`
+        });
+      }
+    }
+    if (isPlainObject(actual)) {
+      const properties = isPlainObject(schema.properties) ? schema.properties : {};
+      for (const key of schema.required || []) {
+        if (!Object.prototype.hasOwnProperty.call(actual, key) || actual[key] === void 0) {
+          pushShapeFailure(failures, {
+            path: shapeChildPath(path, key),
+            expected: "required",
+            actual: void 0,
+            actualType: "undefined",
+            reason: "\u7F3A\u5C11\u5FC5\u586B\u5B57\u6BB5"
+          });
+        }
+      }
+      for (const [key, child] of Object.entries(properties)) {
+        if (!Object.prototype.hasOwnProperty.call(actual, key) || actual[key] === void 0) continue;
+        collectShapeFailures(actual[key], child, shapeChildPath(path, key), failures);
+      }
+      if (schema.additionalProperties === false) {
+        for (const key of Object.keys(actual)) {
+          if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
+          pushShapeFailure(failures, {
+            path: shapeChildPath(path, key),
+            expected: "additionalProperties:false",
+            actual: actual[key],
+            actualType: shapeActualType(actual[key]),
+            reason: `additionalProperties:false\uFF1A\u51FA\u73B0\u672A\u58F0\u660E\u952E "${key}"`
+          });
+        }
+      }
+    }
+    if (Array.isArray(actual) && schema.items !== void 0) {
+      actual.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path, index), failures));
+    }
+  }
   function formatAssertionContext(context) {
     if (!context) return "";
     if (typeof context === "string") return context;
@@ -927,6 +1094,9 @@ var ScenarioTest = (() => {
         throw new TypeError(eachLabel);
       }
     }
+    if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
+      validateShapeDefinition(definition.shape, prefix, "", /* @__PURE__ */ new Set(), { allowTemplateType: true });
+    }
     return definition;
   }
   function assertionActual(definition, response, runtime) {
@@ -979,6 +1149,7 @@ var ScenarioTest = (() => {
     let passed = true;
     let reason = "";
     let eachFailures = null;
+    let shapeFailures = null;
     if (definition.exists !== void 0) {
       expected = Boolean(definition.exists);
       const exists = actual !== void 0 && actual !== null && actual !== "";
@@ -1021,6 +1192,31 @@ var ScenarioTest = (() => {
             passed = false;
           }
         });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
+      const schema = resolve(definition.shape, runtime);
+      const where = formatAssertionContext(context);
+      validateShapeDefinition(schema, where ? `${where}\u65AD\u8A00\u65E0\u6548` : "\u65AD\u8A00\u65E0\u6548", "", /* @__PURE__ */ new Set());
+      expected = schema;
+      const failures = [];
+      collectShapeFailures(actual, schema, "", failures);
+      if (failures.length) {
+        passed = false;
+        shapeFailures = failures.map((failure, index) => ({
+          index,
+          path: failure.path,
+          actual: failure.actual,
+          assertions: [{
+            name: failure.path,
+            passed: false,
+            expected: failure.expected,
+            actual: failure.actual,
+            reason: failure.reason,
+            expectedType: failure.expectedType,
+            actualType: failure.actualType
+          }]
+        }));
       }
     }
     if (definition.matches !== void 0) {
@@ -1070,6 +1266,7 @@ var ScenarioTest = (() => {
       else if (op === "lt") passed = passed && actual < expected;
       else passed = passed && actual <= expected;
     }
+    const detail = eachFailures || shapeFailures ? [...eachFailures || [], ...shapeFailures || []] : null;
     return {
       name: definition.name || definition.path || "\u65AD\u8A00",
       passed,
@@ -1077,8 +1274,8 @@ var ScenarioTest = (() => {
       expected,
       // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
       ...reason ? { reason } : {},
-      // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
-      ...eachFailures ? { detail: eachFailures } : {}
+      // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
+      ...detail ? { detail } : {}
     };
   }
   function normalizeWhenDefinition(definition) {
@@ -2806,7 +3003,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         targets: [...assertions.targets || []],
         from: [...assertions.from || []],
         note: assertions.note,
-        numericOperators: [...assertions.numericOperators]
+        numericOperators: [...assertions.numericOperators],
+        ...assertions.shape ? {
+          shape: {
+            types: [...assertions.shape.types],
+            keys: [...assertions.shape.keys],
+            note: assertions.shape.note
+          }
+        } : {}
       },
       when: {
         sources: [...when.sources],
@@ -2889,6 +3093,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     if (capabilities.assertions.note) {
       lines.push(`  ${capabilities.assertions.note}`);
+    }
+    if (capabilities.assertions.shape) {
+      lines.push(`  shape \u652F\u6301: type = ${capabilities.assertions.shape.types.join(" / ")}\uFF1B\u952E = ${capabilities.assertions.shape.keys.join(" / ")}`);
+      lines.push(`  ${capabilities.assertions.shape.note}`);
     }
     lines.push("");
     lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);
@@ -4310,7 +4518,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function eachDetailRows2(detail, prefix) {
       var html = "";
       (Array.isArray(detail) ? detail : []).forEach(function(d) {
-        var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+        var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
         d.assertions.forEach(function(sub) {
           if (sub.passed) return;
           html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 ' + label + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
@@ -4324,7 +4532,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     function pushEachDetailLines(lines, detail, prefix, depth) {
       (Array.isArray(detail) ? detail : []).forEach(function(d) {
-        var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+        var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
         d.assertions.forEach(function(sub) {
           if (sub.passed) return;
           lines.push("    ".repeat(depth) + "- " + label + "\u5931\u8D25: \u671F\u671B " + mdInline(sub.expected) + ",\u5B9E\u5F97 " + mdInline(sub.actual));

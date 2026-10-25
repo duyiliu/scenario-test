@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 
+- 新增 `shape` 断言（jsonSchema-lite，contract v13 → v14，issue #73）：支持 `type`（object/array/string/number/integer/boolean/null）、`required`、`properties`、`items`、`enum`、`additionalProperties`（默认 true，false 时未知键失败），无需逐字段写 exists/类型断言即可校验响应结构；失败明细复用 each 的 `detail` 分层结构，并按字段路径（如 `items[0].sku`）透出期望类型与实际类型/值。未识别 shape 键定义期即拒；可在 `each` 子断言内嵌套。同步投射 capabilities JSON/文本、`dist/scenario-test.d.ts`（`ShapeDefinition`）、AI Prompt/模式库/项目 README 模板；doctor 经 registry 共用定义期校验。
+
 ### CLI
 
 - 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
