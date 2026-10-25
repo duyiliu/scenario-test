@@ -8,6 +8,7 @@ import fs from "node:fs";
 import test from "node:test";
 import * as nodeCore from "../src/core.js";
 import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
+import workbenchView from "../src/browser/ui/ui-view.js";
 
 function runtimeWith(vars = {}) {
     return { vars, lastResponse: null, lastResponseBody: null };
@@ -491,6 +492,49 @@ test("generatedVars 双端同源：浏览器 runtime 复用 core.applyGeneratedV
 
 test("ui-utils：copyText 在无 DOM 的 Node 环境中返回 false", async () => {
     assert.equal(await copyText("测试内容"), false);
+});
+
+test("工作台场景列表：按 tags 过滤展示，搜索可命中标签，失效标签回退全部", () => {
+    const elements = {
+        scenarioList: { innerHTML: "" },
+        scenarioSearchClearBtn: { hidden: true },
+        scenarioTagFilter: { innerHTML: "", hidden: true, value: "" }
+    };
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+        getElementById(id) { return elements[id] || null; }
+    };
+    try {
+        const items = [
+            { name: "支付", file: "scenarios/pay.js", tags: ["smoke", "payment"] },
+            { name: "退款", file: "scenarios/refund.js", tags: ["payment", "write"] },
+            { name: "无标签", file: "scenarios/plain.js", tags: [] }
+        ];
+
+        workbenchView.renderScenarioSelect(items, "", "", {}, "smoke");
+        assert.match(elements.scenarioList.innerHTML, /data-scenario-file="scenarios\/pay\.js"/);
+        assert.doesNotMatch(elements.scenarioList.innerHTML, /scenarios\/refund\.js|scenarios\/plain\.js/);
+        assert.match(elements.scenarioList.innerHTML, />smoke</, "场景项应展示标签");
+        assert.equal(elements.scenarioTagFilter.hidden, false);
+        assert.equal(elements.scenarioTagFilter.value, "smoke");
+        for (const tag of ["smoke", "payment", "write"]) {
+            assert.match(elements.scenarioTagFilter.innerHTML, new RegExp(`value="${tag}"`));
+        }
+
+        // 搜索关键词命中标签：输入 write 应展示 refund（即使名称/路径不含 write）
+        workbenchView.renderScenarioSelect(items, "", "write", {}, "");
+        assert.match(elements.scenarioList.innerHTML, /data-scenario-file="scenarios\/refund\.js"/);
+        assert.doesNotMatch(elements.scenarioList.innerHTML, /scenarios\/pay\.js|scenarios\/plain\.js/);
+
+        // 选中标签不存在于当前清单：回退“全部标签”，不留下永久空白列表
+        workbenchView.renderScenarioSelect(items, "", "", {}, "missing");
+        assert.equal(elements.scenarioTagFilter.value, "");
+        assert.match(elements.scenarioList.innerHTML, /scenarios\/pay\.js/);
+        assert.match(elements.scenarioList.innerHTML, /scenarios\/refund\.js/);
+        assert.match(elements.scenarioList.innerHTML, /scenarios\/plain\.js/);
+    } finally {
+        globalThis.document = previousDocument;
+    }
 });
 
 test("ui-utils：esc/fmt/safeJson 在无 DOM 环境可用且保留 legacy 语义", () => {

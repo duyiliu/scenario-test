@@ -165,6 +165,7 @@ export function createWorkbenchRuntime(options) {
         debugRuntimes: [],
         nextStepIndex: 0,
         scenarioSearch: '',
+        scenarioTagFilter: '',
         discoveredFiles: [],
         lastReport: null,
         startTime: null,
@@ -425,7 +426,15 @@ export function createWorkbenchRuntime(options) {
 
     // ===== 视图重绘桥接函数 =====
     function renderScenarioSelect() {
-        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles());
+        var tags = [];
+        (state.discoveredFiles || []).forEach(function (item) {
+            (Array.isArray(item.tags) ? item.tags : []).forEach(function (tag) {
+                if (typeof tag === 'string' && tag && tags.indexOf(tag) < 0) tags.push(tag);
+            });
+        });
+        // 场景清单刷新后旧标签可能已消失：回退到“全部标签”，避免列表永久空白
+        if (state.scenarioTagFilter && tags.indexOf(state.scenarioTagFilter) < 0) state.scenarioTagFilter = '';
+        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles(), state.scenarioTagFilter);
     }
 
     function clearScenarioSearch() {
@@ -1532,11 +1541,12 @@ export function createWorkbenchRuntime(options) {
         }
         state.discoveredFiles = cfg.scenarios.map(function (entry) {
             if (typeof entry === 'string') {
-                return { name: entry, file: entry };
+                return { name: entry, file: entry, tags: [] };
             }
             return {
                 name: entry.name || entry.file || '',
-                file: entry.file || entry.path || entry.url || ''
+                file: entry.file || entry.path || entry.url || '',
+                tags: Array.isArray(entry.tags) ? entry.tags.slice() : []
             };
         });
         await enrichDiscoveredScenarioNames();
@@ -1707,6 +1717,14 @@ export function createWorkbenchRuntime(options) {
         });
         var scenarioSearchClearButton = document.getElementById('scenarioSearchClearBtn');
         if (scenarioSearchClearButton) scenarioSearchClearButton.addEventListener('click', clearScenarioSearch);
+
+        var scenarioTagFilter = document.getElementById('scenarioTagFilter');
+        if (scenarioTagFilter) {
+            scenarioTagFilter.addEventListener('change', function (event) {
+                state.scenarioTagFilter = event.target.value;
+                renderScenarioSelect();
+            });
+        }
 
         // 凭据变量明文/掩码切换（容器 innerHTML 会被重绘，监听挂在容器自身）
         var varsInputContainer = document.getElementById('scenarioVarsInput');

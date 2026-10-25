@@ -51,7 +51,8 @@ export function buildCapabilities(inputContract = contract) {
                 protocol: config.baseUrl.protocol,
                 note: config.baseUrl.note
             },
-            manual: { ...config.manual }
+            manual: { ...config.manual },
+            tags: { ...config.tags }
         },
         retryUntil: {
             keys: [...retryUntil.keys],
@@ -128,6 +129,7 @@ export function renderCapabilitiesText(capabilities) {
     lines.push(`config.scenarios 项字段: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
     lines.push(`  baseUrl（${capabilities.config.baseUrl.protocol}）: ${capabilities.config.baseUrl.note}`);
     lines.push(`  manual（${capabilities.config.manual.type}）: ${capabilities.config.manual.note}`);
+    lines.push(`  tags（${capabilities.config.tags.type}）: ${capabilities.config.tags.note}`);
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);

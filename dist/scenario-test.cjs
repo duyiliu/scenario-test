@@ -340,7 +340,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -479,7 +479,7 @@ var contract = Object.freeze({
       "envVars"
     ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
+    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     baseUrl: Object.freeze({
@@ -489,6 +489,10 @@ var contract = Object.freeze({
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
+    }),
+    tags: Object.freeze({
+      type: "string[]",
+      note: "tags \u4E3A\u573A\u666F\u6807\u7B7E\u6570\u7EC4\uFF08\u975E\u7A7A\u5B57\u7B26\u4E32\uFF0C\u5B9A\u4E49\u671F\u53BB\u7A7A\u767D\u5E76\u53BB\u91CD\uFF09\uFF1Brun --tag \u4E0E\u5DE5\u4F5C\u53F0\u573A\u666F\u5217\u8868\u53EF\u6309\u6807\u7B7E\u7B5B\u9009\u3002--tag \u547D\u4E2D\u7684 manual:true \u573A\u666F\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C\uFF0C\u4ECD\u9700 --scenario <id> \u663E\u5F0F\u6307\u5B9A"
     })
   }),
   retryUntil: Object.freeze({
@@ -524,6 +528,13 @@ var contract = Object.freeze({
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
       "base-url": { kind: "value", prop: "baseUrl", description: "\u4E34\u65F6\u8986\u76D6 Base URL" },
       scenario: { kind: "value", prop: "scenario", description: "\u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09" },
+      tag: {
+        kind: "value",
+        prop: "tags",
+        parse: "tagList",
+        repeatable: true,
+        description: "\u6309\u573A\u666F\u6807\u7B7E\u7B5B\u9009\u6267\u884C\uFF08\u53EF\u91CD\u590D\uFF1B\u591A\u4E2A --tag \u4E4B\u95F4\u4E3A OR\uFF0C\u540C\u4E00\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\u59CB\u7EC8\u6392\u9664\u672A\u663E\u5F0F\u6307\u5B9A\u7684 manual:true \u573A\u666F\uFF09"
+      },
       vars: {
         kind: "value",
         prop: "vars",
@@ -1956,7 +1967,18 @@ function defineConfig(input) {
     if (entry.manual !== void 0) {
       invariant(typeof entry.manual === "boolean", `\u573A\u666F ${id} \u7684 manual \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
-    return { ...entry, id, name: entry.name || id, url };
+    let tags;
+    if (entry.tags !== void 0) {
+      invariant(Array.isArray(entry.tags), `\u573A\u666F ${id} \u7684 tags \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6570\u7EC4`);
+      const normalizedTags = [];
+      for (const tag of entry.tags) {
+        invariant(nonEmptyString(tag), `\u573A\u666F ${id} \u7684 tags \u9879\u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32`);
+        const normalized = tag.trim();
+        if (!normalizedTags.includes(normalized)) normalizedTags.push(normalized);
+      }
+      tags = normalizedTags;
+    }
+    return { ...entry, id, name: entry.name || id, url, ...tags ? { tags } : {} };
   });
   assertUnique(scenarios, "id", "\u573A\u666F id");
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
@@ -2842,7 +2864,8 @@ function buildCapabilities(inputContract = contract) {
         protocol: config.baseUrl.protocol,
         note: config.baseUrl.note
       },
-      manual: { ...config.manual }
+      manual: { ...config.manual },
+      tags: { ...config.tags }
     },
     retryUntil: {
       keys: [...retryUntil.keys],
@@ -2917,6 +2940,7 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
   lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
+  lines.push(`  tags\uFF08${capabilities.config.tags.type}\uFF09: ${capabilities.config.tags.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);

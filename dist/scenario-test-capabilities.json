@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 13,
+  "contractVersion": 14,
   "assertions": {
     "operators": {
       "exists": {
@@ -173,7 +173,8 @@
       "id",
       "name",
       "url",
-      "manual"
+      "manual",
+      "tags"
     ],
     "environmentKeys": [
       "key",
@@ -196,6 +197,10 @@
     "manual": {
       "type": "boolean",
       "note": "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
+    },
+    "tags": {
+      "type": "string[]",
+      "note": "tags 为场景标签数组（非空字符串，定义期去空白并去重）；run --tag 与工作台场景列表可按标签筛选。--tag 命中的 manual:true 场景不会自动放行，仍需 --scenario <id> 显式指定"
     }
   },
   "retryUntil": {
@@ -268,6 +273,12 @@
       "scenario": {
         "kind": "value",
         "description": "执行指定场景（可执行 manual:true 场景）"
+      },
+      "tag": {
+        "kind": "value",
+        "description": "按场景标签筛选执行（可重复；多个 --tag 之间为 OR，同一参数内逗号分隔为 AND；始终排除未显式指定的 manual:true 场景）",
+        "parse": "tagList",
+        "repeatable": true
       },
       "vars": {
         "kind": "value",

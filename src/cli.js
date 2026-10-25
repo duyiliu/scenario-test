@@ -90,14 +90,26 @@ function parseKeyValueOption(raw, option) {
     return [key, raw.slice(separator + 1)];
 }
 
+function parseTagListOption(raw, option) {
+    const tags = raw.split(",").map((item) => item.trim()).filter(Boolean);
+    if (!tags.length) {
+        throw new CliUsageError(
+            `${option} 需要至少一个非空标签`,
+            `示例：${option} smoke；多个标签用逗号表示 AND（${option} smoke,critical），重复 ${option} 表示 OR。`
+        );
+    }
+    return tags;
+}
+
 function parseOptionValue(raw, spec, option) {
     if (spec.parse === "number") return Number(raw);
     if (spec.parse === "keyValue") return parseKeyValueOption(raw, option);
+    if (spec.parse === "tagList") return parseTagListOption(raw, option);
     return raw;
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, tags: [], port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -110,13 +122,22 @@ function parseArgs(argv) {
             const raw = argumentValue(argv, index++, item);
             const parsed = parseOptionValue(raw, valueOption.spec, item);
             if (valueOption.spec.repeatable) {
-                // 可重复选项按出现顺序叠加；同 key 后者覆盖前者。
-                // 用 Object.fromEntries 而非直接赋值：--vars __proto__=x 必须成为
-                // 自有键并由引擎 assertNoReservedVars 拒绝，不能改写对象原型。
-                args[valueOption.prop] = Object.fromEntries([
-                    ...Object.entries(args[valueOption.prop] || {}),
-                    parsed
-                ]);
+                if (valueOption.spec.parse === "keyValue") {
+                    // 可重复选项按出现顺序叠加；同 key 后者覆盖前者。
+                    // 用 Object.fromEntries 而非直接赋值：--vars __proto__=x 必须成为
+                    // 自有键并由引擎 assertNoReservedVars 拒绝，不能改写对象原型。
+                    args[valueOption.prop] = Object.fromEntries([
+                        ...Object.entries(args[valueOption.prop] || {}),
+                        parsed
+                    ]);
+                } else {
+                    // 数组型可重复选项（如 --tag）：按出现顺序追加，保留每次出现分组
+                    // （多个 --tag 之间 OR，同一次出现内逗号分隔为 AND）。
+                    args[valueOption.prop] = [
+                        ...(Array.isArray(args[valueOption.prop]) ? args[valueOption.prop] : []),
+                        parsed
+                    ];
+                }
             } else {
                 args[valueOption.prop] = parsed;
             }
@@ -230,6 +251,8 @@ ${optionHelp}
   默认 run 未指定 --all/--scenario 时仅执行清单第一个场景。
   --all 执行配置中的全部自动场景；manual:true 场景须通过 --scenario 显式选择。
   --scenario 支持逗号分隔多选（如 --scenario login,order），按 id/name/url 匹配。
+  --tag 按场景 tags 筛选（可重复）；多个 --tag 之间为 OR，同一参数内逗号分隔为 AND。
+  --tag 只执行自动场景，命中的 manual:true 场景仍须通过 --scenario 显式选择。
   --json 时 stdout 只输出结构化结果：单场景输出该场景 report，多场景输出
   {"scenarios":[...]}；进度行与结论改走 stderr，失败场景仍输出完整 JSON 且退出码非零。
 
@@ -581,11 +604,49 @@ async function runCommand(args) {
             : "配置中没有可选场景，请检查 scenarios 列表。";
         throw new CliUsageError(`未找到场景: ${missing.join(", ")}`, list);
     }
-    const entries = args.all
-        ? config.scenarios.filter((item) => !item.manual)
-        : requested.length
-            ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key)))
-            : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+    const tagGroups = Array.isArray(args.tags) ? args.tags : [];
+    const formatTagGroups = () => tagGroups.map((group) => group.join(",")).join(" 或 ");
+    const availableTags = Array.from(new Set(config.scenarios.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))).sort();
+    const matchesTags = (item) => {
+        if (!tagGroups.length) return true;
+        const itemTags = new Set(Array.isArray(item.tags) ? item.tags : []);
+        // 多次 --tag 之间 OR；同一次 --tag 内逗号分隔为 AND
+        return tagGroups.some((group) => group.every((tag) => itemTags.has(tag)));
+    };
+    const requestedEntries = requested.length
+        ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key)))
+        : null;
+    let entries;
+    if (requestedEntries) {
+        // --scenario 显式点名优先（允许 manual:true）；--tag 可作为附加筛选。
+        entries = requestedEntries.filter(matchesTags);
+        if (tagGroups.length && !entries.length) {
+            throw new CliUsageError(
+                `显式选择的场景未匹配 --tag ${formatTagGroups()}`,
+                `${availableTags.length ? `可用标签: ${availableTags.join(", ")}` : "配置中的场景未声明 tags"}。--tag 作为 --scenario 的附加筛选；如确需执行该场景，请仅使用 --scenario。`
+            );
+        }
+    } else if (tagGroups.length) {
+        // 仅 --tag：等价于按标签筛选全部自动场景，绝不自动放行 manual:true。
+        const tagMatched = config.scenarios.filter(matchesTags);
+        entries = tagMatched.filter((item) => !item.manual);
+        if (!entries.length) {
+            if (tagMatched.length && tagMatched.every((item) => item.manual)) {
+                throw new CliUsageError(
+                    `--tag ${formatTagGroups()} 仅命中 manual:true 场景（${tagMatched.map((item) => item.id).join(", ")}），--tag 不会自动放行手动场景`,
+                    "请先确认数据已准备好，再通过 --scenario <id> 显式选择要执行的手动场景。"
+                );
+            }
+            throw new CliUsageError(
+                `没有自动场景匹配 --tag ${formatTagGroups()}`,
+                `${availableTags.length ? `可用标签: ${availableTags.join(", ")}` : "配置中的场景未声明 tags"}。多个 --tag 之间为 OR，同一参数内逗号分隔为 AND（如 --tag smoke,critical）。`
+            );
+        }
+    } else if (args.all) {
+        entries = config.scenarios.filter((item) => !item.manual);
+    } else {
+        entries = config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+    }
     if (!entries.length) {
         if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
             throw new CliUsageError(

@@ -31,6 +31,8 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.ok(caps.cli.options["fail-on-skip"]);
     assert.equal(caps.cli.options.json.kind, "flag");
     assert.equal(caps.config.manual.type, "boolean");
+    assert.equal(caps.config.tags.type, "string[]");
+    assert.ok(caps.config.scenarioItemKeys.includes("tags"));
     // 每个操作符含说明与类型约束
     for (const [name, meta] of Object.entries(caps.assertions.operators)) {
         assert.equal(typeof meta.description, "string");
@@ -55,6 +57,8 @@ test("capabilities 文本：版本、操作符、when、extract、保留变量�
     assert.match(text, /runId/);
     assert.match(text, /runNo/);
     assert.match(text, /manual/);
+    assert.match(text, /tags/);
+    assert.match(text, /--tag/);
     assert.match(text, /capabilities/);
     assert.match(text, /doctor/);
     assert.match(text, /--fail-on-skip/);

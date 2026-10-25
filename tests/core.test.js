@@ -153,6 +153,14 @@ test("配置规范化并拒绝缺少环境标识", () => {
     assert.throws(() => defineConfig({ variables: [{ name: "token" }, { name: "token" }] }), /重复/);
     assert.throws(() => defineConfig({ requestTimeoutMs: 0 }), /正数/);
     assert.throws(() => defineConfig({ scenarios: [{ id: "m", url: "s.js", manual: "yes" }] }), /manual 必须是布尔值/);
+    assert.throws(() => defineConfig({ scenarios: [{ id: "t", url: "s.js", tags: "smoke" }] }), /tags 必须是字符串数组/);
+    assert.throws(() => defineConfig({ scenarios: [{ id: "t", url: "s.js", tags: [1] }] }), /tags 项必须是非空字符串/);
+    assert.throws(() => defineConfig({ scenarios: [{ id: "t", url: "s.js", tags: [" "] }] }), /tags 项必须是非空字符串/);
+    assert.deepEqual(
+        defineConfig({ scenarios: [{ id: "t", url: "s.js", tags: [" smoke ", "payment", "smoke"] }] }).scenarios[0].tags,
+        ["smoke", "payment"],
+        "tags 定义期去空白并去重"
+    );
 });
 
 function runtimeWith(vars = {}) {

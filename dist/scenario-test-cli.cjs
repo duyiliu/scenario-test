@@ -348,7 +348,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -487,7 +487,7 @@ var contract = Object.freeze({
       "envVars"
     ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
+    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     baseUrl: Object.freeze({
@@ -497,6 +497,10 @@ var contract = Object.freeze({
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
+    }),
+    tags: Object.freeze({
+      type: "string[]",
+      note: "tags \u4E3A\u573A\u666F\u6807\u7B7E\u6570\u7EC4\uFF08\u975E\u7A7A\u5B57\u7B26\u4E32\uFF0C\u5B9A\u4E49\u671F\u53BB\u7A7A\u767D\u5E76\u53BB\u91CD\uFF09\uFF1Brun --tag \u4E0E\u5DE5\u4F5C\u53F0\u573A\u666F\u5217\u8868\u53EF\u6309\u6807\u7B7E\u7B5B\u9009\u3002--tag \u547D\u4E2D\u7684 manual:true \u573A\u666F\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C\uFF0C\u4ECD\u9700 --scenario <id> \u663E\u5F0F\u6307\u5B9A"
     })
   }),
   retryUntil: Object.freeze({
@@ -532,6 +536,13 @@ var contract = Object.freeze({
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
       "base-url": { kind: "value", prop: "baseUrl", description: "\u4E34\u65F6\u8986\u76D6 Base URL" },
       scenario: { kind: "value", prop: "scenario", description: "\u6267\u884C\u6307\u5B9A\u573A\u666F\uFF08\u53EF\u6267\u884C manual:true \u573A\u666F\uFF09" },
+      tag: {
+        kind: "value",
+        prop: "tags",
+        parse: "tagList",
+        repeatable: true,
+        description: "\u6309\u573A\u666F\u6807\u7B7E\u7B5B\u9009\u6267\u884C\uFF08\u53EF\u91CD\u590D\uFF1B\u591A\u4E2A --tag \u4E4B\u95F4\u4E3A OR\uFF0C\u540C\u4E00\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\u59CB\u7EC8\u6392\u9664\u672A\u663E\u5F0F\u6307\u5B9A\u7684 manual:true \u573A\u666F\uFF09"
+      },
       vars: {
         kind: "value",
         prop: "vars",
@@ -2185,7 +2196,18 @@ function defineConfig(input) {
     if (entry.manual !== void 0) {
       invariant(typeof entry.manual === "boolean", `\u573A\u666F ${id} \u7684 manual \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
-    return { ...entry, id, name: entry.name || id, url };
+    let tags;
+    if (entry.tags !== void 0) {
+      invariant(Array.isArray(entry.tags), `\u573A\u666F ${id} \u7684 tags \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6570\u7EC4`);
+      const normalizedTags = [];
+      for (const tag of entry.tags) {
+        invariant(nonEmptyString(tag), `\u573A\u666F ${id} \u7684 tags \u9879\u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32`);
+        const normalized = tag.trim();
+        if (!normalizedTags.includes(normalized)) normalizedTags.push(normalized);
+      }
+      tags = normalizedTags;
+    }
+    return { ...entry, id, name: entry.name || id, url, ...tags ? { tags } : {} };
   });
   assertUnique(scenarios, "id", "\u573A\u666F id");
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
@@ -3071,7 +3093,8 @@ function buildCapabilities(inputContract = contract) {
         protocol: config.baseUrl.protocol,
         note: config.baseUrl.note
       },
-      manual: { ...config.manual }
+      manual: { ...config.manual },
+      tags: { ...config.tags }
     },
     retryUntil: {
       keys: [...retryUntil.keys],
@@ -3146,6 +3169,7 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
   lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
+  lines.push(`  tags\uFF08${capabilities.config.tags.type}\uFF09: ${capabilities.config.tags.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
@@ -3661,7 +3685,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 - \`globals\`\uFF1A\u5168\u5C40\u53C2\u6570\uFF0C\u8FFD\u52A0\u5230\u6BCF\u4E2A\u8BF7\u6C42\u3002\u652F\u6301 ${GLOBALS_TYPES_BACKTICK} \u4E09\u79CD\u7C7B\u578B\uFF0C\u53EF\u914D\u7F6E\u5728\u9876\u5C42\uFF08\u6240\u6709\u73AF\u5883\u751F\u6548\uFF09\u6216\u5355\u4E2A\u73AF\u5883\u5185\u3002\u503C\u652F\u6301 \`{{vars.xxx}}\` \u6A21\u677F\uFF1B\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u7684\u540C\u540D\u53C2\u6570\u4F18\u5148\u4E8E\u5168\u5C40\u53C2\u6570\u3002CLI \u53EF\u7528 \`SCENARIO_GLOBALS\` \u73AF\u5883\u53D8\u91CF\uFF08JSON \u6570\u7EC4\uFF09\u8986\u76D6\uFF0C\u5982 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`\u3002
 - \`vars\`\uFF1A\u672C\u9879\u76EE\u542F\u52A8\u65F6\u4F7F\u7528\u7684\u9ED8\u8BA4\u53D8\u91CF\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728\u8FD9\u91CC\u4FDD\u5B58\u56E2\u961F\u8054\u8C03 Key\u3001Secret\u3001Token\u3001\u6D4B\u8BD5\u8D26\u53F7\u7B49\u3002
 - \`variables\`\uFF1A\u9875\u9762\u4E0A\u9700\u8981\u5C55\u793A\u6216\u5141\u8BB8\u8986\u76D6\u7684\u53D8\u91CF\u5143\u6570\u636E\uFF0C\u5305\u62EC\u6807\u7B7E\u3001\u662F\u5426\u5FC5\u586B\uFF0C\u4EE5\u53CA\u53EF\u9009\u7684 CLI \u73AF\u5883\u53D8\u91CF\u540D\u3002\u5B9E\u9645\u9ED8\u8BA4\u503C\u4F18\u5148\u5199\u5728 \`vars\`\uFF0C\u4E0D\u8981\u91CD\u590D\u7EF4\u62A4\u3002
-- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002\u9700\u8981\u4EBA\u5DE5\u524D\u7F6E\u6761\u4EF6\u6216\u5199\u6570\u636E\u7684\u573A\u666F\u53EF\u52A0 \`manual: true\`\uFF1A\`--all\` \u9ED8\u8BA4\u6392\u9664\uFF0C\`--scenario <id>\` \u53EF\u663E\u5F0F\u6267\u884C\u3002
+- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002\u9700\u8981\u4EBA\u5DE5\u524D\u7F6E\u6761\u4EF6\u6216\u5199\u6570\u636E\u7684\u573A\u666F\u53EF\u52A0 \`manual: true\`\uFF1A\`--all\` \u9ED8\u8BA4\u6392\u9664\uFF0C\`--scenario <id>\` \u53EF\u663E\u5F0F\u6267\u884C\u3002\u53EF\u7528 \`tags: ["smoke", "payment"]\` \u7ED9\u573A\u666F\u6253\u6807\u7B7E\uFF0CCLI \`--tag\` \u4E0E\u5DE5\u4F5C\u53F0\u573A\u666F\u5217\u8868\u53EF\u6309\u6807\u7B7E\u7B5B\u9009\uFF1B\`--tag\` \u547D\u4E2D\u7684 manual \u573A\u666F\u4ECD\u9700 \`--scenario\` \u663E\u5F0F\u6267\u884C\u3002
 
 \u6700\u5C0F\u914D\u7F6E\u793A\u4F8B\uFF1A
 
@@ -3747,7 +3771,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
 - \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\uFF0C\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
-- SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
+- SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002\u573A\u666F\u53EF\u6309\u4E1A\u52A1\u57DF/\u5C42\u7EA7\u52A0 \`tags\`\uFF0C\u7528 \`--tag smoke\` \u6216 \`--tag smoke,critical\`\uFF08\u540C\u53C2\u6570\u5185\u9017\u53F7 AND\u3001\u91CD\u590D\u53C2\u6570 OR\uFF09\u7F29\u5C0F\u6267\u884C\u9762\u3002
 
 \u5B8C\u6574 DSL \u4E0E\u793A\u4F8B\u89C1\u516C\u5171\u5E93 README\uFF1B\u9879\u76EE\u5185\u65B0\u589E\u7528\u4F8B\u7531 AI \u8BFB\u53D6 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` \u548C\u540C\u76EE\u5F55\u7684\u6A21\u5F0F\u5E93\u540E\u751F\u6210\u3002
 
@@ -3775,6 +3799,13 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 
 \`\`\`powershell
 node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-create-success
+\`\`\`
+
+\u6309\u6807\u7B7E\u7B5B\u9009\u573A\u666F\uFF08\u591A\u4E2A \`--tag\` \u4E4B\u95F4\u4E3A OR\uFF0C\u540C\u4E00\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\`manual: true\` \u573A\u666F\u4ECD\u9700 \`--scenario\` \u663E\u5F0F\u6267\u884C\uFF09\uFF1A
+
+\`\`\`powershell
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --tag smoke
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --tag smoke,critical
 \`\`\`
 
 \u5728 PowerShell \u4E2D\u4E3A\u4E00\u6B21\u6267\u884C\u4E34\u65F6\u8986\u76D6\u51ED\u636E\uFF1A
@@ -4398,13 +4429,24 @@ function parseKeyValueOption(raw, option) {
   }
   return [key, raw.slice(separator + 1)];
 }
+function parseTagListOption(raw, option) {
+  const tags = raw.split(",").map((item) => item.trim()).filter(Boolean);
+  if (!tags.length) {
+    throw new CliUsageError(
+      `${option} \u9700\u8981\u81F3\u5C11\u4E00\u4E2A\u975E\u7A7A\u6807\u7B7E`,
+      `\u793A\u4F8B\uFF1A${option} smoke\uFF1B\u591A\u4E2A\u6807\u7B7E\u7528\u9017\u53F7\u8868\u793A AND\uFF08${option} smoke,critical\uFF09\uFF0C\u91CD\u590D ${option} \u8868\u793A OR\u3002`
+    );
+  }
+  return tags;
+}
 function parseOptionValue(raw, spec, option) {
   if (spec.parse === "number") return Number(raw);
   if (spec.parse === "keyValue") return parseKeyValueOption(raw, option);
+  if (spec.parse === "tagList") return parseTagListOption(raw, option);
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, tags: [], port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4422,10 +4464,17 @@ function parseArgs(argv) {
       const raw = argumentValue(argv, index++, item);
       const parsed = parseOptionValue(raw, valueOption.spec, item);
       if (valueOption.spec.repeatable) {
-        args[valueOption.prop] = Object.fromEntries([
-          ...Object.entries(args[valueOption.prop] || {}),
-          parsed
-        ]);
+        if (valueOption.spec.parse === "keyValue") {
+          args[valueOption.prop] = Object.fromEntries([
+            ...Object.entries(args[valueOption.prop] || {}),
+            parsed
+          ]);
+        } else {
+          args[valueOption.prop] = [
+            ...Array.isArray(args[valueOption.prop]) ? args[valueOption.prop] : [],
+            parsed
+          ];
+        }
       } else {
         args[valueOption.prop] = parsed;
       }
@@ -4524,6 +4573,8 @@ ${optionHelp}
   \u9ED8\u8BA4 run \u672A\u6307\u5B9A --all/--scenario \u65F6\u4EC5\u6267\u884C\u6E05\u5355\u7B2C\u4E00\u4E2A\u573A\u666F\u3002
   --all \u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF1Bmanual:true \u573A\u666F\u987B\u901A\u8FC7 --scenario \u663E\u5F0F\u9009\u62E9\u3002
   --scenario \u652F\u6301\u9017\u53F7\u5206\u9694\u591A\u9009\uFF08\u5982 --scenario login,order\uFF09\uFF0C\u6309 id/name/url \u5339\u914D\u3002
+  --tag \u6309\u573A\u666F tags \u7B5B\u9009\uFF08\u53EF\u91CD\u590D\uFF09\uFF1B\u591A\u4E2A --tag \u4E4B\u95F4\u4E3A OR\uFF0C\u540C\u4E00\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\u3002
+  --tag \u53EA\u6267\u884C\u81EA\u52A8\u573A\u666F\uFF0C\u547D\u4E2D\u7684 manual:true \u573A\u666F\u4ECD\u987B\u901A\u8FC7 --scenario \u663E\u5F0F\u9009\u62E9\u3002
   --json \u65F6 stdout \u53EA\u8F93\u51FA\u7ED3\u6784\u5316\u7ED3\u679C\uFF1A\u5355\u573A\u666F\u8F93\u51FA\u8BE5\u573A\u666F report\uFF0C\u591A\u573A\u666F\u8F93\u51FA
   {"scenarios":[...]}\uFF1B\u8FDB\u5EA6\u884C\u4E0E\u7ED3\u8BBA\u6539\u8D70 stderr\uFF0C\u5931\u8D25\u573A\u666F\u4ECD\u8F93\u51FA\u5B8C\u6574 JSON \u4E14\u9000\u51FA\u7801\u975E\u96F6\u3002
 
@@ -4830,7 +4881,44 @@ ${choices.join("\n")}${remaining > 0 ? `
   \u2026 \u5176\u4F59 ${remaining} \u9879\u672A\u663E\u793A\u3002` : ""}${hasManualScenarios ? "\nmanual:true \u573A\u666F\u9700\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002" : ""}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u9009\u573A\u666F\uFF0C\u8BF7\u68C0\u67E5 scenarios \u5217\u8868\u3002";
     throw new CliUsageError(`\u672A\u627E\u5230\u573A\u666F: ${missing.join(", ")}`, list);
   }
-  const entries = args.all ? config.scenarios.filter((item) => !item.manual) : requested.length ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key))) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+  const tagGroups = Array.isArray(args.tags) ? args.tags : [];
+  const formatTagGroups = () => tagGroups.map((group) => group.join(",")).join(" \u6216 ");
+  const availableTags = Array.from(new Set(config.scenarios.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))).sort();
+  const matchesTags = (item) => {
+    if (!tagGroups.length) return true;
+    const itemTags = new Set(Array.isArray(item.tags) ? item.tags : []);
+    return tagGroups.some((group) => group.every((tag) => itemTags.has(tag)));
+  };
+  const requestedEntries = requested.length ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key))) : null;
+  let entries;
+  if (requestedEntries) {
+    entries = requestedEntries.filter(matchesTags);
+    if (tagGroups.length && !entries.length) {
+      throw new CliUsageError(
+        `\u663E\u5F0F\u9009\u62E9\u7684\u573A\u666F\u672A\u5339\u914D --tag ${formatTagGroups()}`,
+        `${availableTags.length ? `\u53EF\u7528\u6807\u7B7E: ${availableTags.join(", ")}` : "\u914D\u7F6E\u4E2D\u7684\u573A\u666F\u672A\u58F0\u660E tags"}\u3002--tag \u4F5C\u4E3A --scenario \u7684\u9644\u52A0\u7B5B\u9009\uFF1B\u5982\u786E\u9700\u6267\u884C\u8BE5\u573A\u666F\uFF0C\u8BF7\u4EC5\u4F7F\u7528 --scenario\u3002`
+      );
+    }
+  } else if (tagGroups.length) {
+    const tagMatched = config.scenarios.filter(matchesTags);
+    entries = tagMatched.filter((item) => !item.manual);
+    if (!entries.length) {
+      if (tagMatched.length && tagMatched.every((item) => item.manual)) {
+        throw new CliUsageError(
+          `--tag ${formatTagGroups()} \u4EC5\u547D\u4E2D manual:true \u573A\u666F\uFF08${tagMatched.map((item) => item.id).join(", ")}\uFF09\uFF0C--tag \u4E0D\u4F1A\u81EA\u52A8\u653E\u884C\u624B\u52A8\u573A\u666F`,
+          "\u8BF7\u5148\u786E\u8BA4\u6570\u636E\u5DF2\u51C6\u5907\u597D\uFF0C\u518D\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u8981\u6267\u884C\u7684\u624B\u52A8\u573A\u666F\u3002"
+        );
+      }
+      throw new CliUsageError(
+        `\u6CA1\u6709\u81EA\u52A8\u573A\u666F\u5339\u914D --tag ${formatTagGroups()}`,
+        `${availableTags.length ? `\u53EF\u7528\u6807\u7B7E: ${availableTags.join(", ")}` : "\u914D\u7F6E\u4E2D\u7684\u573A\u666F\u672A\u58F0\u660E tags"}\u3002\u591A\u4E2A --tag \u4E4B\u95F4\u4E3A OR\uFF0C\u540C\u4E00\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF08\u5982 --tag smoke,critical\uFF09\u3002`
+      );
+    }
+  } else if (args.all) {
+    entries = config.scenarios.filter((item) => !item.manual);
+  } else {
+    entries = config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+  }
   if (!entries.length) {
     if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
       throw new CliUsageError(

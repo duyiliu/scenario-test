@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -153,7 +153,7 @@ export const contract = Object.freeze({
             "authorization", "nodePlugins", "envVars"
         ]),
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-        scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
+        scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
         environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
         variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
         baseUrl: Object.freeze({
@@ -163,6 +163,10 @@ export const contract = Object.freeze({
         manual: Object.freeze({
             type: "boolean",
             note: "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
+        }),
+        tags: Object.freeze({
+            type: "string[]",
+            note: "tags 为场景标签数组（非空字符串，定义期去空白并去重）；run --tag 与工作台场景列表可按标签筛选。--tag 命中的 manual:true 场景不会自动放行，仍需 --scenario <id> 显式指定"
         })
     }),
 
@@ -191,6 +195,13 @@ export const contract = Object.freeze({
             env: { kind: "value", prop: "env", description: "配置中的环境 key" },
             "base-url": { kind: "value", prop: "baseUrl", description: "临时覆盖 Base URL" },
             scenario: { kind: "value", prop: "scenario", description: "执行指定场景（可执行 manual:true 场景）" },
+            tag: {
+                kind: "value",
+                prop: "tags",
+                parse: "tagList",
+                repeatable: true,
+                description: "按场景标签筛选执行（可重复；多个 --tag 之间为 OR，同一参数内逗号分隔为 AND；始终排除未显式指定的 manual:true 场景）"
+            },
             vars: {
                 kind: "value",
                 prop: "vars",

@@ -155,7 +155,7 @@ test("tsc --noEmit 验证最小 JS 用例（全局 tsc 可用时）", (t) => {
 /** @type {import('./types/scenario-test').ScenarioDefinition} */
 const scenario = { name: "示例", steps: [{ name: "请求", method: "GET", path: "api/x", status: 200, assertions: [{ path: "data.total", gte: 5 }, { path: "data.name", startsWith: "pre" }], extract: [{ name: "id", path: "data.id", required: true }], when: { from: "vars", path: "id", exists: true, startsWith: "1" } }], failurePolicy: "stop" };
 /** @type {import('./types/scenario-test').ScenarioListItem} */
-const entry = { id: "health", url: "scenarios/health.js", manual: true };
+const entry = { id: "health", url: "scenarios/health.js", manual: true, tags: ["smoke", "payment"] };
 /** @type {import('./types/scenario-test').Assertion} */
 const assertion = { path: "code", oneOf: [200, 201] };
 /** @type {import('./types/scenario-test').RequestDefinition} */

@@ -77,6 +77,8 @@ export interface ScenarioListItem {
     name?: string;
     url: string;
     manual?: boolean;
+    /** ${contract.config.tags.note} */
+    tags?: string[];
     /** 兼容回退字段（等价 url） */
     file?: string;
     path?: string;
@@ -426,6 +428,7 @@ export declare const contract: {
         variableKeys: readonly string[];
         baseUrl: { protocol: string; note: string };
         manual: { type: string; note: string };
+        tags: { type: string; note: string };
     };
     retryUntil: {
         keys: readonly string[];
@@ -440,7 +443,7 @@ export declare const contract: {
     };
     cli: {
         commands: readonly string[];
-        options: Record<string, { kind: "value" | "flag"; prop: string; description: string; parse?: "number" | "keyValue"; repeatable?: boolean; aliases?: readonly string[] }>;
+        options: Record<string, { kind: "value" | "flag"; prop: string; description: string; parse?: "number" | "keyValue" | "tagList"; repeatable?: boolean; aliases?: readonly string[] }>;
     };
 };
 

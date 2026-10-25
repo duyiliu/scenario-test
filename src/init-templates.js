@@ -255,7 +255,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 - \`globals\`：全局参数，追加到每个请求。支持 ${GLOBALS_TYPES_BACKTICK} 三种类型，可配置在顶层（所有环境生效）或单个环境内。值支持 \`{{vars.xxx}}\` 模板；步骤显式声明的同名参数优先于全局参数。CLI 可用 \`SCENARIO_GLOBALS\` 环境变量（JSON 数组）覆盖，如 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`。
 - \`vars\`：本项目启动时使用的默认变量。私有项目可在这里保存团队联调 Key、Secret、Token、测试账号等。
 - \`variables\`：页面上需要展示或允许覆盖的变量元数据，包括标签、是否必填，以及可选的 CLI 环境变量名。实际默认值优先写在 \`vars\`，不要重复维护。
-- \`scenarios\`：场景 id、名称和对应 JS 文件地址。需要人工前置条件或写数据的场景可加 \`manual: true\`：\`--all\` 默认排除，\`--scenario <id>\` 可显式执行。
+- \`scenarios\`：场景 id、名称和对应 JS 文件地址。需要人工前置条件或写数据的场景可加 \`manual: true\`：\`--all\` 默认排除，\`--scenario <id>\` 可显式执行。可用 \`tags: ["smoke", "payment"]\` 给场景打标签，CLI \`--tag\` 与工作台场景列表可按标签筛选；\`--tag\` 命中的 manual 场景仍需 \`--scenario\` 显式执行。
 
 最小配置示例：
 
@@ -341,7 +341,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - 最终一致性使用 \`retryUntil\`，避免固定等待；服务/容器刚启动、首次轮询可能连接失败时用 \`retryOn: ["assertion", "error", "timeout"]\` 让网络错误与单次超时继续轮询（默认 \`["assertion"]\`），非幂等写操作开启前先确认安全；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式支持 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`，或用 \`target: "status"\` 读取上一步状态码）。
 - \`runId\` / \`runNo\` 是运行时保留变量，禁止在配置或场景中声明或覆盖。
 - 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
-- SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
+- SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。场景可按业务域/层级加 \`tags\`，用 \`--tag smoke\` 或 \`--tag smoke,critical\`（同参数内逗号 AND、重复参数 OR）缩小执行面。
 
 完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
 
@@ -369,6 +369,13 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 
 \`\`\`powershell
 node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-create-success
+\`\`\`
+
+按标签筛选场景（多个 \`--tag\` 之间为 OR，同一参数内逗号分隔为 AND；\`manual: true\` 场景仍需 \`--scenario\` 显式执行）：
+
+\`\`\`powershell
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --tag smoke
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --tag smoke,critical
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：

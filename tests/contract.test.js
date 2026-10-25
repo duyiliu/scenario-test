@@ -50,14 +50,17 @@ test("when 来源含 vars/lastResponse/status；extract 来源与 required 语�
     assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);
 });
 
-test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {
+test("config/scenario 关键字段含 manual/tags；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {
     assert.ok(contract.config.configKeys.includes("requestTimeoutMs"));
     assert.ok(contract.config.configKeys.includes("baseUrl"));
     assert.ok(contract.config.configKeys.includes("envs"));
     assert.ok(contract.config.scenarioItemKeys.includes("id"));
     assert.ok(contract.config.scenarioItemKeys.includes("url"));
     assert.ok(contract.config.scenarioItemKeys.includes("manual"));
+    assert.ok(contract.config.scenarioItemKeys.includes("tags"));
     assert.equal(contract.config.manual.type, "boolean");
+    assert.equal(contract.config.tags.type, "string[]");
+    assert.ok(contract.config.tags.note.includes("--tag"));
     assert.ok(contract.scenario.keys.includes("steps"));
     assert.ok(contract.scenario.stepKeys.includes("assertions"));
     assert.ok(contract.scenario.stepKeys.includes("when"));
@@ -68,6 +71,10 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
     }
     assert.equal(contract.cli.options["fail-on-skip"].kind, "flag");
     assert.equal(contract.cli.options.json.kind, "flag");
+    assert.equal(contract.cli.options.tag.kind, "value");
+    assert.equal(contract.cli.options.tag.prop, "tags");
+    assert.equal(contract.cli.options.tag.parse, "tagList");
+    assert.equal(contract.cli.options.tag.repeatable, true);
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);
     assert.equal(contract.cli.options.config.kind, "value");
     assert.equal(contract.cli.options["library-url"].kind, "value");

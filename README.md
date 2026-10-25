@@ -128,6 +128,12 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --all --concurrency 4
 
+# 按标签筛选（多个 --tag 为 OR；同一参数内逗号分隔为 AND）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --tag smoke
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --tag smoke,critical
+
 # 临时覆盖变量 / 请求超时（无需修改配置）
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --all `
@@ -197,7 +203,8 @@ scenario-test/
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
-- `manual: true` 场景默认不参与 `--all`。
+- `manual: true` 场景默认不参与 `--all`；`--tag` 命中的 manual 场景也不会自动放行，仍需 `--scenario` 显式指定。
+- 场景清单项支持 `tags: ["smoke", "payment"]`，`run --tag` 与工作台场景列表可按标签筛选：多个 `--tag` 之间为 OR，同一参数内逗号分隔为 AND。
 - `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
 - 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。

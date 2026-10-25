@@ -213,6 +213,9 @@ const workbenchView = (function () {
                                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg>
                             </button>
                         </div>
+                        <select id="scenarioTagFilter" aria-label="按标签筛选场景" title="按标签筛选场景" hidden class="mt-2 w-full px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-700 outline-hidden transition-all focus:border-slate-800 focus:ring-1 focus:ring-slate-800">
+                            <option value="">全部标签</option>
+                        </select>
                     </div>
                     <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1 min-h-0"></div>
                 </aside>
@@ -574,29 +577,50 @@ const workbenchView = (function () {
         return params;
     }
 
-    function renderScenarioSelect(discoveredFiles, scenarioFile, keyword, pinOrder) {
+    function renderScenarioSelect(discoveredFiles, scenarioFile, keyword, pinOrder, tagFilter) {
         var list = document.getElementById('scenarioList');
         if (!list) return;
         pinOrder = pinOrder || {};
         var normalizedKeyword = String(keyword || '').trim().toLowerCase();
         var clearSearchButton = document.getElementById('scenarioSearchClearBtn');
         if (clearSearchButton) clearSearchButton.hidden = !normalizedKeyword;
+        var allTags = [];
+        (discoveredFiles || []).forEach(function (item) {
+            (Array.isArray(item.tags) ? item.tags : []).forEach(function (tag) {
+                if (typeof tag === 'string' && tag && allTags.indexOf(tag) < 0) allTags.push(tag);
+            });
+        });
+        allTags.sort(function (left, right) { return left.localeCompare(right); });
+        var normalizedTag = String(tagFilter || '').trim();
+        var tagSelect = document.getElementById('scenarioTagFilter');
+        if (tagSelect) {
+            tagSelect.innerHTML = '<option value="">全部标签</option>' + allTags.map(function (tag) {
+                return '<option value="' + esc(tag) + '">' + esc(tag) + '</option>';
+            }).join('');
+            tagSelect.hidden = !allTags.length;
+            // 已选标签因清单刷新而消失时回退到“全部标签”，不留下筛不到的隐藏条件
+            tagSelect.value = allTags.indexOf(normalizedTag) >= 0 ? normalizedTag : '';
+            normalizedTag = tagSelect.value;
+        }
         var items = (discoveredFiles || []).filter(function (item) {
-            var text = ((item.name || '') + ' ' + (item.file || '')).toLowerCase();
-            return !normalizedKeyword || text.indexOf(normalizedKeyword) >= 0;
+            var tags = Array.isArray(item.tags) ? item.tags : [];
+            var text = ((item.name || '') + ' ' + (item.file || '') + ' ' + tags.join(' ')).toLowerCase();
+            if (normalizedKeyword && text.indexOf(normalizedKeyword) < 0) return false;
+            return !normalizedTag || tags.indexOf(normalizedTag) >= 0;
         }).sort(function (left, right) {
             var leftOrder = Object.prototype.hasOwnProperty.call(pinOrder, left.file) ? pinOrder[left.file] : Number.MAX_SAFE_INTEGER;
             var rightOrder = Object.prototype.hasOwnProperty.call(pinOrder, right.file) ? pinOrder[right.file] : Number.MAX_SAFE_INTEGER;
             return leftOrder - rightOrder;
         });
         if (!items.length) {
-            list.innerHTML = normalizedKeyword
-                ? '<div class="scenario-search-empty" role="status"><span>未找到匹配场景</span><button type="button" data-clear-scenario-search>清除搜索</button></div>'
+            list.innerHTML = (normalizedKeyword || normalizedTag)
+                ? '<div class="scenario-search-empty" role="status"><span>未找到匹配场景</span>' + (normalizedKeyword ? '<button type="button" data-clear-scenario-search>清除搜索</button>' : '') + '</div>'
                 : '<div class="p-3 text-xs text-slate-400 text-center" role="status">暂无可用场景</div>';
             return;
         }
         list.innerHTML = items.map(function (item) {
             var name = item.name || item.file;
+            var tags = Array.isArray(item.tags) ? item.tags : [];
             var active = scenarioFile === item.file;
             var pinned = Object.prototype.hasOwnProperty.call(pinOrder, item.file);
             var classes = active
@@ -609,6 +633,9 @@ const workbenchView = (function () {
                     '<div class="min-w-0 flex-1">' +
                         '<div class="text-xs font-semibold truncate leading-snug">' + esc(name) + '</div>' +
                         '<div class="mt-0.5 text-[10px] font-mono truncate ' + (active ? 'text-blue-500/80' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
+                        (tags.length ? '<div class="mt-1 flex flex-wrap gap-1">' + tags.map(function (tag) {
+                            return '<span class="inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-[10px] leading-none text-slate-500">' + esc(tag) + '</span>';
+                        }).join('') + '</div>' : '') +
                     '</div>' +
                     (active ? '<svg class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>' : '') +
                 '</button>' +

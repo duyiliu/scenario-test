@@ -585,7 +585,18 @@ export function defineConfig(input) {
         if (entry.manual !== undefined) {
             invariant(typeof entry.manual === "boolean", `场景 ${id} 的 manual 必须是布尔值`);
         }
-        return { ...entry, id, name: entry.name || id, url };
+        let tags;
+        if (entry.tags !== undefined) {
+            invariant(Array.isArray(entry.tags), `场景 ${id} 的 tags 必须是字符串数组`);
+            const normalizedTags = [];
+            for (const tag of entry.tags) {
+                invariant(nonEmptyString(tag), `场景 ${id} 的 tags 项必须是非空字符串`);
+                const normalized = tag.trim();
+                if (!normalizedTags.includes(normalized)) normalizedTags.push(normalized);
+            }
+            tags = normalizedTags;
+        }
+        return { ...entry, id, name: entry.name || id, url, ...(tags ? { tags } : {}) };
     });
     assertUnique(scenarios, "id", "场景 id");
     const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
