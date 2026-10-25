@@ -198,6 +198,23 @@
       "note": "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
     }
   },
+  "retryUntil": {
+    "keys": [
+      "maxAttempts",
+      "intervalMs",
+      "maxElapsedMs",
+      "retryOn"
+    ],
+    "retryOn": [
+      "assertion",
+      "error",
+      "timeout"
+    ],
+    "defaultRetryOn": [
+      "assertion"
+    ],
+    "note": "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
+  },
   "scenario": {
     "keys": [
       "name",

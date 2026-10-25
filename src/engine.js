@@ -35,6 +35,24 @@ function timeoutErrorMessage(timeoutMs) {
     return `请求超时（${timeoutMs}ms）`;
 }
 
+// 单次执行失败是否由请求/适配器超时引起：优先看 createRequestSignal 写入的结构化标记，
+// 不依赖本地化错误文案。
+function isTimeoutError(error) {
+    return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+
+// 供 retryOn/onAttempt 与重试超时消息使用的错误文本：fetch 的 TypeError("fetch failed")
+// 把真实原因收在 cause，透出 ECONNREFUSED/ENOTFOUND 等，便于 CI 与进度行直接定位。
+function describeError(error) {
+    const message = String(error?.message || error || "请求执行失败");
+    const causeDetail = error?.cause
+        ? (error.cause.code || error.cause.message || String(error.cause))
+        : "";
+    return causeDetail && !message.includes(causeDetail)
+        ? `${message}（${causeDetail}）`
+        : message;
+}
+
 function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     // 与 createRequestSignal 对齐：signal 已中止时立即拒绝，否则 addEventListener 不会触发，
@@ -180,6 +198,9 @@ function chooseAdapter(step, adapters) {
 // maxBytes > 0 时边读边计数：超过上限立即取消读取并抛出结构化错误，
 // 不把超限响应完整读进内存（非 saveResponseAs 路径同样受上限保护）。
 function readBodyChunks(response, signal, maxBytes = 0) {
+    // 无 body 的响应也必须先检查中止：fetch 忽略 abort 并在总时限后返回时，
+    // 不能继续进入 saveResponseAs 等后续副作用。
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     if (!response.body) return Promise.resolve([]);
     const reader = response.body.getReader();
     const chunks = [];
@@ -447,7 +468,11 @@ async function executeHttp(step, runtime, options) {
 
 class AdapterExecutionError extends Error {
     constructor(adapterName, originalError, step) {
-        const message = `适配器 ${adapterName} 执行失败: ${originalError.message}`;
+        // 适配器可能 reject 非 Error 值（字符串/null 等）：直接读 .message 会抛 TypeError
+        // 或输出 undefined，掩盖真实失败原因；统一降级为 String()（null/undefined 保留可读文案）。
+        const detail = originalError?.message
+            || (originalError === undefined ? "undefined" : String(originalError));
+        const message = `适配器 ${adapterName} 执行失败: ${detail}`;
         // cause 保留原始错误链；结构化标记透传——适配器内部超时/请求现场被包装后
         // 仍按 TIMEOUT 归类并透出 method/path/request，不再降级为无上下文的 ERROR
         super(message, { cause: originalError });
@@ -467,7 +492,12 @@ class AdapterExecutionError extends Error {
 // 否则挂死的适配器会让整个场景永久卡住（retryUntil.maxElapsedMs 只在 attempt 之间检查）。
 function raceWithSignal(promise, signal) {
     if (!signal) return promise;
-    if (signal.aborted) return Promise.reject(abortReason(signal));
+    if (signal.aborted) {
+        // 竞速开始前 signal 已中止：仍要挂接底层 Promise 的 rejection 处理，
+        // 否则它在稍后拒绝时会成为 unhandledRejection（取消语义已由返回的 reject 表达）。
+        promise.catch(() => {});
+        return Promise.reject(abortReason(signal));
+    }
     return new Promise((resolveRace, rejectRace) => {
         const onAbort = () => rejectRace(abortReason(signal));
         signal.addEventListener("abort", onAbort, { once: true });
@@ -613,60 +643,184 @@ export function createEngine(engineOptions = {}) {
         // maxAttempts 语义 = 最大尝试总次数（含首次请求），与字段名一致；默认 10。
         // 历史实现为 maxAttempts + 1（重试次数语义），与字段名矛盾，v0.5.18 起对齐。
         const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+        // retryOn 默认 ["assertion"] 保持既有语义；未声明/非法值不会意外开启 error/timeout 重试。
+        const retryOn = new Set(
+            retry
+                ? (retry.retryOn === undefined
+                    ? contract.retryUntil.defaultRetryOn
+                    : (Array.isArray(retry.retryOn) ? retry.retryOn : []))
+                    .filter((type) => contract.retryUntil.retryOn.includes(type))
+                : []
+        );
+        // 只有显式启用 error/timeout 重试的路径才把 maxElapsedMs 扩展到在途执行、
+        // 异步回调与迟到响应；默认/仅 assertion 路径保持旧语义（只在尝试之间检查总时限）。
+        const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
+        let lastAttemptError = null;
+        const retryTimeoutError = (attemptCount) => {
+            const lastErrorText = lastAttemptError
+                ? `\n最后错误: ${describeError(lastAttemptError)}`
+                : "";
+            return createTimeoutError(
+                maxElapsedMs,
+                `重试超时: 已尝试 ${attemptCount} 次，耗时超过 ${maxElapsedMs}ms${lastErrorText}\n` +
+                `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
+            );
+        };
         try {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
-                if (retry && (now() - retryStartTime) > maxElapsedMs) {
-                    throw createTimeoutError(
-                        maxElapsedMs,
-                        `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms\n` +
-                        `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
-                    );
+                // 默认/仅 assertion 路径保持旧实现严格大于（耗时恰好等于 maxElapsedMs 仍发起下一次尝试）；
+                // 显式 error/timeout 重试路径在到达总时限（>=）时立即结束。
+                if (retry) {
+                    const elapsedMs = now() - retryStartTime;
+                    const expired = enforceAttemptDeadline
+                        ? elapsedMs >= maxElapsedMs
+                        : elapsedMs > maxElapsedMs;
+                    if (expired) throw retryTimeoutError(attempt - 1);
                 }
 
-                const selection = chooseAdapter(step, adapters);
-                const attemptStartedAt = now();
-                lastExecution = selection
-                    ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
-                    : await executeHttp(step, runtime, options);
-                // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
-                // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
-                if (lastExecution.response && typeof lastExecution.response === "object"
-                    && lastExecution.response.durationMs === undefined) {
-                    lastExecution.response.durationMs = now() - attemptStartedAt;
+                // 单次执行也必须受总时限约束：在途请求可能跑得比剩余 maxElapsedMs 更久
+                // （timeoutMs 更大或适配器忽略 signal）。为本次尝试创建截止 signal，
+                // 到期主动 abort，并与执行 Promise 竞速，保证步骤不会在总时限后仍 PASSED。
+                let attemptDeadline = null;
+                if (enforceAttemptDeadline) {
+                    const remainingMs = maxElapsedMs - (now() - retryStartTime);
+                    if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+                    attemptDeadline = createRequestSignal(options.signal, remainingMs);
                 }
-                runtime.lastResponse = lastExecution.response;
-                // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
-                runtime.lastResponseBody = lastExecution.response.body;
-                const extractResult = applyExtract(step, lastExecution.response, runtime);
-                stepWarnings = extractResult.warnings;
-                assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-                // required: true 且路径不存在 → 当前步骤失败
-                if (extractResult.failures.length) assertions.push(...extractResult.failures);
-                if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+
+                let attemptError = null;
+                let attemptErrorType = "";
+                try {
+                    const selection = chooseAdapter(step, adapters);
+                    const attemptStartedAt = now();
+                    const attemptOptions = attemptDeadline
+                        ? { ...options, signal: attemptDeadline.signal }
+                        : options;
+                    const execution = selection
+                        ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions)
+                        : executeHttp(step, runtime, attemptOptions);
+                    lastExecution = attemptDeadline
+                        ? await raceWithSignal(execution, attemptDeadline.signal)
+                        : await execution;
+                    // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
+                    // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
+                    if (lastExecution.response && typeof lastExecution.response === "object"
+                        && lastExecution.response.durationMs === undefined) {
+                        lastExecution.response.durationMs = now() - attemptStartedAt;
+                    }
+                    runtime.lastResponse = lastExecution.response;
+                    // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
+                    runtime.lastResponseBody = lastExecution.response.body;
+                    const extractResult = applyExtract(step, lastExecution.response, runtime);
+                    stepWarnings = extractResult.warnings;
+                    assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+                    // required: true 且路径不存在 → 当前步骤失败
+                    if (extractResult.failures.length) assertions.push(...extractResult.failures);
+                } catch (error) {
+                    // 取消始终立即终止，不参与重试（含等待间隔中的取消由 delay 拒绝）
+                    if (options.signal?.aborted) throw error;
+                    // 总时限到期中断在途执行：按 retryUntil 超时返回 TIMEOUT，而不是把
+                    // 截止 signal 的 abort 当成普通网络错误继续重试。
+                    if (enforceAttemptDeadline
+                        && (attemptDeadline?.timedOut()
+                            || (now() - retryStartTime) >= maxElapsedMs)) {
+                        throw retryTimeoutError(attempt);
+                    }
+                    const errorType = isTimeoutError(error) ? "timeout" : "error";
+                    // 未开启对应 retryOn 或已是最后一次尝试：保持历史语义，直接交给外层 catch 归类
+                    if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+                    attemptError = error;
+                    attemptErrorType = errorType;
+                    lastAttemptError = error;
+                    // 失败尝试没有可信响应/断言结果：清掉上一轮值，避免 onAttempt 透出陈旧状态
+                    stepWarnings = [];
+                    assertions = [];
+                } finally {
+                    attemptDeadline?.dispose();
+                }
+
+                // 即使执行成功，只要实际耗时已达到总时限也不能通过（fetch/适配器可能
+                // 忽略 abort 后才返回）；按总时限返回 TIMEOUT。
+                if (enforceAttemptDeadline && (attemptDeadline?.timedOut()
+                    || (now() - retryStartTime) >= maxElapsedMs)) {
+                    throw retryTimeoutError(attempt);
+                }
+
+                const failedAssertion = attemptError
+                    ? ""
+                    : (assertions.find((item) => !item.passed)?.name || "");
+                if (!attemptError
+                    && (assertions.every((item) => item.passed)
+                        || attempt === totalAttempts
+                        || !retryOn.has("assertion"))) break;
 
                 // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
                 // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
                 // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
                 const rawIntervalMs = Number(retry.intervalMs);
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
-                // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
-                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
-                // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
-                await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-                    step,
-                    attempt,
-                    totalAttempts,
-                    intervalMs,
-                    status: lastExecution.response?.status ?? null,
-                    failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-                });
-                await delay(intervalMs, options.signal);
+                // 总时限已到（仅新重试路径）：不再回调/等待，直接按 TO 结束。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
+                // 回调前估算实际等待，仅用于进度提示；回调结束后会重新按剩余额度计算。
+                const remainingForWait = enforceAttemptDeadline
+                    ? Math.max(0, maxElapsedMs - (now() - retryStartTime))
+                    : Infinity;
+                const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+                const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+                if (attemptCallback) {
+                    const callbackInfo = {
+                        step,
+                        attempt,
+                        totalAttempts,
+                        intervalMs: waitBeforeCallback,
+                        status: attemptError ? null : (lastExecution.response?.status ?? null),
+                        failedAssertion,
+                        errorType: attemptErrorType,
+                        errorMessage: attemptError ? describeError(attemptError) : ""
+                    };
+                    // 异步 onAttempt 同样受总时限约束：回调挂起/耗时超限时不能拖过 maxElapsedMs。
+                    // 包一层 Promise 把同步抛错也纳入竞速；竞速后重新检查是否已到期。
+                    const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+                    if (enforceAttemptDeadline) {
+                        const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+                        if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+                        const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+                        try {
+                            await raceWithSignal(callbackPromise, callbackDeadline.signal);
+                        } catch (error) {
+                            if (options.signal?.aborted) throw error;
+                            if (callbackDeadline.timedOut()
+                                || (now() - retryStartTime) >= maxElapsedMs) {
+                                throw retryTimeoutError(attempt);
+                            }
+                            throw error;
+                        } finally {
+                            callbackDeadline.dispose();
+                        }
+                    } else {
+                        await callbackPromise;
+                    }
+                }
+                // 回调可能已消耗掉剩余额度：重新计算等待时长，到期就直接 TO（仅新重试路径）。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
+                // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
+                // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
+                // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
+                const waitMs = enforceAttemptDeadline
+                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
+                    : intervalMs;
+                // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
+                await delay(waitMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);
             return {

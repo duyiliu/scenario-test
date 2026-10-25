@@ -13,6 +13,7 @@ export type WhenTarget = "status";
 export type AssertionSource = "body" | "vars" | "headers" | "bodyText";
 export type ExtractSource = "body" | "headers" | "bodyText" | "response";
 export type FailurePolicy = "stop" | "continue";
+export type RetryOn = "assertion" | "error" | "timeout";
 
 export interface GlobalParam {
     type: GlobalParamType;
@@ -201,6 +202,8 @@ export interface RetryUntil {
     maxAttempts?: number;
     intervalMs?: number;
     maxElapsedMs?: number;
+    /** 参与重试的失败类型，默认 ["assertion"]；包含 error/timeout 时网络错误与单次请求超时也会继续轮询 */
+    retryOn?: RetryOn[];
 }
 
 export interface RequestDefinition {
@@ -333,10 +336,14 @@ export interface RetryAttemptInfo {
     totalAttempts: number;
     /** 距下次尝试的等待毫秒数 */
     intervalMs: number;
-    /** 本次响应状态码（适配器响应可为非 number） */
+    /** 本次响应状态码（适配器响应可为非 number；执行异常时为 null） */
     status: unknown;
-    /** 首个未通过断言名 */
+    /** 首个未通过断言名（执行异常时为空串） */
     failedAssertion: string;
+    /** 失败类型：assertion 重试时为空串，执行异常为 error，单次请求超时为 timeout */
+    errorType: "" | "error" | "timeout";
+    /** 执行异常的错误信息（断言重试时为空串） */
+    errorMessage: string;
 }
 
 export interface RunOptions {
@@ -435,6 +442,12 @@ export declare const contract: {
         variableKeys: readonly string[];
         baseUrl: { protocol: string; note: string };
         manual: { type: string; note: string };
+    };
+    retryUntil: {
+        keys: readonly string[];
+        retryOn: readonly RetryOn[];
+        defaultRetryOn: readonly RetryOn[];
+        note: string;
     };
     scenario: {
         keys: readonly string[];

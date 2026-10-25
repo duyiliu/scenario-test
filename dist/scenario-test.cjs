@@ -491,6 +491,13 @@ var contract = Object.freeze({
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
     })
   }),
+  retryUntil: Object.freeze({
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+    retryOn: Object.freeze(["assertion", "error", "timeout"]),
+    defaultRetryOn: Object.freeze(["assertion"]),
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
+  }),
   scenario: Object.freeze({
     keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
     stepKeys: Object.freeze([
@@ -1731,12 +1738,29 @@ function defineScenario(input) {
         step.retryUntil.assertions === void 0,
         `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
       );
+      const unknownRetryKeys = Object.keys(step.retryUntil).filter((key) => !contract.retryUntil.keys.includes(key));
+      invariant(
+        unknownRetryKeys.length === 0,
+        `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.retryUntil.keys.join("/")}`
+      );
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
       const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.retryOn !== void 0) {
+        invariant(
+          Array.isArray(step.retryUntil.retryOn),
+          `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF09`
+        );
+        for (const retryType of step.retryUntil.retryOn) {
+          invariant(
+            contract.retryUntil.retryOn.includes(retryType),
+            `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u9879\u53EA\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(retryType)}\uFF09`
+          );
+        }
+      }
     }
     if (step.extract !== void 0) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -1968,6 +1992,14 @@ function abortReason(signal) {
 function timeoutErrorMessage(timeoutMs) {
   return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
 }
+function isTimeoutError(error) {
+  return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+function describeError(error) {
+  const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
+  const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+  return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
   if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -2076,6 +2108,7 @@ function chooseAdapter(step, adapters) {
   return null;
 }
 function readBodyChunks(response, signal, maxBytes = 0) {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
@@ -2310,7 +2343,8 @@ async function executeHttp(step, runtime, options) {
 }
 var AdapterExecutionError = class extends Error {
   constructor(adapterName, originalError, step) {
-    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    const detail = originalError?.message || (originalError === void 0 ? "undefined" : String(originalError));
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${detail}`;
     super(message, { cause: originalError });
     this.name = "AdapterExecutionError";
     this.adapterName = adapterName;
@@ -2324,7 +2358,11 @@ var AdapterExecutionError = class extends Error {
 };
 function raceWithSignal(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  if (signal.aborted) {
+    promise.catch(() => {
+    });
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise((resolveRace, rejectRace) => {
     const onAbort = () => rejectRace(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
@@ -2441,42 +2479,117 @@ function createEngine(engineOptions = {}) {
     let stepWarnings = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+    const retryOn = new Set(
+      retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
+    );
+    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
+    let lastAttemptError = null;
+    const retryTimeoutError = (attemptCount) => {
+      const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
+      return createTimeoutError(
+        maxElapsedMs,
+        `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attemptCount} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+      );
+    };
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
-        if (retry && now() - retryStartTime > maxElapsedMs) {
-          throw createTimeoutError(
-            maxElapsedMs,
-            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
-\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
-          );
+        if (retry) {
+          const elapsedMs = now() - retryStartTime;
+          const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
+          if (expired) throw retryTimeoutError(attempt - 1);
         }
-        const selection = chooseAdapter(step, adapters);
-        const attemptStartedAt = now();
-        lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
-        if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
-          lastExecution.response.durationMs = now() - attemptStartedAt;
+        let attemptDeadline = null;
+        if (enforceAttemptDeadline) {
+          const remainingMs = maxElapsedMs - (now() - retryStartTime);
+          if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+          attemptDeadline = createRequestSignal(options.signal, remainingMs);
         }
-        runtime.lastResponse = lastExecution.response;
-        runtime.lastResponseBody = lastExecution.response.body;
-        const extractResult = applyExtract(step, lastExecution.response, runtime);
-        stepWarnings = extractResult.warnings;
-        assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-        if (extractResult.failures.length) assertions.push(...extractResult.failures);
-        if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+        let attemptError = null;
+        let attemptErrorType = "";
+        try {
+          const selection = chooseAdapter(step, adapters);
+          const attemptStartedAt = now();
+          const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
+          const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
+          lastExecution = attemptDeadline ? await raceWithSignal(execution, attemptDeadline.signal) : await execution;
+          if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
+            lastExecution.response.durationMs = now() - attemptStartedAt;
+          }
+          runtime.lastResponse = lastExecution.response;
+          runtime.lastResponseBody = lastExecution.response.body;
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
+        } catch (error) {
+          if (options.signal?.aborted) throw error;
+          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+            throw retryTimeoutError(attempt);
+          }
+          const errorType = isTimeoutError(error) ? "timeout" : "error";
+          if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+          attemptError = error;
+          attemptErrorType = errorType;
+          lastAttemptError = error;
+          stepWarnings = [];
+          assertions = [];
+        } finally {
+          attemptDeadline?.dispose();
+        }
+        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          throw retryTimeoutError(attempt);
+        }
+        const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
+        if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
-        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-          step,
-          attempt,
-          totalAttempts,
-          intervalMs,
-          status: lastExecution.response?.status ?? null,
-          failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-        });
-        await delay(intervalMs, options.signal);
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+        const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+        if (attemptCallback) {
+          const callbackInfo = {
+            step,
+            attempt,
+            totalAttempts,
+            intervalMs: waitBeforeCallback,
+            status: attemptError ? null : lastExecution.response?.status ?? null,
+            failedAssertion,
+            errorType: attemptErrorType,
+            errorMessage: attemptError ? describeError(attemptError) : ""
+          };
+          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          if (enforceAttemptDeadline) {
+            const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+            if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+            const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+            try {
+              await raceWithSignal(callbackPromise, callbackDeadline.signal);
+            } catch (error) {
+              if (options.signal?.aborted) throw error;
+              if (callbackDeadline.timedOut() || now() - retryStartTime >= maxElapsedMs) {
+                throw retryTimeoutError(attempt);
+              }
+              throw error;
+            } finally {
+              callbackDeadline.dispose();
+            }
+          } else {
+            await callbackPromise;
+          }
+        }
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -2577,7 +2690,7 @@ async function runScenario(scenario, options = {}) {
 
 // src/capabilities.js
 function buildCapabilities(inputContract = contract) {
-  const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+  const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
   return {
     schema: "scenario-test-capabilities",
     version: inputContract.runtimeVersion,
@@ -2623,6 +2736,12 @@ function buildCapabilities(inputContract = contract) {
         note: config.baseUrl.note
       },
       manual: { ...config.manual }
+    },
+    retryUntil: {
+      keys: [...retryUntil.keys],
+      retryOn: [...retryUntil.retryOn],
+      defaultRetryOn: [...retryUntil.defaultRetryOn],
+      note: retryUntil.note
     },
     scenario: {
       keys: [...scenario.keys],
@@ -2694,6 +2813,10 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+  if (capabilities.retryUntil) {
+    lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
+    lines.push(`  ${capabilities.retryUntil.note}`);
+  }
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {
