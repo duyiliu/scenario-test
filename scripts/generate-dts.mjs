@@ -96,7 +96,7 @@ export interface ScenarioConfig {
     nodePlugins?: string[];
 }
 
-/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration */
+/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration；path 支持点段/整数下标/引号键/通配段 [*]（仅数组展开，如 items[*].id） */
 export interface Assertion {
     name?: string;
     path?: string;
@@ -110,6 +110,7 @@ ${operatorMembers("    ")}
 
 export interface ExtractDefinition {
     name: string;
+    /** 路径支持点段/整数下标/引号键/通配段 [*]（items[*].id 逐元素提取并跳过缺失子路径） */
     path?: string;
     /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；from:"response" 仍按精确键匹配 */
     from?: ExtractSource;

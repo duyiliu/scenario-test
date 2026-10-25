@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- `extract` / 断言 / 模板共用的路径支持通配段 `[*]`（contract v12 → v13）：`items[*].id` 逐元素提取并产出数组（如 `[1,2,3]`），元素缺失该子路径时跳过、不产生 `undefined` 洞，空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default`/warning 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。`a[0]`/`a[-1]`/引号键/原型链安全键等既有标量行为不变，纯标量路径仍走原热路径。断言 path 上的通配结果可直接配合 `each`/`length`/`includes` 使用；契约说明、capabilities、d.ts、AI Prompt/模式库/项目 README 模板与根 README 同步投射。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
