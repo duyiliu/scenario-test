@@ -553,6 +553,15 @@ var contract = Object.freeze({
   })
 });
 
+// src/utils/safe-decode.js
+function safeDecodeComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 // src/core.js
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
@@ -804,7 +813,7 @@ function queryKeys(url) {
   if (queryIndex < 0) return keys;
   for (const pair of path7.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
-    if (key) keys.add(decodeURIComponent(key));
+    if (key) keys.add(safeDecodeComponent(key));
   }
   return keys;
 }

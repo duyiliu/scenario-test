@@ -1,5 +1,6 @@
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
+import { safeDecodeComponent } from "./utils/safe-decode.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
 
@@ -344,6 +345,7 @@ export function splitUrlFragment(url) {
 }
 
 // 读取 URL 已有 query 的 key 集合（只看 fragment 之前的部分）。
+// 单个畸形百分号编码（bad%zz、字面 %）不应抛 URIError 中断整个请求：失败时保留原串。
 export function queryKeys(url) {
     const keys = new Set();
     const { path } = splitUrlFragment(url);
@@ -351,7 +353,7 @@ export function queryKeys(url) {
     if (queryIndex < 0) return keys;
     for (const pair of path.slice(queryIndex + 1).split("&")) {
         const key = pair.split("=")[0];
-        if (key) keys.add(decodeURIComponent(key));
+        if (key) keys.add(safeDecodeComponent(key));
     }
     return keys;
 }

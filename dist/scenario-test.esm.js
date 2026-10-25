@@ -446,6 +446,15 @@ var contract = Object.freeze({
   })
 });
 
+// src/utils/safe-decode.js
+function safeDecodeComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 // src/core.js
 var GLOBAL_TYPES = [...contract.globals.types];
 function isGlobalParam(item) {
@@ -697,7 +706,7 @@ function queryKeys(url) {
   if (queryIndex < 0) return keys;
   for (const pair of path.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
-    if (key) keys.add(decodeURIComponent(key));
+    if (key) keys.add(safeDecodeComponent(key));
   }
   return keys;
 }
@@ -4445,8 +4454,8 @@ var workbenchView = function() {
       queryPart.split("&").forEach(function(pair) {
         if (!pair) return;
         var parts = pair.split("=");
-        var key = decodeURIComponent(parts[0] || "");
-        var val = decodeURIComponent(parts.slice(1).join("=") || "");
+        var key = safeDecodeComponent(parts[0] || "");
+        var val = safeDecodeComponent(parts.slice(1).join("=") || "");
         params.push({ name: key, value: val });
       });
     }
@@ -4950,8 +4959,8 @@ var workbenchAdhoc = function() {
       searchStr.split("&").forEach(function(pair) {
         if (!pair) return;
         var parts = pair.split("=");
-        var key = decodeURIComponent(parts[0] || "");
-        var val = decodeURIComponent(parts.slice(1).join("=") || "");
+        var key = safeDecodeComponent(parts[0] || "");
+        var val = safeDecodeComponent(parts.slice(1).join("=") || "");
         if (key) params[key] = val;
       });
     }

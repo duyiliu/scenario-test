@@ -541,6 +541,15 @@ var ScenarioTest = (() => {
     })
   });
 
+  // src/utils/safe-decode.js
+  function safeDecodeComponent(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
   // src/core.js
   var GLOBAL_TYPES = [...contract.globals.types];
   function isGlobalParam(item) {
@@ -792,7 +801,7 @@ var ScenarioTest = (() => {
     if (queryIndex < 0) return keys;
     for (const pair of path.slice(queryIndex + 1).split("&")) {
       const key = pair.split("=")[0];
-      if (key) keys.add(decodeURIComponent(key));
+      if (key) keys.add(safeDecodeComponent(key));
     }
     return keys;
   }
@@ -4540,8 +4549,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         queryPart.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           params.push({ name: key, value: val });
         });
       }
@@ -5045,8 +5054,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         searchStr.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           if (key) params[key] = val;
         });
       }
