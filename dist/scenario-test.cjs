@@ -2319,6 +2319,7 @@ function createEngine(engineOptions = {}) {
     const retryOn = new Set(
       retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
     );
+    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     let lastAttemptError = null;
@@ -2338,7 +2339,7 @@ function createEngine(engineOptions = {}) {
           throw retryTimeoutError(attempt - 1);
         }
         let attemptDeadline = null;
-        if (retry) {
+        if (enforceAttemptDeadline) {
           const remainingMs = maxElapsedMs - (now() - retryStartTime);
           if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
           attemptDeadline = createRequestSignal(options.signal, remainingMs);
@@ -2362,7 +2363,7 @@ function createEngine(engineOptions = {}) {
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
           if (options.signal?.aborted) throw error;
-          if (attemptDeadline?.timedOut() || retry && now() - retryStartTime >= maxElapsedMs) {
+          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
             throw retryTimeoutError(attempt);
           }
           const errorType = isTimeoutError(error) ? "timeout" : "error";
@@ -2375,17 +2376,18 @@ function createEngine(engineOptions = {}) {
         } finally {
           attemptDeadline?.dispose();
         }
-        if (retry && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
           throw retryTimeoutError(attempt);
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
-        if (retry && now() - retryStartTime >= maxElapsedMs) {
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitBeforeCallback = retry ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
         const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
         if (attemptCallback) {
           const callbackInfo = {
@@ -2399,7 +2401,7 @@ function createEngine(engineOptions = {}) {
             errorMessage: attemptError ? describeError(attemptError) : ""
           };
           const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
-          if (retry) {
+          if (enforceAttemptDeadline) {
             const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
             if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
             const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
@@ -2418,10 +2420,10 @@ function createEngine(engineOptions = {}) {
             await callbackPromise;
           }
         }
-        if (retry && now() - retryStartTime >= maxElapsedMs) {
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitMs = retry ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
         await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);

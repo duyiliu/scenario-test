@@ -520,6 +520,9 @@ export function createEngine(engineOptions = {}) {
                     .filter((type) => contract.retryUntil.retryOn.includes(type))
                 : []
         );
+        // 只有显式启用 error/timeout 重试的路径才把 maxElapsedMs 扩展到在途执行、
+        // 异步回调与迟到响应；默认/仅 assertion 路径保持旧语义（只在尝试之间检查总时限）。
+        const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
@@ -548,7 +551,7 @@ export function createEngine(engineOptions = {}) {
                 // （timeoutMs 更大或适配器忽略 signal）。为本次尝试创建截止 signal，
                 // 到期主动 abort，并与执行 Promise 竞速，保证步骤不会在总时限后仍 PASSED。
                 let attemptDeadline = null;
-                if (retry) {
+                if (enforceAttemptDeadline) {
                     const remainingMs = maxElapsedMs - (now() - retryStartTime);
                     if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
                     attemptDeadline = createRequestSignal(options.signal, remainingMs);
@@ -587,8 +590,9 @@ export function createEngine(engineOptions = {}) {
                     if (options.signal?.aborted) throw error;
                     // 总时限到期中断在途执行：按 retryUntil 超时返回 TIMEOUT，而不是把
                     // 截止 signal 的 abort 当成普通网络错误继续重试。
-                    if (attemptDeadline?.timedOut()
-                        || (retry && (now() - retryStartTime) >= maxElapsedMs)) {
+                    if (enforceAttemptDeadline
+                        && (attemptDeadline?.timedOut()
+                            || (now() - retryStartTime) >= maxElapsedMs)) {
                         throw retryTimeoutError(attempt);
                     }
                     const errorType = isTimeoutError(error) ? "timeout" : "error";
@@ -606,7 +610,7 @@ export function createEngine(engineOptions = {}) {
 
                 // 即使执行成功，只要实际耗时已达到总时限也不能通过（fetch/适配器可能
                 // 忽略 abort 后才返回）；按总时限返回 TIMEOUT。
-                if (retry && (attemptDeadline?.timedOut()
+                if (enforceAttemptDeadline && (attemptDeadline?.timedOut()
                     || (now() - retryStartTime) >= maxElapsedMs)) {
                     throw retryTimeoutError(attempt);
                 }
@@ -624,14 +628,15 @@ export function createEngine(engineOptions = {}) {
                 // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
                 const rawIntervalMs = Number(retry.intervalMs);
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
-                // 总时限已到：不再回调/等待，直接按 TO 结束。
-                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
+                // 总时限已到（仅新重试路径）：不再回调/等待，直接按 TO 结束。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
                     throw retryTimeoutError(attempt);
                 }
                 // 回调前估算实际等待，仅用于进度提示；回调结束后会重新按剩余额度计算。
-                const waitBeforeCallback = retry
-                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
-                    : intervalMs;
+                const remainingForWait = enforceAttemptDeadline
+                    ? Math.max(0, maxElapsedMs - (now() - retryStartTime))
+                    : Infinity;
+                const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
                 const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
                 if (attemptCallback) {
                     const callbackInfo = {
@@ -647,7 +652,7 @@ export function createEngine(engineOptions = {}) {
                     // 异步 onAttempt 同样受总时限约束：回调挂起/耗时超限时不能拖过 maxElapsedMs。
                     // 包一层 Promise 把同步抛错也纳入竞速；竞速后重新检查是否已到期。
                     const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
-                    if (retry) {
+                    if (enforceAttemptDeadline) {
                         const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
                         if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
                         const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
@@ -667,14 +672,14 @@ export function createEngine(engineOptions = {}) {
                         await callbackPromise;
                     }
                 }
-                // 回调可能已消耗掉剩余额度：重新计算等待时长，到期就直接 TO。
-                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
+                // 回调可能已消耗掉剩余额度：重新计算等待时长，到期就直接 TO（仅新重试路径）。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
                     throw retryTimeoutError(attempt);
                 }
                 // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
                 // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
                 // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
-                const waitMs = retry
+                const waitMs = enforceAttemptDeadline
                     ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
                     : intervalMs;
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。

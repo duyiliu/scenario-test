@@ -178,7 +178,7 @@ test("maxElapsedMs 约束在途 HTTP 请求：超过总时限后才返回的成�
     const started = Date.now();
     const report = await engine.runScenario(defineScenario({
         name: "在途 HTTP 超时",
-        steps: [retryStep({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 }, { timeoutMs: 1000 })]
+        steps: [retryStep({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50, retryOn: ["assertion", "error", "timeout"] }, { timeoutMs: 1000 })]
     }), {
         onStep: (result) => { steps.push(result); }
     });
@@ -197,6 +197,29 @@ test("maxElapsedMs 约束在途 HTTP 请求：超过总时限后才返回的成�
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(calls, 1);
     assert.equal(steps.length, 1);
+});
+
+test("未声明 retryOn 时在途慢请求保持旧行为：超过 maxElapsedMs 的成功响应仍 PASS", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            calls += 1;
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            return jsonResponse({ ready: true });
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "默认兼容在途慢请求",
+        steps: [retryStep({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 }, { timeoutMs: 1000 })]
+    }));
+    const result = report.results[0];
+
+    // 旧实现只在尝试之间检查总时限，未显式启用 error/timeout 时不能中断在途请求
+    assert.equal(report.status, "PASSED");
+    assert.equal(result.status, 200);
+    assert.equal(result.passed, true);
+    assert.equal(calls, 1);
 });
 
 test("maxElapsedMs 约束在途适配器：忽略 signal 的慢适配器按总时限 TIMEOUT", async () => {
@@ -223,7 +246,7 @@ test("maxElapsedMs 约束在途适配器：忽略 signal 的慢适配器按总�
             name: "适配器轮询",
             adapter: "slowSuccess",
             timeoutMs: 1000,
-            retryUntil: { maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 },
+            retryUntil: { maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50, retryOn: ["timeout"] },
             assertions: [{ name: "就绪", path: "ready", equals: true }]
         }]
     }), {
@@ -308,7 +331,7 @@ test("maxElapsedMs 超时后迟到 HTTP 响应不触发 saveResponseAs", async (
     const report = await engine.runScenario(defineScenario({
         name: "迟到响应不落盘",
         steps: [retryStep(
-            { maxAttempts: 2, intervalMs: 100, maxElapsedMs: 50 },
+            { maxAttempts: 2, intervalMs: 100, maxElapsedMs: 50, retryOn: ["timeout"] },
             { timeoutMs: 1000, saveResponseAs: "out.bin" }
         )]
     }));
