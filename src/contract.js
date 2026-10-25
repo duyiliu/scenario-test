@@ -148,7 +148,8 @@ export const contract = Object.freeze({
         // 运行时实际消费的是场景级 envVars。
         configKeys: Object.freeze([
             "envs", "defaultEnvKey", "globals", "vars", "scenarioVars", "variables",
-            "scenarios", "requestTimeoutMs", "storagePrefix", "storageKeys", "baseUrl",
+            "scenarios", "requestTimeoutMs", "maxResponseBytes", "maxUploadBytes",
+            "storagePrefix", "storageKeys", "baseUrl",
             "authorization", "nodePlugins", "envVars"
         ]),
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）

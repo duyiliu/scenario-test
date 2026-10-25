@@ -8,6 +8,8 @@ import { contract } from "../src/contract.js";
 // 错误也直到真正执行才报错。这里锁定定义期校验与契约投射。
 test("config 契约声明顶层/env/variable 白名单与 baseUrl 回退规则", () => {
     assert.ok(contract.config.configKeys.includes("requestTimeoutMs"));
+    assert.ok(contract.config.configKeys.includes("maxResponseBytes"));
+    assert.ok(contract.config.configKeys.includes("maxUploadBytes"));
     assert.ok(contract.config.configKeys.includes("storageKeys"));
     assert.ok(contract.config.configKeys.includes("baseUrl"));
     assert.ok(contract.config.environmentKeys.includes("baseUrl"));

@@ -255,6 +255,8 @@ var ScenarioTest = (() => {
     TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
     USCC_ALPHABET: () => USCC_ALPHABET,
     VERSION: () => VERSION,
+    appendGlobalQuery: () => appendGlobalQuery,
+    appendQueryPairs: () => appendQueryPairs,
     applyExtract: () => applyExtract,
     applyGeneratedVar: () => applyGeneratedVar,
     assertNoReservedVars: () => assertNoReservedVars,
@@ -304,6 +306,7 @@ var ScenarioTest = (() => {
     parseBody: () => parseBody,
     parseTimestampOffset: () => parseTimestampOffset,
     pickWeightedIndex: () => pickWeightedIndex,
+    queryKeys: () => queryKeys,
     queryPairs: () => queryPairs,
     registerAdapter: () => registerAdapter,
     registerConfig: () => registerConfig,
@@ -317,6 +320,7 @@ var ScenarioTest = (() => {
     seedToIndex: () => seedToIndex,
     seedToUnit: () => seedToUnit,
     setRuntimeVar: () => setRuntimeVar,
+    splitUrlFragment: () => splitUrlFragment,
     tokenizePath: () => tokenizePath,
     unregisterAdapter: () => unregisterAdapter,
     usccCheckChar: () => usccCheckChar,
@@ -461,6 +465,8 @@ var ScenarioTest = (() => {
         "variables",
         "scenarios",
         "requestTimeoutMs",
+        "maxResponseBytes",
+        "maxUploadBytes",
         "storagePrefix",
         "storageKeys",
         "baseUrl",
@@ -774,13 +780,43 @@ var ScenarioTest = (() => {
     if (value === void 0 || value === null) return [];
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
   }
+  function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+  }
+  function queryKeys(url) {
+    const keys = /* @__PURE__ */ new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+      const key = pair.split("=")[0];
+      if (key) keys.add(decodeURIComponent(key));
+    }
+    return keys;
+  }
+  function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  }
+  function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+      if (global.type !== "query" || existingKeys.has(global.name)) continue;
+      pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+  }
   function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
   }
   function parseBody(text, contentType) {
     if (!text) return null;
@@ -2195,20 +2231,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
-      const existingKeys = /* @__PURE__ */ new Set();
-      const queryIndex = requestPath.indexOf("?");
-      if (queryIndex >= 0) {
-        for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-          const key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
-        }
-      }
-      const queryParts = [];
-      for (const global of globals) {
-        if (global.type !== "query" || existingKeys.has(global.name)) continue;
-        queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-      }
-      if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+      requestPath = appendGlobalQuery(requestPath, globals, runtime);
       const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
       if (cookieParts.length) {
         const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -5282,6 +5305,64 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   }();
   var ui_adhoc_default = workbenchAdhoc;
 
+  // src/browser/ui/curl.js
+  function shellSingleQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+  }
+  function buildStepCurl(step, options) {
+    if (!step) return "";
+    var opts = options || {};
+    var runtime = { vars: opts.vars || {} };
+    var globals = opts.globals || [];
+    var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
+    var stepPath = step.path || step.request && step.request.path || "";
+    var stepParams = step.params || step.request && step.request.params;
+    var requestPath = buildUrl(stepPath, stepParams, runtime);
+    var absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+    var allowEnvironment = !absoluteUrl || step.request && step.request.useEnvironmentAuthorization === true;
+    var environmentGlobals = allowEnvironment ? globals : [];
+    requestPath = appendGlobalQuery(requestPath, environmentGlobals, runtime);
+    var headers = {};
+    var cookieParts = environmentGlobals.filter(function(global) {
+      return global.type === "cookie";
+    }).map(function(global) {
+      return global.name + "=" + resolveString(global.value, runtime);
+    });
+    environmentGlobals.forEach(function(g) {
+      if (g.type === "header" && g.name) {
+        headers[g.name] = resolveString(g.value || "", runtime);
+      }
+    });
+    if (step.request && step.request.headers) {
+      var reqHeaders = step.request.headers;
+      if (typeof reqHeaders === "object" && reqHeaders !== null) {
+        Object.keys(reqHeaders).forEach(function(k) {
+          headers[k] = resolveString(String(reqHeaders[k]), runtime);
+        });
+      }
+    }
+    if (cookieParts.length) {
+      var cookieKey = Object.keys(headers).find(function(key) {
+        return key.toLowerCase() === "cookie";
+      });
+      var mergedCookie = cookieKey ? headers[cookieKey] + "; " + cookieParts.join("; ") : cookieParts.join("; ");
+      if (cookieKey) headers[cookieKey] = mergedCookie;
+      else headers.Cookie = mergedCookie;
+    }
+    var fullUrl = joinUrl(opts.baseUrl || "", requestPath);
+    var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
+    Object.keys(headers).forEach(function(key) {
+      parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
+    });
+    if (step.request && step.request.body != null) {
+      var bodyVal = step.request.body;
+      var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
+      bodyStr = resolveString(bodyStr, runtime);
+      parts.push("-d " + shellSingleQuote(bodyStr));
+    }
+    return parts.join(" \\\n  ");
+  }
+
   // src/browser/ui/runtime.js
   function createWorkbenchRuntime(options) {
     "use strict";
@@ -6490,13 +6571,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }, 1500);
       }
     }
-    function shellSingleQuote(value) {
-      return "'" + String(value).replace(/'/g, "'\\''") + "'";
-    }
-    function generateStepCurl(step, stepIndex) {
+    function generateStepCurl(step) {
       if (!step) return "";
-      var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      var baseUrl = getRequestBaseUrl();
       var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
       var resolvedVars = clone2(rawVars);
       if (state.activeRuntime && state.activeRuntime.vars) {
@@ -6504,66 +6580,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       } else if (state.stepRuntime && state.stepRuntime.vars) {
         Object.assign(resolvedVars, state.stepRuntime.vars);
       }
-      var runtime = { vars: resolvedVars };
-      var stepPath = step.path || step.request && step.request.path || "";
-      var stepParams = step.params || step.request && step.request.params;
-      var requestPath = buildUrl(stepPath, stepParams, runtime);
-      var globals = getEffectiveGlobals();
-      var headers = {};
-      var queryIndex = requestPath.indexOf("?");
-      var existingKeys = /* @__PURE__ */ new Set();
-      if (queryIndex >= 0) {
-        requestPath.slice(queryIndex + 1).split("&").forEach(function(pair) {
-          var key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
-        });
-      }
-      var queryParts = [];
-      globals.forEach(function(global) {
-        if (global.type !== "query" || existingKeys.has(global.name)) return;
-        queryParts.push.apply(queryParts, queryPairs(global.name, resolve(global.value, runtime)));
+      return buildStepCurl(step, {
+        baseUrl: getRequestBaseUrl(),
+        vars: resolvedVars,
+        globals: getEffectiveGlobals()
       });
-      if (queryParts.length) {
-        requestPath += (queryIndex >= 0 ? "&" : "?") + queryParts.join("&");
-      }
-      var cookieParts = globals.filter(function(global) {
-        return global.type === "cookie";
-      }).map(function(global) {
-        return global.name + "=" + resolveString(global.value, runtime);
-      });
-      globals.forEach(function(g) {
-        if (g.type === "header" && g.name) {
-          headers[g.name] = resolveString(g.value || "", runtime);
-        }
-      });
-      if (step.request && step.request.headers) {
-        var reqHeaders = step.request.headers;
-        if (typeof reqHeaders === "object" && reqHeaders !== null) {
-          Object.keys(reqHeaders).forEach(function(k) {
-            headers[k] = resolveString(String(reqHeaders[k]), runtime);
-          });
-        }
-      }
-      if (cookieParts.length) {
-        var cookieKey = Object.keys(headers).find(function(key) {
-          return key.toLowerCase() === "cookie";
-        });
-        var mergedCookie = cookieKey ? headers[cookieKey] + "; " + cookieParts.join("; ") : cookieParts.join("; ");
-        if (cookieKey) headers[cookieKey] = mergedCookie;
-        else headers.Cookie = mergedCookie;
-      }
-      var fullUrl = joinUrl(baseUrl, requestPath);
-      var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
-      Object.keys(headers).forEach(function(key) {
-        parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
-      });
-      if (step.request && step.request.body != null) {
-        var bodyVal = step.request.body;
-        var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
-        bodyStr = resolveString(bodyStr, runtime);
-        parts.push("-d " + shellSingleQuote(bodyStr));
-      }
-      return parts.join(" \\\n  ");
     }
     function bindStepCurlActions() {
       var ul = document.getElementById("stepsList");
