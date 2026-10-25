@@ -264,3 +264,102 @@ test("插件钩子拒绝（含假值）时并发与串行退出码/输出一致�
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("并发中某场景钩子拒绝后：在途场景完成收尾、不再调度新场景、非零退出且无最终 JSON", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-concurrency-inflight-"));
+    const started = [];
+    const completed = [];
+    let blockedStarted = false;
+    let blockedCompleted = false;
+    let rejectCompletedWhileBlocked = false;
+    const server = http.createServer((request, response) => {
+        const url = new URL(request.url, "http://127.0.0.1");
+        if (url.pathname === "/hold") {
+            blockedStarted = true;
+            started.push("blocked");
+            // 在途慢场景：给拒绝留出足够的“仍在执行”时间窗口
+            setTimeout(() => {
+                blockedCompleted = true;
+                completed.push("blocked");
+                response.writeHead(200, { "Content-Type": "application/json" });
+                response.end(JSON.stringify({ status: "UP" }));
+            }, 400);
+            return;
+        }
+        if (url.pathname === "/reject") {
+            started.push("reject");
+            const respond = () => {
+                rejectCompletedWhileBlocked = !blockedCompleted;
+                completed.push("reject");
+                response.writeHead(200, { "Content-Type": "application/json" });
+                response.end(JSON.stringify({ status: "UP" }));
+            };
+            // 确保 blocked 场景已发起请求后再完成 reject：拒绝发生时 blocked 必须仍在途
+            const waitBlocked = setInterval(() => {
+                if (!blockedStarted) return;
+                clearInterval(waitBlocked);
+                respond();
+            }, 5);
+            waitBlocked.unref?.();
+            return;
+        }
+        // 不允许被调度的场景
+        started.push("never");
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(
+            path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+                nodePlugins: ["plugins/reject-plugin.js"],
+                envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:${port}" }],
+                scenarios: [
+                    { id: "blocked", name: "Blocked", url: "scenarios/blocked.js" },
+                    { id: "reject", name: "Reject", url: "scenarios/reject.js" },
+                    { id: "never", name: "Never", url: "scenarios/never.js" }
+                ]
+            }));`,
+            "utf8"
+        );
+        fs.mkdirSync(path.join(directory, "plugins"), { recursive: true });
+        fs.writeFileSync(
+            path.join(directory, "plugins/reject-plugin.js"),
+            `export default {
+                async afterScenario(report) {
+                    if (report.scenarioName === "Reject") throw new Error("afterScenario reject");
+                }
+            };`,
+            "utf8"
+        );
+        for (const [id, stepPath] of [["blocked", "hold"], ["reject", "reject"], ["never", "never"]]) {
+            fs.writeFileSync(
+                path.join(directory, `scenarios/${id}.js`),
+                `ScenarioTest.registerScenario("${id}", ScenarioTest.defineScenario({
+                    name: "${id === "blocked" ? "Blocked" : id === "reject" ? "Reject" : "Never"}",
+                    steps: [{ name: "${id}-step", path: "${stepPath}", status: 200 }]
+                }));`,
+                "utf8"
+            );
+        }
+
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--all", "--json", "--concurrency", "2"]);
+        assert.notEqual(result.code, 0, "钩子拒绝后命令必须以非零退出");
+        assert.equal(result.stdout.trim(), "", "拒绝后不得输出最终 JSON 文档（避免带空洞报告）");
+        assert.match(result.stderr, /afterScenario reject/);
+        // 在途场景在进程退出前完成收尾并输出自己的完整进度块
+        assert.match(result.stderr, /\[PASS\] blocked-step/, `在途场景应完成收尾，实际 stderr: ${result.stderr}`);
+        assert.doesNotMatch(result.stderr, /Overall:/, "拒绝后不应继续打印最终汇总");
+        // 拒绝发生在 blocked 仍在途时，且尚未开始的第四个场景没有被调度
+        assert.equal(rejectCompletedWhileBlocked, true);
+        assert.ok(completed.includes("blocked"));
+        assert.deepEqual(started.sort(), ["blocked", "reject"], `只应启动两个已领取的场景，实际: ${started.join(",")}`);
+        assert.deepEqual(completed.sort(), ["blocked", "reject"]);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
