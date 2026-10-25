@@ -342,7 +342,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -503,6 +503,12 @@ var contract = Object.freeze({
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      "proxy-timeout": {
+        kind: "value",
+        prop: "proxyTimeout",
+        parse: "number",
+        description: "serve \u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C1-600000 \u6574\u6570\uFF09\uFF0C\u9ED8\u8BA4 30000"
+      },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -3718,6 +3724,12 @@ function parseArgs(argv) {
       "\u793A\u4F8B\uFF1A--timeout 5000\uFF1B\u8BE5\u503C\u4F1A\u8986\u76D6\u914D\u7F6E\u4E2D\u7684 requestTimeoutMs\u3002"
     );
   }
+  if (args.proxyTimeout !== void 0 && !isValidProxyTimeout(args.proxyTimeout)) {
+    throw new CliUsageError(
+      `--proxy-timeout \u5FC5\u987B\u662F 1-${MAX_PROXY_TIMEOUT_MS} \u4E4B\u95F4\u7684\u6574\u6570\u6BEB\u79D2\u6570`,
+      "\u793A\u4F8B\uFF1A--proxy-timeout 120000 \u8868\u793A\u4E0A\u6E38\u7A7A\u95F2\u8D85\u8FC7 120 \u79D2\u624D\u5224\u5B9A\u8D85\u65F6\uFF1B\u7F3A\u7701\u4E3A 30000\uFF0830 \u79D2\uFF09\uFF0C\u4EC5\u5BF9 serve \u751F\u6548\u3002"
+    );
+  }
   if (process.env.SCENARIO_AUTH) {
     args.authorization = process.env.SCENARIO_AUTH;
     if (deprecatedAuthUsed) {
@@ -4338,7 +4350,11 @@ var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "upgrade",
   "host"
 ]);
-var PROXY_TIMEOUT_MS = 3e4;
+var DEFAULT_PROXY_TIMEOUT_MS = 3e4;
+var MAX_PROXY_TIMEOUT_MS = 6e5;
+function isValidProxyTimeout(value) {
+  return Number.isInteger(value) && value > 0 && value <= MAX_PROXY_TIMEOUT_MS;
+}
 function abortProxyResponse(response) {
   if (response.destroyed || response.writableEnded) return;
   response.destroy();
@@ -4364,7 +4380,7 @@ function proxyTransport(targetUrl) {
 function connectionNamedHeaders(connectionValue) {
   return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
-function proxyRequest(request, response, targetUrl) {
+function proxyRequest(request, response, targetUrl, proxyTimeoutMs) {
   const transport = proxyTransport(targetUrl);
   if (!transport) {
     respondProxyError(
@@ -4404,7 +4420,7 @@ function proxyRequest(request, response, targetUrl) {
     respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
     return;
   }
-  upstream.setTimeout(PROXY_TIMEOUT_MS, () => {
+  upstream.setTimeout(proxyTimeoutMs, () => {
     upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
   });
   upstream.on("error", () => {
@@ -4422,6 +4438,7 @@ async function serveCommand(args) {
   const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+  const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
   const server = import_node_http.default.createServer((request, response) => {
     try {
       if (!isAllowedServeHost(request.headers.host, args.port)) {
@@ -4448,7 +4465,7 @@ async function serveCommand(args) {
       import_node_fs6.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
           if (proxyTarget) {
-            proxyRequest(request, response, proxyTarget);
+            proxyRequest(request, response, proxyTarget, proxyTimeoutMs);
             return;
           }
           response.writeHead(404);
@@ -4475,7 +4492,10 @@ async function serveCommand(args) {
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
-    if (proxyTarget) console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxyEnvKey} -> ${proxyTarget}`);
+    if (proxyTarget) {
+      console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxyEnvKey} -> ${proxyTarget}`);
+      console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);
+    }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }

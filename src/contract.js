@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -179,6 +179,10 @@ export const contract = Object.freeze({
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
+            "proxy-timeout": {
+                kind: "value", prop: "proxyTimeout", parse: "number",
+                description: "serve 上游空闲超时（毫秒，1-600000 整数），默认 30000"
+            },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
             "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },

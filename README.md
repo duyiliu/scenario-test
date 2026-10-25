@@ -112,6 +112,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
 ```
 
 > 手动指定 `--port` 默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+> 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
 
 ### 执行场景
 
@@ -188,7 +189,7 @@ scenario-test/
 
 - 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
-- `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
+- `serve` 提供静态服务和同源接口代理；上游空闲超时默认 30 秒（可用 `--proxy-timeout <ms>` 调整，取值 1-600000 的整数毫秒），超时且响应头未发出时返回 502，传输已开始则直接断开连接。慢接口联调时可调大该值。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。

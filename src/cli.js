@@ -155,6 +155,13 @@ function parseArgs(argv) {
             "示例：--timeout 5000；该值会覆盖配置中的 requestTimeoutMs。"
         );
     }
+    // 代理空闲超时：定义期拒绝非正整数与超上限值，避免运行期静默回退到默认值
+    if (args.proxyTimeout !== undefined && !isValidProxyTimeout(args.proxyTimeout)) {
+        throw new CliUsageError(
+            `--proxy-timeout 必须是 1-${MAX_PROXY_TIMEOUT_MS} 之间的整数毫秒数`,
+            "示例：--proxy-timeout 120000 表示上游空闲超过 120 秒才判定超时；缺省为 30000（30 秒），仅对 serve 生效。"
+        );
+    }
 
     // ✅ 环境变量优先于命令行参数
     if (process.env.SCENARIO_AUTH) {
@@ -874,8 +881,14 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 // 上游空闲超时：响应头尚未发出时返回 502；传输中途超时/断连则无法再写响应头，
-// 只能销毁下游连接。参数化（如 --proxy-timeout）需扩展 contract，暂以常量 + README 说明为准。
-const PROXY_TIMEOUT_MS = 30000;
+// 只能销毁下游连接。默认 30 秒，可由 serve 的 --proxy-timeout <ms> 覆盖（契约 cli.options）。
+const DEFAULT_PROXY_TIMEOUT_MS = 30000;
+// 上限 10 分钟：再长会让“假挂起”的联调请求长时间占住连接，且浏览器侧通常先超时
+const MAX_PROXY_TIMEOUT_MS = 600000;
+
+function isValidProxyTimeout(value) {
+    return Number.isInteger(value) && value > 0 && value <= MAX_PROXY_TIMEOUT_MS;
+}
 
 function abortProxyResponse(response) {
     if (response.destroyed || response.writableEnded) return;
@@ -911,7 +924,7 @@ function connectionNamedHeaders(connectionValue) {
         .filter(Boolean);
 }
 
-function proxyRequest(request, response, targetUrl) {
+function proxyRequest(request, response, targetUrl, proxyTimeoutMs) {
     const transport = proxyTransport(targetUrl);
     if (!transport) {
         respondProxyError(
@@ -957,7 +970,7 @@ function proxyRequest(request, response, targetUrl) {
         respondProxyError(response, `Bad Gateway: 接口代理请求构造失败: ${error.message}`);
         return;
     }
-    upstream.setTimeout(PROXY_TIMEOUT_MS, () => {
+    upstream.setTimeout(proxyTimeoutMs, () => {
         upstream.destroy(new Error("接口代理超时"));
     });
     upstream.on("error", () => {
@@ -980,6 +993,7 @@ async function serveCommand(args) {
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
     const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+    const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
     const server = http.createServer((request, response) => {
         try {
             if (!isAllowedServeHost(request.headers.host, args.port)) {
@@ -1006,7 +1020,7 @@ async function serveCommand(args) {
             fs.stat(filePath, (error, stat) => {
                 if (error || !stat.isFile()) {
                     // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
-                    if (proxyTarget) { proxyRequest(request, response, proxyTarget); return; }
+                    if (proxyTarget) { proxyRequest(request, response, proxyTarget, proxyTimeoutMs); return; }
                     response.writeHead(404); response.end("Not Found"); return;
                 }
                 serveStaticFile(response, filePath);
@@ -1029,7 +1043,11 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
-        if (proxyTarget) console.log(`接口代理: ${proxyEnvKey} -> ${proxyTarget}`);
+        if (proxyTarget) {
+            console.log(`接口代理: ${proxyEnvKey} -> ${proxyTarget}`);
+            // 打印实际生效的空闲超时：便于确认 --proxy-timeout 是否被识别（缺省时标注来源）
+            console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
+        }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }

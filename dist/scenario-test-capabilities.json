@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -244,6 +244,11 @@
       "port": {
         "kind": "value",
         "description": "浏览器服务端口，默认 4300",
+        "parse": "number"
+      },
+      "proxy-timeout": {
+        "kind": "value",
+        "description": "serve 上游空闲超时（毫秒，1-600000 整数），默认 30000",
         "parse": "number"
       },
       "project": {
