@@ -100,11 +100,17 @@ function resolveTimeoutMs(step, request, options) {
         return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 30000;
     }
     if (request.timeoutMs !== undefined) {
-        const requestTimeout = Number(request.timeoutMs);
-        if (!Number.isFinite(requestTimeout) || requestTimeout <= 0) {
-            const value = typeof request.timeoutMs === "string"
-                ? JSON.stringify(request.timeoutMs)
-                : String(request.timeoutMs);
+        const requestTimeoutSource = request.timeoutMs;
+        // 模板解析结果可能是 boolean/数组/对象：Number(true) === 1、Number([5000]) === 5000，
+        // 直接 Number() 会把非数字值当成有效超时——只接受 number 或非空数字字符串
+        const hasNumericType = typeof requestTimeoutSource === "number"
+            || (typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "");
+        const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
+        if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+            const value = typeof requestTimeoutSource === "string"
+                || (typeof requestTimeoutSource === "object" && requestTimeoutSource !== null)
+                ? JSON.stringify(requestTimeoutSource)
+                : String(requestTimeoutSource);
             throw new Error(
                 `步骤 ${step.name || "未命名步骤"} 的 request.timeoutMs 解析后不是有效的正数毫秒（当前 ${value}），请检查变量值`
             );

@@ -24,12 +24,19 @@ function describeValue(value) {
     return String(value);
 }
 
+// 继承的可枚举属性会被运行期 clone 的 JSON 序列化丢弃（只保留自有属性）。
+// 返回第一个继承键供报错定位；无继承键返回 null。
+function inheritedEnumerableKey(value) {
+    for (const key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+    }
+    return null;
+}
+
 // request.headers 要求「普通对象」：core.isPlainObject 只按 toString 标签判定，
 // 自定义类实例同样返回 [object Object]——这里额外检查原型链，拒绝 Foo 实例。
 // 同时兼容 node:vm 沙箱中创建的对象：跨 realm 的 Object.prototype 原型为 null，
 // 但 constructor 仍是对方 realm 的 Object，且 Object.prototype === prototype。
-// 继承的可枚举属性会被运行期 clone 的 JSON 序列化丢弃（只保留自有属性），
-// 必须同样拒绝，避免「定义期接受但请求头静默缺失」。
 function isPlainHeadersObject(value) {
     if (!isPlainObject(value)) return false;
     const prototype = Object.getPrototypeOf(value);
@@ -39,10 +46,7 @@ function isPlainHeadersObject(value) {
     // 的自定义原型会因 Object.prototype !== proto 被识别
     if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
     if (prototype.constructor.prototype !== prototype) return false;
-    for (const key in value) {
-        if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
-    }
-    return true;
+    return inheritedEnumerableKey(value) === null;
 }
 
 // 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。
@@ -201,6 +205,13 @@ export function defineScenario(input) {
             invariant(
                 isPlainObject(step.request),
                 `步骤 ${step.name} 的 request 必须是对象（当前 ${JSON.stringify(step.request)}，非对象会在运行期被静默忽略）`
+            );
+            // request 会被 clone(JSON) 深拷贝：继承字段不会进入运行期，
+            // 例如 Object.create({ headers }) 会在定义期看似合法、运行时静默丢头
+            const inheritedRequestKey = inheritedEnumerableKey(step.request);
+            invariant(
+                inheritedRequestKey === null,
+                `${stepLabel} 的 request 包含继承的可枚举字段 "${inheritedRequestKey}"（运行期 clone 只保留自有字段，会静默丢失；请改为对象自有字段）`
             );
             if (step.request.params !== undefined) {
                 invariant(

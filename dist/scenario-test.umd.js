@@ -1347,6 +1347,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (isPlainObject(value)) return "\u5BF9\u8C61";
     return String(value);
   }
+  function inheritedEnumerableKey(value) {
+    for (const key in value) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+    }
+    return null;
+  }
   function isPlainHeadersObject(value) {
     if (!isPlainObject(value)) return false;
     const prototype = Object.getPrototypeOf(value);
@@ -1354,10 +1360,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (Object.getPrototypeOf(prototype) !== null) return false;
     if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
     if (prototype.constructor.prototype !== prototype) return false;
-    for (const key in value) {
-      if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
-    }
-    return true;
+    return inheritedEnumerableKey(value) === null;
   }
   function describeUnknownKeys(input, allowed) {
     const allowedSet = new Set(allowed);
@@ -1478,6 +1481,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         invariant(
           isPlainObject(step.request),
           `\u6B65\u9AA4 ${step.name} \u7684 request \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5728\u8FD0\u884C\u671F\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09`
+        );
+        const inheritedRequestKey = inheritedEnumerableKey(step.request);
+        invariant(
+          inheritedRequestKey === null,
+          `${stepLabel} \u7684 request \u5305\u542B\u7EE7\u627F\u7684\u53EF\u679A\u4E3E\u5B57\u6BB5 "${inheritedRequestKey}"\uFF08\u8FD0\u884C\u671F clone \u53EA\u4FDD\u7559\u81EA\u6709\u5B57\u6BB5\uFF0C\u4F1A\u9759\u9ED8\u4E22\u5931\uFF1B\u8BF7\u6539\u4E3A\u5BF9\u8C61\u81EA\u6709\u5B57\u6BB5\uFF09`
         );
         if (step.request.params !== void 0) {
           invariant(
@@ -1845,9 +1853,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 3e4;
     }
     if (request.timeoutMs !== void 0) {
-      const requestTimeout = Number(request.timeoutMs);
-      if (!Number.isFinite(requestTimeout) || requestTimeout <= 0) {
-        const value = typeof request.timeoutMs === "string" ? JSON.stringify(request.timeoutMs) : String(request.timeoutMs);
+      const requestTimeoutSource = request.timeoutMs;
+      const hasNumericType = typeof requestTimeoutSource === "number" || typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "";
+      const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
+      if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+        const value = typeof requestTimeoutSource === "string" || typeof requestTimeoutSource === "object" && requestTimeoutSource !== null ? JSON.stringify(requestTimeoutSource) : String(requestTimeoutSource);
         throw new Error(
           `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7684 request.timeoutMs \u89E3\u6790\u540E\u4E0D\u662F\u6709\u6548\u7684\u6B63\u6570\u6BEB\u79D2\uFF08\u5F53\u524D ${value}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u53D8\u91CF\u503C`
         );

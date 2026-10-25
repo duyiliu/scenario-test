@@ -121,6 +121,11 @@ test("#45 request.headers：非普通对象定义期拒绝", () => {
     ]) {
         assertStepError({ path: "/x", request: { headers } }, /request\.headers 必须是普通对象/);
     }
+    // request 本身的继承可枚举字段同样会被 clone(JSON) 丢弃：headers 看似合法、运行时静默丢头
+    assertStepError(
+        { path: "/x", request: Object.create({ headers: { "X-Test": "1" } }) },
+        /request 包含继承的可枚举字段 "headers"/
+    );
 });
 
 test("#45 request.headers：普通对象（含模板值）放行", () => {
@@ -133,6 +138,9 @@ test("#45 request.headers：普通对象（含模板值）放行", () => {
     // node:vm 沙箱场景文件里的普通对象来自另一 realm，不能被原型严格判定误伤
     const crossRealmHeaders = vm.runInNewContext('({ "X-Token": "{{vars.token}}" })');
     assert.doesNotThrow(() => defineStep({ path: "/x", request: { headers: crossRealmHeaders } }));
+    // request 对象本身也常来自 vm 沙箱：自有 headers 必须继续放行
+    const crossRealmRequest = vm.runInNewContext('({ headers: { "X-Token": "{{vars.token}}" }, path: "/api" })');
+    assert.doesNotThrow(() => defineStep({ request: crossRealmRequest }));
 });
 
 test("#45 适配器步骤：私有配置键仍放行，DSL 字段校验与 HTTP 步骤一致", () => {
@@ -176,7 +184,7 @@ test("#45 适配器的 request.timeoutMs 模板在运行期解析后生效", asy
 });
 
 test("#45 request.timeoutMs 模板解析为非法值时发请求前明确报错", async () => {
-    for (const timeout of [-1, 0, "abc"]) {
+    for (const timeout of [-1, 0, "abc", true, [5000], null]) {
         let fetchCalled = false;
         const scenario = defineScenario({
             name: "非法模板超时",
