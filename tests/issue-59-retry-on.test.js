@@ -222,6 +222,69 @@ test("未声明 retryOn 时在途慢请求保持旧行为：超过 maxElapsedMs 
     assert.equal(calls, 1);
 });
 
+test("未声明 retryOn 时 maxElapsedMs 边界保持旧行为：恰好等于仍发起下一次尝试", async () => {
+    const originalPerformance = globalThis.performance;
+    let fixedNow = 0;
+    globalThis.performance = { now: () => fixedNow };
+    try {
+        let calls = 0;
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => {
+                calls += 1;
+                if (calls === 1) {
+                    fixedNow = 100;
+                    return jsonResponse({ ready: false });
+                }
+                return jsonResponse({ ready: true });
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "默认总时限边界",
+            steps: [retryStep({ maxAttempts: 2, intervalMs: 100, maxElapsedMs: 100 })]
+        }));
+
+        // 旧实现用 >：下一轮恰好等于 maxElapsedMs 时仍尝试，第二次成功
+        assert.equal(report.status, "PASSED");
+        assert.equal(report.results[0].passed, true);
+        assert.equal(calls, 2);
+    } finally {
+        globalThis.performance = originalPerformance;
+    }
+});
+
+test("显式 error/timeout 时 maxElapsedMs 边界用 >=：恰好到总时限即 TIMEOUT", async () => {
+    const originalPerformance = globalThis.performance;
+    let fixedNow = 0;
+    globalThis.performance = { now: () => fixedNow };
+    try {
+        let calls = 0;
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => {
+                calls += 1;
+                fixedNow = 100;
+                return jsonResponse({ ready: false });
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "新路径总时限边界",
+            steps: [retryStep({
+                maxAttempts: 2,
+                intervalMs: 100,
+                maxElapsedMs: 100,
+                retryOn: ["assertion", "error", "timeout"]
+            })]
+        }));
+
+        assert.equal(report.results[0].status, "TIMEOUT");
+        assert.match(report.results[0].error, /重试超时/);
+        assert.equal(calls, 1);
+    } finally {
+        globalThis.performance = originalPerformance;
+    }
+});
+
 test("maxElapsedMs 约束在途适配器：忽略 signal 的慢适配器按总时限 TIMEOUT", async () => {
     let calls = 0;
     const steps = [];

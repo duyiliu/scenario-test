@@ -542,9 +542,14 @@ export function createEngine(engineOptions = {}) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
-                // 用 >=：等待时已按剩余 maxElapsedMs 截断，到期即结束而不是再发起一次尝试
-                if (retry && (now() - retryStartTime) >= maxElapsedMs) {
-                    throw retryTimeoutError(attempt - 1);
+                // 默认/仅 assertion 路径保持旧实现严格大于（耗时恰好等于 maxElapsedMs 仍发起下一次尝试）；
+                // 显式 error/timeout 重试路径在到达总时限（>=）时立即结束。
+                if (retry) {
+                    const elapsedMs = now() - retryStartTime;
+                    const expired = enforceAttemptDeadline
+                        ? elapsedMs >= maxElapsedMs
+                        : elapsedMs > maxElapsedMs;
+                    if (expired) throw retryTimeoutError(attempt - 1);
                 }
 
                 // 单次执行也必须受总时限约束：在途请求可能跑得比剩余 maxElapsedMs 更久

@@ -2331,8 +2331,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       try {
         for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
           if (options.signal?.aborted) throw abortReason(options.signal);
-          if (retry && now() - retryStartTime >= maxElapsedMs) {
-            throw retryTimeoutError(attempt - 1);
+          if (retry) {
+            const elapsedMs = now() - retryStartTime;
+            const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
+            if (expired) throw retryTimeoutError(attempt - 1);
           }
           let attemptDeadline = null;
           if (enforceAttemptDeadline) {
