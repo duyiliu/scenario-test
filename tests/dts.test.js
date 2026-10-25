@@ -48,6 +48,8 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "WhenTarget"), [...contract.when.targets].sort());
     assert.deepEqual(parseUnion(dts, "ExtractSource"), [...contract.extract.from].sort());
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
+    // CLI 选项名单同样由 contract 投影（新选项必须出现在 d.ts，而不是只靠 Record<string, ...> 泛化）
+    assert.deepEqual(parseUnion(dts, "CliOption"), Object.keys(contract.cli.options).sort());
 });
 
 test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {

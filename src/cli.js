@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createProjectFiles, DEFAULT_LIBRARY_URL } from "./init-templates.js";
+import { createCookieJarFetch } from "./node/cookie-jar.js";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
@@ -97,7 +98,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, cookieJar: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -646,8 +647,12 @@ async function runCommand(args) {
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
         print(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
-        const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
-            ...baseOptions,
+        // Cookie Jar 按场景隔离：每个场景独立 jar，不跨场景共享；未开启时不注入任何包装，请求行为不变
+        const scenarioOptions = args.cookieJar
+            ? { ...baseOptions, fetch: createCookieJarFetch() }
+            : baseOptions;
+        const report = await ScenarioTest.createEngine(scenarioOptions).runScenario(scenario, {
+            ...scenarioOptions,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {

@@ -38,27 +38,32 @@ async function withServer(handler, run) {
     }
 }
 
-test("contract v12 与 --help 投射 --vars/--timeout", () => {
-    assert.equal(CONTRACT_VERSION, 12);
+test("contract v12 与 --help 投射 --vars/--timeout（v13 新增 --cookie-jar）", () => {
+    assert.equal(CONTRACT_VERSION, 13);
     assert.equal(contract.cli.options.vars.kind, "value");
     assert.equal(contract.cli.options.vars.repeatable, true);
     assert.match(contract.cli.options.vars.description, /key=value/);
     assert.equal(contract.cli.options.timeout.kind, "value");
     assert.equal(contract.cli.options.timeout.parse, "number");
+    assert.equal(contract.cli.options["cookie-jar"].kind, "flag");
+    assert.match(contract.cli.options["cookie-jar"].description, /Cookie Jar/);
 
     // capabilities JSON/文本同样从 contract 投射新选项（含 repeatable 元数据）
     const capabilities = buildCapabilities(contract);
     assert.equal(capabilities.cli.options.vars.repeatable, true);
     assert.equal(capabilities.cli.options.timeout.parse, "number");
+    assert.equal(capabilities.cli.options["cookie-jar"].kind, "flag");
     const capabilitiesText = renderCapabilitiesText(capabilities);
     assert.match(capabilitiesText, /--vars/);
     assert.match(capabilitiesText, /--timeout/);
+    assert.match(capabilitiesText, /--cookie-jar/);
 
     const result = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /--vars <value>/);
     assert.match(result.stdout, /key=value/);
     assert.match(result.stdout, /--timeout <number>/);
+    assert.match(result.stdout, /--cookie-jar/);
 });
 
 test("--vars 覆盖配置 vars、多组叠加、模板值解析，并可满足 required 变量", async () => {

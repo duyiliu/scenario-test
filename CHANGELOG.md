@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
+
+- `run --cookie-jar`（contract v12 → v13，默认关闭）：Node CLI 为当前场景维护内存 Cookie Jar，解析响应 `Set-Cookie` 的 name/value、Domain、Path、Expires、Max-Age、Secure，并在后续同 host/path 请求自动携带；步骤显式 `Cookie` 同名优先。Jar 不落盘、不跨场景共享，未开启时请求行为完全不变。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
+
 ### 产物
 
 - `node.js` 入口不再透传 `index.js` 的 `createApp`：改为逐项枚举核心导出 + 浏览器占位函数（`typeof` 仍为 `function`，调用时报「仅在浏览器环境可用」而非 `document is not defined`）。Node/CLI 产物随之不再打进浏览器工作台与 Tailwind 内联样式（此前 `cli.js` 把 `import * as ScenarioTest` 整个命名空间对象传入 loader/插件工厂，esbuild 无法 tree-shake）；`scenario-test.cjs`/`scenario-test-cli.cjs` 显著瘦身。UMD/ESM 浏览器产物的 `createApp` 不变。

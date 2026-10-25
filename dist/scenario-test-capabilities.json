@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -240,6 +240,10 @@
         "kind": "value",
         "description": "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs",
         "parse": "number"
+      },
+      "cookie-jar": {
+        "kind": "flag",
+        "description": "为当前场景启用内存 Cookie Jar：自动保存 Set-Cookie 并在后续同源请求携带，默认关闭"
       },
       "port": {
         "kind": "value",

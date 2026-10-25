@@ -134,6 +134,8 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
 
+需要保持登录 Cookie 会话时加 `--cookie-jar`（默认关闭）：Node CLI 为当前场景维护内存 Cookie Jar，自动保存响应的 `Set-Cookie` 并在后续同 host/path 请求携带，步骤显式 `Cookie` 同名优先；jar 不落盘、不跨场景共享。
+
 ### 体检
 
 ```powershell
@@ -193,7 +195,7 @@ scenario-test/
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
+- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、`--cookie-jar`（单场景内存 Cookie Jar）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。

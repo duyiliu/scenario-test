@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -178,6 +178,11 @@ export const contract = Object.freeze({
                 description: "临时注入/覆盖配置变量（key=value，可重复；优先级最高，值支持 {{ }} 模板）"
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
+            "cookie-jar": {
+                kind: "flag",
+                prop: "cookieJar",
+                description: "为当前场景启用内存 Cookie Jar：自动保存 Set-Cookie 并在后续同源请求携带，默认关闭"
+            },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },

@@ -330,7 +330,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.8.0";
 
   // src/contract.js
-  var CONTRACT_VERSION = 12;
+  var CONTRACT_VERSION = 13;
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
     runtimeVersion: VERSION,
@@ -490,6 +490,11 @@ var ScenarioTest = (() => {
           description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
         },
         timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
+        "cookie-jar": {
+          kind: "flag",
+          prop: "cookieJar",
+          description: "\u4E3A\u5F53\u524D\u573A\u666F\u542F\u7528\u5185\u5B58 Cookie Jar\uFF1A\u81EA\u52A8\u4FDD\u5B58 Set-Cookie \u5E76\u5728\u540E\u7EED\u540C\u6E90\u8BF7\u6C42\u643A\u5E26\uFF0C\u9ED8\u8BA4\u5173\u95ED"
+        },
         port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
         project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
         dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },

@@ -15,6 +15,7 @@ const dist = outArg ? path.resolve(root, outArg) : path.join(root, "dist");
 
 const quote = (list) => list.map((item) => JSON.stringify(item)).join(" | ");
 const operatorNames = Object.keys(contract.assertions.operators);
+const cliOptionNames = Object.keys(contract.cli.options);
 
 // 断言操作符接口成员：由 contract 投射（含 JSDoc 描述），禁止手写第二份操作符名单
 const valueTypeToTs = {
@@ -47,6 +48,7 @@ export type WhenTarget = ${quote(contract.when.targets)};
 export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
+export type CliOption = ${quote(cliOptionNames)};
 
 export interface GlobalParam {
     type: GlobalParamType;
@@ -388,7 +390,7 @@ export declare const contract: {
     };
     cli: {
         commands: readonly string[];
-        options: Record<string, { kind: "value" | "flag"; prop: string; description: string; parse?: "number" | "keyValue"; repeatable?: boolean; aliases?: readonly string[] }>;
+        options: Record<CliOption, { kind: "value" | "flag"; prop: string; description: string; parse?: "number" | "keyValue"; repeatable?: boolean; aliases?: readonly string[] }>;
     };
 };
 
