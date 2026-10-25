@@ -15,7 +15,8 @@ import {
     queryPairs,
     resolve,
     resolveClone,
-    resolveString
+    resolveString,
+    setRuntimeVar
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
@@ -132,7 +133,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
                 );
             }
         }
-        vars[name] = value;
+        setRuntimeVar(vars, name, value);
     }
     for (const definition of scenario.generatedVars || []) {
         if (!definition?.name) continue;

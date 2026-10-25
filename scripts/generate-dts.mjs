@@ -368,6 +368,8 @@ export function createApp(options: { mount: string | Element; config?: ScenarioC
 export function validateAssertion(definition: Assertion, context?: unknown): Assertion;
 export function evaluateAssertion(definition: Assertion, response: unknown, runtime: unknown, context?: unknown): AssertionResult;
 export function applyExtract(step: { extract?: ExtractDefinition[] }, response: unknown, runtime: Runtime): { warnings: string[]; failures: AssertionResult[] };
+/** 安全写入运行时 vars：__proto__ 等原型链键也按普通自有键写入，不改变对象原型 */
+export function setRuntimeVar(vars: Record<string, unknown>, name: string, value: unknown): unknown;
 export function buildAssertions(step: Step, response: unknown, runtime: unknown, context?: unknown): AssertionResult[];
 export function resolve(value: unknown, runtime: unknown): unknown;
 export function joinUrl(baseUrl: string, requestPath: string): string;
