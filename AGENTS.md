@@ -15,7 +15,7 @@
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
-npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
+npm test               # 运行所有 Node 单元/集成测试（scripts/run-tests.mjs 收集 tests/*.test.js）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
 npm run check          # npm run build && npm test
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
@@ -48,6 +48,8 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 `unit` 与 `browser` 需在 GitHub 分支保护中设为 required status checks；分支保护属仓库设置，不在代码中声明。
 `check:eol` 只审计 CI 检出后的索引/工作区：CRLF 经生成物、外部工具或强制写入真正进入索引/工作区时 unit 变红；
 普通文本的 CRLF-only 编辑会在提交/检出时被 `.gitattributes` 归一为 LF，不会形成可审计的 PR 差异，应在提交前用本地 `npm run check:eol` 发现（`tests/eol.test.js` 已用临时仓库锁定该边界）。
+`npm test` 经 `scripts/run-tests.mjs` 显式收集 `tests/*.test.js`：Windows 的 cmd 不展开 glob、Node 20 的 `--test` 也不支持 glob，
+直接用 `node --test tests/*.test.js` 会让 Windows + Node 20 的 unit 矩阵报“找不到文件”；`test:coverage` 复用同一入口。
 
 ## 架构
 

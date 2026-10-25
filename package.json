@@ -25,8 +25,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
-    "test": "node --test tests/*.test.js",
-    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
+    "test": "node scripts/run-tests.mjs",
+    "test:coverage": "node scripts/run-tests.mjs --experimental-test-coverage",
     "test:browser": "node tests/browser.test.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
     "check:eol": "node scripts/check-eol.mjs",
