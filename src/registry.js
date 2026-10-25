@@ -49,10 +49,10 @@ function looksLikeKeyTypo(key, allowed) {
 }
 
 // 步骤声明这些字段即视为 HTTP 执行面（或非适配器步骤）：未知键按拼写错误拒绝。
-// 名单从 contract 派生（只排除 name/adapter 这两个非执行字段），勿另写副本。
+// 名单从 contract 派生（只排除 name/adapter 两个非执行字段与 always 调度开关），勿另写副本。
 // 未声明任何 HTTP 字段的步骤可能是 matches 自动分发的适配器步骤，其自定义配置键
 // （如 `{ name, prepareLocal: true }`）不属于 DSL，不在白名单校验范围。
-const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
 
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
     return `${label} 包含未知键 ${unknownKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${allowed.join("/")}${hint}`;
@@ -163,6 +163,14 @@ export function defineScenario(input) {
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
+        // always 是执行调度开关而非请求字段：只接受布尔值，字符串 "true"/"false"
+        // 会按真值一律成立（与 when 裸字符串同类假绿风险），定义期直接拒绝
+        if (step.always !== undefined) {
+            invariant(
+                typeof step.always === "boolean",
+                `步骤 ${step.name} 的 always 必须是布尔值（当前 ${JSON.stringify(step.always)}——字符串 "true"/"false" 会按真值静默生效）`
+            );
+        }
         // B3：request/params 非对象会在运行期被静默忽略（headers/body/method 或整个 query
         // 丢弃），请求照发并可能 PASS——定义期直接拒绝，并禁止 step.params 与 request.params
         // 双写（运行期只取 step.params，另一份静默失效）。

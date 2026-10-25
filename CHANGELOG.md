@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- 步骤级 `always: true` 清理（contract v12 → v13，issue #56）：普通步骤全部结束后统一执行，默认 `failurePolicy: "stop"` 因失败中断时仍执行剩余清理步骤；取消执行时默认不执行清理，超时属于失败仍执行。报告新增 `cleanup`（计划/执行/通过/失败/跳过/状态与诊断）与 `diagnostics`，清理结果行带 `cleanup: true`；原始失败与清理失败分别可见，两者都会使场景 FAILED。同步投射 capabilities JSON/文本、`dist/scenario-test.d.ts`、CLI `[CLEANUP-*]` 标记与 Summary、浏览器工作台步骤/统计/报告、AI Prompt 与模式库。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。

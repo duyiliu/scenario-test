@@ -597,10 +597,19 @@ export function createEngine(engineOptions = {}) {
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
         });
         const results = [];
-        for (let index = 0; index < scenario.steps.length; index += 1) {
+        // always 步骤不在正常顺序中执行，统一留到普通步骤结束后作为清理阶段执行。
+        // 这样 stop 策略在失败处中断时，后续普通步骤仍不执行，但 always 清理不会漏跑。
+        const mainIndices = [];
+        const cleanupIndices = [];
+        scenario.steps.forEach((step, index) => {
+            (step.always === true ? cleanupIndices : mainIndices).push(index);
+        });
+
+        const executeScenarioStep = async (index) => {
             const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
             result.stepNo = index + 1;
-            results.push(result);
+            // 结果行独立标记清理阶段，CLI/工作台/JSON 消费方无需再拿 stepNo 反查场景定义
+            if (scenario.steps[index].always === true) result.cleanup = true;
             // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）。
             // 回调抛错不可向上抛——否则 runScenario 整体 reject、调用方拿不到任何 report；
             // 与 onAttempt 同口径降级为该步骤 ERROR（fail-loud，不静默吞掉回调 bug）
@@ -617,9 +626,28 @@ export function createEngine(engineOptions = {}) {
                 result.error = message;
                 result.assertions.push({ name: "onStep 回调无异常", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "无异常" });
             }
+            return result;
+        };
+
+        for (const index of mainIndices) {
+            const result = await executeScenarioStep(index);
+            results.push(result);
             if (!result.passed && scenario.failurePolicy !== "continue") break;
             if (runOptions.signal?.aborted) break;
         }
+
+        const cleanupResults = [];
+        // 取消默认不执行清理：中止信号已生效时不再发起清理请求。
+        // 超时是步骤失败（signal 未 abort），仍进入清理阶段。
+        if (!runOptions.signal?.aborted) {
+            for (const index of cleanupIndices) {
+                if (runOptions.signal?.aborted) break;
+                const result = await executeScenarioStep(index);
+                results.push(result);
+                cleanupResults.push(result);
+            }
+        }
+
         // SKIP 可观测性：skipped 优先于 passed，绝不把 SKIP 计入 passedSteps/executed
         const skipped = results.filter((item) => item.skipped).length;
         const executed = results.length - skipped;
@@ -632,6 +660,28 @@ export function createEngine(engineOptions = {}) {
         const status = cancelled ? "CANCELLED"
             : failed > 0 ? "FAILED"
             : (executed === 0 ? "SKIPPED" : "PASSED");
+
+        // 清理阶段单独统计：原失败与清理失败分开可见，但两者都会让场景 FAILED
+        const cleanupSkipped = cleanupResults.filter((item) => item.skipped).length;
+        const cleanupCancelled = cleanupResults.filter((item) => item.cancelled).length;
+        const cleanupFailed = cleanupResults.filter((item) => !item.skipped && !item.cancelled && !item.passed).length;
+        const cleanupPassed = cleanupResults.filter((item) => !item.skipped && !item.cancelled && item.passed).length;
+        const cleanupStatus = cleanupIndices.length === 0
+            ? "NONE"
+            : (cleanupResults.length === 0 || cleanupResults.every((item) => item.skipped) ? "SKIPPED"
+                : (cleanupCancelled > 0 ? "CANCELLED" : (cleanupFailed > 0 ? "FAILED" : "PASSED")));
+        const diagnostics = [];
+        for (const item of cleanupResults) {
+            if (item.skipped || item.passed) continue;
+            const failedAssertion = (item.assertions || []).find((assertion) => !assertion.passed);
+            const detail = item.error || failedAssertion?.name || "未知原因";
+            diagnostics.push(`清理步骤「${escapeInlineText(item.name)}」${item.cancelled ? "被取消" : "失败"}：${escapeInlineText(detail)}`);
+        }
+        const pendingCleanup = cleanupIndices.length - cleanupResults.length;
+        if (pendingCleanup > 0 && runOptions.signal?.aborted) {
+            diagnostics.push(`执行已取消，${pendingCleanup} 个 always 清理步骤未执行（默认取消不清理）`);
+        }
+
         return {
             scenarioName: scenario.name,
             passed: failed === 0 && results.length === scenario.steps.length,
@@ -641,6 +691,18 @@ export function createEngine(engineOptions = {}) {
             passedSteps,
             failed,
             skipped,
+            cleanup: {
+                planned: cleanupIndices.length,
+                executed: cleanupResults.length - cleanupSkipped,
+                passed: cleanupPassed,
+                failed: cleanupFailed,
+                skipped: cleanupSkipped,
+                cancelled: cleanupCancelled,
+                status: cleanupStatus,
+                results: cleanupResults,
+                diagnostics
+            },
+            diagnostics,
             results,
             vars: runtime.vars
         };

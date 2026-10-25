@@ -137,6 +137,27 @@ assertions: [
 
 第一步没有上一步响应：引用 `lastResponse`/`status` 时按来源缺失处理，条件不成立（步骤 SKIP），不会抛错中断场景。
 
+### 清理步骤（always）
+
+写数据场景的清理步骤声明 `always: true`，会在所有普通步骤结束后统一执行：
+
+```javascript
+{
+    name: "删除本次创建的订单",
+    always: true,
+    when: { from: "vars", path: "orderId", exists: true },
+    method: "DELETE",
+    path: "/api/orders/{{vars.orderId}}",
+    status: 204
+}
+```
+
+- 普通步骤失败且默认 `failurePolicy: "stop"` 中断时，后续普通步骤不再执行，但剩余的 `always` 清理步骤仍会执行。
+- 报告在 `cleanup`（计划/执行/通过/失败/跳过/状态）与 `diagnostics` 中单独标记清理结果；结果行的 `cleanup: true` 便于 JSON 消费方区分。
+- 原始失败仍使场景 FAILED；清理失败同样使场景 FAILED，并附清理诊断。
+- 取消执行时默认不执行清理（`cleanup.status` 为 `SKIPPED` 并给出诊断）；超时属于失败而非取消，仍会执行清理。
+- `when` 仍用于防止空值删除，`always` 只改变执行时机，不会绕过条件。
+
 ---
 
 ## 高级用法

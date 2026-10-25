@@ -853,20 +853,39 @@ export function createWorkbenchRuntime(options) {
         setSidePanelTab('stats');
 
         try {
-            for (var i = 0; i < list.length; i += 1) {
-                highlightActiveStep(i);
-                rememberDebugRuntime(i, runtime);
-                var result = await executeStep(list[i], runtime, cfg);
-                result.stepNo = i + 1;
+            var mainIndices = [];
+            var cleanupIndices = [];
+            list.forEach(function (step, index) {
+                (step && step.always === true ? cleanupIndices : mainIndices).push(index);
+            });
+            var runIndex = async function (index) {
+                highlightActiveStep(index);
+                rememberDebugRuntime(index, runtime);
+                var result = await executeStep(list[index], runtime, cfg);
+                result.stepNo = index + 1;
+                if (list[index] && list[index].always === true) result.cleanup = true;
                 state.steps.push(result);
-                state.varsTrail[i] = { ...runtime.vars };
+                state.varsTrail[index] = { ...runtime.vars };
                 renderStatsAll();
                 renderFilterAll();
-                uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
+                uiView.appendStepResult(result, index, list, state.executionMode, buildVarsView(index));
                 renderReportPanel();
+                return result;
+            };
+            // 普通步骤按定义顺序执行；always 步骤统一留到之后作为清理阶段，
+            // 与 engine.runScenario 口径一致：stop 失败中断后仍执行清理。
+            for (var m = 0; m < mainIndices.length; m += 1) {
+                var mainResult = await runIndex(mainIndices[m]);
                 // 与 engine.runScenario 对齐：stop 策略失败即停；取消信号中止时不论本步成败都停。
                 // 此前条件把「信号已中止但本步通过」漏进下一轮，会多产生一条引擎不会有的 CANCELLED 步骤
-                if ((!result.passed && failurePolicy !== 'continue') || runtime.abortController.signal.aborted) break;
+                if ((!mainResult.passed && failurePolicy !== 'continue') || runtime.abortController.signal.aborted) break;
+            }
+            // 取消默认不执行清理；超时属于失败（signal 未中止），仍执行清理
+            if (!runtime.abortController.signal.aborted) {
+                for (var c = 0; c < cleanupIndices.length; c += 1) {
+                    if (runtime.abortController.signal.aborted) break;
+                    await runIndex(cleanupIndices[c]);
+                }
             }
             clearActiveStepHighlight();
             finishExecutionState(runtime);
@@ -920,6 +939,7 @@ export function createWorkbenchRuntime(options) {
             rememberDebugRuntime(stepIndex, runtime);
             var result = await executeStep(list[stepIndex], runtime, cfg);
             result.stepNo = stepIndex + 1;
+            if (list[stepIndex] && list[stepIndex].always === true) result.cleanup = true;
             state.steps.push(result);
             state.varsTrail[stepIndex] = { ...runtime.vars };
             state.nextStepIndex += 1;

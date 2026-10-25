@@ -640,6 +640,15 @@ const workbenchView = (function () {
         var assertPassed = steps.reduce(function (a, s) {
             return a + (s.assertions ? s.assertions.filter(function (x) { return x.passed; }).length : 0);
         }, 0);
+        var cleanupPlanned = scenarioStepsList.filter(function (step) { return step && step.always === true; }).length;
+        var cleanupResults = steps.filter(function (step) { return step.cleanup; });
+        var cleanupFailed = cleanupResults.filter(function (step) { return !step.skipped && !step.passed; }).length;
+        var cleanupHtml = cleanupPlanned
+            ? '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white flex items-center justify-between">' +
+                '<span class="text-[10px] font-semibold text-slate-400">清理步骤（always）</span>' +
+                '<span class="text-xs font-bold font-mono ' + (cleanupFailed ? 'text-rose-600' : 'text-slate-700') + '">' + cleanupResults.length + ' / ' + cleanupPlanned + (cleanupFailed ? ' · 失败 ' + cleanupFailed : '') + '</span>' +
+            '</div>'
+            : '';
 
         var title = (scenario && (scenario.name || scenario.id)) || (scenarioFile ? scenarioFile.split('/').pop().replace(/\.js$/, '') : '未加载场景');
         var filePath = scenarioFile || '';
@@ -728,6 +737,7 @@ const workbenchView = (function () {
                 '</div>' +
 
                 '<!-- 核心指标网格 -->' +
+                cleanupHtml +
                 '<div class="grid grid-cols-2 gap-2">' +
                     '<div class="p-2.5 rounded-lg border border-slate-200/70 bg-white">' +
                         '<div class="text-[10px] font-semibold text-slate-400">成功步骤</div>' +
@@ -843,6 +853,7 @@ const workbenchView = (function () {
                     '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div>' +
                         '<span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
+                        (step.always === true ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 text-sky-700">清理</span>' : '') +
                         '<span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span>' +
                         '<span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span>' +
                     '</div>' +
@@ -1030,11 +1041,12 @@ const workbenchView = (function () {
             ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="仅回退测试运行时与报告，不撤销已发出的业务请求">回退</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="从本步骤执行前的变量快照重新执行">重跑</button></span>'
             : '';
 
-        return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
+        return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-cleanup="' + Boolean(s.cleanup) + '" data-step-idx="' + i + '" data-search="' + esc((s.name + ' ' + s.method + ' ' + s.path).toLowerCase()) + '">' +
             '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/80 transition-colors" role="button" tabindex="0" aria-expanded="' + (!ok ? 'true' : 'false') + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
                 '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
                     seqIcon +
                     '<span class="text-xs font-bold ' + nameCls + ' truncate" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' +
+                    (s.cleanup ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 text-sky-700">清理</span>' : '') +
                     '<span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span>' +
                     '<span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc(s.path) + '">' + esc(s.path) + '</span>' +
                 '</div>' +
@@ -1080,10 +1092,17 @@ const workbenchView = (function () {
     function appendStepResult(result, index, scenarioSteps, executionMode, varsView) {
         var ul = document.getElementById('stepsList');
         if (!ul) return;
-        ul.querySelectorAll('li[data-passed="pending"]').forEach(function (node) { node.remove(); });
+        // 只替换当前步骤的待执行占位：always 清理步骤会在失败后的普通占位之后执行，
+        // 若像旧实现那样清空全部 pending 再按 index+1 重绘，会吞掉失败后未执行的普通步骤占位。
+        var pending = ul.querySelector('li[data-passed="pending"][data-step-idx="' + index + '"]');
         var template = document.createElement('template');
-        template.innerHTML = renderStepItem(result, index, executionMode, varsView) + renderPendingSteps(scenarioSteps, index + 1);
-        ul.appendChild(template.content);
+        template.innerHTML = renderStepItem(result, index, executionMode, varsView);
+        if (pending) {
+            ul.insertBefore(template.content, pending);
+            pending.remove();
+        } else {
+            ul.appendChild(template.content);
+        }
         if (window.__R && window.__R.applyFilter) {
             window.__R.applyFilter();
         }
@@ -1100,20 +1119,59 @@ const workbenchView = (function () {
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
         var cancelled = cancelledCount > 0;
         var status = cancelled ? 'CANCELLED' : failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
+        var scenarioSteps = (scenario && Array.isArray(scenario.steps)) ? scenario.steps : [];
+        var cleanupResults = steps.filter(function (item) { return item.cleanup; });
+        var cleanupPlanned = scenarioSteps.length
+            ? scenarioSteps.filter(function (step) { return step && step.always === true; }).length
+            : cleanupResults.length;
+        var cleanupSkipped = cleanupResults.filter(function (item) { return item.skipped; }).length;
+        var cleanupCancelled = cleanupResults.filter(function (item) { return item.cancelled; }).length;
+        var cleanupFailed = cleanupResults.filter(function (item) { return !item.skipped && !item.cancelled && !item.passed; }).length;
+        var cleanupPassed = cleanupResults.filter(function (item) { return !item.skipped && !item.cancelled && item.passed; }).length;
+        var cleanupStatus = cleanupPlanned === 0
+            ? 'NONE'
+            : (cleanupResults.length === 0 || cleanupResults.every(function (item) { return item.skipped; })
+                ? 'SKIPPED'
+                : (cleanupCancelled > 0 ? 'CANCELLED' : (cleanupFailed > 0 ? 'FAILED' : 'PASSED')));
+        var diagnostics = [];
+        cleanupResults.forEach(function (item) {
+            if (item.skipped || item.cancelled || item.passed) return;
+            var failedAssertion = (item.assertions || []).filter(function (assertion) { return !assertion.passed; })[0];
+            diagnostics.push('清理步骤「' + (item.name || '未命名步骤') + '」失败：' + (item.error || (failedAssertion && failedAssertion.name) || '未知原因'));
+        });
+        var pendingCleanup = cleanupPlanned - cleanupResults.length;
+        if (cancelled && pendingCleanup > 0) {
+            diagnostics.push('执行已取消，' + pendingCleanup + ' 个 always 清理步骤未执行（默认取消不清理）');
+        }
         return {
             title: (scenario && scenario.name) || scenarioFile || '测试报告',
             scenarioFile: scenarioFile || '',
             executionMode: executionMode || 'full',
             environment: environment ? environment.name || environment.key : '默认',
             status: status,
+            cleanup: {
+                planned: cleanupPlanned,
+                executed: cleanupResults.length - cleanupSkipped,
+                passed: cleanupPassed,
+                failed: cleanupFailed,
+                skipped: cleanupSkipped,
+                cancelled: cleanupCancelled,
+                status: cleanupStatus,
+                results: cleanupResults,
+                diagnostics: diagnostics
+            },
+            diagnostics: diagnostics,
             summary: {
-                totalSteps: (scenario && scenario.steps && scenario.steps.length) || total,
-                plannedSteps: (scenario && scenario.steps && scenario.steps.length) || total,
+                totalSteps: scenarioSteps.length || total,
+                plannedSteps: scenarioSteps.length || total,
                 executedSteps: executed,
                 passedSteps: passed,
                 failedSteps: failed,
                 skippedSteps: skipped,
                 cancelledSteps: cancelledCount,
+                cleanupPlannedSteps: cleanupPlanned,
+                cleanupPassedSteps: cleanupPassed,
+                cleanupFailedSteps: cleanupFailed,
                 passRate: executed ? ((passed / executed) * 100).toFixed(1) + '%' : '0.0%',
                 totalDurationMs: duration,
                 totalDurationFmt: fmt(duration)
@@ -1127,6 +1185,8 @@ const workbenchView = (function () {
                     status: item.status,
                     passed: item.passed,
                     skipped: Boolean(item.skipped),
+                    cancelled: Boolean(item.cancelled),
+                    cleanup: Boolean(item.cleanup),
                     durationMs: item.duration,
                     durationFmt: fmt(item.duration),
                     error: item.error || '',
@@ -1152,6 +1212,12 @@ const workbenchView = (function () {
         lines.push('- **结果**: ' + resultText + ' (' + summary.passedSteps + '/' + summary.executedSteps + ')');
         lines.push('- **通过率**: ' + summary.passRate);
         lines.push('- **统计**: 通过 ' + summary.passedSteps + ' / 失败 ' + summary.failedSteps + ' / 跳过 ' + summary.skippedSteps + ' / 执行 ' + summary.executedSteps + ' / 计划 ' + summary.plannedSteps);
+        if (report.cleanup && report.cleanup.planned) {
+            lines.push('- **清理**: 通过 ' + report.cleanup.passed + ' / 失败 ' + report.cleanup.failed + ' / 执行 ' + report.cleanup.executed + ' / 计划 ' + report.cleanup.planned + '（状态 ' + report.cleanup.status + '）');
+        }
+        (report.diagnostics || []).forEach(function (diagnostic) {
+            lines.push('- **清理诊断**: ' + mdInline(diagnostic));
+        });
         lines.push('- **总耗时**: ' + summary.totalDurationFmt);
         lines.push('');
         lines.push('## 步骤明细');
@@ -1159,7 +1225,7 @@ const workbenchView = (function () {
 
         (report.steps || []).forEach(function (step) {
             var icon = step.skipped ? '⏭️' : (step.passed ? '✅' : '❌');
-            lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + mdInline(step.name));
+            lines.push('### ' + icon + ' 步骤 ' + step.stepNo + ': ' + mdInline(step.name) + (step.cleanup ? '（清理）' : ''));
             lines.push('- **请求**: ' + mdCode(step.method + ' ' + step.path));
             lines.push('- **状态**: ' + step.status + ' | **耗时**: ' + step.durationFmt);
             if (step.error) lines.push('- **失败原因**: ' + mdInline(step.error));
@@ -1255,7 +1321,7 @@ const workbenchView = (function () {
             return '<div class="report-step ' + (step.passed ? 'report-step--passed' : 'report-step--failed') + '">' +
                 '<div class="report-step__marker" aria-hidden="true">' + (step.passed ? '✓' : '!') + '</div>' +
                 '<div class="report-step__content">' +
-                    '<div class="report-step__heading"><span class="report-step__number">步骤 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span></div>' +
+                    '<div class="report-step__heading"><span class="report-step__number">步骤 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + (step.cleanup ? '（清理）' : '') + '</span></div>' +
                     '<div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || '') + '">' + esc(step.path || '-') + '</span></div>' +
                     (canLocateStep ? '<button type="button" class="report-step__locate" data-locate-step-index="' + stepIndex + '" aria-label="' + esc('定位到步骤 ' + step.stepNo + '：' + (step.name || '未命名步骤')) + '">定位步骤</button>' : '') +
                     (issue ? '<div class="report-step__issue">' + esc(issue) + '</div>' : '') +
@@ -1272,12 +1338,22 @@ const workbenchView = (function () {
                 ? '<div class="report-healthy"><div class="report-healthy__title">所有步骤均因条件不满足而跳过</div><div class="report-healthy__hint">本次执行未发起任何请求，详细跳过原因请在左侧步骤列表查看。</div></div>'
                 : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? '所有步骤均已通过' : '当前已执行步骤均通过') + '</div><div class="report-healthy__hint">详细请求与响应请在左侧步骤列表查看；可通过下方操作复制完整报告。</div></div>'));
 
-        var diagnosisTitle = hasRealFailure ? '失败诊断 · ' + reportSteps.length : '执行结论';
+        var cleanupMeta = report.cleanup && report.cleanup.planned
+            ? '<span>清理 ' + report.cleanup.passed + '/' + report.cleanup.planned + (report.cleanup.failed ? '（失败 ' + report.cleanup.failed + '）' : '') + '</span>'
+            : '';
+        var cleanupDiagnosticsHtml = (report.diagnostics || []).length
+            ? '<div class="report-steps"><div class="report-steps__title">清理诊断</div>' +
+                report.diagnostics.map(function (diagnostic) { return '<div class="report-step__issue">' + esc(diagnostic) + '</div>'; }).join('') +
+            '</div>'
+            : '';
+        diagnosisHtml += cleanupDiagnosticsHtml;
+        var diagnosisTitle = hasRealFailure ? '失败诊断 · ' + reportSteps.length : (report.cleanup && report.cleanup.failed ? '清理诊断' : '执行结论');
         node.innerHTML = '<div class="report-content">' +
             '<div class="report-overview">' +
                 '<div class="report-overview__top"><div class="report-overview__title">' + esc(report.title || '测试报告') + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div>' +
                 '<div class="report-overview__meta"><span>' + esc(report.environment || '默认环境') + '</span><span>' + modeText + '</span><span>通过 ' + summary.passedSteps + '</span><span>失败 ' + summary.failedSteps + '</span>' +
                     (summary.skippedSteps > 0 ? '<span>跳过 ' + summary.skippedSteps + '</span>' : '') +
+                    cleanupMeta +
                     '<span>' + esc(summary.totalDurationFmt) + '</span></div>' +
                 '<div class="report-progress">' +
                     '<div class="report-progress__labels"><span>执行进度 ' + progressText + '</span><strong>' + progressPercent.toFixed(1) + '%</strong></div>' +
@@ -1320,4 +1396,5 @@ const workbenchView = (function () {
 export default workbenchView;
 // 具名导出供 Node 侧单测直接消费（浏览器入口仍走默认导出，形状不变）
 export const buildMarkdownReport = workbenchView.buildMarkdownReport;
+export const buildOverallReport = workbenchView.buildOverallReport;
 export const eachDetailRows = workbenchView.eachDetailRows;

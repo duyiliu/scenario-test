@@ -51,7 +51,8 @@ export function buildCapabilities(inputContract = contract) {
         scenario: {
             keys: [...scenario.keys],
             stepKeys: [...scenario.stepKeys],
-            failurePolicies: [...scenario.failurePolicies]
+            failurePolicies: [...scenario.failurePolicies],
+            always: scenario.always ? { ...scenario.always } : undefined
         },
         cli: {
             commands: [...cli.commands],
@@ -118,6 +119,9 @@ export function renderCapabilitiesText(capabilities) {
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    if (capabilities.scenario.always) {
+        lines.push(`always（${capabilities.scenario.always.type}）: ${capabilities.scenario.always.note}`);
+    }
     lines.push("");
     lines.push("CLI 命令:");
     for (const command of capabilities.cli.commands) {

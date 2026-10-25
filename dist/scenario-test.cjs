@@ -334,7 +334,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -475,9 +475,18 @@ var contract = Object.freeze({
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ]),
-    failurePolicies: Object.freeze(["stop", "continue"])
+    failurePolicies: Object.freeze(["stop", "continue"]),
+    // 步骤级清理：always: true 的步骤在所有普通步骤之后执行（失败/stop 中断后仍执行）；
+    // 取消默认不执行清理——中止信号已生效时不再发起清理请求，避免半途取消后又写数据
+    always: Object.freeze({
+      type: "boolean",
+      field: "always",
+      cancellation: "skip",
+      note: "\u6B65\u9AA4\u58F0\u660E always: true \u540E\u4F5C\u4E3A\u6E05\u7406\u6B65\u9AA4\uFF1A\u666E\u901A\u6B65\u9AA4\u5168\u90E8\u7ED3\u675F\u540E\u7EDF\u4E00\u6267\u884C\uFF1B\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u6216\u88AB onStep \u5224\u5931\u8D25\u540E\u4ECD\u6267\u884C\u5269\u4F59 always \u6B65\u9AA4\u3002\u6E05\u7406\u5931\u8D25\u4E0E\u539F\u5931\u8D25\u5206\u522B\u7EDF\u8BA1\uFF08report.cleanup \u4E0E report.diagnostics\uFF09\uFF0C\u4EFB\u4E00\u6E05\u7406\u6B65\u9AA4\u5931\u8D25\u540C\u6837\u4F7F\u573A\u666F FAILED\u3002\u53D6\u6D88\u6267\u884C\u65F6\u9ED8\u8BA4\u4E0D\u6267\u884C\u6E05\u7406\u6B65\u9AA4\uFF08report.cleanup.status=SKIPPED \u5E76\u7ED9\u51FA\u8BCA\u65AD\uFF09\uFF1B\u8D85\u65F6\u5C5E\u4E8E\u5931\u8D25\u800C\u975E\u53D6\u6D88\uFF0C\u4ECD\u4F1A\u6267\u884C\u6E05\u7406"
+    })
   }),
   cli: Object.freeze({
     commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
@@ -1450,7 +1459,7 @@ function looksLikeKeyTypo(key, allowed) {
     return target === lower || editDistance(lower, target) <= 1;
   });
 }
-var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
   return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
 }
@@ -1539,6 +1548,12 @@ function defineScenario(input) {
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    if (step.always !== void 0) {
+      invariant(
+        typeof step.always === "boolean",
+        `\u6B65\u9AA4 ${step.name} \u7684 always \u5FC5\u987B\u662F\u5E03\u5C14\u503C\uFF08\u5F53\u524D ${JSON.stringify(step.always)}\u2014\u2014\u5B57\u7B26\u4E32 "true"/"false" \u4F1A\u6309\u771F\u503C\u9759\u9ED8\u751F\u6548\uFF09`
+      );
+    }
     if (step.request !== void 0) {
       invariant(
         isPlainObject(step.request),
@@ -2284,10 +2299,15 @@ function createEngine(engineOptions = {}) {
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
     });
     const results = [];
-    for (let index = 0; index < scenario.steps.length; index += 1) {
+    const mainIndices = [];
+    const cleanupIndices = [];
+    scenario.steps.forEach((step, index) => {
+      (step.always === true ? cleanupIndices : mainIndices).push(index);
+    });
+    const executeScenarioStep = async (index) => {
       const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
       result.stepNo = index + 1;
-      results.push(result);
+      if (scenario.steps[index].always === true) result.cleanup = true;
       try {
         await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
       } catch (hookError) {
@@ -2298,8 +2318,22 @@ function createEngine(engineOptions = {}) {
         result.error = message;
         result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
       }
+      return result;
+    };
+    for (const index of mainIndices) {
+      const result = await executeScenarioStep(index);
+      results.push(result);
       if (!result.passed && scenario.failurePolicy !== "continue") break;
       if (runOptions.signal?.aborted) break;
+    }
+    const cleanupResults = [];
+    if (!runOptions.signal?.aborted) {
+      for (const index of cleanupIndices) {
+        if (runOptions.signal?.aborted) break;
+        const result = await executeScenarioStep(index);
+        results.push(result);
+        cleanupResults.push(result);
+      }
     }
     const skipped = results.filter((item) => item.skipped).length;
     const executed = results.length - skipped;
@@ -2307,6 +2341,22 @@ function createEngine(engineOptions = {}) {
     const passedSteps = results.filter((item) => !item.skipped && item.passed).length;
     const cancelled = results.some((item) => item.cancelled) || Boolean(runOptions.signal?.aborted) && results.length < scenario.steps.length;
     const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
+    const cleanupSkipped = cleanupResults.filter((item) => item.skipped).length;
+    const cleanupCancelled = cleanupResults.filter((item) => item.cancelled).length;
+    const cleanupFailed = cleanupResults.filter((item) => !item.skipped && !item.cancelled && !item.passed).length;
+    const cleanupPassed = cleanupResults.filter((item) => !item.skipped && !item.cancelled && item.passed).length;
+    const cleanupStatus = cleanupIndices.length === 0 ? "NONE" : cleanupResults.length === 0 || cleanupResults.every((item) => item.skipped) ? "SKIPPED" : cleanupCancelled > 0 ? "CANCELLED" : cleanupFailed > 0 ? "FAILED" : "PASSED";
+    const diagnostics = [];
+    for (const item of cleanupResults) {
+      if (item.skipped || item.passed) continue;
+      const failedAssertion = (item.assertions || []).find((assertion) => !assertion.passed);
+      const detail = item.error || failedAssertion?.name || "\u672A\u77E5\u539F\u56E0";
+      diagnostics.push(`\u6E05\u7406\u6B65\u9AA4\u300C${escapeInlineText(item.name)}\u300D${item.cancelled ? "\u88AB\u53D6\u6D88" : "\u5931\u8D25"}\uFF1A${escapeInlineText(detail)}`);
+    }
+    const pendingCleanup = cleanupIndices.length - cleanupResults.length;
+    if (pendingCleanup > 0 && runOptions.signal?.aborted) {
+      diagnostics.push(`\u6267\u884C\u5DF2\u53D6\u6D88\uFF0C${pendingCleanup} \u4E2A always \u6E05\u7406\u6B65\u9AA4\u672A\u6267\u884C\uFF08\u9ED8\u8BA4\u53D6\u6D88\u4E0D\u6E05\u7406\uFF09`);
+    }
     return {
       scenarioName: scenario.name,
       passed: failed === 0 && results.length === scenario.steps.length,
@@ -2316,6 +2366,18 @@ function createEngine(engineOptions = {}) {
       passedSteps,
       failed,
       skipped,
+      cleanup: {
+        planned: cleanupIndices.length,
+        executed: cleanupResults.length - cleanupSkipped,
+        passed: cleanupPassed,
+        failed: cleanupFailed,
+        skipped: cleanupSkipped,
+        cancelled: cleanupCancelled,
+        status: cleanupStatus,
+        results: cleanupResults,
+        diagnostics
+      },
+      diagnostics,
       results,
       vars: runtime.vars
     };
@@ -2373,7 +2435,8 @@ function buildCapabilities(inputContract = contract) {
     scenario: {
       keys: [...scenario.keys],
       stepKeys: [...scenario.stepKeys],
-      failurePolicies: [...scenario.failurePolicies]
+      failurePolicies: [...scenario.failurePolicies],
+      always: scenario.always ? { ...scenario.always } : void 0
     },
     cli: {
       commands: [...cli.commands],
@@ -2438,6 +2501,9 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+  if (capabilities.scenario.always) {
+    lines.push(`always\uFF08${capabilities.scenario.always.type}\uFF09: ${capabilities.scenario.always.note}`);
+  }
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {

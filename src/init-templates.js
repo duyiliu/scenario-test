@@ -29,7 +29,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
 5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`；GET/HEAD 不能携带请求体（\`request.body\`、\`request.fileUpload\` 定义期即被拒），请求参数一律放 \`params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤；\`from: "headers"\` 的 path 首段按头名大小写不敏感匹配（任意大小写命中同一响应头，无需为大小写变体重复配置），首段之后的子路径在头值上取。断言操作符：${OPERATORS_BACKTICK}；数值比较（如总数字段不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），列表条数/字符串长度/对象键数用 \`length: N\`（数组元素数、字符串字符数、对象键数，非容器类型直接失败），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒，单次请求耗时）。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败；可加 \`default\` 给可选字段声明兜底值（支持模板，与 required 互斥，声明后缺失不产生 warning）。路径中的数组下标支持负数取倒数项（如 \`records[-1]\` 为末项，\`records[-2]\` 为倒数第二项）。\`when\` 对象形式来源为 \`from: "vars"\`（已提取变量）、\`from: "lastResponse"\`（上一步响应 body，path 子路径取值同 extract from:"body"）或 \`from: "status"\`（上一步 HTTP 状态码，数值），也可用 \`target: "status"\` 读上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。模板 \`{{ }}\` 只做路径取值，不支持比较、三元、逻辑运算或函数调用（如 \`{{vars.a > 0}}\` 定义期即被拒），条件判断用 \`assertions\` 或 \`when\` 对象形式。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
-7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。 需要唯一证件/卡号/号码的测试数据（身份证号、银行卡号、手机号、统一社会信用代码等带格式或校验位约束的字段）用 \`generatedVars\` 按轮次生成：\`idcard\`（声明 birthDate 与 gender）、\`luhn\`（可选 length/prefix）、\`phone\`（可选 prefix）、\`uscc\`（可选 regionCode），禁止写死固定或真实号码导致重跑撞唯一性。 时间窗/过期类参数（startTime、expiredAt 等）用 \`timestamp\` 类型相对当前时间生成：\`offset\`（如 "-7d"、"+8d"，数字+单位 ms/s/m/h/d/w）、\`unit: 's'\` 秒级数值、\`format: 'YYYY-MM-DD HH:mm:ss'\` 本地时间字符串（format 与 unit 互斥），禁止外部脚本拼值或写死过期时间。业务主键为 UUID 的字段用 \`uuid\` 类型（带连字符标准形态），无连字符 32 位用 \`uuidHex\`。渠道、状态等枚举类参数需要随机但可复现的取值时用 \`enum\` 类型：\`values\` 候选数组 + 可选 \`weights\` 非负权重（缺省等权，权重为 0 的候选永不被选中），按轮次确定性抽取（轮内稳定、跨轮变化）；枚举取值必须有项目证据，不得凭空编造候选。
+7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。写数据场景的清理步骤必须声明 \`always: true\`：普通步骤失败（默认 stop 策略中断）后仍会执行，清理结果在报告 \`cleanup\` 与 \`diagnostics\` 中单独统计；取消执行时默认不执行清理（超时属于失败仍执行），因此仍需保留 \`when\` 防止空值删除，且清理失败同样使场景 FAILED。 需要唯一证件/卡号/号码的测试数据（身份证号、银行卡号、手机号、统一社会信用代码等带格式或校验位约束的字段）用 \`generatedVars\` 按轮次生成：\`idcard\`（声明 birthDate 与 gender）、\`luhn\`（可选 length/prefix）、\`phone\`（可选 prefix）、\`uscc\`（可选 regionCode），禁止写死固定或真实号码导致重跑撞唯一性。 时间窗/过期类参数（startTime、expiredAt 等）用 \`timestamp\` 类型相对当前时间生成：\`offset\`（如 "-7d"、"+8d"，数字+单位 ms/s/m/h/d/w）、\`unit: 's'\` 秒级数值、\`format: 'YYYY-MM-DD HH:mm:ss'\` 本地时间字符串（format 与 unit 互斥），禁止外部脚本拼值或写死过期时间。业务主键为 UUID 的字段用 \`uuid\` 类型（带连字符标准形态），无连字符 32 位用 \`uuidHex\`。渠道、状态等枚举类参数需要随机但可复现的取值时用 \`enum\` 类型：\`values\` 候选数组 + 可选 \`weights\` 非负权重（缺省等权，权重为 0 的候选永不被选中），按轮次确定性抽取（轮内稳定、跨轮变化）；枚举取值必须有项目证据，不得凭空编造候选。
 8. 默认保持 \`failurePolicy: "stop"\`。不同验证目标拆成独立场景；只有同一验证路径确实需要继续收集后续步骤结果时才设置 \`failurePolicy: "continue"\`。只有在完成状态字段和终态值都有证据时才使用 \`retryUntil\`，且 assertions 必须断言该终态值；只断言字段存在会立即通过，禁止配合 \`retryUntil\`。完成状态未知时最多生成一次状态查询。不要写固定 sleep。
 9. 错误响应体没有代码、文档或既有测试依据时，只断言已确认的 HTTP status，不能猜测或断言 code、message、error 等字段存在。
 10. 不修改业务代码、构建配置或公共运行时；不写入生产地址、个人数据、固定 Token 或非测试凭据。
@@ -107,11 +107,13 @@ const SCENARIO_PATTERNS = [
     "        vars: { recordId: \"\", recordName: \"scenario-{{vars.runNo}}\" }, steps: [",
     "            { name: \"创建测试记录\", method: \"POST\", path: \"<创建路径>\", request: { body: { name: \"{{vars.recordName}}\" } }, status: 201, extract: [{ name: \"recordId\", path: \"data.id\" }] },",
     "            { name: \"查询刚创建的记录\", method: \"GET\", path: \"<详情路径>/{{vars.recordId}}\", status: 200, assertions: [{ name: \"名称匹配本次标记\", path: \"data.name\", equals: \"{{vars.recordName}}\" }] },",
-    "            { name: \"删除本次创建的记录\", when: { from: \"vars\", path: \"recordId\", exists: true }, method: \"DELETE\", path: \"<删除路径>/{{vars.recordId}}\", status: 204 }",
+    "            { name: \"删除本次创建的记录\", always: true, when: { from: \"vars\", path: \"recordId\", exists: true }, method: \"DELETE\", path: \"<删除路径>/{{vars.recordId}}\", status: 204 }",
     "        ]",
     "    }));",
     "",
     "数据名必须有 scenario-{{vars.runNo}} 一类测试标记。只有删除接口、权限和条件均已确认时才加入清理；严禁按名称模糊匹配或删除未带场景标记的数据。",
+    "",
+    "清理步骤声明 always: true：普通步骤失败（stop 策略中断）后仍会执行，报告在 cleanup / diagnostics 中单独标记清理结果；取消执行时默认不执行清理（超时属于失败仍执行），所以仍需保留 when 防止空值删除，且清理失败同样使场景 FAILED。",
     "",
     "## 模式四：提交异步任务并轮询",
     "",
@@ -340,7 +342,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - 未写 \`status\` 和 \`assertions\` 时运行时默认要求 HTTP 2xx，不能把异常响应当成功。
 - 最终一致性使用 \`retryUntil\`，避免固定等待；前置变量可能为空的删除操作使用 \`when\` 保护（\`when\` 对象形式支持 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`，或用 \`target: "status"\` 读取上一步状态码）。
 - \`runId\` / \`runNo\` 是运行时保留变量，禁止在配置或场景中声明或覆盖。
-- 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
+- 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。写数据的清理步骤声明 \`always: true\`：普通步骤失败（stop 中断）后仍会执行，清理结果在报告 \`cleanup\` / \`diagnostics\` 中单独统计；取消执行时默认不执行清理（超时仍执行），清理失败同样使场景 FAILED。
 - SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
 
 完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。

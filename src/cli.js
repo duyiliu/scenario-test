@@ -655,7 +655,9 @@ async function runCommand(args) {
                 print(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
-                const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
+                const stateMark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
+                // 清理步骤单独标记，避免与普通步骤的通过/失败混淆
+                const mark = result.cleanup ? `CLEANUP-${stateMark}` : stateMark;
                 print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
                     print(`  [WARN] ${escapeInlineText(warning)}`);
@@ -711,7 +713,13 @@ async function runCommand(args) {
         stoppedUnexecutedTotal += stoppedUnexecuted;
         failedTotal += report.failed + stoppedUnexecuted;
         skippedTotal += report.skipped;
-        print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
+        const cleanupText = report.cleanup && report.cleanup.planned > 0
+            ? `；清理 passed=${report.cleanup.passed} failed=${report.cleanup.failed} executed=${report.cleanup.executed}/${report.cleanup.planned} planned（状态 ${report.cleanup.status}）`
+            : "";
+        print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})${cleanupText}`);
+        for (const diagnostic of report.diagnostics || []) {
+            print(`  [CLEANUP] ${escapeInlineText(diagnostic)}`);
+        }
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;

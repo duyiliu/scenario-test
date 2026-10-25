@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -198,12 +198,19 @@
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ],
     "failurePolicies": [
       "stop",
       "continue"
-    ]
+    ],
+    "always": {
+      "type": "boolean",
+      "field": "always",
+      "cancellation": "skip",
+      "note": "步骤声明 always: true 后作为清理步骤：普通步骤全部结束后统一执行；普通步骤失败（failurePolicy: stop）或被 onStep 判失败后仍执行剩余 always 步骤。清理失败与原失败分别统计（report.cleanup 与 report.diagnostics），任一清理步骤失败同样使场景 FAILED。取消执行时默认不执行清理步骤（report.cleanup.status=SKIPPED 并给出诊断）；超时属于失败而非取消，仍会执行清理"
+    }
   },
   "cli": {
     "commands": [

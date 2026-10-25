@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -158,9 +158,17 @@ export const contract = Object.freeze({
         stepKeys: Object.freeze([
             "name", "method", "path", "params", "request", "status",
             "assertions", "extract", "when", "retryUntil", "timeoutMs",
-            "saveResponseAs", "adapter"
+            "saveResponseAs", "adapter", "always"
         ]),
-        failurePolicies: Object.freeze(["stop", "continue"])
+        failurePolicies: Object.freeze(["stop", "continue"]),
+        // 步骤级清理：always: true 的步骤在所有普通步骤之后执行（失败/stop 中断后仍执行）；
+        // 取消默认不执行清理——中止信号已生效时不再发起清理请求，避免半途取消后又写数据
+        always: Object.freeze({
+            type: "boolean",
+            field: "always",
+            cancellation: "skip",
+            note: "步骤声明 always: true 后作为清理步骤：普通步骤全部结束后统一执行；普通步骤失败（failurePolicy: stop）或被 onStep 判失败后仍执行剩余 always 步骤。清理失败与原失败分别统计（report.cleanup 与 report.diagnostics），任一清理步骤失败同样使场景 FAILED。取消执行时默认不执行清理步骤（report.cleanup.status=SKIPPED 并给出诊断）；超时属于失败而非取消，仍会执行清理"
+        })
     }),
 
     cli: Object.freeze({

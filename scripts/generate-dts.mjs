@@ -191,6 +191,8 @@ export interface Step {
     timeoutMs?: number;
     saveResponseAs?: string;
     adapter?: string;
+    /** 清理步骤：所有普通步骤结束后执行；普通步骤失败/stop 中断后仍执行；取消时默认不执行 */
+    always?: boolean;
     /** 适配器专属步骤键与兼容字段 */
     [key: string]: unknown;
 }
@@ -233,12 +235,28 @@ export interface ScenarioStepResult {
     skipped?: boolean;
     cancelled?: boolean;
     timedOut?: boolean;
+    /** 该结果来自 always: true 的清理步骤 */
+    cleanup?: boolean;
     error?: string;
     warnings?: string[];
     assertions: AssertionResult[];
     stepNo?: number;
     request?: unknown;
     response?: unknown;
+}
+
+/** 清理阶段统计：results 与顶层 results 中的清理结果同一份对象引用 */
+export interface ScenarioCleanupReport {
+    planned: number;
+    executed: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    cancelled: number;
+    status: "PASSED" | "FAILED" | "SKIPPED" | "CANCELLED" | "NONE";
+    results: ScenarioStepResult[];
+    /** 清理失败/取消未执行清理的诊断文本（与顶层 diagnostics 同口径） */
+    diagnostics: string[];
 }
 
 export interface ScenarioReport {
@@ -250,6 +268,10 @@ export interface ScenarioReport {
     passedSteps: number;
     failed: number;
     skipped: number;
+    /** always 清理阶段的独立统计；无清理步骤时 planned=0/status="NONE" */
+    cleanup: ScenarioCleanupReport;
+    /** 清理失败或取消导致清理未执行的诊断 */
+    diagnostics: string[];
     results: ScenarioStepResult[];
     vars: Record<string, unknown>;
 }
