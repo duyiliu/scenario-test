@@ -134,9 +134,16 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --vars clientId=temporary-client `
   --vars "clientSecret={{vars.defaultSecret}}" `
   --timeout 5000
+
+# 数据集驱动：每行变量集执行一次所选场景（.jsonl 每行一个对象，.csv 首行为变量名）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --scenario order-detail `
+  --data .\scenario-test\data\order-cases.csv
 ```
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
+
+`--data <file>` 用于参数矩阵/批量详情校验：数据行覆盖配置 `vars` 后逐行执行所选场景（可配合 `--all` 执行多个场景），`--vars` 仍保持最高优先级。CSV 值均为字符串；需要数字/布尔/对象类型时用 JSONL。`--json` 模式下额外输出 `{ data: { file, total, passed, failed, skipped, rows } }`，每行包含该行变量与场景报告；任一行失败时退出码非零。
 
 ### 体检
 
@@ -199,7 +206,7 @@ scenario-test/
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
 - `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
+- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、`--data <file>`（JSONL/CSV 数据集逐行执行并按行聚合报告；行内仍受 `--concurrency` 控制）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。

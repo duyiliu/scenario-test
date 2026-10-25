@@ -96,8 +96,133 @@ function parseOptionValue(raw, spec, option) {
     return raw;
 }
 
+// --data 数据集：.csv 首行为变量名（RFC 4180 引号语义），其余按 JSONL 解析。
+// 每行/每条记录是一个变量集，键名不得使用运行时保留变量。
+function datasetRowsFromJsonl(text, filePath) {
+    const rows = [];
+    text.split(/\r?\n/).forEach((rawLine, index) => {
+        const line = rawLine.trim();
+        if (!line) return;
+        let parsed;
+        try {
+            parsed = JSON.parse(line);
+        } catch (error) {
+            throw new CliUsageError(
+                `数据集第 ${index + 1} 行不是合法 JSON：${filePath}`,
+                `JSONL 每行必须是一个 JSON 对象，例如 {"id":1,"name":"demo"}（${error.message}）。`
+            );
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new CliUsageError(
+                `数据集第 ${index + 1} 行必须是 JSON 对象：${filePath}`,
+                "JSONL 每行只能是一个对象（不能是数组、字符串或 null），键为变量名。"
+            );
+        }
+        rows.push(parsed);
+    });
+    if (!rows.length) throw new CliUsageError(`数据集为空：${filePath}`, "请至少提供一条数据行。");
+    return rows;
+}
+
+function datasetRowsFromCsv(text, filePath) {
+    const records = [];
+    let record = [];
+    let field = "";
+    let quoted = false;
+    let line = 1;
+    for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        if (quoted) {
+            if (char === '"') {
+                if (text[index + 1] === '"') { field += '"'; index += 1; }
+                else quoted = false;
+            } else {
+                if (char === "\n") line += 1;
+                field += char;
+            }
+        } else if (char === '"') {
+            if (field !== "") {
+                throw new CliUsageError(
+                    `数据集 CSV 第 ${line} 行引号位置非法：${filePath}`,
+                    "带引号的字段必须整体加引号，字段内双引号用两个双引号（\"\"）转义。"
+                );
+            }
+            quoted = true;
+        } else if (char === ",") {
+            record.push(field);
+            field = "";
+        } else if (char === "\n" || char === "\r") {
+            if (char === "\r" && text[index + 1] === "\n") index += 1;
+            record.push(field);
+            records.push({ fields: record, line });
+            record = [];
+            field = "";
+            line += 1;
+        } else {
+            field += char;
+        }
+    }
+    if (quoted) {
+        throw new CliUsageError(
+            `数据集 CSV 第 ${line} 行引号未闭合：${filePath}`,
+            "字段以双引号开头时必须用双引号闭合。"
+        );
+    }
+    if (field !== "" || record.length) {
+        record.push(field);
+        records.push({ fields: record, line });
+    }
+    const content = records.filter((item) => !(item.fields.length === 1 && item.fields[0].trim() === ""));
+    if (!content.length) throw new CliUsageError(`数据集为空：${filePath}`, "首行应为变量名，其后每行一条数据。");
+    const headers = content[0].fields.map((name) => name.trim());
+    if (headers.some((name) => !name)) {
+        throw new CliUsageError(`数据集 CSV 首行包含空变量名：${filePath}`, "首行每个字段都必须是变量名。");
+    }
+    if (new Set(headers).size !== headers.length) {
+        throw new CliUsageError(`数据集 CSV 首行变量名重复：${filePath}`, "变量名必须唯一，避免后列静默覆盖前列。");
+    }
+    const rows = content.slice(1).map((item) => {
+        if (item.fields.length !== headers.length) {
+            throw new CliUsageError(
+                `数据集 CSV 第 ${item.line} 行列数不一致：期望 ${headers.length} 列，实际 ${item.fields.length} 列`,
+                "每行字段数必须与首行变量名个数一致；缺值请保留逗号占位。"
+            );
+        }
+        return Object.fromEntries(headers.map((name, index) => [name, item.fields[index]]));
+    });
+    if (!rows.length) throw new CliUsageError(`数据集没有数据行：${filePath}`, "首行之后至少需要一行数据。");
+    return rows;
+}
+
+function loadDatasetRows(filePath) {
+    const absolutePath = path.resolve(filePath);
+    let text;
+    try {
+        text = fs.readFileSync(absolutePath, "utf8").replace(/^\uFEFF/, "");
+    } catch (error) {
+        throw new CliUsageError(
+            `无法读取数据集文件：${absolutePath}`,
+            `请确认 --data 指向存在的文件（${error.code || error.message}）。`
+        );
+    }
+    const rows = path.extname(absolutePath).toLowerCase() === ".csv"
+        ? datasetRowsFromCsv(text, absolutePath)
+        : datasetRowsFromJsonl(text, absolutePath);
+    rows.forEach((row, index) => {
+        try {
+            ScenarioTest.assertNoReservedVars(row, `数据集第 ${index + 1} 行`);
+        } catch (error) {
+            throw new CliUsageError(
+                error.message,
+                "数据集的列名/键不能使用运行时保留变量（runId、runNo、__proto__ 等）。"
+            );
+        }
+    });
+    return { file: absolutePath, rows };
+}
+
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, data: "", port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -598,21 +723,21 @@ async function runCommand(args) {
             "请检查配置中的 scenarios 列表；如场景均为 manual:true，请确认数据准备完成后用 --scenario <id> 显式选择。"
         );
     }
+    const dataset = args.data ? loadDatasetRows(args.data) : null;
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = {};
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
-    const baseOptions = {
+    const environmentOptions = {
         config,
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
         authorization: args.authorization || environment.authorization || config.authorization || "",
         globals: mergeGlobals(config.globals, environment.globals, envGlobals),
         requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
-        vars: configVariables(config, args.vars),
         environmentVariables: process.env,
         io: ScenarioTest.createNodeIo(configDir),
         adapters
     };
-    if (!baseOptions.baseUrl) {
+    if (!environmentOptions.baseUrl) {
         throw new CliUsageError(
             "缺少 Base URL",
             "请在配置环境中设置 baseUrl，或使用 --base-url \"https://api.example.com\" 临时指定。"
@@ -627,7 +752,8 @@ async function runCommand(args) {
     // --json：stdout 只承载最终 JSON 文档，所有人类可读进度/结论改走 stderr；
     // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
     const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-    const reports = new Array(entries.length);
+    const reports = [];
+    const rowReportEntries = [];
     const accumulateReport = (report) => {
         total += report.planned;
         passedTotal += report.passedSteps;
@@ -643,7 +769,7 @@ async function runCommand(args) {
     // 单场景执行抽成可复用单元：并发模式下 entryPrint 指向场景私有缓冲，
     // 场景结束时一次性 flush，避免多个场景的 [PASS]/[FAIL]/[RETRY] 行交错。
     // 顺序模式下 entryPrint 就是全局 print，行为与历史串行输出完全一致。
-    const runEntry = async (entry, entryPrint) => {
+    const runEntry = async (entry, entryPrint, baseOptions) => {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
         let scenarioPath;
@@ -726,52 +852,94 @@ async function runCommand(args) {
         return report;
     };
 
-    if (args.concurrency <= 1) {
-        // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
-        for (let index = 0; index < entries.length; index += 1) {
-            const report = await runEntry(entries[index], print);
-            // JSON 输出按配置清单顺序收集，而非完成顺序
-            reports[index] = report;
-            accumulateReport(report);
-            print(reportSummary(report));
+    const summarizeReports = (scenarioReports) => {
+        const stats = { planned: 0, executed: 0, passedSteps: 0, failed: 0, skipped: 0 };
+        for (const report of scenarioReports) {
+            stats.planned += report.planned;
+            stats.executed += report.executed;
+            stats.passedSteps += report.passedSteps;
+            stats.failed += report.failed;
+            stats.skipped += report.skipped;
+        }
+        stats.stoppedUnexecuted = stats.planned - stats.executed - stats.skipped;
+        stats.status = stats.failed + stats.stoppedUnexecuted > 0
+            ? "FAILED"
+            : (stats.passedSteps === 0 && stats.skipped > 0 ? "SKIPPED" : "PASSED");
+        return stats;
+    };
+    // 单轮场景执行：--data 时每行调用一次，无 --data 时只调用一次，保持既有输出/统计口径。
+    const runEntries = async (baseOptions) => {
+        const entryReports = new Array(entries.length);
+        if (args.concurrency <= 1) {
+            // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
+            for (let index = 0; index < entries.length; index += 1) {
+                const report = await runEntry(entries[index], print, baseOptions);
+                // JSON 输出按配置清单顺序收集，而非完成顺序
+                entryReports[index] = report;
+                accumulateReport(report);
+                print(reportSummary(report));
+            }
+        } else {
+            // 并发：每个场景先写入私有缓冲，场景结束一次性输出；entryReports 按 entries 下标回填，
+            // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
+            let nextIndex = 0;
+            let firstError = null;
+            // 单独用布尔标记而不是靠 firstError 的真值判断：执行链可能以假值拒绝
+            // （插件 transformScenario/afterScenario 抛 null/undefined/空串），
+            // 那也必须与串行一致地中断并让退出码为 1，否则并发路径会静默产出带空洞的报告。
+            let hasError = false;
+            const workerCount = Math.min(args.concurrency, entries.length);
+            const worker = async () => {
+                while (true) {
+                    if (hasError) return;
+                    const index = nextIndex;
+                    nextIndex += 1;
+                    if (index >= entries.length) return;
+                    const bufferedLines = [];
+                    const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+                    try {
+                        const report = await runEntry(entries[index], bufferedPrint, baseOptions);
+                        entryReports[index] = report;
+                        accumulateReport(report);
+                        bufferedPrint(reportSummary(report));
+                    } catch (error) {
+                        // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
+                        // 不再调度新场景，已在飞行的场景跑完后统一失败。
+                        if (!hasError) {
+                            hasError = true;
+                            firstError = error;
+                        }
+                    } finally {
+                        for (const line of bufferedLines) print(line);
+                    }
+                }
+            };
+            await Promise.all(Array.from({ length: workerCount }, () => worker()));
+            if (hasError) throw firstError;
+        }
+        return entryReports;
+    };
+
+    // --data：外层按数据行串行迭代，行内仍按 --concurrency 执行所选场景；
+    // 无 --data 时只有一条隐式行，行为与既有口径一致。
+    // 变量优先级：配置 vars < 数据行 < --vars（--vars 仍是最高优先级）。
+    if (dataset) {
+        for (let rowIndex = 0; rowIndex < dataset.rows.length; rowIndex += 1) {
+            const dataRow = dataset.rows[rowIndex];
+            const rowBaseOptions = {
+                ...environmentOptions,
+                vars: configVariables(config, { ...dataRow, ...args.vars })
+            };
+            const variableNames = escapeInlineText(Object.keys(dataRow).join(", ") || "无");
+            print(`\n# 数据集第 ${rowIndex + 1}/${dataset.rows.length} 行（变量: ${variableNames}）`);
+            const rowReports = await runEntries(rowBaseOptions);
+            const stats = summarizeReports(rowReports);
+            rowReportEntries.push({ row: rowIndex + 1, vars: dataRow, ...stats, scenarios: rowReports });
+            print(`行汇总: 第 ${rowIndex + 1}/${dataset.rows.length} 行 passed=${stats.passedSteps} failed=${stats.failed} skipped=${stats.skipped} executed=${stats.executed}/${stats.planned} planned (状态 ${stats.status})`);
+            reports.push(...rowReports);
         }
     } else {
-        // 并发：每个场景先写入私有缓冲，场景结束一次性输出；reports 按 entries 下标回填，
-        // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
-        let nextIndex = 0;
-        let firstError = null;
-        // 单独用布尔标记而不是靠 firstError 的真值判断：执行链可能以假值拒绝
-        // （插件 transformScenario/afterScenario 抛 null/undefined/空串），
-        // 那也必须与串行一致地中断并让退出码为 1，否则并发路径会静默产出带空洞的报告。
-        let hasError = false;
-        const workerCount = Math.min(args.concurrency, entries.length);
-        const worker = async () => {
-            while (true) {
-                if (hasError) return;
-                const index = nextIndex;
-                nextIndex += 1;
-                if (index >= entries.length) return;
-                const bufferedLines = [];
-                const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
-                try {
-                    const report = await runEntry(entries[index], bufferedPrint);
-                    reports[index] = report;
-                    accumulateReport(report);
-                    bufferedPrint(reportSummary(report));
-                } catch (error) {
-                    // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
-                    // 不再调度新场景，已在飞行的场景跑完后统一失败。
-                    if (!hasError) {
-                        hasError = true;
-                        firstError = error;
-                    }
-                } finally {
-                    for (const line of bufferedLines) print(line);
-                }
-            }
-        };
-        await Promise.all(Array.from({ length: workerCount }, () => worker()));
-        if (hasError) throw firstError;
+        reports.push(...await runEntries({ ...environmentOptions, vars: configVariables(config, args.vars) }));
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;
@@ -794,9 +962,24 @@ async function runCommand(args) {
     if (args.json) {
         // 直接序列化 runScenario report（编程接口的稳定形状，不另造易漂移子集）；
         // 单场景输出 report 本身，多场景顶层包 { scenarios: [...] }。
+        // --data 时顶层包 { data: { file, total, passed, failed, skipped, rows } }，每行聚合该行场景报告。
         // 退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
-        const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
-        process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+        if (dataset) {
+            const payload = {
+                data: {
+                    file: dataset.file,
+                    total: rowReportEntries.length,
+                    passed: rowReportEntries.filter((item) => item.status === "PASSED").length,
+                    failed: rowReportEntries.filter((item) => item.status === "FAILED").length,
+                    skipped: rowReportEntries.filter((item) => item.status === "SKIPPED").length,
+                    rows: rowReportEntries
+                }
+            };
+            process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+        } else {
+            const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+            process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+        }
     }
 }
 

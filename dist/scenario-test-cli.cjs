@@ -348,7 +348,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -540,6 +540,11 @@ var contract = Object.freeze({
         description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
+      data: {
+        kind: "value",
+        prop: "data",
+        description: "\u6570\u636E\u96C6\u6587\u4EF6\uFF08.jsonl/.ndjson \u6BCF\u884C\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C.csv \u9996\u884C\u4E3A\u53D8\u91CF\u540D\uFF09\uFF1B\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u6240\u9009\u573A\u666F\uFF0C\u62A5\u544A\u6309\u884C\u805A\u5408"
+      },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
@@ -3434,7 +3439,7 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 
 1. \u53EA\u5904\u7406\u672C\u6B21\u6307\u5B9A\u7684\u4E00\u4E2A\u4E1A\u52A1\u529F\u80FD\u3002\u5148\u7ED9\u51FA\u529F\u80FD\u5361\u7247\uFF1A\u529F\u80FD\u76EE\u6807\u3001\u53C2\u4E0E\u89D2\u8272\u3001\u89E6\u53D1\u5165\u53E3\u3001\u524D\u7F6E\u6761\u4EF6\u3001\u5173\u952E\u4E1A\u52A1\u89C4\u5219\u3001\u72B6\u6001\u53D8\u5316\u3001\u76F4\u63A5\u76F8\u5173\u63A5\u53E3\u3001\u6D4B\u8BD5\u6570\u636E\u4E0E\u6E05\u7406\u6761\u4EF6\uFF1B\u518D\u7ED9\u51FA\u8BE5\u529F\u80FD\u7684\u573A\u666F\u77E9\u9635\uFF0C\u5217\u660E\u6BCF\u4E2A\u573A\u666F\u7684\u9A8C\u8BC1\u76EE\u6807\u3001\u524D\u7F6E\u6761\u4EF6\u3001\u6B65\u9AA4\u3001\u9884\u671F\u7ED3\u679C\u548C\u662F\u5426\u5199\u6570\u636E\u3002\u65E0\u6CD5\u786E\u8BA4\u7684\u5185\u5BB9\u5217\u4E3A\u5F85\u786E\u8BA4\u9879\uFF0C\u4E0D\u5F97\u628A\u8303\u56F4\u6269\u5C55\u5230\u76F8\u90BB\u529F\u80FD\u3002
 2. \u4E1A\u52A1\u529F\u80FD\u662F\u8BBE\u8BA1\u8FB9\u754C\uFF0C\u573A\u666F\u662F\u8BE5\u529F\u80FD\u4E0B\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84\u3002\u6309\u8BC1\u636E\u8986\u76D6\u6210\u529F\u8DEF\u5F84\u3001\u4E1A\u52A1\u89C4\u5219/\u53C2\u6570\u6821\u9A8C\u3001\u6743\u9650\u3001\u8FB9\u754C\u503C\u3001\u91CD\u590D\u64CD\u4F5C\u6216\u5E42\u7B49\u3001\u5408\u6CD5\u4E0E\u975E\u6CD5\u72B6\u6001\u6D41\u8F6C\uFF1B\u6CA1\u6709\u8BC1\u636E\u7684\u7C7B\u522B\u4E0D\u751F\u6210\u3002\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u5305\u542B\u51C6\u5907\u3001\u6267\u884C\u3001\u67E5\u8BE2\u9A8C\u8BC1\u548C\u7CBE\u786E\u6E05\u7406\u7B49\u591A\u4E2A HTTP \u6B65\u9AA4\uFF0C\u4F46\u8FD9\u4E9B\u6B65\u9AA4\u53EA\u670D\u52A1\u4E8E\u76EE\u6807\u529F\u80FD\uFF0C\u4E0D\u628A\u591A\u4E2A\u4E1A\u52A1\u529F\u80FD\u4E32\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002\u8BA4\u8BC1\u7B49\u516C\u5171\u524D\u7F6E\u53EA\u4F5C\u4E3A\u51C6\u5907\u6B65\u9AA4\uFF0C\u4E0D\u6539\u53D8\u573A\u666F\u5F52\u5C5E\u3002
-3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\u3002
+3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\uFF1B\u53C2\u6570\u77E9\u9635/\u6279\u91CF\u6821\u9A8C\u53EF\u7528 \`--data <file>\`\uFF08JSONL \u6BCF\u884C\u4E00\u4E2A\u53D8\u91CF\u5BF9\u8C61\uFF0C\u6216 CSV \u9996\u884C\u53D8\u91CF\u540D\uFF09\u9010\u884C\u6267\u884C\u540C\u4E00\u573A\u666F\u5E76\u6309\u884C\u805A\u5408\u62A5\u544A\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u6B65\u9AA4\u7EC4\u5408\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
 5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
@@ -3797,6 +3802,14 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 \`\`\`
 
 \`--vars key=value\` \u53EF\u91CD\u590D\uFF0C\u6309\u51FA\u73B0\u987A\u5E8F\u53E0\u52A0\uFF08\u540C\u540D\u540E\u8005\u8986\u76D6\uFF09\uFF0C\u4F18\u5148\u7EA7\u9AD8\u4E8E\u914D\u7F6E \`vars\` \u4E0E\u73AF\u5883\u53D8\u91CF\uFF0C\u503C\u4E2D\u7684 \`{{ }}\` \u6A21\u677F\u7167\u5E38\u89E3\u6790\uFF1B\`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\u3002\`runId\` / \`runNo\` \u662F\u4FDD\u7559\u53D8\u91CF\uFF0C\u4E0D\u80FD\u7528 \`--vars\` \u8986\u76D6\u3002
+
+\u7528\u6570\u636E\u96C6\u8DD1\u53C2\u6570\u77E9\u9635\u6216\u6279\u91CF\u8BE6\u60C5\u6821\u9A8C\uFF0C\u65E0\u9700\u590D\u5236\u6B65\u9AA4\uFF1A
+
+\`\`\`powershell
+node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-detail --data ${directory}/data/order-cases.csv
+\`\`\`
+
+\`--data <file>\` \u652F\u6301 JSONL\uFF08\u6BCF\u884C\u4E00\u4E2A JSON \u5BF9\u8C61\uFF09\u4E0E CSV\uFF08\u9996\u884C\u4E3A\u53D8\u91CF\u540D\uFF0C\u503C\u5747\u4E3A\u5B57\u7B26\u4E32\uFF09\uFF1B\u6BCF\u884C\u53D8\u91CF\u96C6\u8986\u76D6\u914D\u7F6E \`vars\` \u540E\u6267\u884C\u4E00\u6B21\u6240\u9009\u573A\u666F\uFF0C\`--vars\` \u4ECD\u4F18\u5148\u7EA7\u6700\u9AD8\u3002\`--json\` \u8F93\u51FA \`{ data: { file, total, passed, failed, skipped, rows } }\`\uFF0C\u6309\u884C\u805A\u5408\u573A\u666F\u62A5\u544A\uFF1B\u4EFB\u4E00\u884C\u5931\u8D25\u65F6\u9000\u51FA\u7801\u975E\u96F6\u3002
 
 ## \u5E38\u89C1\u95EE\u9898
 
@@ -4403,8 +4416,128 @@ function parseOptionValue(raw, spec, option) {
   if (spec.parse === "keyValue") return parseKeyValueOption(raw, option);
   return raw;
 }
+function datasetRowsFromJsonl(text, filePath) {
+  const rows = [];
+  text.split(/\r?\n/).forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (!line) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch (error) {
+      throw new CliUsageError(
+        `\u6570\u636E\u96C6\u7B2C ${index + 1} \u884C\u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${filePath}`,
+        `JSONL \u6BCF\u884C\u5FC5\u987B\u662F\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C\u4F8B\u5982 {"id":1,"name":"demo"}\uFF08${error.message}\uFF09\u3002`
+      );
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new CliUsageError(
+        `\u6570\u636E\u96C6\u7B2C ${index + 1} \u884C\u5FC5\u987B\u662F JSON \u5BF9\u8C61\uFF1A${filePath}`,
+        "JSONL \u6BCF\u884C\u53EA\u80FD\u662F\u4E00\u4E2A\u5BF9\u8C61\uFF08\u4E0D\u80FD\u662F\u6570\u7EC4\u3001\u5B57\u7B26\u4E32\u6216 null\uFF09\uFF0C\u952E\u4E3A\u53D8\u91CF\u540D\u3002"
+      );
+    }
+    rows.push(parsed);
+  });
+  if (!rows.length) throw new CliUsageError(`\u6570\u636E\u96C6\u4E3A\u7A7A\uFF1A${filePath}`, "\u8BF7\u81F3\u5C11\u63D0\u4F9B\u4E00\u6761\u6570\u636E\u884C\u3002");
+  return rows;
+}
+function datasetRowsFromCsv(text, filePath) {
+  const records = [];
+  let record = [];
+  let field = "";
+  let quoted = false;
+  let line = 1;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quoted) {
+      if (char === '"') {
+        if (text[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else quoted = false;
+      } else {
+        if (char === "\n") line += 1;
+        field += char;
+      }
+    } else if (char === '"') {
+      if (field !== "") {
+        throw new CliUsageError(
+          `\u6570\u636E\u96C6 CSV \u7B2C ${line} \u884C\u5F15\u53F7\u4F4D\u7F6E\u975E\u6CD5\uFF1A${filePath}`,
+          '\u5E26\u5F15\u53F7\u7684\u5B57\u6BB5\u5FC5\u987B\u6574\u4F53\u52A0\u5F15\u53F7\uFF0C\u5B57\u6BB5\u5185\u53CC\u5F15\u53F7\u7528\u4E24\u4E2A\u53CC\u5F15\u53F7\uFF08""\uFF09\u8F6C\u4E49\u3002'
+        );
+      }
+      quoted = true;
+    } else if (char === ",") {
+      record.push(field);
+      field = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && text[index + 1] === "\n") index += 1;
+      record.push(field);
+      records.push({ fields: record, line });
+      record = [];
+      field = "";
+      line += 1;
+    } else {
+      field += char;
+    }
+  }
+  if (quoted) {
+    throw new CliUsageError(
+      `\u6570\u636E\u96C6 CSV \u7B2C ${line} \u884C\u5F15\u53F7\u672A\u95ED\u5408\uFF1A${filePath}`,
+      "\u5B57\u6BB5\u4EE5\u53CC\u5F15\u53F7\u5F00\u5934\u65F6\u5FC5\u987B\u7528\u53CC\u5F15\u53F7\u95ED\u5408\u3002"
+    );
+  }
+  if (field !== "" || record.length) {
+    record.push(field);
+    records.push({ fields: record, line });
+  }
+  const content = records.filter((item) => !(item.fields.length === 1 && item.fields[0].trim() === ""));
+  if (!content.length) throw new CliUsageError(`\u6570\u636E\u96C6\u4E3A\u7A7A\uFF1A${filePath}`, "\u9996\u884C\u5E94\u4E3A\u53D8\u91CF\u540D\uFF0C\u5176\u540E\u6BCF\u884C\u4E00\u6761\u6570\u636E\u3002");
+  const headers = content[0].fields.map((name) => name.trim());
+  if (headers.some((name) => !name)) {
+    throw new CliUsageError(`\u6570\u636E\u96C6 CSV \u9996\u884C\u5305\u542B\u7A7A\u53D8\u91CF\u540D\uFF1A${filePath}`, "\u9996\u884C\u6BCF\u4E2A\u5B57\u6BB5\u90FD\u5FC5\u987B\u662F\u53D8\u91CF\u540D\u3002");
+  }
+  if (new Set(headers).size !== headers.length) {
+    throw new CliUsageError(`\u6570\u636E\u96C6 CSV \u9996\u884C\u53D8\u91CF\u540D\u91CD\u590D\uFF1A${filePath}`, "\u53D8\u91CF\u540D\u5FC5\u987B\u552F\u4E00\uFF0C\u907F\u514D\u540E\u5217\u9759\u9ED8\u8986\u76D6\u524D\u5217\u3002");
+  }
+  const rows = content.slice(1).map((item) => {
+    if (item.fields.length !== headers.length) {
+      throw new CliUsageError(
+        `\u6570\u636E\u96C6 CSV \u7B2C ${item.line} \u884C\u5217\u6570\u4E0D\u4E00\u81F4\uFF1A\u671F\u671B ${headers.length} \u5217\uFF0C\u5B9E\u9645 ${item.fields.length} \u5217`,
+        "\u6BCF\u884C\u5B57\u6BB5\u6570\u5FC5\u987B\u4E0E\u9996\u884C\u53D8\u91CF\u540D\u4E2A\u6570\u4E00\u81F4\uFF1B\u7F3A\u503C\u8BF7\u4FDD\u7559\u9017\u53F7\u5360\u4F4D\u3002"
+      );
+    }
+    return Object.fromEntries(headers.map((name, index) => [name, item.fields[index]]));
+  });
+  if (!rows.length) throw new CliUsageError(`\u6570\u636E\u96C6\u6CA1\u6709\u6570\u636E\u884C\uFF1A${filePath}`, "\u9996\u884C\u4E4B\u540E\u81F3\u5C11\u9700\u8981\u4E00\u884C\u6570\u636E\u3002");
+  return rows;
+}
+function loadDatasetRows(filePath) {
+  const absolutePath = import_node_path6.default.resolve(filePath);
+  let text;
+  try {
+    text = import_node_fs6.default.readFileSync(absolutePath, "utf8").replace(/^\uFEFF/, "");
+  } catch (error) {
+    throw new CliUsageError(
+      `\u65E0\u6CD5\u8BFB\u53D6\u6570\u636E\u96C6\u6587\u4EF6\uFF1A${absolutePath}`,
+      `\u8BF7\u786E\u8BA4 --data \u6307\u5411\u5B58\u5728\u7684\u6587\u4EF6\uFF08${error.code || error.message}\uFF09\u3002`
+    );
+  }
+  const rows = import_node_path6.default.extname(absolutePath).toLowerCase() === ".csv" ? datasetRowsFromCsv(text, absolutePath) : datasetRowsFromJsonl(text, absolutePath);
+  rows.forEach((row, index) => {
+    try {
+      assertNoReservedVars(row, `\u6570\u636E\u96C6\u7B2C ${index + 1} \u884C`);
+    } catch (error) {
+      throw new CliUsageError(
+        error.message,
+        "\u6570\u636E\u96C6\u7684\u5217\u540D/\u952E\u4E0D\u80FD\u4F7F\u7528\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF08runId\u3001runNo\u3001__proto__ \u7B49\uFF09\u3002"
+      );
+    }
+  });
+  return { file: absolutePath, rows };
+}
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, data: "", port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4843,21 +4976,21 @@ ${choices.join("\n")}${remaining > 0 ? `
       "\u8BF7\u68C0\u67E5\u914D\u7F6E\u4E2D\u7684 scenarios \u5217\u8868\uFF1B\u5982\u573A\u666F\u5747\u4E3A manual:true\uFF0C\u8BF7\u786E\u8BA4\u6570\u636E\u51C6\u5907\u5B8C\u6210\u540E\u7528 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002"
     );
   }
+  const dataset = args.data ? loadDatasetRows(args.data) : null;
   const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
   const adapters = {};
   for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
-  const baseOptions = {
+  const environmentOptions = {
     config,
     baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
     authorization: args.authorization || environment.authorization || config.authorization || "",
     globals: mergeGlobals(config.globals, environment.globals, envGlobals),
     requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
-    vars: configVariables(config, args.vars),
     environmentVariables: process.env,
     io: createNodeIo(configDir),
     adapters
   };
-  if (!baseOptions.baseUrl) {
+  if (!environmentOptions.baseUrl) {
     throw new CliUsageError(
       "\u7F3A\u5C11 Base URL",
       '\u8BF7\u5728\u914D\u7F6E\u73AF\u5883\u4E2D\u8BBE\u7F6E baseUrl\uFF0C\u6216\u4F7F\u7528 --base-url "https://api.example.com" \u4E34\u65F6\u6307\u5B9A\u3002'
@@ -4870,7 +5003,8 @@ ${choices.join("\n")}${remaining > 0 ? `
   let skippedTotal = 0;
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-  const reports = new Array(entries.length);
+  const reports = [];
+  const rowReportEntries = [];
   const accumulateReport = (report) => {
     total += report.planned;
     passedTotal += report.passedSteps;
@@ -4881,7 +5015,7 @@ ${choices.join("\n")}${remaining > 0 ? `
     skippedTotal += report.skipped;
   };
   const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
-  const runEntry = async (entry, entryPrint) => {
+  const runEntry = async (entry, entryPrint, baseOptions) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
     if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
@@ -4945,43 +5079,79 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     return report;
   };
-  if (args.concurrency <= 1) {
-    for (let index = 0; index < entries.length; index += 1) {
-      const report = await runEntry(entries[index], print);
-      reports[index] = report;
-      accumulateReport(report);
-      print(reportSummary(report));
+  const summarizeReports = (scenarioReports) => {
+    const stats = { planned: 0, executed: 0, passedSteps: 0, failed: 0, skipped: 0 };
+    for (const report of scenarioReports) {
+      stats.planned += report.planned;
+      stats.executed += report.executed;
+      stats.passedSteps += report.passedSteps;
+      stats.failed += report.failed;
+      stats.skipped += report.skipped;
+    }
+    stats.stoppedUnexecuted = stats.planned - stats.executed - stats.skipped;
+    stats.status = stats.failed + stats.stoppedUnexecuted > 0 ? "FAILED" : stats.passedSteps === 0 && stats.skipped > 0 ? "SKIPPED" : "PASSED";
+    return stats;
+  };
+  const runEntries = async (baseOptions) => {
+    const entryReports = new Array(entries.length);
+    if (args.concurrency <= 1) {
+      for (let index = 0; index < entries.length; index += 1) {
+        const report = await runEntry(entries[index], print, baseOptions);
+        entryReports[index] = report;
+        accumulateReport(report);
+        print(reportSummary(report));
+      }
+    } else {
+      let nextIndex = 0;
+      let firstError = null;
+      let hasError = false;
+      const workerCount = Math.min(args.concurrency, entries.length);
+      const worker = async () => {
+        while (true) {
+          if (hasError) return;
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= entries.length) return;
+          const bufferedLines = [];
+          const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+          try {
+            const report = await runEntry(entries[index], bufferedPrint, baseOptions);
+            entryReports[index] = report;
+            accumulateReport(report);
+            bufferedPrint(reportSummary(report));
+          } catch (error) {
+            if (!hasError) {
+              hasError = true;
+              firstError = error;
+            }
+          } finally {
+            for (const line of bufferedLines) print(line);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      if (hasError) throw firstError;
+    }
+    return entryReports;
+  };
+  if (dataset) {
+    for (let rowIndex = 0; rowIndex < dataset.rows.length; rowIndex += 1) {
+      const dataRow = dataset.rows[rowIndex];
+      const rowBaseOptions = {
+        ...environmentOptions,
+        vars: configVariables(config, { ...dataRow, ...args.vars })
+      };
+      const variableNames = escapeInlineText(Object.keys(dataRow).join(", ") || "\u65E0");
+      print(`
+# \u6570\u636E\u96C6\u7B2C ${rowIndex + 1}/${dataset.rows.length} \u884C\uFF08\u53D8\u91CF: ${variableNames}\uFF09`);
+      const rowReports = await runEntries(rowBaseOptions);
+      const stats = summarizeReports(rowReports);
+      rowReportEntries.push({ row: rowIndex + 1, vars: dataRow, ...stats, scenarios: rowReports });
+      print(`\u884C\u6C47\u603B: \u7B2C ${rowIndex + 1}/${dataset.rows.length} \u884C passed=${stats.passedSteps} failed=${stats.failed} skipped=${stats.skipped} executed=${stats.executed}/${stats.planned} planned (\u72B6\u6001 ${stats.status})`);
+      reports.push(...rowReports);
     }
   } else {
-    let nextIndex = 0;
-    let firstError = null;
-    let hasError = false;
-    const workerCount = Math.min(args.concurrency, entries.length);
-    const worker = async () => {
-      while (true) {
-        if (hasError) return;
-        const index = nextIndex;
-        nextIndex += 1;
-        if (index >= entries.length) return;
-        const bufferedLines = [];
-        const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
-        try {
-          const report = await runEntry(entries[index], bufferedPrint);
-          reports[index] = report;
-          accumulateReport(report);
-          bufferedPrint(reportSummary(report));
-        } catch (error) {
-          if (!hasError) {
-            hasError = true;
-            firstError = error;
-          }
-        } finally {
-          for (const line of bufferedLines) print(line);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    if (hasError) throw firstError;
+    reports.push(...await runEntries({ ...environmentOptions, vars: configVariables(config, args.vars) }));
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
@@ -5007,9 +5177,24 @@ Overall: ${passedTotal}/${total} passed`);
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5B8C\u6210\u3002${countSummary}${skippedTotal > 0 ? "\uFF1B\u6761\u4EF6\u8DF3\u8FC7\u7684\u6B65\u9AA4\u672A\u53D1\u8D77\u8BF7\u6C42" : ""}\u3002`);
   }
   if (args.json) {
-    const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}
+    if (dataset) {
+      const payload = {
+        data: {
+          file: dataset.file,
+          total: rowReportEntries.length,
+          passed: rowReportEntries.filter((item) => item.status === "PASSED").length,
+          failed: rowReportEntries.filter((item) => item.status === "FAILED").length,
+          skipped: rowReportEntries.filter((item) => item.status === "SKIPPED").length,
+          rows: rowReportEntries
+        }
+      };
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
+    } else {
+      const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}
+`);
+    }
   }
 }
 var FAILURE_BODY_LIMIT = 2e3;

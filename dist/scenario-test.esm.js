@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -433,6 +433,11 @@ var contract = Object.freeze({
         description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
+      data: {
+        kind: "value",
+        prop: "data",
+        description: "\u6570\u636E\u96C6\u6587\u4EF6\uFF08.jsonl/.ndjson \u6BCF\u884C\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C.csv \u9996\u884C\u4E3A\u53D8\u91CF\u540D\uFF09\uFF1B\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u6240\u9009\u573A\u666F\uFF0C\u62A5\u544A\u6309\u884C\u805A\u5408"
+      },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },

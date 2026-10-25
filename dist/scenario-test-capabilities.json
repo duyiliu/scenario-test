@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 13,
+  "contractVersion": 14,
   "assertions": {
     "operators": {
       "exists": {
@@ -279,6 +279,10 @@
         "kind": "value",
         "description": "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs",
         "parse": "number"
+      },
+      "data": {
+        "kind": "value",
+        "description": "数据集文件（.jsonl/.ndjson 每行一个 JSON 对象，.csv 首行为变量名）；每行变量集执行一次所选场景，报告按行聚合"
       },
       "port": {
         "kind": "value",

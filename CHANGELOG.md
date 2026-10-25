@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
   `nodePlugins` 的 `transformScenario`/`afterScenario` 也会被并发调用，同样要求可重入无状态；
   任一场景执行链（含插件钩子）拒绝均中断调度并以非零退出码终止，与串行一致。
 
+- `run --data <file>`（contract v13 → v14）：数据集驱动执行。支持 JSONL（每行一个 JSON 对象）与 CSV（首行为变量名，RFC 4180 引号语义，值均为字符串）；每行变量集覆盖配置 `vars` 后逐行执行所选场景，`--vars` 仍保持最高优先级；行内多场景仍受 `--concurrency` 控制，行与行之间保持串行。`--json` 输出 `{ data: { file, total, passed, failed, skipped, rows } }`，每行聚合场景报告；任一行失败/因 stop 未执行到位时退出码非零。数据行可满足 `variables.required`，保留变量键（`runId`/`runNo` 等）、非法 JSON、CSV 列数不一致、空数据集均在发起请求前报错。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
+
 - `serve` 代理目标回退（issue #61）：配置存在 `envs` 但所选环境未声明（或为空）`baseUrl` 时，回退顶层 `config.baseUrl`，与 `run`/`doctor` 的回退口径一致，不再得到空代理目标。
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。

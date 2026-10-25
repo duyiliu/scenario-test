@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -199,6 +199,11 @@ export const contract = Object.freeze({
                 description: "临时注入/覆盖配置变量（key=value，可重复；优先级最高，值支持 {{ }} 模板）"
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
+            data: {
+                kind: "value",
+                prop: "data",
+                description: "数据集文件（.jsonl/.ndjson 每行一个 JSON 对象，.csv 首行为变量名）；每行变量集执行一次所选场景，报告按行聚合"
+            },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
