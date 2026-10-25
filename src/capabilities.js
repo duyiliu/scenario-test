@@ -43,9 +43,14 @@ export function buildCapabilities(inputContract = contract) {
             note: globals.note
         },
         config: {
+            configKeys: [...config.configKeys],
             scenarioItemKeys: [...config.scenarioItemKeys],
             environmentKeys: [...config.environmentKeys],
             variableKeys: [...config.variableKeys],
+            baseUrl: {
+                protocol: config.baseUrl.protocol,
+                note: config.baseUrl.note
+            },
             manual: { ...config.manual }
         },
         scenario: {
@@ -113,7 +118,9 @@ export function renderCapabilitiesText(capabilities) {
     lines.push("");
     lines.push(`globals 类型: ${capabilities.globals.types.join(" / ")}`);
     lines.push("");
+    lines.push(`config 顶层字段: ${capabilities.config.configKeys.join(" / ")}`);
     lines.push(`config.scenarios 项字段: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+    lines.push(`  baseUrl（${capabilities.config.baseUrl.protocol}）: ${capabilities.config.baseUrl.note}`);
     lines.push(`  manual（${capabilities.config.manual.type}）: ${capabilities.config.manual.note}`);
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);

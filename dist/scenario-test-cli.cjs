@@ -245,7 +245,7 @@ var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_promises = require("node:readline/promises");
+var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
 
 // src/node.js
@@ -311,6 +311,7 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   normalizeWhenDefinition: () => normalizeWhenDefinition,
@@ -330,6 +331,7 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setRuntimeVar: () => setRuntimeVar,
   splitUrlFragment: () => splitUrlFragment,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
@@ -346,7 +348,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -463,10 +465,35 @@ var contract = Object.freeze({
     note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
   }),
   config: Object.freeze({
+    // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+    // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+    // 运行时实际消费的是场景级 envVars。
+    configKeys: Object.freeze([
+      "envs",
+      "defaultEnvKey",
+      "globals",
+      "vars",
+      "scenarioVars",
+      "variables",
+      "scenarios",
+      "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
+      "storagePrefix",
+      "storageKeys",
+      "baseUrl",
+      "authorization",
+      "nodePlugins",
+      "envVars"
+    ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+    baseUrl: Object.freeze({
+      protocol: "http(s)",
+      note: "\u73AF\u5883 baseUrl \u58F0\u660E\u65F6\u5FC5\u987B\u662F http(s):// URL\uFF1B\u672A\u58F0\u660E\uFF08\u6216\u4E3A\u7A7A\uFF09\u65F6\u56DE\u9000\u9876\u5C42 baseUrl\uFF0C\u4E24\u8005\u90FD\u4E3A\u7A7A\u65F6\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4F7F\u7528\u5F53\u524D\u9875\u9762\u5730\u5740\uFF0CCLI run \u4ECD\u9700 --base-url \u6216\u914D\u7F6E baseUrl"
+    }),
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
@@ -551,6 +578,10 @@ function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+function normalizeByteLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 var PATH_SEGMENT = /[^.\[\]]+/y;
 var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
@@ -1088,6 +1119,15 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
+function setRuntimeVar(vars, name, value) {
+  Object.defineProperty(vars, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return value;
+}
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
@@ -1107,7 +1147,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        runtime.vars[definition.name] = resolve(definition.default, runtime);
+        setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
         continue;
       }
       if (definition.required === true) {
@@ -1121,7 +1161,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    runtime.vars[definition.name] = value;
+    setRuntimeVar(runtime.vars, definition.name, value);
   }
   return { warnings, failures };
 }
@@ -1298,24 +1338,24 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
         throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
       }
-      vars[name] = formatTimestamp(base, definition.format);
+      setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
     } else if (definition.unit != null && definition.unit !== "ms") {
       if (definition.unit !== "s") {
         throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
       }
-      vars[name] = Math.floor(base / 1e3);
+      setRuntimeVar(vars, name, Math.floor(base / 1e3));
     } else {
-      vars[name] = base;
+      setRuntimeVar(vars, name, base);
     }
     return;
   }
   if (definition.type === "uuid") {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    vars[name] = globalThis.crypto.randomUUID();
+    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
     return;
   }
   if (definition.type === "uuidHex") {
-    vars[name] = uuidHex();
+    setRuntimeVar(vars, name, uuidHex());
     return;
   }
   if (definition.type === "idcard") {
@@ -1328,11 +1368,11 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
     }
     const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-    vars[name] = buildChinaIdNumber({
+    setRuntimeVar(vars, name, buildChinaIdNumber({
       regionCode,
       birthDate: definition.birthDate,
       sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-    });
+    }));
     return;
   }
   if (definition.type === "luhn") {
@@ -1349,7 +1389,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
     const first = `${prefix}${body}`;
-    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
     return;
   }
   if (definition.type === "phone") {
@@ -1361,7 +1401,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 8; i += 1) {
       tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
-    vars[name] = `${prefix}${tail}`;
+    setRuntimeVar(vars, name, `${prefix}${tail}`);
     return;
   }
   if (definition.type === "uscc") {
@@ -1373,12 +1413,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 9; i += 1) {
       orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
     }
-    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
     return;
   }
   if (definition.type === "md5") {
     const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-    vars[name] = md5(source);
+    setRuntimeVar(vars, name, md5(source));
     return;
   }
   if (definition.type === "signature") {
@@ -1387,12 +1427,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (!secret) {
       throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
     }
-    vars[name] = generateSignature(params, secret);
+    setRuntimeVar(vars, name, generateSignature(params, secret));
     return;
   }
   if (definition.type === "enum") {
     const { values, weights } = normalizeEnumDefinition(definition);
-    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1556,8 +1596,12 @@ function validateAdapterResponse(response, adapterName = "unknown") {
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
 var currentConfig = null;
-function invariant(condition, message) {
-  if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+  if (!condition) {
+    const error = new TypeError(message);
+    if (code) error.code = code;
+    throw error;
+  }
 }
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
@@ -1580,16 +1624,58 @@ function editDistance(a, b) {
   }
   return rows[a.length][b.length];
 }
-function looksLikeKeyTypo(key, allowed) {
+function findKeySuggestion(key, allowed) {
   const lower = key.toLowerCase();
-  return allowed.some((candidate) => {
+  return allowed.find((candidate) => {
     const target = candidate.toLowerCase();
     return target === lower || editDistance(lower, target) <= 1;
   });
 }
+function looksLikeKeyTypo(key, allowed) {
+  return findKeySuggestion(key, allowed) !== void 0;
+}
 var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-  return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  const described = unknownKeys.map((key) => {
+    const suggestion = findKeySuggestion(key, allowed);
+    return suggestion ? `"${key}"\uFF08\u662F\u5426\u60F3\u5199 "${suggestion}"\uFF1F\uFF09` : `"${key}"`;
+  });
+  return `${label} \u5305\u542B\u672A\u77E5\u952E ${described.join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+}
+function assertKnownKeys(input, allowed, label, hint = "") {
+  const unknownKeys = describeUnknownKeys(input, allowed);
+  invariant(
+    unknownKeys.length === 0,
+    unknownKeysMessage(label, unknownKeys, allowed, hint),
+    "SCENARIO_CONFIG_UNKNOWN_KEY"
+  );
+}
+function normalizeBaseUrl(value, label) {
+  if (value === void 0 || value === null) return value;
+  invariant(
+    typeof value === "string",
+    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  invariant(
+    /^https?:\/\//i.test(trimmed),
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
+  }
+  invariant(
+    (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  return trimmed;
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1664,10 +1750,15 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+  let generatedVarIndex = 0;
   for (const definition of input.generatedVars || []) {
-    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    generatedVarIndex += 1;
+    const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+    invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+    assertNotReservedVar(definition.name, `${label} name`);
     invariant(
       contract.generatedVars.types.includes(definition.type),
       `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -1839,14 +1930,21 @@ function defineScenario(input) {
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+  assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
+  const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-  const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-    ...env,
-    globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-  })) : [];
+  const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+    invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
+    assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    return {
+      ...env,
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+    };
+  }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
+    env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -1868,7 +1966,10 @@ function defineConfig(input) {
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
     invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
     invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+    assertKnownKeys(item, contract.config.variableKeys, `\u53D8\u91CF ${item.name}`, "\uFF08\u53D8\u91CF\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (item.label !== void 0) invariant(typeof item.label === "string", `\u53D8\u91CF ${item.name} \u7684 label \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
     if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+    if (item.required !== void 0) invariant(typeof item.required === "boolean", `\u53D8\u91CF ${item.name} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     return { ...item };
   }) : [];
   assertUnique(variables, "name", "\u53D8\u91CF name");
@@ -1878,6 +1979,7 @@ function defineConfig(input) {
   invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
   return {
     ...input,
+    baseUrl,
     globals,
     envs,
     scenarios,
@@ -2033,7 +2135,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         );
       }
     }
-    vars[name] = value;
+    setRuntimeVar(vars, name, value);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
@@ -2067,10 +2169,11 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-function readBodyChunks(response, signal) {
+function readBodyChunks(response, signal, maxBytes = 0) {
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
+  let totalBytes = 0;
   return new Promise((resolve2, reject) => {
     const onAbort = () => {
       reader.cancel().catch(() => {
@@ -2089,6 +2192,12 @@ function readBodyChunks(response, signal) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            reader.cancel().catch(() => {
+            });
+            throw createResponseTooLargeError(totalBytes, maxBytes);
+          }
           chunks.push(value);
         }
         resolve2(chunks);
@@ -2100,6 +2209,82 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function createResponseTooLargeError(bytesRead, limitBytes) {
+  const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  error.scenarioResponseTooLarge = true;
+  error.responseTooLarge = { bytesRead, limitBytes };
+  return error;
+}
+function resolveMaxResponseBytes(options = {}) {
+  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value);
+}
+function resolveMaxUploadBytes(options = {}) {
+  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value === void 0 ? void 0 : normalizeByteLimit(value);
+}
+function createSaveBodyStream(body, signal, maxBytes) {
+  if (!body) {
+    return new ReadableStream({
+      start(controller) {
+        if (signal?.aborted) controller.error(abortReason(signal));
+        else controller.close();
+      }
+    });
+  }
+  const reader = body.getReader();
+  let totalBytes = 0;
+  let finished = false;
+  let onAbort = null;
+  const cleanup = () => {
+    finished = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    onAbort = null;
+  };
+  const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+  });
+  return new ReadableStream({
+    start(controller) {
+      if (!signal) return;
+      onAbort = () => {
+        if (finished) return;
+        cleanup();
+        cancelReader(abortReason(signal));
+        controller.error(abortReason(signal));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          cleanup();
+          controller.close();
+          return;
+        }
+        totalBytes += value.byteLength;
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          cleanup();
+          cancelReader();
+          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (finished) return;
+        cleanup();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return cancelReader(reason);
+    }
+  });
+}
 function decoderForContentType(contentType2) {
   const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType2 || ""));
   if (!match) return new TextDecoder();
@@ -2109,20 +2294,37 @@ function decoderForContentType(contentType2) {
     return new TextDecoder();
   }
 }
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
-  const chunks = await readBodyChunks(response, signal);
-  if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
+  const maxResponseBytes = resolveMaxResponseBytes(options);
+  if (step.saveResponseAs) {
+    const relativePath = resolveString(step.saveResponseAs, runtime);
+    const metadata = { contentType: contentType2, headers, maxResponseBytes };
+    if (io?.saveResponseStream) {
+      const saved = await io.saveResponseStream(
+        relativePath,
+        createSaveBodyStream(response.body, signal, maxResponseBytes),
+        metadata
+      );
+      return { status: response.status, headers, body: saved, bodyText: null };
     }
-    const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType: contentType2, headers });
-    return { status: response.status, headers, body: saved, bodyText: null };
+    if (io?.saveResponse) {
+      const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+      const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+      if (chunks2.length > 1) {
+        let offset = 0;
+        for (const chunk of chunks2) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+      const saved = await io.saveResponse(relativePath, data, metadata);
+      return { status: response.status, headers, body: saved, bodyText: null };
+    }
   }
+  const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType2);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
@@ -2157,8 +2359,15 @@ async function executeHttp(step, runtime, options) {
   if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-    const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+    const upload = await options.io.createUploadBody(
+      resolve(request.fileUpload, runtime),
+      runtime,
+      { maxUploadBytes: resolveMaxUploadBytes(options) }
+    );
     fetchOptions.body = upload.body;
+    if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+      fetchOptions.duplex = "half";
+    }
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -2176,7 +2385,7 @@ async function executeHttp(step, runtime, options) {
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2203,6 +2412,8 @@ var AdapterExecutionError = class extends Error {
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
     if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+    if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+    if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
   }
 };
 function raceWithSignal(promise, signal) {
@@ -2298,6 +2509,8 @@ function createEngine(engineOptions = {}) {
       adapters,
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
+    if (options.maxResponseBytes === void 0) options.maxResponseBytes = engineOptions.maxResponseBytes;
+    if (options.maxUploadBytes === void 0) options.maxUploadBytes = engineOptions.maxUploadBytes;
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
@@ -2382,6 +2595,9 @@ function createEngine(engineOptions = {}) {
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path7 = context && context.path || resolveString(step.path || "", runtime);
+      const responseTooLarge = error?.responseTooLarge || null;
+      const uploadTooLarge = error?.uploadTooLarge || null;
+      const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
@@ -2391,6 +2607,9 @@ function createEngine(engineOptions = {}) {
         passed: false,
         cancelled,
         timedOut,
+        errorCode,
+        ...responseTooLarge ? { responseTooLarge } : {},
+        ...uploadTooLarge ? { uploadTooLarge } : {},
         error: errorMessage,
         warnings: [],
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -2489,9 +2708,14 @@ function buildCapabilities(inputContract = contract) {
       note: globals.note
     },
     config: {
+      configKeys: [...config.configKeys],
       scenarioItemKeys: [...config.scenarioItemKeys],
       environmentKeys: [...config.environmentKeys],
       variableKeys: [...config.variableKeys],
+      baseUrl: {
+        protocol: config.baseUrl.protocol,
+        note: config.baseUrl.note
+      },
       manual: { ...config.manual }
     },
     scenario: {
@@ -2557,7 +2781,9 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
   lines.push("");
+  lines.push(`config \u9876\u5C42\u5B57\u6BB5: ${capabilities.config.configKeys.join(" / ")}`);
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+  lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
@@ -2578,6 +2804,8 @@ function renderCapabilitiesText(capabilities) {
 // src/node/io.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_stream = require("node:stream");
+var import_promises = require("node:stream/promises");
 
 // src/utils/path-validator.js
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -2648,43 +2876,122 @@ function validatePath(root, userPath, options = {}) {
 }
 
 // src/node/io.js
-function createNodeIo(workspace = process.cwd()) {
+function createNodeIo(workspace = process.cwd(), options = {}) {
   const root = import_node_path2.default.resolve(workspace);
-  return {
-    async createUploadBody(definition) {
-      const filePath = typeof definition === "string" ? definition : definition.filePath;
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, filePath);
-      } catch (error) {
-        throw new Error(
-          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+  const defaultMaxUploadBytes = normalizeByteLimit(options.maxUploadBytes);
+  function resolveUploadPath(filePath) {
+    try {
+      return validatePath(root, filePath);
+    } catch (error) {
+      throw new Error(
+        `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
 \u539F\u56E0: ${error.message}
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
+      );
+    }
+  }
+  function resolveSavePath(relativePath) {
+    try {
+      return validatePath(root, relativePath);
+    } catch (error) {
+      throw new Error(
+        `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+      );
+    }
+  }
+  function resolveWriteTarget(absolutePath) {
+    let current = absolutePath;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 32; depth += 1) {
+      let stat;
+      try {
+        stat = import_node_fs2.default.lstatSync(current);
+      } catch (error) {
+        if (error.code === "ENOENT") return current;
+        throw error;
       }
+      if (!stat.isSymbolicLink()) return current;
+      if (seen.has(current)) throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u5305\u542B\u7B26\u53F7\u94FE\u63A5\u5FAA\u73AF: ${absolutePath}`);
+      seen.add(current);
+      const linkTarget = import_node_fs2.default.readlinkSync(current);
+      current = import_node_path2.default.resolve(import_node_path2.default.dirname(current), linkTarget);
+    }
+    throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u7B26\u53F7\u94FE\u63A5\u5C42\u7EA7\u8FC7\u6DF1: ${absolutePath}`);
+  }
+  return {
+    async createUploadBody(definition, runtime, callOptions = {}) {
+      const filePath = typeof definition === "string" ? definition : definition.filePath;
+      const absolutePath = resolveUploadPath(filePath);
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      const stat = import_node_fs2.default.statSync(absolutePath);
+      if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
+      const callMaxUploadBytes = callOptions?.maxUploadBytes;
+      const maxUploadBytes = callMaxUploadBytes === void 0 || callMaxUploadBytes === null ? defaultMaxUploadBytes : normalizeByteLimit(callMaxUploadBytes);
+      if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
+        const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
+        error.scenarioUploadTooLarge = true;
+        error.uploadTooLarge = { actualBytes: stat.size, limitBytes: maxUploadBytes };
+        throw error;
+      }
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
+      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, relativePath);
-      } catch (error) {
-        throw new Error(
-          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
-\u539F\u56E0: ${error.message}
-\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      const absolutePath = resolveSavePath(relativePath);
       import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
+    },
+    async saveResponseStream(relativePath, body, metadata = {}) {
+      const absolutePath = resolveSavePath(relativePath);
+      const writeTarget = resolveWriteTarget(absolutePath);
+      if (writeTarget !== absolutePath) {
+        try {
+          validatePath(root, writeTarget, { allowAbsolute: true });
+        } catch (error) {
+          throw new Error(
+            `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+          );
+        }
+      }
+      const directory = import_node_path2.default.dirname(writeTarget);
+      import_node_fs2.default.mkdirSync(directory, { recursive: true });
+      const tempPath = import_node_path2.default.join(
+        directory,
+        `.${import_node_path2.default.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+      const file = import_node_fs2.default.createWriteStream(tempPath);
+      let size = 0;
+      const counter = new import_node_stream.Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.byteLength;
+          callback(null, chunk);
+        }
+      });
+      try {
+        const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
+        await (0, import_promises.pipeline)(source, counter, file);
+        import_node_fs2.default.renameSync(tempPath, writeTarget);
+      } catch (error) {
+        if (!file.closed) {
+          await new Promise((resolveClose) => {
+            file.once("close", resolveClose);
+            file.destroy();
+          });
+        }
+        import_node_fs2.default.rmSync(tempPath, { force: true });
+        throw error;
+      }
+      return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -3400,6 +3707,39 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+function checkConfigBaseUrl(config) {
+  const environments = Array.isArray(config.envs) ? config.envs : [];
+  const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const missingKeys = environments.filter((env) => !String(env.baseUrl || "").trim()).map((env) => env.key);
+  if (environments.length === 0) {
+    if (fallback) {
+      return { name: "base-url", status: "PASS", message: `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u9876\u5C42 baseUrl \u53EF\u7528: ${fallback}`, fix: "" };
+    }
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: "\u914D\u7F6E\u672A\u58F0\u660E envs \u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl",
+      fix: "\u5728 scenario.config.js \u4E2D\u8865\u5145 envs[].baseUrl \u6216\u9876\u5C42 baseUrl\uFF08http(s)://\uFF09"
+    };
+  }
+  if (fallback) {
+    return {
+      name: "base-url",
+      status: "PASS",
+      message: missingKeys.length ? `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u5355\u72EC\u8BBE\u7F6E baseUrl\uFF0C\u5C06\u56DE\u9000\u9876\u5C42 baseUrl: ${fallback}` : `\u73AF\u5883 baseUrl \u5DF2\u58F0\u660E\uFF08http(s)://\uFF09\uFF0C\u9876\u5C42\u56DE\u9000\u5730\u5740: ${fallback}`,
+      fix: ""
+    };
+  }
+  if (missingKeys.length) {
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u8BBE\u7F6E baseUrl\uFF0C\u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl`,
+      fix: "\u4E3A\u6BCF\u4E2A\u73AF\u5883\u8865\u5145 http(s):// baseUrl\uFF0C\u6216\u58F0\u660E\u9876\u5C42 baseUrl \u4F5C\u4E3A\u56DE\u9000"
+    };
+  }
+  return { name: "base-url", status: "PASS", message: "\u6240\u6709\u73AF\u5883\u5747\u5DF2\u58F0\u660E http(s):// baseUrl", fix: "" };
+}
 function satisfiesNodeEngine(version, range) {
   const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
   if (!match) return false;
@@ -3458,15 +3798,32 @@ function buildDoctorReport(options) {
       config = loadConfigFile(configPath, api);
       checks.push({ name: "config-load", status: "PASS", message: `\u914D\u7F6E\u53EF\u52A0\u8F7D: ${configPath}`, fix: "" });
     } catch (error) {
+      const reason = String(error?.message || error);
       checks.push({
         name: "config-load",
         status: "FAIL",
-        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${error.message}\uFF09`,
+        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${reason}\uFF09`,
         fix: "\u68C0\u67E5\u914D\u7F6E\u8BED\u6CD5\u4E0E defineConfig \u8C03\u7528\uFF1B\u4FEE\u590D\u540E\u91CD\u65B0\u8FD0\u884C doctor"
       });
+      if (error?.code === "SCENARIO_CONFIG_UNKNOWN_KEY") {
+        checks.push({
+          name: "config-keys",
+          status: "FAIL",
+          message: `\u914D\u7F6E\u5B57\u6BB5\u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u6309\u62A5\u9519\u4E2D\u300C\u662F\u5426\u60F3\u5199\u300D\u6216\u5141\u8BB8\u7684\u952E\u540D\u4FEE\u6B63\u62FC\u5199"
+        });
+      } else if (error?.code === "SCENARIO_CONFIG_BASE_URL") {
+        checks.push({
+          name: "base-url",
+          status: "FAIL",
+          message: `baseUrl \u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u5C06 envs[].baseUrl \u6216\u9876\u5C42 baseUrl \u6539\u4E3A http:// \u6216 https:// \u5F00\u5934\u7684\u5B8C\u6574 URL"
+        });
+      }
     }
   }
   if (config) {
+    checks.push(checkConfigBaseUrl(config));
     const entries = config.scenarios || [];
     if (entries.length === 0) {
       checks.push({ name: "scenario-list", status: "PASS", message: "\u914D\u7F6E\u4E2D\u6682\u65E0\u53EF\u68C0\u67E5\u7684\u573A\u666F\uFF08scenarios \u4E3A\u7A7A\uFF09", fix: "" });
@@ -3845,7 +4202,7 @@ function resolveInitDirectory(projectRoot, value) {
 }
 async function askInitMode(directory) {
   if (!process.stdin.isTTY) return "keep";
-  const rl = (0, import_promises.createInterface)({ input: process.stdin, output: process.stdout });
+  const rl = (0, import_promises2.createInterface)({ input: process.stdin, output: process.stdout });
   try {
     const answer = await rl.question(
       `\u76EE\u6807\u76EE\u5F55 ${directory} \u5DF2\u5B58\u5728\u3002
@@ -4338,9 +4695,10 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   if (config.envs?.length) {
     const environment = selectEnvironment(config, envKey);
     const overridden = Boolean(baseUrlOverride);
+    const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
     return {
       key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
-      target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+      target: String(target).replace(/\/+$/, "")
     };
   }
   return {
