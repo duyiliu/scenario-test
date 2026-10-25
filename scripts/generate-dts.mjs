@@ -91,6 +91,10 @@ export interface ScenarioConfig {
     variables?: ConfigVariable[];
     scenarios?: ScenarioListItem[];
     requestTimeoutMs?: number;
+    /** 响应体大小上限（字节，0/未设置不限）；超限返回结构化 responseTooLarge 错误 */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限） */
+    maxUploadBytes?: number;
     storagePrefix?: string;
     /** 浏览器工作台 LocalStorage 键覆盖；未声明的键沿用 storagePrefix 生成的默认值 */
     storageKeys?: {
@@ -250,6 +254,10 @@ export interface ScenarioStepResult {
     cancelled?: boolean;
     timedOut?: boolean;
     error?: string;
+    /** 结构化错误码：responseTooLarge / uploadTooLarge（大小上限类错误） */
+    errorCode?: string;
+    responseTooLarge?: { bytesRead: number; limitBytes: number };
+    uploadTooLarge?: { actualBytes: number; limitBytes: number };
     warnings?: string[];
     assertions: AssertionResult[];
     stepNo?: number;
@@ -285,6 +293,10 @@ export interface EngineOptions {
     environmentVariables?: Record<string, string | undefined>;
     fetch?: typeof globalThis.fetch;
     requestTimeoutMs?: number;
+    /** 响应体大小上限（字节，0/未设置不限） */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限） */
+    maxUploadBytes?: number;
     adapters?: Record<string, unknown>;
     isolateAdapters?: boolean;
     signal?: AbortSignal;
@@ -319,6 +331,10 @@ export interface RunOptions {
     vars?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;
+    /** 响应体大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
+    maxUploadBytes?: number;
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
     onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
 }
@@ -359,6 +375,8 @@ export function createApp(options: { mount: string | Element; config?: ScenarioC
 export function validateAssertion(definition: Assertion, context?: unknown): Assertion;
 export function evaluateAssertion(definition: Assertion, response: unknown, runtime: unknown, context?: unknown): AssertionResult;
 export function applyExtract(step: { extract?: ExtractDefinition[] }, response: unknown, runtime: Runtime): { warnings: string[]; failures: AssertionResult[] };
+/** 安全写入运行时 vars：__proto__ 等原型链键也按普通自有键写入，不改变对象原型 */
+export function setRuntimeVar(vars: Record<string, unknown>, name: string, value: unknown): unknown;
 export function buildAssertions(step: Step, response: unknown, runtime: unknown, context?: unknown): AssertionResult[];
 export function resolve(value: unknown, runtime: unknown): unknown;
 export function joinUrl(baseUrl: string, requestPath: string): string;
@@ -367,6 +385,8 @@ export function queryPairs(key: string, value: unknown): string[];
 export function generateSignature(params: Record<string, unknown>, secretValue: string): string;
 export function md5(value: unknown): string;
 export function clone<T>(value: T): T;
+/** 字节上限归一化：有限正数向下取整，0/负数/NaN/Infinity/空值均视为“不限制”（返回 0） */
+export function normalizeByteLimit(value: unknown): number;
 export function formatDuration(milliseconds: number): string;
 /** 模板路径严格分词：合法路径返回 token 数组（每次调用返回独立可变副本，改写不影响内部缓存）；畸形写法（vars[]、a..b、["a" > "b"]）返回 null */
 export function tokenizePath(valuePath: string): string[] | null;

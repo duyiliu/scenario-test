@@ -160,6 +160,8 @@
       "variables",
       "scenarios",
       "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
       "storagePrefix",
       "storageKeys",
       "baseUrl",

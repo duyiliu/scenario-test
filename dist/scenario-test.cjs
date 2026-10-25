@@ -254,6 +254,8 @@ __export(node_exports, {
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
   VERSION: () => VERSION,
+  appendGlobalQuery: () => appendGlobalQuery,
+  appendQueryPairs: () => appendQueryPairs,
   applyExtract: () => applyExtract,
   applyGeneratedVar: () => applyGeneratedVar,
   assertNoReservedVars: () => assertNoReservedVars,
@@ -300,12 +302,14 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   normalizeWhenDefinition: () => normalizeWhenDefinition,
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
+  queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -318,6 +322,8 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setRuntimeVar: () => setRuntimeVar,
+  splitUrlFragment: () => splitUrlFragment,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -463,6 +469,8 @@ var contract = Object.freeze({
       "variables",
       "scenarios",
       "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
       "storagePrefix",
       "storageKeys",
       "baseUrl",
@@ -569,6 +577,10 @@ function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+function normalizeByteLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 var PATH_SEGMENT = /[^.\[\]]+/y;
 var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
@@ -779,13 +791,43 @@ function queryPairs(key, value) {
   if (value === void 0 || value === null) return [];
   return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
+function splitUrlFragment(url) {
+  const text = String(url || "");
+  const fragmentIndex = text.indexOf("#");
+  return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+function queryKeys(url) {
+  const keys = /* @__PURE__ */ new Set();
+  const { path: path4 } = splitUrlFragment(url);
+  const queryIndex = path4.indexOf("?");
+  if (queryIndex < 0) return keys;
+  for (const pair of path4.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(decodeURIComponent(key));
+  }
+  return keys;
+}
+function appendQueryPairs(url, pairs) {
+  const text = String(url || "");
+  if (!pairs || !pairs.length) return text;
+  const { path: path4, fragment } = splitUrlFragment(text);
+  return `${path4}${path4.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+function appendGlobalQuery(url, globals, runtime) {
+  const existingKeys = queryKeys(url);
+  const pairs = [];
+  for (const global of globals || []) {
+    if (global.type !== "query" || existingKeys.has(global.name)) continue;
+    pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+  }
+  return appendQueryPairs(url, pairs);
+}
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
   const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-  if (!pairs.length) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+  return appendQueryPairs(rawPath, pairs);
 }
 function parseBody(text, contentType) {
   if (!text) return null;
@@ -1076,6 +1118,15 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
+function setRuntimeVar(vars, name, value) {
+  Object.defineProperty(vars, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return value;
+}
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
@@ -1095,7 +1146,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        runtime.vars[definition.name] = resolve(definition.default, runtime);
+        setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
         continue;
       }
       if (definition.required === true) {
@@ -1109,7 +1160,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    runtime.vars[definition.name] = value;
+    setRuntimeVar(runtime.vars, definition.name, value);
   }
   return { warnings, failures };
 }
@@ -1286,24 +1337,24 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
         throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
       }
-      vars[name] = formatTimestamp(base, definition.format);
+      setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
     } else if (definition.unit != null && definition.unit !== "ms") {
       if (definition.unit !== "s") {
         throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
       }
-      vars[name] = Math.floor(base / 1e3);
+      setRuntimeVar(vars, name, Math.floor(base / 1e3));
     } else {
-      vars[name] = base;
+      setRuntimeVar(vars, name, base);
     }
     return;
   }
   if (definition.type === "uuid") {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    vars[name] = globalThis.crypto.randomUUID();
+    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
     return;
   }
   if (definition.type === "uuidHex") {
-    vars[name] = uuidHex();
+    setRuntimeVar(vars, name, uuidHex());
     return;
   }
   if (definition.type === "idcard") {
@@ -1316,11 +1367,11 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
     }
     const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-    vars[name] = buildChinaIdNumber({
+    setRuntimeVar(vars, name, buildChinaIdNumber({
       regionCode,
       birthDate: definition.birthDate,
       sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-    });
+    }));
     return;
   }
   if (definition.type === "luhn") {
@@ -1337,7 +1388,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
     const first = `${prefix}${body}`;
-    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
     return;
   }
   if (definition.type === "phone") {
@@ -1349,7 +1400,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 8; i += 1) {
       tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
-    vars[name] = `${prefix}${tail}`;
+    setRuntimeVar(vars, name, `${prefix}${tail}`);
     return;
   }
   if (definition.type === "uscc") {
@@ -1361,12 +1412,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 9; i += 1) {
       orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
     }
-    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
     return;
   }
   if (definition.type === "md5") {
     const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-    vars[name] = md5(source);
+    setRuntimeVar(vars, name, md5(source));
     return;
   }
   if (definition.type === "signature") {
@@ -1375,12 +1426,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (!secret) {
       throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
     }
-    vars[name] = generateSignature(params, secret);
+    setRuntimeVar(vars, name, generateSignature(params, secret));
     return;
   }
   if (definition.type === "enum") {
     const { values, weights } = normalizeEnumDefinition(definition);
-    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1603,10 +1654,15 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+  let generatedVarIndex = 0;
   for (const definition of input.generatedVars || []) {
-    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    generatedVarIndex += 1;
+    const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+    invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+    assertNotReservedVar(definition.name, `${label} name`);
     invariant(
       contract.generatedVars.types.includes(definition.type),
       `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -2008,7 +2064,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         );
       }
     }
-    vars[name] = value;
+    setRuntimeVar(vars, name, value);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
@@ -2042,11 +2098,12 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-function readBodyChunks(response, signal) {
+function readBodyChunks(response, signal, maxBytes = 0) {
   if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
+  let totalBytes = 0;
   return new Promise((resolve2, reject) => {
     const onAbort = () => {
       reader.cancel().catch(() => {
@@ -2065,6 +2122,12 @@ function readBodyChunks(response, signal) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            reader.cancel().catch(() => {
+            });
+            throw createResponseTooLargeError(totalBytes, maxBytes);
+          }
           chunks.push(value);
         }
         resolve2(chunks);
@@ -2076,6 +2139,82 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function createResponseTooLargeError(bytesRead, limitBytes) {
+  const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  error.scenarioResponseTooLarge = true;
+  error.responseTooLarge = { bytesRead, limitBytes };
+  return error;
+}
+function resolveMaxResponseBytes(options = {}) {
+  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value);
+}
+function resolveMaxUploadBytes(options = {}) {
+  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value === void 0 ? void 0 : normalizeByteLimit(value);
+}
+function createSaveBodyStream(body, signal, maxBytes) {
+  if (!body) {
+    return new ReadableStream({
+      start(controller) {
+        if (signal?.aborted) controller.error(abortReason(signal));
+        else controller.close();
+      }
+    });
+  }
+  const reader = body.getReader();
+  let totalBytes = 0;
+  let finished = false;
+  let onAbort = null;
+  const cleanup = () => {
+    finished = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    onAbort = null;
+  };
+  const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+  });
+  return new ReadableStream({
+    start(controller) {
+      if (!signal) return;
+      onAbort = () => {
+        if (finished) return;
+        cleanup();
+        cancelReader(abortReason(signal));
+        controller.error(abortReason(signal));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          cleanup();
+          controller.close();
+          return;
+        }
+        totalBytes += value.byteLength;
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          cleanup();
+          cancelReader();
+          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (finished) return;
+        cleanup();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return cancelReader(reason);
+    }
+  });
+}
 function decoderForContentType(contentType) {
   const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
   if (!match) return new TextDecoder();
@@ -2085,20 +2224,37 @@ function decoderForContentType(contentType) {
     return new TextDecoder();
   }
 }
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType = String(headers["content-type"] || "");
-  const chunks = await readBodyChunks(response, signal);
-  if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
+  const maxResponseBytes = resolveMaxResponseBytes(options);
+  if (step.saveResponseAs) {
+    const relativePath = resolveString(step.saveResponseAs, runtime);
+    const metadata = { contentType, headers, maxResponseBytes };
+    if (io?.saveResponseStream) {
+      const saved = await io.saveResponseStream(
+        relativePath,
+        createSaveBodyStream(response.body, signal, maxResponseBytes),
+        metadata
+      );
+      return { status: response.status, headers, body: saved, bodyText: null };
     }
-    const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-    return { status: response.status, headers, body: saved, bodyText: null };
+    if (io?.saveResponse) {
+      const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+      const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+      if (chunks2.length > 1) {
+        let offset = 0;
+        for (const chunk of chunks2) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+      const saved = await io.saveResponse(relativePath, data, metadata);
+      return { status: response.status, headers, body: saved, bodyText: null };
+    }
   }
+  const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
@@ -2112,20 +2268,7 @@ async function executeHttp(step, runtime, options) {
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
-    const existingKeys = /* @__PURE__ */ new Set();
-    const queryIndex = requestPath.indexOf("?");
-    if (queryIndex >= 0) {
-      for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-        const key = pair.split("=")[0];
-        if (key) existingKeys.add(decodeURIComponent(key));
-      }
-    }
-    const queryParts = [];
-    for (const global of globals) {
-      if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-    }
-    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+    requestPath = appendGlobalQuery(requestPath, globals, runtime);
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -2146,8 +2289,15 @@ async function executeHttp(step, runtime, options) {
   if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-    const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+    const upload = await options.io.createUploadBody(
+      resolve(request.fileUpload, runtime),
+      runtime,
+      { maxUploadBytes: resolveMaxUploadBytes(options) }
+    );
     fetchOptions.body = upload.body;
+    if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+      fetchOptions.duplex = "half";
+    }
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -2165,7 +2315,7 @@ async function executeHttp(step, runtime, options) {
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2193,6 +2343,8 @@ var AdapterExecutionError = class extends Error {
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
     if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+    if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+    if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
   }
 };
 function raceWithSignal(promise, signal) {
@@ -2292,6 +2444,8 @@ function createEngine(engineOptions = {}) {
       adapters,
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
+    if (options.maxResponseBytes === void 0) options.maxResponseBytes = engineOptions.maxResponseBytes;
+    if (options.maxUploadBytes === void 0) options.maxUploadBytes = engineOptions.maxUploadBytes;
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
@@ -2451,6 +2605,9 @@ function createEngine(engineOptions = {}) {
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path4 = context && context.path || resolveString(step.path || "", runtime);
+      const responseTooLarge = error?.responseTooLarge || null;
+      const uploadTooLarge = error?.uploadTooLarge || null;
+      const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
@@ -2460,6 +2617,9 @@ function createEngine(engineOptions = {}) {
         passed: false,
         cancelled,
         timedOut,
+        errorCode,
+        ...responseTooLarge ? { responseTooLarge } : {},
+        ...uploadTooLarge ? { uploadTooLarge } : {},
         error: errorMessage,
         warnings: [],
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -2664,6 +2824,8 @@ function renderCapabilitiesText(capabilities) {
 // src/node/io.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_stream = require("node:stream");
+var import_promises = require("node:stream/promises");
 
 // src/utils/path-validator.js
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -2726,43 +2888,122 @@ function validatePath(root, userPath, options = {}) {
 }
 
 // src/node/io.js
-function createNodeIo(workspace = process.cwd()) {
+function createNodeIo(workspace = process.cwd(), options = {}) {
   const root = import_node_path2.default.resolve(workspace);
-  return {
-    async createUploadBody(definition) {
-      const filePath = typeof definition === "string" ? definition : definition.filePath;
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, filePath);
-      } catch (error) {
-        throw new Error(
-          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+  const defaultMaxUploadBytes = normalizeByteLimit(options.maxUploadBytes);
+  function resolveUploadPath(filePath) {
+    try {
+      return validatePath(root, filePath);
+    } catch (error) {
+      throw new Error(
+        `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
 \u539F\u56E0: ${error.message}
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
+      );
+    }
+  }
+  function resolveSavePath(relativePath) {
+    try {
+      return validatePath(root, relativePath);
+    } catch (error) {
+      throw new Error(
+        `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+      );
+    }
+  }
+  function resolveWriteTarget(absolutePath) {
+    let current = absolutePath;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 32; depth += 1) {
+      let stat;
+      try {
+        stat = import_node_fs2.default.lstatSync(current);
+      } catch (error) {
+        if (error.code === "ENOENT") return current;
+        throw error;
       }
+      if (!stat.isSymbolicLink()) return current;
+      if (seen.has(current)) throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u5305\u542B\u7B26\u53F7\u94FE\u63A5\u5FAA\u73AF: ${absolutePath}`);
+      seen.add(current);
+      const linkTarget = import_node_fs2.default.readlinkSync(current);
+      current = import_node_path2.default.resolve(import_node_path2.default.dirname(current), linkTarget);
+    }
+    throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u7B26\u53F7\u94FE\u63A5\u5C42\u7EA7\u8FC7\u6DF1: ${absolutePath}`);
+  }
+  return {
+    async createUploadBody(definition, runtime, callOptions = {}) {
+      const filePath = typeof definition === "string" ? definition : definition.filePath;
+      const absolutePath = resolveUploadPath(filePath);
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      const stat = import_node_fs2.default.statSync(absolutePath);
+      if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
+      const callMaxUploadBytes = callOptions?.maxUploadBytes;
+      const maxUploadBytes = callMaxUploadBytes === void 0 || callMaxUploadBytes === null ? defaultMaxUploadBytes : normalizeByteLimit(callMaxUploadBytes);
+      if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
+        const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
+        error.scenarioUploadTooLarge = true;
+        error.uploadTooLarge = { actualBytes: stat.size, limitBytes: maxUploadBytes };
+        throw error;
+      }
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
+      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, relativePath);
-      } catch (error) {
-        throw new Error(
-          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
-\u539F\u56E0: ${error.message}
-\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      const absolutePath = resolveSavePath(relativePath);
       import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
+    },
+    async saveResponseStream(relativePath, body, metadata = {}) {
+      const absolutePath = resolveSavePath(relativePath);
+      const writeTarget = resolveWriteTarget(absolutePath);
+      if (writeTarget !== absolutePath) {
+        try {
+          validatePath(root, writeTarget, { allowAbsolute: true });
+        } catch (error) {
+          throw new Error(
+            `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+          );
+        }
+      }
+      const directory = import_node_path2.default.dirname(writeTarget);
+      import_node_fs2.default.mkdirSync(directory, { recursive: true });
+      const tempPath = import_node_path2.default.join(
+        directory,
+        `.${import_node_path2.default.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+      const file = import_node_fs2.default.createWriteStream(tempPath);
+      let size = 0;
+      const counter = new import_node_stream.Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.byteLength;
+          callback(null, chunk);
+        }
+      });
+      try {
+        const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
+        await (0, import_promises.pipeline)(source, counter, file);
+        import_node_fs2.default.renameSync(tempPath, writeTarget);
+      } catch (error) {
+        if (!file.closed) {
+          await new Promise((resolveClose) => {
+            file.once("close", resolveClose);
+            file.destroy();
+          });
+        }
+        import_node_fs2.default.rmSync(tempPath, { force: true });
+        throw error;
+      }
+      return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -2833,6 +3074,8 @@ function createApp() {
   TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET,
   VERSION,
+  appendGlobalQuery,
+  appendQueryPairs,
   applyExtract,
   applyGeneratedVar,
   assertNoReservedVars,
@@ -2879,12 +3122,14 @@ function createApp() {
   maskSecret,
   md5,
   mergeGlobals,
+  normalizeByteLimit,
   normalizeEnumDefinition,
   normalizeGlobalParam,
   normalizeWhenDefinition,
   parseBody,
   parseTimestampOffset,
   pickWeightedIndex,
+  queryKeys,
   queryPairs,
   registerAdapter,
   registerConfig,
@@ -2897,6 +3142,8 @@ function createApp() {
   sanitizeSensitive,
   seedToIndex,
   seedToUnit,
+  setRuntimeVar,
+  splitUrlFragment,
   tokenizePath,
   unregisterAdapter,
   usccCheckChar,

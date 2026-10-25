@@ -39,6 +39,14 @@ export function isPlainObject(value) {
 // JSON 序列化不可表达 Symbol，服务端/适配器业务数据无法伪造
 export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
 
+// 字节上限归一化：仅有限正数生效（向下取整），其余（0/负数/NaN/Infinity/空值）
+// 统一视为“不限制”以保持既有行为。config 与 run options 共用同一口径
+// （engine 的 maxResponseBytes/maxUploadBytes、node io 的 maxUploadBytes）。
+export function normalizeByteLimit(value) {
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
+
 // 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
 // \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
 // getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被静默忽略剩余字符，
@@ -325,13 +333,56 @@ export function queryPairs(key, value) {
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 
+// 按 fragment（#）拆分 URL。查询参数必须拼在 fragment 之前：浏览器 fetch 不会发送
+// fragment 之后的内容，拼到 # 之后会让参数静默丢失。
+export function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0
+        ? { path: text, fragment: "" }
+        : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+
+// 读取 URL 已有 query 的 key 集合（只看 fragment 之前的部分）。
+export function queryKeys(url) {
+    const keys = new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+        const key = pair.split("=")[0];
+        if (key) keys.add(decodeURIComponent(key));
+    }
+    return keys;
+}
+
+// 把已序列化的 query 对拼到 URL 上：保留原 fragment，参数总是追加在 fragment 之前。
+export function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+
+// 注入环境 globals query（跳过 URL 中已存在的 key）。引擎执行与浏览器 cURL 预览共用，
+// 保证两边拼接位置（含 fragment 处理）始终一致。
+export function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+        if (global.type !== "query" || existingKeys.has(global.name)) continue;
+        // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
+        pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+}
+
 export function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
 }
 
 export function parseBody(text, contentType) {
@@ -724,6 +775,21 @@ export function assertNoReservedVars(source, label) {
     }
 }
 
+/**
+ * 安全写入运行时 vars：普通赋值遇到 "__proto__" 会走 Object.prototype 的原型 setter——
+ * 对象值改写 vars 原型、原始值被静默丢弃。defineProperty 始终生成普通自有可写键，
+ * 作为定义期保留名拦截之外的运行期兜底（直接调用 runStep/applyGeneratedVar 时同样生效）。
+ */
+export function setRuntimeVar(vars, name, value) {
+    Object.defineProperty(vars, name, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+    });
+    return value;
+}
+
 export function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
@@ -752,7 +818,7 @@ export function applyExtract(step, response, runtime) {
             if (hasDefault) {
                 // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
                 // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
-                runtime.vars[definition.name] = resolve(definition.default, runtime);
+                setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
                 continue;
             }
             if (definition.required === true) {
@@ -766,7 +832,7 @@ export function applyExtract(step, response, runtime) {
                 warnings.push(`提取变量 ${definition.name}：路径 ${definition.path || "(整个响应)"} 不存在，变量值为 undefined（required 未开启，不影响执行）`);
             }
         }
-        runtime.vars[definition.name] = value;
+        setRuntimeVar(runtime.vars, definition.name, value);
     }
     return { warnings, failures };
 }
@@ -1041,25 +1107,25 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
                 throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
             }
-            vars[name] = formatTimestamp(base, definition.format);
+            setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
         } else if (definition.unit != null && definition.unit !== "ms") {
             if (definition.unit !== "s") {
                 throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
             }
-            vars[name] = Math.floor(base / 1000);
+            setRuntimeVar(vars, name, Math.floor(base / 1000));
         } else {
-            vars[name] = base;
+            setRuntimeVar(vars, name, base);
         }
         return;
     }
     if (definition.type === "uuid") {
         // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
         if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-        vars[name] = globalThis.crypto.randomUUID();
+        setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
         return;
     }
     if (definition.type === "uuidHex") {
-        vars[name] = uuidHex();
+        setRuntimeVar(vars, name, uuidHex());
         return;
     }
     if (definition.type === "idcard") {
@@ -1080,11 +1146,11 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
         }
         const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-        vars[name] = buildChinaIdNumber({
+        setRuntimeVar(vars, name, buildChinaIdNumber({
             regionCode,
             birthDate: definition.birthDate,
             sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-        });
+        }));
         return;
     }
     if (definition.type === "luhn") {
@@ -1103,7 +1169,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
         const first = `${prefix}${body}`;
-        vars[name] = `${first}${luhnCheckDigit(first)}`;
+        setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
         return;
     }
     if (definition.type === "phone") {
@@ -1119,7 +1185,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 8; i += 1) {
             tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
-        vars[name] = `${prefix}${tail}`;
+        setRuntimeVar(vars, name, `${prefix}${tail}`);
         return;
     }
     if (definition.type === "uscc") {
@@ -1134,12 +1200,12 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 9; i += 1) {
             orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
         }
-        vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+        setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
         return;
     }
     if (definition.type === "md5") {
         const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-        vars[name] = md5(source);
+        setRuntimeVar(vars, name, md5(source));
         return;
     }
     if (definition.type === "signature") {
@@ -1150,14 +1216,14 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         if (!secret) {
             throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
         }
-        vars[name] = generateSignature(params, secret);
+        setRuntimeVar(vars, name, generateSignature(params, secret));
         return;
     }
     if (definition.type === "enum") {
         // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
         // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
         const { values, weights } = normalizeEnumDefinition(definition);
-        vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+        setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
         return;
     }
     throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
