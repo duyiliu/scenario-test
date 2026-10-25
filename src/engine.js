@@ -232,11 +232,15 @@ function resolveMaxResponseBytes(options = {}) {
     return normalizeByteLimit(value);
 }
 
-// 上传上限要把“未声明”和“显式 0=不限制”区分开：前者回落到 createNodeIo 默认值，
-// 后者必须覆盖默认值。返回 undefined 表示调用方未声明上限。
+// 上传上限要把“未声明”和“显式 0/null=不限制”区分开：前者回落到 config 或
+// createNodeIo 默认值，后者必须覆盖上游上限。返回 undefined 表示调用方未声明上限。
 function resolveMaxUploadBytes(options = {}) {
-    const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
-    return value === undefined || value === null ? undefined : normalizeByteLimit(value);
+    // 与 maxResponseBytes 同一归一化口径：只有 undefined 才回落 config；
+    // 显式 null/0/负数等统一由 normalizeByteLimit 视为不限
+    const value = options.maxUploadBytes === undefined
+        ? options.config?.maxUploadBytes
+        : options.maxUploadBytes;
+    return value === undefined ? undefined : normalizeByteLimit(value);
 }
 
 // 流式保存的响应体包装：边转发边计数字节、监听取消/超时 signal，并把读取错误

@@ -1813,8 +1813,8 @@ function resolveMaxResponseBytes(options = {}) {
   return normalizeByteLimit(value);
 }
 function resolveMaxUploadBytes(options = {}) {
-  const value = options.maxUploadBytes ?? options.config?.maxUploadBytes;
-  return value === void 0 || value === null ? void 0 : normalizeByteLimit(value);
+  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value === void 0 ? void 0 : normalizeByteLimit(value);
 }
 function createSaveBodyStream(body, signal, maxBytes) {
   if (!body) {

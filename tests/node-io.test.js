@@ -453,6 +453,36 @@ test("run options 显式 undefined 不覆盖引擎级 maxResponseBytes/maxUpload
     }
 });
 
+test("run options 显式 null 将上传上限覆盖为不限，不传时仍受 config 限制", async () => {
+    const workspace = makeWorkspace();
+    try {
+        let fetchCalls = 0;
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            config: { maxUploadBytes: 5 },
+            io: createNodeIo(workspace),
+            fetch: async () => {
+                fetchCalls += 1;
+                return new Response("{}");
+            }
+        });
+        const scenario = defineScenario({
+            name: "上传 null 覆盖",
+            steps: [{ name: "上传", method: "POST", request: { fileUpload: { filePath: "sample.txt" } } }]
+        });
+
+        const limited = await engine.runScenario(scenario);
+        assert.equal(limited.results[0].errorCode, "uploadTooLarge");
+        assert.equal(fetchCalls, 0, "未传 null 时应仍由 config 上限拒绝");
+
+        const unlimited = await engine.runScenario(scenario, { maxUploadBytes: null });
+        assert.equal(unlimited.results[0].passed, true, JSON.stringify(unlimited.results));
+        assert.equal(fetchCalls, 1, "显式 null 应把上传上限覆盖为不限并发起请求");
+    } finally {
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
 test("saveResponse：递归建目录写入并返回 savedTo/size/contentType", async () => {
     const workspace = makeWorkspace();
     try {
