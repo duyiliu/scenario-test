@@ -540,6 +540,34 @@ test("doctor：非法 baseUrl 在 config-load/base-url FAIL", () => {
     }
 });
 
+test("doctor：http(s) 前缀但 URL 主机/端口非法时仍 config-load/base-url FAIL", () => {
+    const { project, dir } = initProject();
+    try {
+        const cases = [
+            { label: "顶层 http://", config: `baseUrl: "http://", envs: [{ key: "local", name: "本地" }]` },
+            { label: "环境非法端口", config: `envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:99999" }]` }
+        ];
+        for (const item of cases) {
+            fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+                ${item.config},
+                scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+            }));`, "utf8");
+            const result = runDoctor(dir, ["--json"]);
+            assert.equal(result.status, 1, `${item.label}: ${result.stdout}${result.stderr}`);
+            const report = JSON.parse(result.stdout);
+            const load = report.checks.find((check) => check.name === "config-load");
+            assert.ok(load, `${item.label} 应输出 config-load`);
+            assert.equal(load.status, "FAIL", `${item.label} 配置不得被判定为可加载`);
+            assert.match(load.message, /baseUrl/, `${item.label} config-load 应指出 baseUrl`);
+            const baseUrlCheck = report.checks.find((check) => check.name === "base-url");
+            assert.ok(baseUrlCheck, `${item.label} 应输出 base-url 专项检查`);
+            assert.equal(baseUrlCheck.status, "FAIL", `${item.label} 应输出 base-url FAIL`);
+        }
+    } finally {
+        cleanup(project);
+    }
+});
+
 test("doctor：环境缺少 baseUrl 且无顶层回退时 base-url WARN；顶层回退时 PASS", () => {
     const { project, dir } = initProject();
     try {

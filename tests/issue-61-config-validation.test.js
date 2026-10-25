@@ -51,6 +51,14 @@ test("defineConfig 校验 baseUrl 必须是 http(s):// URL", () => {
         () => defineConfig({ baseUrl: "ftp://example.com" }),
         /配置顶层 baseUrl 必须以 http:\/\/ 或 https:\/\//
     );
+    // 有协议前缀但主机/端口语法无效，仍须在定义期拒绝，不能被「以 http(s):// 开头」放行
+    for (const invalid of ["http://", "https://", "http://127.0.0.1:99999", "http://127.0.0.1:abc"]) {
+        assert.throws(
+            () => defineConfig({ envs: [{ key: "local", name: "本地", baseUrl: invalid }] }),
+            /环境 local 的 baseUrl 不是合法的 http\(s\) URL/,
+            `应拒绝非法 baseUrl: ${invalid}`
+        );
+    }
 });
 
 test("defineConfig 校验 variables 字段类型", () => {
