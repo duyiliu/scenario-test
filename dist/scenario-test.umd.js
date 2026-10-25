@@ -1240,11 +1240,19 @@ var ScenarioTest = (() => {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
     return globalThis.crypto.randomUUID().replace(/-/g, "");
   }
+  function resolveNowSource(deps = {}) {
+    const candidate = deps.now ?? deps.clock;
+    if (typeof candidate === "function") return candidate;
+    if (candidate && typeof candidate.now === "function") return () => candidate.now();
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return () => candidate;
+    return Date.now;
+  }
   function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     const name = definition.name;
     const uuidHex = deps.uuidHex || defaultUuidHex;
     if (definition.type === "timestamp") {
-      const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+      const now2 = resolveNowSource(deps);
+      const base = now2() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
       if (definition.format != null) {
         if (definition.unit != null) {
           throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${name}`);
@@ -1900,7 +1908,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (!contract.generatedVars.types.includes(definition.type)) {
         throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
       }
-      applyGeneratedVar(definition, vars, identifiers);
+      applyGeneratedVar(definition, vars, identifiers, { now: options.now, clock: options.clock });
     }
     return vars;
   }
@@ -1910,7 +1918,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       vars: buildGeneratedVars(
         scenario,
         { ...config.vars || {}, ...options.vars || {} },
-        options.environmentVariables || {}
+        options.environmentVariables || {},
+        options
       ),
       lastResponse: null,
       lastResponseBody: null
@@ -2277,7 +2286,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       const runtime = createRuntime(scenario, {
         config,
         vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
-        environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
+        environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+        // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
+        now: runOptions.now ?? engineOptions.now,
+        clock: runOptions.clock ?? engineOptions.clock
       });
       const results = [];
       for (let index = 0; index < scenario.steps.length; index += 1) {

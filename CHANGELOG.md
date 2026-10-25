@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎与断言
 
+- `generatedVars` timestamp 造数新增可注入时钟 seam：`createEngine`/`runScenario` 的 `now`（函数/固定毫秒）或 `clock`（`{ now() }`）会透传到与浏览器共用的 `core.applyGeneratedVar`；不注入时仍回落 `Date.now`，双端口径不变。timestamp `offset`/`unit`/`format` 测试改用固定时钟做精确断言，移除 ±2s/5s 容差窗口。
+
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
 - `matches` 断言正则编译缓存：retryUntil 轮询与同值静态正则不再每次尝试重复 `new RegExp`；按解析后的期望值字符串键控（模板值变化互不串扰），有界 FIFO。
 - `evaluateAssertion` 执行期校验 WeakSet 去重：同一定义对象在轮询重试中不再重复 `validateAssertion`；each 子断言为每次 resolve 新建对象，仍逐次校验，口径不变。

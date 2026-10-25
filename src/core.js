@@ -1019,13 +1019,24 @@ function defaultUuidHex() {
     return globalThis.crypto.randomUUID().replace(/-/g, "");
 }
 
+// 时间源 seam：默认系统时钟；测试可注入 now 函数、clock 对象（{ now() }）或固定毫秒值。
+// 浏览器工作台不注入时与 Node 引擎同样走 Date.now，双端口径一致。
+function resolveNowSource(deps = {}) {
+    const candidate = deps.now ?? deps.clock;
+    if (typeof candidate === "function") return candidate;
+    if (candidate && typeof candidate.now === "function") return () => candidate.now();
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return () => candidate;
+    return Date.now;
+}
+
 /**
  * 把单个 generatedVars 定义按类型求值并写入 vars（vars[definition.name]）。
  * 双端一致：造数按 identifiers.runId 与变量名确定性派生（轮内稳定、跨轮变化）。
  * @param {object} definition 已通过 defineScenario 类型枚举校验的定义
  * @param {object} vars 目标 vars 对象（先声明的变量可被后声明引用）
  * @param {object} identifiers { runId } 运行标识（确定性种子）
- * @param {object} [deps] 环境可选项：deps.uuidHex 覆盖 uuidHex 实现（浏览器端有降级链）
+ * @param {object} [deps] 环境可选项：deps.uuidHex 覆盖 uuidHex 实现（浏览器端有降级链）；
+ *                       deps.now/deps.clock 覆盖时间源（测试注入固定时钟）
  */
 export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     const name = definition.name;
@@ -1033,7 +1044,8 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (definition.type === "timestamp") {
         // 时间戳造数：offset 相对当前时间偏移（如 "-7d"/"+8d"）；unit 决定数值粒度
         // （ms 默认向后兼容 / s 秒级）；format（本地时间 token）输出字符串，与 unit 互斥。
-        const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+        const now = resolveNowSource(deps);
+        const base = now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
         if (definition.format != null) {
             if (definition.unit != null) {
                 throw new Error(`generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ${name}`);
