@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
+- `serve` 同源代理按本次请求目标改写 `Origin`/`Referer`：仅当来源 host 等于 serve 本地 Host 时，`Origin` 改为当次 `targetUrl` 的 origin、`Referer` 保留原 path/query；外部来源与缺失头原样转发/不注入。修复启用 CSRF/来源校验的后端在代理模式下对工作台 POST 返回 403（按请求的 `targetUrl` 计算，兼容环境切换与 `--base-url` 覆盖）。
+
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。

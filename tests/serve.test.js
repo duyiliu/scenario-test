@@ -555,3 +555,107 @@ test("serve：响应已开始后上游中途断连，销毁连接而非二次写
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+// 回归：浏览器经 serve 代理发出的请求会带工作台自身的 Origin/Referer（serve 源）。
+// 启用 CSRF/来源校验的后端会因 Origin 与 Host 不一致拒绝写操作；代理必须仅对
+// “来源 host == 本次请求本地 Host”的头改写为当次 targetUrl 的 origin，外部来源原样转发。
+test("serve 同源代理：本机 Origin/Referer 改写为上游来源，外部与缺失来源不改写", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-origin-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:${mockPort}" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    const postWithHeaders = (headers) => new Promise((resolve, reject) => {
+        const request = http.request(
+            { host: "127.0.0.1", port: servePort, method: "POST", path: "/api/orders", headers },
+            (response) => {
+                response.resume();
+                response.on("end", () => resolve(response.statusCode));
+            }
+        );
+        request.on("error", reject);
+        request.end("payload");
+    });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+
+        // 1) 同源（工作台）Origin/Referer：改写为上游 target origin，Referer 保留 path/query
+        const localOrigin = `http://127.0.0.1:${servePort}`;
+        assert.equal(await postWithHeaders({
+            "Content-Type": "text/plain",
+            "Origin": localOrigin,
+            "Referer": `${localOrigin}/workbench?tab=scenario`
+        }), 200);
+        assert.equal(received.length, 1);
+        assert.equal(received[0].headers.origin, `http://127.0.0.1:${mockPort}`, "本机 Origin 应改写为上游来源");
+        assert.equal(received[0].headers.referer, `http://127.0.0.1:${mockPort}/workbench?tab=scenario`, "Referer 应改写源并保留 path/query");
+
+        // 2) 外部来源：原样转发，避免替外站伪造来源
+        assert.equal(await postWithHeaders({
+            "Content-Type": "text/plain",
+            "Origin": "https://evil.example",
+            "Referer": "https://evil.example/phish?x=1"
+        }), 200);
+        assert.equal(received.length, 2);
+        assert.equal(received[1].headers.origin, "https://evil.example", "外部 Origin 应保持原值");
+        assert.equal(received[1].headers.referer, "https://evil.example/phish?x=1", "外部 Referer 应保持原值");
+
+        // 3) 没有 Origin/Referer（如非浏览器客户端）：不得注入
+        assert.equal(await postWithHeaders({ "Content-Type": "text/plain" }), 200);
+        assert.equal(received.length, 3);
+        assert.equal(received[2].headers.origin, undefined, "缺失 Origin 时不应注入");
+        assert.equal(received[2].headers.referer, undefined, "缺失 Referer 时不应注入");
+
+        // 4) 同 host 不同端口的来源不属于 serve 源，保持原值
+        assert.equal(await postWithHeaders({ "Origin": `http://127.0.0.1:${servePort + 1}` }), 200);
+        assert.equal(received.length, 4);
+        assert.equal(received[3].headers.origin, `http://127.0.0.1:${servePort + 1}`, "仅 host 相同、端口不同的来源不应改写");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
+// #60 兼容：改写必须基于当次请求的 targetUrl，--base-url 覆盖后应改写为覆盖目标的 origin
+test("serve 同源代理：--base-url 覆盖时 Origin/Referer 按覆盖目标改写", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-origin-override-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--base-url", `http://127.0.0.1:${mockPort}`, "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "--base-url 覆盖");
+        const response = await fetch(`http://127.0.0.1:${servePort}/api/override`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "text/plain",
+                "Origin": `http://127.0.0.1:${servePort}`,
+                "Referer": `http://127.0.0.1:${servePort}/workbench`
+            },
+            body: "ping"
+        });
+        assert.equal(response.status, 200);
+        assert.equal(received.length, 1, "请求应转发到 --base-url 指定的 mock");
+        assert.equal(received[0].headers.origin, `http://127.0.0.1:${mockPort}`, "应按覆盖目标改写 Origin");
+        assert.equal(received[0].headers.referer, `http://127.0.0.1:${mockPort}/workbench`, "应按覆盖目标改写 Referer");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});

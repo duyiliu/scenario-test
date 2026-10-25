@@ -4364,6 +4364,31 @@ function proxyTransport(targetUrl) {
 function connectionNamedHeaders(connectionValue) {
   return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
+function rewriteLocalOriginHeaders(headers, localHost, targetUrl) {
+  const host = String(localHost || "").trim().toLowerCase();
+  if (!host) return;
+  let targetOrigin;
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+  } catch {
+    return;
+  }
+  if (!targetOrigin || targetOrigin === "null") return;
+  for (const name of Object.keys(headers)) {
+    const lower = name.toLowerCase();
+    if (lower !== "origin" && lower !== "referer") continue;
+    const raw = headers[name];
+    const value = Array.isArray(raw) ? raw[0] : String(raw ?? "");
+    let parsed;
+    try {
+      parsed = new URL(value);
+    } catch {
+      continue;
+    }
+    if (parsed.host.toLowerCase() !== host) continue;
+    headers[name] = lower === "origin" ? targetOrigin : targetOrigin + parsed.pathname + parsed.search;
+  }
+}
 function proxyRequest(request, response, targetUrl) {
   const transport = proxyTransport(targetUrl);
   if (!transport) {
@@ -4380,6 +4405,7 @@ function proxyRequest(request, response, targetUrl) {
     const lower = String(name).toLowerCase();
     if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
   }
+  rewriteLocalOriginHeaders(headers, request.headers.host, targetUrl);
   let upstream;
   try {
     upstream = transport.request(targetUrl + request.url, {

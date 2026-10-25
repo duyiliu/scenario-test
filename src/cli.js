@@ -911,6 +911,39 @@ function connectionNamedHeaders(connectionValue) {
         .filter(Boolean);
 }
 
+// 浏览器同源请求会带上工作台自身的 Origin/Referer（即 serve 源）。直接透传给上游会让
+// 启用 CSRF/来源校验的后端因 Origin 与 Host 不一致而 403，导致代理模式下所有写操作失败。
+// 只在来源 host 等于本次请求的本地 Host（serve 源）时改写为当次 targetUrl 的 origin；
+// 外部来源（如 https://evil.example）与非法/不透明值（如 "null"）原样转发，没有该头时不注入。
+// targetUrl 按请求传入而非缓存，兼容 #60 的代理目标切换与 --base-url 覆盖。
+function rewriteLocalOriginHeaders(headers, localHost, targetUrl) {
+    const host = String(localHost || "").trim().toLowerCase();
+    if (!host) return;
+    let targetOrigin;
+    try {
+        targetOrigin = new URL(targetUrl).origin;
+    } catch {
+        // 非法目标由 proxyTransport 统一降级 502，这里不做改写
+        return;
+    }
+    if (!targetOrigin || targetOrigin === "null") return;
+    for (const name of Object.keys(headers)) {
+        const lower = name.toLowerCase();
+        if (lower !== "origin" && lower !== "referer") continue;
+        const raw = headers[name];
+        const value = Array.isArray(raw) ? raw[0] : String(raw ?? "");
+        let parsed;
+        try {
+            parsed = new URL(value);
+        } catch {
+            continue;
+        }
+        if (parsed.host.toLowerCase() !== host) continue;
+        // Origin 只保留源；Referer 保留原 path/query（URL 不含 fragment）
+        headers[name] = lower === "origin" ? targetOrigin : targetOrigin + parsed.pathname + parsed.search;
+    }
+}
+
 function proxyRequest(request, response, targetUrl) {
     const transport = proxyTransport(targetUrl);
     if (!transport) {
@@ -927,6 +960,7 @@ function proxyRequest(request, response, targetUrl) {
         const lower = String(name).toLowerCase();
         if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
     }
+    rewriteLocalOriginHeaders(headers, request.headers.host, targetUrl);
     let upstream;
     try {
         // 保持原拼接语义：targetUrl 已去尾部斜杠，若带路径前缀则原样保留
