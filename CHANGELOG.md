@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
+- 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
+  默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
+  场景结束时整块输出，避免 `[PASS]`/`[FAIL]`/`[RETRY]` 交错；`--json` 报告按配置清单顺序收集
+  （不按完成顺序），汇总统计与退出码逻辑不变。`onStep`/`onAttempt` 并发安全由调用方保证；
+  进程级共享的适配器注册表在并发下要求 `matches`/`execute` 可重入，详见 `docs/ADAPTER_GUIDE.md`。
+  `nodePlugins` 的 `transformScenario`/`afterScenario` 也会被并发调用，同样要求可重入无状态；
+  任一场景执行链（含插件钩子）拒绝均中断调度并以非零退出码终止，与串行一致。
+
 - `serve` 代理目标回退（issue #61）：配置存在 `envs` 但所选环境未声明（或为空）`baseUrl` 时，回退顶层 `config.baseUrl`，与 `run`/`doctor` 的回退口径一致，不再得到空代理目标。
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
@@ -36,7 +44,6 @@ All notable changes to this project will be documented in this file.
 
 - 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
 - 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。
-
 ## [0.8.0] - 2026-10-24
 
 ### Migration Guide: v0.7.1 → v0.8.0

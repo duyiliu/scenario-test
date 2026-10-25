@@ -285,6 +285,11 @@
         "description": "浏览器服务端口，默认 4300",
         "parse": "number"
       },
+      "concurrency": {
+        "kind": "value",
+        "description": "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行",
+        "parse": "number"
+      },
       "project": {
         "kind": "value",
         "description": "init 目标项目根目录"
