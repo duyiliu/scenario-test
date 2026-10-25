@@ -561,6 +561,35 @@ test("doctor：环境缺少 baseUrl 且无顶层回退时 base-url WARN；顶层
         assert.equal(fallback.status, 0, fallback.stdout + fallback.stderr);
         assert.match(fallback.stdout, /\[PASS\] base-url/);
         assert.match(fallback.stdout, /回退顶层 baseUrl/);
+
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            baseUrl: "   ",
+            envs: [{ key: "local", name: "本地" }],
+            scenarios: [{ id: "health", name: "Health", url: "scenarios/health.js" }]
+        }));`, "utf8");
+        const blankTopLevel = runDoctor(dir);
+        assert.equal(blankTopLevel.status, 0, blankTopLevel.stdout + blankTopLevel.stderr);
+        assert.match(blankTopLevel.stdout, /\[WARN\] base-url/);
+        assert.match(blankTopLevel.stdout, /CLI run 需要 --base-url/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：配置脚本自身错误含未知键/baseUrl 字样时不误报专项校验失败", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `throw new Error("配置脚本自身错误: baseUrl 拼装失败");`, "utf8");
+        const baseUrlLike = runDoctor(dir, ["--json"]);
+        const baseUrlReport = JSON.parse(baseUrlLike.stdout);
+        assert.ok(baseUrlReport.checks.some((check) => check.name === "config-load" && check.status === "FAIL"));
+        assert.equal(baseUrlReport.checks.some((check) => check.name === "base-url"), false, "非 defineConfig 的 baseUrl 字样错误不得追加 base-url FAIL");
+
+        fs.writeFileSync(path.join(dir, "scenario.config.js"), `throw new Error("配置脚本自身错误: 未知键示例");`, "utf8");
+        const unknownLike = runDoctor(dir, ["--json"]);
+        const unknownReport = JSON.parse(unknownLike.stdout);
+        assert.ok(unknownReport.checks.some((check) => check.name === "config-load" && check.status === "FAIL"));
+        assert.equal(unknownReport.checks.some((check) => check.name === "config-keys"), false, "非 defineConfig 的未知键字样错误不得追加 config-keys FAIL");
     } finally {
         cleanup(project);
     }

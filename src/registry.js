@@ -7,8 +7,14 @@ const scenarioRegistry = new Map();
 const adapterRegistry = new Map();
 let currentConfig = null;
 
-function invariant(condition, message) {
-    if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+    if (!condition) {
+        const error = new TypeError(message);
+        // doctor 只对 defineConfig 自身产生的配置校验错误做专项诊断；用结构化 code
+        // 区分配置脚本自己抛出的任意错误，避免按消息子串误报。
+        if (code) error.code = code;
+        throw error;
+    }
 }
 
 function nonEmptyString(value) {
@@ -70,31 +76,43 @@ function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
 
 function assertKnownKeys(input, allowed, label, hint = "") {
     const unknownKeys = describeUnknownKeys(input, allowed);
-    invariant(unknownKeys.length === 0, unknownKeysMessage(label, unknownKeys, allowed, hint));
+    invariant(
+        unknownKeys.length === 0,
+        unknownKeysMessage(label, unknownKeys, allowed, hint),
+        "SCENARIO_CONFIG_UNKNOWN_KEY"
+    );
 }
 
 // baseUrl 允许缺省（运行时回退到顶层 config.baseUrl；浏览器工作台最终还可回退当前页面
 // 地址），但一旦声明就必须是 http(s):// URL——协议缺失/拼错此前直到真正发请求才暴露。
-function validateBaseUrl(value, label) {
-    if (value === undefined || value === null) return;
-    invariant(typeof value === "string", `${label} 必须是 http(s):// URL 字符串（当前 ${JSON.stringify(value)}）`);
+// 返回值同时做规范化：去首尾空白，纯空白按空串（缺省）处理，避免 truthy 空白串遮蔽回退。
+function normalizeBaseUrl(value, label) {
+    if (value === undefined || value === null) return value;
+    invariant(
+        typeof value === "string",
+        `${label} 必须是 http(s):// URL 字符串（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
+    );
     const trimmed = value.trim();
-    // 空串等同未声明：保持既有 `environment.baseUrl || config.baseUrl` 回退语义
-    if (!trimmed) return;
+    // 空串/纯空白等同未声明：保持 `environment.baseUrl || config.baseUrl` 回退语义
+    if (!trimmed) return "";
     invariant(
         /^https?:\/\//i.test(trimmed),
-        `${label} 必须以 http:// 或 https:// 开头（当前 ${JSON.stringify(value)}）`
+        `${label} 必须以 http:// 或 https:// 开头（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
     );
     let parsed;
     try {
         parsed = new URL(trimmed);
     } catch {
-        invariant(false, `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`);
+        invariant(false, `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`, "SCENARIO_CONFIG_BASE_URL");
     }
     invariant(
         (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
-        `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`
+        `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
     );
+    return trimmed;
 }
 
 function assertUnique(items, field, label) {
@@ -415,7 +433,7 @@ export function defineConfig(input) {
     invariant(isPlainObject(input), "配置必须是对象");
     assertKnownKeys(input, contract.config.configKeys, "配置", "（配置顶层只接受契约声明的字段）");
     assertTemplatePathsOnly(input, "配置");
-    validateBaseUrl(input.baseUrl, "配置顶层 baseUrl");
+    const baseUrl = normalizeBaseUrl(input.baseUrl, "配置顶层 baseUrl");
     const globals = normalizeGlobals(input.globals, "全局");
     const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
         invariant(isPlainObject(env), `第 ${index + 1} 个环境定义无效`);
@@ -427,7 +445,7 @@ export function defineConfig(input) {
     }) : [];
     for (const env of envs) {
         invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "每个环境必须包含非空 key 和 name");
-        validateBaseUrl(env.baseUrl, `环境 ${env.key} 的 baseUrl`);
+        env.baseUrl = normalizeBaseUrl(env.baseUrl, `环境 ${env.key} 的 baseUrl`);
     }
     assertUnique(envs, "key", "环境 key");
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -462,6 +480,7 @@ export function defineConfig(input) {
     invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs 必须是正数");
     return {
         ...input,
+        baseUrl,
         globals,
         envs,
         scenarios,

@@ -342,17 +342,16 @@ export function buildDoctorReport(options) {
                 message: `配置文件加载失败: ${configPath}（原因: ${reason}）`,
                 fix: "检查配置语法与 defineConfig 调用；修复后重新运行 doctor"
             });
-            // defineConfig 已拒绝未知键/非法 baseUrl，doctor 在配置无法加载时补一条
-            // 针对性结论，避免只能从 config-load 的长原因里找字段名。
-            // 先判未知键：未知键报错里会列出 baseUrl 等允许字段，不能误判成 baseUrl 错误
-            if (/未知键/.test(reason)) {
+            // 只依据 defineConfig 写入的结构化 code 追加专项结论：配置脚本自身抛出的
+            // 任意错误即使消息里含「未知键」或 baseUrl，也不能被误报成字段校验失败。
+            if (error?.code === "SCENARIO_CONFIG_UNKNOWN_KEY") {
                 checks.push({
                     name: "config-keys",
                     status: "FAIL",
                     message: `配置字段校验失败: ${reason}`,
                     fix: "按报错中「是否想写」或允许的键名修正拼写"
                 });
-            } else if (/baseUrl/.test(reason)) {
+            } else if (error?.code === "SCENARIO_CONFIG_BASE_URL") {
                 checks.push({
                     name: "base-url",
                     status: "FAIL",

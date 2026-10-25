@@ -1545,8 +1545,12 @@ function validateAdapterResponse(response, adapterName = "unknown") {
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
 var currentConfig = null;
-function invariant(condition, message) {
-  if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+  if (!condition) {
+    const error = new TypeError(message);
+    if (code) error.code = code;
+    throw error;
+  }
 }
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
@@ -1589,27 +1593,38 @@ function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
 }
 function assertKnownKeys(input, allowed, label, hint = "") {
   const unknownKeys = describeUnknownKeys(input, allowed);
-  invariant(unknownKeys.length === 0, unknownKeysMessage(label, unknownKeys, allowed, hint));
+  invariant(
+    unknownKeys.length === 0,
+    unknownKeysMessage(label, unknownKeys, allowed, hint),
+    "SCENARIO_CONFIG_UNKNOWN_KEY"
+  );
 }
-function validateBaseUrl(value, label) {
-  if (value === void 0 || value === null) return;
-  invariant(typeof value === "string", `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`);
+function normalizeBaseUrl(value, label) {
+  if (value === void 0 || value === null) return value;
+  invariant(
+    typeof value === "string",
+    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
   const trimmed = value.trim();
-  if (!trimmed) return;
+  if (!trimmed) return "";
   invariant(
     /^https?:\/\//i.test(trimmed),
-    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
   );
   let parsed;
   try {
     parsed = new URL(trimmed);
   } catch {
-    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`);
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
   }
   invariant(
     (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
-    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
   );
+  return trimmed;
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1861,7 +1876,7 @@ function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
   assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
-  validateBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
+  const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
   const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
     invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
@@ -1873,7 +1888,7 @@ function defineConfig(input) {
   }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
-    validateBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
+    env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -1908,6 +1923,7 @@ function defineConfig(input) {
   invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
   return {
     ...input,
+    baseUrl,
     globals,
     envs,
     scenarios,
@@ -3548,14 +3564,14 @@ function buildDoctorReport(options) {
         message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${reason}\uFF09`,
         fix: "\u68C0\u67E5\u914D\u7F6E\u8BED\u6CD5\u4E0E defineConfig \u8C03\u7528\uFF1B\u4FEE\u590D\u540E\u91CD\u65B0\u8FD0\u884C doctor"
       });
-      if (/未知键/.test(reason)) {
+      if (error?.code === "SCENARIO_CONFIG_UNKNOWN_KEY") {
         checks.push({
           name: "config-keys",
           status: "FAIL",
           message: `\u914D\u7F6E\u5B57\u6BB5\u6821\u9A8C\u5931\u8D25: ${reason}`,
           fix: "\u6309\u62A5\u9519\u4E2D\u300C\u662F\u5426\u60F3\u5199\u300D\u6216\u5141\u8BB8\u7684\u952E\u540D\u4FEE\u6B63\u62FC\u5199"
         });
-      } else if (/baseUrl/.test(reason)) {
+      } else if (error?.code === "SCENARIO_CONFIG_BASE_URL") {
         checks.push({
           name: "base-url",
           status: "FAIL",

@@ -65,6 +65,18 @@ test("defineConfig 校验 variables 字段类型", () => {
     assert.doesNotThrow(() => defineConfig({ variables: [{ name: "token", label: "令牌", required: true, defaultValue: "" }] }));
 });
 
+test("baseUrl 去首尾空白，纯空白按缺省规范化，不遮蔽顶层回退", () => {
+    const config = defineConfig({
+        baseUrl: "  https://api.example.com  ",
+        envs: [{ key: "local", name: "本地", baseUrl: "   " }]
+    });
+    assert.equal(config.baseUrl, "https://api.example.com");
+    assert.equal(config.envs[0].baseUrl, "", "纯空白环境 baseUrl 应规范化为空串，回退时保持 falsy");
+
+    const blankTopLevel = defineConfig({ baseUrl: "   ", envs: [{ key: "local", name: "本地" }] });
+    assert.equal(blankTopLevel.baseUrl, "", "纯空白顶层 baseUrl 应规范化为空串，不能被当作有效地址");
+});
+
 test("合法旧配置不受影响：环境可省略 baseUrl 回退顶层 baseUrl，http(s) 与历史 envVars 照常放行", () => {
     const config = defineConfig({
         baseUrl: "https://api.example.com",

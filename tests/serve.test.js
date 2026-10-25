@@ -129,7 +129,7 @@ test("serve 同源代理：非静态请求转发到环境 baseUrl，静态文件
     }
 });
 
-test("serve：环境缺省 baseUrl 回退顶层 baseUrl，doctor 同口径 PASS", async () => {
+test("serve：环境 baseUrl 为纯空白时回退顶层 baseUrl，doctor 同口径 PASS", async () => {
     const { server: mock, received, port: mockPort } = await startMockBackend();
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-top-fallback-"));
     const dir = path.join(project, "scenario-test");
@@ -137,7 +137,7 @@ test("serve：环境缺省 baseUrl 回退顶层 baseUrl，doctor 同口径 PASS"
     const configPath = path.join(dir, "scenario.config.js");
     fs.writeFileSync(configPath, `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         baseUrl: "http://127.0.0.1:${mockPort}",
-        envs: [{ key: "local", name: "本地" }],
+        envs: [{ key: "local", name: "本地", baseUrl: "   " }],
         defaultEnvKey: "local",
         scenarios: []
     }));`, "utf8");
