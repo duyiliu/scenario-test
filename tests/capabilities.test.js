@@ -29,6 +29,7 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.deepEqual(caps.globals.types, [...contract.globals.types]);
     assert.deepEqual(caps.cli.commands, [...contract.cli.commands]);
     assert.ok(caps.cli.options["fail-on-skip"]);
+    assert.ok(caps.cli.options.bail);
     assert.equal(caps.cli.options.json.kind, "flag");
     assert.equal(caps.config.manual.type, "boolean");
     // 每个操作符含说明与类型约束
@@ -58,6 +59,7 @@ test("capabilities 文本：版本、操作符、when、extract、保留变量�
     assert.match(text, /capabilities/);
     assert.match(text, /doctor/);
     assert.match(text, /--fail-on-skip/);
+    assert.match(text, /--bail/);
 });
 
 test("CLI capabilities --json：stdout 纯净且可直接解析，与 build 产物一致", () => {

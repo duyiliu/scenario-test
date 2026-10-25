@@ -50,6 +50,13 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
 });
 
+test("d.ts ScenarioReport 标注 CLI --bail 的 NOT_RUN 占位报告", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    assert.match(dts, /status: "PASSED" \| "FAILED" \| "SKIPPED" \| "CANCELLED" \| "NOT_RUN";/);
+    assert.match(dts, /notRun\?: boolean;/);
+    assert.match(dts, /scenarioId\?: string;/);
+});
+
 test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     const dts = fs.readFileSync(dtsPath, "utf8");
     for (const symbol of [

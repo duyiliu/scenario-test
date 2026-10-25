@@ -342,7 +342,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -509,6 +509,7 @@ var contract = Object.freeze({
       all: { kind: "flag", prop: "all", description: "\u6267\u884C\u914D\u7F6E\u4E2D\u7684\u5168\u90E8\u81EA\u52A8\u573A\u666F\uFF08\u9ED8\u8BA4\u6392\u9664 manual:true\uFF09" },
       force: { kind: "flag", prop: "force", description: "init \u8986\u76D6\u5DF2\u6709\u6587\u4EF6\uFF08\u76EE\u6807\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u53EF\u4EA4\u4E92\u9009\u62E9\uFF09" },
       "no-input": { kind: "flag", prop: "noInput", description: "init \u975E\u4EA4\u4E92\uFF1A\u76EE\u5F55\u5DF2\u5B58\u5728\u65F6\u6309 keep\uFF08\u4FDD\u7559\u914D\u7F6E\u4E0E\u573A\u666F\uFF0C\u4EC5\u5237\u65B0 AI \u89C4\u5219\u548C\u8FD0\u884C\u65F6\u526F\u672C\uFF09" },
+      bail: { kind: "flag", prop: "bail", description: "\u9047\u9996\u4E2A\u5931\u8D25\u573A\u666F\u540E\u8DF3\u8FC7\u540E\u7EED\u573A\u666F\uFF1B\u672A\u6267\u884C\u573A\u666F\u5728\u6587\u672C\u4E0E JSON \u4E2D\u5355\u5217" },
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
       json: { kind: "flag", prop: "json", description: "run/capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF0C\u4EBA\u7C7B\u53EF\u8BFB\u8FDB\u5EA6\u4E0E\u7ED3\u8BBA\u8D70 stderr\uFF09" },
@@ -3661,7 +3662,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, bail: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4125,7 +4126,24 @@ ${choices.join("\n")}${remaining > 0 ? `
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
   const reports = [];
-  for (const entry of entries) {
+  const notRunReports = [];
+  const buildNotRunReport = (entry) => ({
+    scenarioId: entry.id,
+    scenarioName: entry.name || entry.id,
+    status: "NOT_RUN",
+    notRun: true,
+    reason: "--bail\uFF1A\u524D\u5E8F\u573A\u666F\u5931\u8D25\uFF0C\u672A\u6267\u884C",
+    passed: false,
+    planned: 0,
+    executed: 0,
+    passedSteps: 0,
+    failed: 0,
+    skipped: 0,
+    results: [],
+    vars: {}
+  });
+  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+    const entry = entries[entryIndex];
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
     if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
@@ -4195,6 +4213,21 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     failedTotal += report.failed + stoppedUnexecuted;
     skippedTotal += report.skipped;
     print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
+    if (args.bail && report.status === "FAILED") {
+      for (const remaining of entries.slice(entryIndex + 1)) {
+        const notRun = buildNotRunReport(remaining);
+        notRunReports.push(notRun);
+        reports.push(notRun);
+      }
+      break;
+    }
+  }
+  if (notRunReports.length) {
+    for (const report of notRunReports) {
+      print(`[NOT RUN] ${escapeInlineText(report.scenarioName)} (${escapeInlineText(report.scenarioId)}) \u2014 ${report.reason}`);
+    }
+    print(`
+--bail \u5DF2\u5F00\u542F\uFF1A\u9996\u4E2A\u5931\u8D25\u573A\u666F\u540E\u8DF3\u8FC7 ${notRunReports.length} \u4E2A\u672A\u6267\u884C\u573A\u666F`);
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
@@ -4204,7 +4237,8 @@ Overall: ${passedTotal}/${total} passed`);
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
     process.exitCode = 1;
   }
-  const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65`;
+  const bailSummary = notRunReports.length ? `\uFF0C\u56E0 --bail \u8DF3\u8FC7 ${notRunReports.length} \u4E2A\u573A\u666F` : "";
+  const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65${bailSummary}`;
   if (actualFailedTotal > 0) {
     print(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5931\u8D25\u3002${countSummary}\uFF1B\u672A\u6267\u884C\u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7\u3002`);

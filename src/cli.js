@@ -97,7 +97,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, bail: false, json: false, help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -625,7 +625,26 @@ async function runCommand(args) {
     // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
     const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
     const reports = [];
-    for (const entry of entries) {
+    const notRunReports = [];
+    // --bail 的未执行场景不加载场景文件（避免执行定义代码），只回显清单信息：
+    // 形状与 ScenarioReport 对齐并带 notRun 标记，CI 可把它与 SKIP/FAILED 明确区分。
+    const buildNotRunReport = (entry) => ({
+        scenarioId: entry.id,
+        scenarioName: entry.name || entry.id,
+        status: "NOT_RUN",
+        notRun: true,
+        reason: "--bail：前序场景失败，未执行",
+        passed: false,
+        planned: 0,
+        executed: 0,
+        passedSteps: 0,
+        failed: 0,
+        skipped: 0,
+        results: [],
+        vars: {}
+    });
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+        const entry = entries[entryIndex];
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
         let scenarioPath;
@@ -712,6 +731,20 @@ async function runCommand(args) {
         failedTotal += report.failed + stoppedUnexecuted;
         skippedTotal += report.skipped;
         print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`);
+        if (args.bail && report.status === "FAILED") {
+            for (const remaining of entries.slice(entryIndex + 1)) {
+                const notRun = buildNotRunReport(remaining);
+                notRunReports.push(notRun);
+                reports.push(notRun);
+            }
+            break;
+        }
+    }
+    if (notRunReports.length) {
+        for (const report of notRunReports) {
+            print(`[NOT RUN] ${escapeInlineText(report.scenarioName)} (${escapeInlineText(report.scenarioId)}) — ${report.reason}`);
+        }
+        print(`\n--bail 已开启：首个失败场景后跳过 ${notRunReports.length} 个未执行场景`);
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (failedTotal) process.exitCode = 1;
@@ -720,7 +753,8 @@ async function runCommand(args) {
         process.exitCode = 1;
     }
 
-    const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
+    const bailSummary = notRunReports.length ? `，因 --bail 跳过 ${notRunReports.length} 个场景` : "";
+    const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步${bailSummary}`;
     if (actualFailedTotal > 0) {
         print(`\n结论：执行失败。${countSummary}；未执行步骤不计入通过。`);
     } else if (passedTotal === 0 && skippedTotal > 0) {

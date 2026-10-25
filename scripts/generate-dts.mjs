@@ -244,7 +244,8 @@ export interface ScenarioStepResult {
 export interface ScenarioReport {
     scenarioName: string;
     passed: boolean;
-    status: "PASSED" | "FAILED" | "SKIPPED" | "CANCELLED";
+    /** CLI run --json 配合 --bail 时，未执行场景为 NOT_RUN（引擎本身不会返回该状态） */
+    status: "PASSED" | "FAILED" | "SKIPPED" | "CANCELLED" | "NOT_RUN";
     planned: number;
     executed: number;
     passedSteps: number;
@@ -252,6 +253,10 @@ export interface ScenarioReport {
     skipped: number;
     results: ScenarioStepResult[];
     vars: Record<string, unknown>;
+    /** CLI --bail 未执行场景标记（占位报告，results 为空） */
+    notRun?: boolean;
+    scenarioId?: string;
+    reason?: string;
 }
 
 export interface Runtime {

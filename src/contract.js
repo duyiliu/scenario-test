@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -185,6 +185,7 @@ export const contract = Object.freeze({
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
             force: { kind: "flag", prop: "force", description: "init 覆盖已有文件（目标目录已存在时可交互选择）" },
             "no-input": { kind: "flag", prop: "noInput", description: "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）" },
+            bail: { kind: "flag", prop: "bail", description: "遇首个失败场景后跳过后续场景；未执行场景在文本与 JSON 中单列" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
             json: { kind: "flag", prop: "json", description: "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）" },

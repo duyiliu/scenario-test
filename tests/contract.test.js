@@ -50,7 +50,7 @@ test("when 来源含 vars/lastResponse/status；extract 来源与 required 语�
     assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);
 });
 
-test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {
+test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip/bail", () => {
     assert.ok(contract.config.scenarioItemKeys.includes("id"));
     assert.ok(contract.config.scenarioItemKeys.includes("url"));
     assert.ok(contract.config.scenarioItemKeys.includes("manual"));
@@ -64,6 +64,8 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
         assert.ok(contract.cli.commands.includes(command), `CLI 命令缺少 ${command}`);
     }
     assert.equal(contract.cli.options["fail-on-skip"].kind, "flag");
+    assert.equal(contract.cli.options.bail.kind, "flag");
+    assert.equal(contract.cli.options.bail.prop, "bail");
     assert.equal(contract.cli.options.json.kind, "flag");
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);
     assert.equal(contract.cli.options.config.kind, "value");

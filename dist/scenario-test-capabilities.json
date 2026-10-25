@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -269,6 +269,10 @@
       "no-input": {
         "kind": "flag",
         "description": "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）"
+      },
+      "bail": {
+        "kind": "flag",
+        "description": "遇首个失败场景后跳过后续场景；未执行场景在文本与 JSON 中单列"
       },
       "fail-on-skip": {
         "kind": "flag",

@@ -191,9 +191,9 @@ scenario-test/
 - `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
-- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
+- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。多场景配合 `--bail` 时，未执行场景以 `status: "NOT_RUN"` + `notRun: true` 保留在 `scenarios` 中。
 - `manual: true` 场景默认不参与 `--all`。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
+- 支持 `--bail`（首个失败场景后不再启动后续场景）、`--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
