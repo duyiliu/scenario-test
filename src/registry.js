@@ -21,6 +21,40 @@ function nonEmptyString(value) {
     return typeof value === "string" && Boolean(value.trim());
 }
 
+// 定义期错误里的值展示：字符串带引号（区分 "5000" 与 5000），
+// Infinity/NaN 等 JSON 无法表达的数值走 String
+function describeValue(value) {
+    if (typeof value === "string") return JSON.stringify(value);
+    if (Array.isArray(value)) return "数组";
+    if (isPlainObject(value)) return "对象";
+    return String(value);
+}
+
+// 继承的可枚举属性会被运行期 clone 的 JSON 序列化丢弃（只保留自有属性）。
+// 返回第一个继承键供报错定位；无继承键返回 null。
+function inheritedEnumerableKey(value) {
+    for (const key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+    }
+    return null;
+}
+
+// request.headers 要求「普通对象」：core.isPlainObject 只按 toString 标签判定，
+// 自定义类实例同样返回 [object Object]——这里额外检查原型链，拒绝 Foo 实例。
+// 同时兼容 node:vm 沙箱中创建的对象：跨 realm 的 Object.prototype 原型为 null，
+// 但 constructor 仍是对方 realm 的 Object，且 Object.prototype === prototype。
+function isPlainHeadersObject(value) {
+    if (!isPlainObject(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null) return true;
+    if (Object.getPrototypeOf(prototype) !== null) return false;
+    // constructor 必须是「自己的」Object 构造器：伪装成 proto.constructor = Object
+    // 的自定义原型会因 Object.prototype !== proto 被识别
+    if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+    if (prototype.constructor.prototype !== prototype) return false;
+    return inheritedEnumerableKey(value) === null;
+}
+
 // 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。
 // 拼错的 assertions/retryUntil/timeoutMs 此前被 defineScenario 静默接受——业务断言
 // 消失、重试/超时静默失效，接口返回 2xx 即假绿；这里按契约名单定义期直接拒绝。
@@ -225,6 +259,7 @@ export function defineScenario(input) {
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
+        const stepLabel = `场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`;
         // B3：request/params 非对象会在运行期被静默忽略（headers/body/method 或整个 query
         // 丢弃），请求照发并可能 PASS——定义期直接拒绝，并禁止 step.params 与 request.params
         // 双写（运行期只取 step.params，另一份静默失效）。
@@ -232,6 +267,13 @@ export function defineScenario(input) {
             invariant(
                 isPlainObject(step.request),
                 `步骤 ${step.name} 的 request 必须是对象（当前 ${JSON.stringify(step.request)}，非对象会在运行期被静默忽略）`
+            );
+            // request 会被 clone(JSON) 深拷贝：继承字段不会进入运行期，
+            // 例如 Object.create({ headers }) 会在定义期看似合法、运行时静默丢头
+            const inheritedRequestKey = inheritedEnumerableKey(step.request);
+            invariant(
+                inheritedRequestKey === null,
+                `${stepLabel} 的 request 包含继承的可枚举字段 "${inheritedRequestKey}"（运行期 clone 只保留自有字段，会静默丢失；请改为对象自有字段）`
             );
             if (step.request.params !== undefined) {
                 invariant(
@@ -436,8 +478,8 @@ export function defineScenario(input) {
                 );
             }
         }
-        // 未知键校验放在最后：既保留既有校验的报错优先级（如 adapter/match 豁免提示、
-        // GET 带体、method 模板等），又让纯拼写错误在这里明确失败。
+        // 未知键校验先于步骤字段类型校验：先保留既有校验的报错优先级（如 adapter/match
+        // 豁免提示、GET 带体、method 模板等），纯拼写错误也在这里明确失败。
         // HTTP 步骤严格拒绝所有未知键；适配器步骤（显式 adapter 或未声明 HTTP 字段的
         // matches 自动分发步骤）允许私有配置键（如 `{ name, prepareLocal: true }`），
         // 但拼写/大小写疑似 DSL 字段的键仍然拒绝，避免假绿。
@@ -450,6 +492,61 @@ export function defineScenario(input) {
             rejectedKeys.length === 0,
             unknownKeysMessage(`场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`, rejectedKeys, contract.scenario.stepKeys)
         );
+        // timeoutMs/saveResponseAs/path/request.path/request.timeoutMs/request.headers 的定义期
+        // 类型校验统一放在既有校验（request/params/adapter/method/GET 带体/assertions/
+        // retryUntil/extract/when/未知键）之后，保持既有报错优先级不回归。
+        // timeoutMs 不做 {{ }} 解析（executeHttp/executeAdapter 直接用原始值），
+        // 非数字/0/负数/字符串会在运行期被静默钳制为 30000ms，超时配置实际失效。
+        // 显式 0 不做「使用默认值」语义：省略字段即默认值，写 0 属死写法，定义期拒绝。
+        if (step.timeoutMs !== undefined) {
+            invariant(
+                typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
+                `${stepLabel} 的 timeoutMs 必须是正数（毫秒，且不支持 {{ }} 模板；当前 ${describeValue(step.timeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
+            );
+        }
+        // request.timeoutMs 与 step.timeoutMs 共用运行期超时链（step 优先），区别是 request 对象
+        // 会整体 resolve：支持整串 {{ }} 模板（CHANGELOG「request.timeoutMs 支持模板变量」）。
+        // 其余值（非数字/0/负数/非模板字符串）同样会被 Number()+钳制静默降级为 30000ms，定义期拒绝。
+        if (requestDef.timeoutMs !== undefined) {
+            const requestTimeoutMs = requestDef.timeoutMs;
+            const isWholeTemplate = typeof requestTimeoutMs === "string"
+                && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(requestTimeoutMs);
+            invariant(
+                isWholeTemplate || (typeof requestTimeoutMs === "number" && Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0),
+                `${stepLabel} 的 request.timeoutMs 必须是正数或整串 {{ }} 模板（当前 ${describeValue(requestTimeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
+            );
+        }
+        // saveResponseAs 空串会被 readResponse 的 truthiness 判断静默跳过保存，
+        // 非字符串要等响应体读完才在 io.saveResponse/validatePath 抛错；允许 {{ }} 模板
+        if (step.saveResponseAs !== undefined) {
+            invariant(
+                nonEmptyString(step.saveResponseAs),
+                `${stepLabel} 的 saveResponseAs 必须是非空字符串（允许 {{ }} 模板；当前 ${describeValue(step.saveResponseAs)}——空串会静默不保存）`
+            );
+        }
+        // path/request.path 非字符串：带 params 时 buildUrl 的 rawPath.includes("?") 抛
+        // TypeError，不带 params 时被 joinUrl 隐式 String()，行为不一致。
+        // 空串表示根路径，允许；模板允许。
+        if (step.path !== undefined) {
+            invariant(
+                typeof step.path === "string",
+                `${stepLabel} 的 path 必须是字符串（允许 {{ }} 模板；当前 ${describeValue(step.path)}）`
+            );
+        }
+        if (requestDef.path !== undefined) {
+            invariant(
+                typeof requestDef.path === "string",
+                `${stepLabel} 的 request.path 必须是字符串（允许 {{ }} 模板；当前 ${describeValue(requestDef.path)}）`
+            );
+        }
+        // request.headers 非对象会被 { ...(request.headers || {}) } 展开成字符串下标键，
+        // 产生无效请求头（如 headers: "X-A: 1" → {0:"X",1:":",...}）
+        if (requestDef.headers !== undefined) {
+            invariant(
+                isPlainHeadersObject(requestDef.headers),
+                `${stepLabel} 的 request.headers 必须是普通对象（当前 ${describeValue(requestDef.headers)}——非对象会被展开成字符串下标键，产生无效请求头）`
+            );
+        }
     });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");

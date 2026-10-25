@@ -83,6 +83,13 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     assert.match(dts, /errorMessage: string;/);
 });
 
+test("d.ts RequestDefinition 覆盖 request.path 与 request.timeoutMs", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    const members = interfaceMembers(dts, "RequestDefinition");
+    assert.ok(members.has("path"), "d.ts RequestDefinition 缺少 request.path（合法写法会被 TS 对象字面量检查拒绝）");
+    assert.ok(members.has("timeoutMs"), "d.ts RequestDefinition 缺少 request.timeoutMs");
+});
+
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {
     const dts = fs.readFileSync(dtsPath, "utf8");
     const operators = Object.keys(contract.assertions.operators);
@@ -151,6 +158,8 @@ const scenario = { name: "示例", steps: [{ name: "请求", method: "GET", path
 const entry = { id: "health", url: "scenarios/health.js", manual: true };
 /** @type {import('./types/scenario-test').Assertion} */
 const assertion = { path: "code", oneOf: [200, 201] };
+/** @type {import('./types/scenario-test').RequestDefinition} */
+const request = { path: "api/{{vars.id}}", timeoutMs: "{{vars.timeout}}", headers: { "X-Token": "{{vars.token}}" } };
 `, "utf8");
         // 非法用例：未知断言键应报错；startsWith 期望值必须 string
         fs.writeFileSync(path.join(dir, "bad.js"), `// @ts-check
