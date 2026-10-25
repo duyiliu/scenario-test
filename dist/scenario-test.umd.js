@@ -31,9 +31,9 @@ var ScenarioTest = (() => {
   ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // node_modules/blueimp-md5/js/md5.js
+  // ../../../git/scenario-test/node_modules/blueimp-md5/js/md5.js
   var require_md5 = __commonJS({
-    "node_modules/blueimp-md5/js/md5.js"(exports, module) {
+    "../../../git/scenario-test/node_modules/blueimp-md5/js/md5.js"(exports, module) {
       (function($) {
         "use strict";
         function safeAdd(x, y) {
