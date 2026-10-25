@@ -517,11 +517,11 @@ test("defineConfig 拒绝非法全局参数", async () => {
     assert.deepEqual(config.envs[0].globals, [{ type: "query", name: "q", value: "1" }]);
 });
 
-test("when 对象形式定义期校验：来源 vars/lastResponse/status、target 仅 status，禁止 header 与未知断言键", () => {
+test("when 对象形式定义期校验：来源 vars/suite/lastResponse/status、target 仅 status，禁止 header 与未知断言键", () => {
     const base = { name: "W", steps: [{ name: "s", path: "x" }] };
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { path: "code", equals: 200 } }] }), /必须声明来源 from/);
-    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "body", path: "code", equals: 200 } }] }), /来源只支持 vars\/lastResponse\/status/);
-    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "headers", path: "code", equals: 200 } }] }), /来源只支持 vars\/lastResponse\/status/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "body", path: "code", equals: 200 } }] }), /来源只支持 vars\/suite\/lastResponse\/status/);
+    assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "headers", path: "code", equals: 200 } }] }), /来源只支持 vars\/suite\/lastResponse\/status/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", target: "status", equals: 200 } }] }), /不允许使用 target\/header/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { target: "duration", equals: 200 } }] }), /target 只支持 status/);
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", header: "x-trace", exists: true } }] }), /不允许使用 header/);
@@ -529,6 +529,7 @@ test("when 对象形式定义期校验：来源 vars/lastResponse/status、targe
     assert.throws(() => defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "code" } }] }), /必须至少包含一个操作符/);
     // 合法 when 与模板真值形式不抛
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "vars", path: "cleanupId", exists: true } }] });
+    defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "suite", path: "loginToken", exists: true } }] });
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "lastResponse", path: "data.id", exists: true } }] });
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { from: "status", equals: 200 } }] });
     defineScenario({ ...base, steps: [{ name: "s", path: "x", when: { target: "status", equals: 200 } }] });
@@ -1834,8 +1835,8 @@ test("断言/extract 的 from、target、裸 path 定义期白名单与分词校
     assert.throws(() => define([{ target: "statu", equals: 200 }]), /target 只支持 status[/]duration/);
     assert.throws(() => define([{ target: "headers", path: "x", exists: true }]), /target 只支持 status[/]duration/);
     // from 拼错/未知源同样拒绝
-    assert.throws(() => define([{ from: "bodyy", path: "code", equals: 200 }]), /from 只支持 body[/]vars[/]headers[/]bodyText/);
-    assert.throws(() => define([{ from: "response", path: "status", equals: 200 }]), /from 只支持 body[/]vars[/]headers[/]bodyText/);
+    assert.throws(() => define([{ from: "bodyy", path: "code", equals: 200 }]), /from 只支持 body[/]vars[/]suite[/]headers[/]bodyText/);
+    assert.throws(() => define([{ from: "response", path: "status", equals: 200 }]), /from 只支持 body[/]vars[/]suite[/]headers[/]bodyText/);
     // 裸 path 必须过 tokenizePath：a..b / a[] 原静默判缺，exists:false 假绿
     assert.throws(() => define([{ path: "a..b", exists: false }]), /path 不是合法路径写法/);
     assert.throws(() => define([{ path: "a[]", exists: true }]), /path 不是合法路径写法/);
@@ -1843,6 +1844,7 @@ test("断言/extract 的 from、target、裸 path 定义期白名单与分词校
     // 合法形态不抛（headers 首段保留宽松特性；空串=整个来源；each 子断言 path 支持模板）
     define([{ target: "status", equals: 200 }, { target: "duration", lt: 5000 }]);
     define([{ from: "headers", path: "x-total", exists: true }]);
+    define([{ from: "suite", path: "loginToken", exists: true }]);
     define([{ from: "headers", path: ".X-TOTAL.length", equals: 2 }]);
     define([{ path: "list[-1]", equals: 1 }, { path: 'm["a>b"]', exists: true }]);
     define([{ path: "", exists: true }]);

@@ -169,9 +169,11 @@ export function createWorkbenchRuntime(options) {
         lastReport: null,
         startTime: null,
         endTime: null,
-        // varsTrail[i] = 第 i 步执行后的 runtime.vars 浅拷贝；与 debugRuntimes[i]（执行前快照）做差集
-        // 供工作台「运行时变量」面板展示每步执行后的变量与 extract 变更项
-        varsTrail: []
+        // varsTrail[i] / suiteTrail[i] = 第 i 步执行后的 runtime.vars / runtime.suite 浅拷贝；
+        // 与 debugRuntimes[i]（执行前快照）做差集，供工作台「运行时变量」面板展示
+        // 每步执行后的变量与 extract 变更项（suite 为本次运行跨步骤共享变量，名称带 suite. 前缀展示）
+        varsTrail: [],
+        suiteTrail: []
     };
 
     // ===== 存储与配置辅助 =====
@@ -545,6 +547,8 @@ export function createWorkbenchRuntime(options) {
         var environment = getSelectedEnvironment();
         var runtime = {
             vars: buildScenarioRuntimeVars(),
+            // 工作台一次只运行一个场景：suite 仍按 run 级语义在本次执行内跨步骤共享
+            suite: {},
             lastResponse: null,
             lastResponseBody: null,
             baseUrl: getRequestBaseUrl(),
@@ -565,6 +569,7 @@ export function createWorkbenchRuntime(options) {
         // 大响应场景下避免每步 JSON 深拷贝两份（快照 + 恢复）的内存/CPU 开销。
         return {
             vars: { ...runtime.vars },
+            suite: { ...(runtime.suite || {}) },
             lastResponse: runtime.lastResponse,
             lastResponseBody: runtime.lastResponseBody
         };
@@ -579,6 +584,7 @@ export function createWorkbenchRuntime(options) {
         if (!snapshot) return null;
         return {
             vars: { ...snapshot.vars },
+            suite: { ...(snapshot.suite || {}) },
             lastResponse: snapshot.lastResponse,
             lastResponseBody: snapshot.lastResponseBody
         };
@@ -594,16 +600,23 @@ export function createWorkbenchRuntime(options) {
         return changed;
     }
 
-    // 运行时变量面板视图：执行后全量 vars + 本步变更键；快照缺失（如旧会话回退越界）时返回 null 不渲染
+    // 运行时变量面板视图：执行后全量 vars/suite + 本步变更键；快照缺失（如旧会话回退越界）时返回 null 不渲染
     function buildVarsView(stepIndex) {
         var before = state.debugRuntimes[stepIndex];
         if (!before) return null;
-        var after = state.varsTrail[stepIndex] || before.vars;
-        return { vars: after, changedKeys: diffVars(before.vars, after) };
+        var afterVars = state.varsTrail[stepIndex] || before.vars;
+        var afterSuite = state.suiteTrail[stepIndex] || before.suite || {};
+        return {
+            vars: afterVars,
+            suite: afterSuite,
+            changedKeys: diffVars(before.vars, afterVars),
+            changedSuiteKeys: diffVars(before.suite || {}, afterSuite)
+        };
     }
 
     function restoreStepRuntime(runtime, snapshot) {
         runtime.vars = { ...snapshot.vars };
+        runtime.suite = { ...(snapshot.suite || {}) };
         runtime.lastResponse = snapshot.lastResponse;
         runtime.lastResponseBody = snapshot.lastResponseBody;
         runtime.abortController = new AbortController();
@@ -624,6 +637,7 @@ export function createWorkbenchRuntime(options) {
         state.stepCheckpoints = state.stepCheckpoints.slice(0, stepIndex + 1);
         state.debugRuntimes = state.debugRuntimes.slice(0, stepIndex);
         state.varsTrail = state.varsTrail.slice(0, stepIndex);
+        state.suiteTrail = state.suiteTrail.slice(0, stepIndex);
         state.nextStepIndex = stepIndex;
         state.lastReport = null;
         // 回退后会话继续：清掉上一轮结束时间，避免底部显示早已过期的完成时刻
@@ -679,6 +693,7 @@ export function createWorkbenchRuntime(options) {
         state.stepCheckpoints = [];
         state.debugRuntimes = [];
         state.varsTrail = [];
+        state.suiteTrail = [];
         state.activeRuntime = null;
         state.nextStepIndex = 0;
         state.lastReport = null;
@@ -849,6 +864,7 @@ export function createWorkbenchRuntime(options) {
         state.startTime = new Date();
         state.endTime = null;
         state.varsTrail = [];
+        state.suiteTrail = [];
         setExecutionButtonsDisabled(true);
         uiView.setRunState('running', '执行中');
         // 新一轮开始先全量渲染一次待执行占位（同时清掉上一轮遗留的已渲染步骤）；
@@ -864,6 +880,7 @@ export function createWorkbenchRuntime(options) {
                 result.stepNo = i + 1;
                 state.steps.push(result);
                 state.varsTrail[i] = { ...runtime.vars };
+                state.suiteTrail[i] = { ...runtime.suite };
                 renderStatsAll();
                 renderFilterAll();
                 uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
@@ -905,6 +922,7 @@ export function createWorkbenchRuntime(options) {
             state.startTime = new Date();
             state.endTime = null;
             state.varsTrail = [];
+            state.suiteTrail = [];
             // 从头开始单步执行：全量渲染待执行占位，清掉上一轮遗留（循环内为增量追加）
             renderStepsAll();
             setSidePanelTab('stats');
@@ -926,6 +944,7 @@ export function createWorkbenchRuntime(options) {
             result.stepNo = stepIndex + 1;
             state.steps.push(result);
             state.varsTrail[stepIndex] = { ...runtime.vars };
+            state.suiteTrail[stepIndex] = { ...runtime.suite };
             state.nextStepIndex += 1;
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
             renderStatsAll();
@@ -1360,6 +1379,7 @@ export function createWorkbenchRuntime(options) {
         return buildStepCurl(step, {
             baseUrl: getRequestBaseUrl(),
             vars: resolvedVars,
+            suite: (state.activeRuntime && state.activeRuntime.suite) || (state.stepRuntime && state.stepRuntime.suite) || {},
             globals: getEffectiveGlobals()
         });
     }
@@ -1632,7 +1652,7 @@ export function createWorkbenchRuntime(options) {
                 var debugRt = getDebugRuntime(idx);
                 if (debugRt) return debugRt;
                 var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables(), (state.scenario && state.scenario.vars) || {});
-                return { vars: rawVars, lastResponse: null, lastResponseBody: null };
+                return { vars: rawVars, suite: (state.activeRuntime && state.activeRuntime.suite) || (state.stepRuntime && state.stepRuntime.suite) || {}, lastResponse: null, lastResponseBody: null };
             },
             executeStep,
             getSelectedEnvironment,

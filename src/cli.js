@@ -601,6 +601,11 @@ async function runCommand(args) {
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = {};
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
+    // 跨场景共享上下文：一次 run 内维护 suite 汇总对象。每个场景启动时取快照、
+    // 结束时整体合并（见 runEntry），避免并发场景读到另一个场景写到一半的 suite：
+    // 默认串行（--concurrency 1）写序即配置清单顺序；并发时写序为完成顺序，同名键
+    // 后完成者覆盖。suite 不建立显式依赖，前置场景失败也不会自动跳过后续场景。
+    const suiteContext = {};
     const baseOptions = {
         config,
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
@@ -664,8 +669,12 @@ async function runCommand(args) {
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
         entryPrint(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+        // 场景启动时快照 suite，场景内跨步骤稳定；结束时整体合并回 run 级上下文。
+        // 串行下等价于逐场景顺序传递；并发下写序为完成顺序，不暴露半写入状态。
+        const entrySuite = { ...suiteContext };
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
+            suite: entrySuite,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
@@ -720,6 +729,9 @@ async function runCommand(args) {
                 if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
             }
         });
+        // 先合并 suite 再跑 afterScenario：与串行时共享对象已被写入的可见性一致，
+        // 插件即使拒绝也不回滚已完成的场景产物（进程最终非零退出）。
+        Object.assign(suiteContext, report.suite || {});
         for (const plugin of plugins) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }

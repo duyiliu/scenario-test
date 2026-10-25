@@ -233,6 +233,8 @@ export function createRuntime(scenario, options = {}) {
             { ...(config.vars || {}), ...(options.vars || {}) },
             options.environmentVariables || {}
         ),
+        // suite 是本次 run 跨场景共享变量：同一对象引用会传给后续场景，写入顺序即场景执行顺序
+        suite: options.suite && typeof options.suite === "object" ? options.suite : {},
         lastResponse: null,
         lastResponseBody: null
     };
@@ -946,6 +948,7 @@ export function createEngine(engineOptions = {}) {
         const runtime = createRuntime(scenario, {
             config,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
+            suite: runOptions.suite !== undefined ? runOptions.suite : engineOptions.suite,
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
         });
         const results = [];
@@ -994,7 +997,9 @@ export function createEngine(engineOptions = {}) {
             failed,
             skipped,
             results,
-            vars: runtime.vars
+            vars: runtime.vars,
+            // 报告保留本次场景结束时的 suite 快照；共享对象继续被后续场景使用
+            suite: { ...runtime.suite }
         };
     }
 

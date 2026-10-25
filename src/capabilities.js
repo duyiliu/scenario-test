@@ -32,6 +32,8 @@ export function buildCapabilities(inputContract = contract) {
             targets: [...(extract.targets || [])],
             required: extract.required,
             default: extract.default,
+            scopes: [...(extract.scopes || [])],
+            scope: extract.scope,
             note: extract.note
         },
         reservedVars: [...reservedVars],
@@ -115,6 +117,9 @@ export function renderCapabilitiesText(capabilities) {
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);
     if (capabilities.extract.targets?.length) {
         lines.push(`  提取目标 target: ${capabilities.extract.targets.join(" / ")}；允许字段: ${capabilities.extract.metaKeys.join(" / ")}`);
+    }
+    if (capabilities.extract.scopes?.length) {
+        lines.push(`  提取作用域 scope: ${capabilities.extract.scopes.join(" / ")}（默认 ${capabilities.extract.scope}；suite 为本次 run 跨场景共享）`);
     }
     lines.push(`  ${capabilities.extract.note}`);
     lines.push("");

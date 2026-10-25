@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### DSL 与诊断
+### DSL / CLI
+
+- 跨场景共享上下文（contract v13 → v14）：`extract` 项新增 `scope: "suite"`，提取结果写入本次 run 的 `suite` 命名空间，后续场景用 `{{suite.<name>}}` 引用；默认仍写当前场景 `vars`。`when` 对象形式与断言 `from` 同步支持 `suite` 来源；`createEngine`/`runScenario` 接受共享 `suite` 对象，报告新增 `suite` 快照。CLI 在一次 run 的所有场景间共享 `suite`：每个场景以启动时的快照运行、结束时整体合并；默认串行（`--concurrency 1`）下写序即配置清单顺序，`--concurrency > 1` 时写序为完成顺序、同名键后完成者覆盖。`suite` 不跨 run、不建立显式依赖；前置场景失败不会自动跳过后续场景，缺失 suite 变量按空值解析并由断言暴露。浏览器工作台单场景执行时 suite 在本次执行内跨步骤共享，并在「运行时变量」面板以 `suite.` 前缀展示。同步投射 capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库/项目 README 模板。
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 

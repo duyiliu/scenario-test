@@ -37,14 +37,16 @@ test("每个操作符含说明；数值比较操作符标注有限 number 约束
     }
 });
 
-test("when 来源含 vars/lastResponse/status；extract 来源与 required 语义；保留变量；generatedVars 类型", () => {
-    assert.deepEqual(contract.when.sources, ["vars", "lastResponse", "status"]);
+test("when 来源含 vars/suite/lastResponse/status；extract 来源、作用域与 required 语义；保留变量；generatedVars 类型", () => {
+    assert.deepEqual(contract.when.sources, ["vars", "suite", "lastResponse", "status"]);
     assert.deepEqual(contract.when.targets, ["status"]);
-    assert.deepEqual(contract.assertions.from, ["body", "vars", "headers", "bodyText"]);
+    assert.deepEqual(contract.assertions.from, ["body", "vars", "suite", "headers", "bodyText"]);
     assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
     assert.deepEqual(contract.extract.targets, ["status"]);
-    assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default"]);
+    assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default", "scope"]);
+    assert.deepEqual(contract.extract.scopes, ["step", "suite"]);
+    assert.equal(contract.extract.scope, "step");
     assert.equal(contract.extract.required, "boolean");
     assert.deepEqual(contract.reservedVars, ["runId", "runNo", "__proto__", "constructor", "prototype"]);
     assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);

@@ -134,6 +134,8 @@ export function evalExpression(expression, runtime) {
     const text = String(expression || "").trim();
     if (!text) return "";
     if (text === "vars") return runtime.vars;
+    // suite：本次 run 跨场景共享的命名空间（extract scope: "suite" 写入）
+    if (text === "suite") return runtime.suite;
     // 模板变量语义（双端一致，勿单边修改）：
     //   lastResponse      完整响应对象（status / headers / body / bodyText）
     //   lastResponseBody  解析后的响应体（JSON 已转为对象；原始文本用断言 from: "bodyText" 获取）
@@ -146,6 +148,11 @@ export function evalExpression(expression, runtime) {
         return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : undefined;
     }
     if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+    if (text.startsWith("suite.")) {
+        const sub = text.slice(6);
+        return sub && !sub.startsWith(".") ? getByPath(runtime.suite, sub) : undefined;
+    }
+    if (text.startsWith("suite[")) return getByPath(runtime.suite, text.slice(5));
     if (text.startsWith("lastResponse.")) {
         const sub = text.slice(13);
         return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : undefined;
@@ -510,6 +517,7 @@ function assertionActual(definition, response, runtime) {
     if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : undefined;
     if (definition.header) return headerValue(response.headers, definition.header);
     if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
+    if (definition.from === "suite") return definition.path ? getByPath(runtime.suite, definition.path) : runtime.suite;
     if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
@@ -798,6 +806,10 @@ export function applyExtract(step, response, runtime) {
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
         assertNotReservedVar(definition.name, "extract 变量");
+        // scope: "suite" 写入本次 run 共享命名空间（跨场景复用），默认 step 作用域仍写 runtime.vars
+        const target = definition.scope === "suite"
+            ? (runtime.suite || (runtime.suite = {}))
+            : runtime.vars;
         // required 与 default 语义互斥（一个要缺失即失败、一个要缺失即兜底），同声明即定义错误
         const hasDefault = definition.default !== undefined;
         if (definition.required === true && hasDefault) {
@@ -820,7 +832,7 @@ export function applyExtract(step, response, runtime) {
             if (hasDefault) {
                 // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
                 // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
-                setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
+                setRuntimeVar(target, definition.name, resolve(definition.default, runtime));
                 continue;
             }
             if (definition.required === true) {
@@ -834,7 +846,7 @@ export function applyExtract(step, response, runtime) {
                 warnings.push(`提取变量 ${definition.name}：路径 ${definition.path || "(整个响应)"} 不存在，变量值为 undefined（required 未开启，不影响执行）`);
             }
         }
-        setRuntimeVar(runtime.vars, definition.name, value);
+        setRuntimeVar(target, definition.name, value);
     }
     return { warnings, failures };
 }
