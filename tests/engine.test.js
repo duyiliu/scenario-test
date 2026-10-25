@@ -1480,8 +1480,8 @@ test("maxResponseBytes：超限返回结构化 responseTooLarge，边界值通�
     const overResult = over.results[0];
     assert.equal(overResult.status, "ERROR");
     assert.equal(overResult.errorCode, "responseTooLarge");
-    assert.deepEqual(overResult.responseTooLarge, { actualBytes: 6, limitBytes: 5 });
-    assert.match(overResult.error, /响应体超过大小上限: 实际 6 字节，限制 5 字节/);
+    assert.deepEqual(overResult.responseTooLarge, { bytesRead: 6, limitBytes: 5 });
+    assert.match(overResult.error, /响应体超过大小上限: 已读取 6 字节，限制 5 字节/);
 
     // 边界值：恰好等于上限必须通过
     const boundary = await withBody("12345", { maxResponseBytes: 5 }).runScenario(scenario);
@@ -1496,6 +1496,31 @@ test("maxResponseBytes：超限返回结构化 responseTooLarge，边界值通�
     // 未设置上限时维持既有行为（大响应照常通过）
     const unlimited = await withBody("1234567890").runScenario(scenario);
     assert.equal(unlimited.results[0].passed, true);
+});
+
+test("maxResponseBytes：超限结构字段只报告已读取字节数，不谎报完整响应体大小", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        maxResponseBytes: 5,
+        fetch: async () => new Response(new ReadableStream({
+            start(controller) {
+                // 三个 4 字节分块：第二个分块后累计 8 字节越限并取消，第三块不应被读取
+                controller.enqueue(new Uint8Array(4));
+                controller.enqueue(new Uint8Array(4));
+                controller.enqueue(new Uint8Array(4));
+                controller.close();
+            }
+        }))
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "分块超限",
+        steps: [{ name: "下载", path: "chunked" }]
+    }));
+    const result = report.results[0];
+    assert.equal(result.errorCode, "responseTooLarge");
+    assert.deepEqual(result.responseTooLarge, { bytesRead: 8, limitBytes: 5 });
+    assert.ok(result.responseTooLarge.bytesRead < 12, "bytesRead 是提前中止时已读取量，不是完整响应体 12 字节");
+    assert.match(result.error, /已读取 8 字节，限制 5 字节/);
 });
 
 test("normalizeByteLimit：响应限制对 0/负数/NaN/Infinity/null 均视为不限，正数向下取整", async () => {
@@ -1516,7 +1541,7 @@ test("normalizeByteLimit：响应限制对 0/负数/NaN/Infinity/null 均视为�
     const floorPass = await withBody("12345", { maxResponseBytes: 5.9 }).runScenario(scenario);
     assert.equal(floorPass.results[0].passed, true);
     const floorFail = await withBody("123456", { maxResponseBytes: 5.9 }).runScenario(scenario);
-    assert.deepEqual(floorFail.results[0].responseTooLarge, { actualBytes: 6, limitBytes: 5 });
+    assert.deepEqual(floorFail.results[0].responseTooLarge, { bytesRead: 6, limitBytes: 5 });
 
     // run options 显式 null 按归一化规则视为不限，必须覆盖引擎/配置的正数上限
     const engineLimited = await withBody("123456", { maxResponseBytes: 5 })

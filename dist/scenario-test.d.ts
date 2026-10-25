@@ -260,7 +260,7 @@ export interface ScenarioStepResult {
     error?: string;
     /** 结构化错误码：responseTooLarge / uploadTooLarge（大小上限类错误） */
     errorCode?: string;
-    responseTooLarge?: { actualBytes: number; limitBytes: number };
+    responseTooLarge?: { bytesRead: number; limitBytes: number };
     uploadTooLarge?: { actualBytes: number; limitBytes: number };
     warnings?: string[];
     assertions: AssertionResult[];

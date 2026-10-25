@@ -214,10 +214,12 @@ function readBodyChunks(response, signal, maxBytes = 0) {
     });
 }
 
-function createResponseTooLargeError(actualBytes, limitBytes) {
-    const error = new Error(`响应体超过大小上限: 实际 ${actualBytes} 字节，限制 ${limitBytes} 字节`);
+function createResponseTooLargeError(bytesRead, limitBytes) {
+    // 超限即取消读取以保护内存，无法得知后续响应总长度；字段必须诚实地表达
+    // “已读取字节数”，不能命名为完整响应体的实际大小
+    const error = new Error(`响应体超过大小上限: 已读取 ${bytesRead} 字节，限制 ${limitBytes} 字节`);
     error.scenarioResponseTooLarge = true;
-    error.responseTooLarge = { actualBytes, limitBytes };
+    error.responseTooLarge = { bytesRead, limitBytes };
     return error;
 }
 

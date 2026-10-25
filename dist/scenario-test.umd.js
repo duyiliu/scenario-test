@@ -1891,10 +1891,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       })();
     });
   }
-  function createResponseTooLargeError(actualBytes, limitBytes) {
-    const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${actualBytes} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  function createResponseTooLargeError(bytesRead, limitBytes) {
+    const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
     error.scenarioResponseTooLarge = true;
-    error.responseTooLarge = { actualBytes, limitBytes };
+    error.responseTooLarge = { bytesRead, limitBytes };
     return error;
   }
   function resolveMaxResponseBytes(options = {}) {

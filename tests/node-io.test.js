@@ -279,7 +279,7 @@ test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半�
         }));
         const result = report.results[0];
         assert.equal(result.errorCode, "responseTooLarge");
-        assert.deepEqual(result.responseTooLarge, { actualBytes: 10, limitBytes: 5 });
+        assert.deepEqual(result.responseTooLarge, { bytesRead: 10, limitBytes: 5 });
         assert.equal(fs.existsSync(path.join(workspace, "out", "big.bin")), false);
 
         // 目标文件已存在时超限失败不得破坏原文件
