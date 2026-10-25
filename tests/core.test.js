@@ -300,6 +300,32 @@ test("空候选集合的 oneOf/includes 直接失败，不对不可序列化值�
     assert.equal(oneOfSkipped.passed, false);
 });
 
+test("BigInt 等 JSON 不可表示值：深比较可正常判定，不再升级为步骤异常", () => {
+    const runtime = runtimeWith();
+    const bigintResponse = { status: 200, headers: {}, body: { id: 1n }, bodyText: "" };
+    // equals：此前 stableStringify 经 JSON.stringify(1n) 抛 TypeError，断言失败升级为 ERROR；
+    // 现按 bigint: 前缀标记比较——1n === 1n，但 1n ≠ 1 ≠ "1"
+    assert.equal(evaluateAssertion({ path: "id", equals: 1n }, bigintResponse, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "id", equals: 1 }, bigintResponse, runtime).passed, false);
+    assert.equal(evaluateAssertion({ path: "id", equals: "1" }, bigintResponse, runtime).passed, false);
+    assert.equal(evaluateAssertion({ path: "id", notEquals: 2n }, bigintResponse, runtime).passed, true);
+    // includes/oneOf 分支同步受益：数组内含 BigInt 元素可正常逐项比较
+    const listResponse = { status: 200, headers: {}, body: [1n, 2n], bodyText: "" };
+    assert.equal(evaluateAssertion({ path: "", includes: 2n }, listResponse, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "", oneOf: [3n] }, bigintResponse, runtime).passed, false);
+});
+
+test("matches 缓存按解析后的期望值键控：模板值变化时互不串扰", () => {
+    const runtime = runtimeWith({ pattern: "^a" });
+    const response = responseWith({ code: "abc" });
+    const definition = { path: "code", matches: "{{vars.pattern}}" };
+    assert.equal(evaluateAssertion(definition, response, runtime).passed, true);
+    // 同一定义对象再次求值：解析出不同正则串必须命中不同缓存项，
+    // 若错误地按定义对象缓存会复用首个正则造成假绿
+    runtime.vars.pattern = "^z";
+    assert.equal(evaluateAssertion(definition, response, runtime).passed, false);
+});
+
 test("数字比较断言：类型不符合时断言失败而非抛异常，并保留 actual/expected", () => {
     const runtime = runtimeWith();
     const stringBody = responseWith({ total: "10" });

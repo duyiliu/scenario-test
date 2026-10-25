@@ -255,6 +255,8 @@ var ScenarioTest = (() => {
     TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
     USCC_ALPHABET: () => USCC_ALPHABET,
     VERSION: () => VERSION,
+    appendGlobalQuery: () => appendGlobalQuery,
+    appendQueryPairs: () => appendQueryPairs,
     applyExtract: () => applyExtract,
     applyGeneratedVar: () => applyGeneratedVar,
     assertNoReservedVars: () => assertNoReservedVars,
@@ -297,12 +299,14 @@ var ScenarioTest = (() => {
     maskSecret: () => maskSecret,
     md5: () => md5,
     mergeGlobals: () => mergeGlobals,
+    normalizeByteLimit: () => normalizeByteLimit,
     normalizeEnumDefinition: () => normalizeEnumDefinition,
     normalizeGlobalParam: () => normalizeGlobalParam,
     normalizeWhenDefinition: () => normalizeWhenDefinition,
     parseBody: () => parseBody,
     parseTimestampOffset: () => parseTimestampOffset,
     pickWeightedIndex: () => pickWeightedIndex,
+    queryKeys: () => queryKeys,
     queryPairs: () => queryPairs,
     registerAdapter: () => registerAdapter,
     registerConfig: () => registerConfig,
@@ -315,6 +319,8 @@ var ScenarioTest = (() => {
     sanitizeSensitive: () => sanitizeSensitive,
     seedToIndex: () => seedToIndex,
     seedToUnit: () => seedToUnit,
+    setRuntimeVar: () => setRuntimeVar,
+    splitUrlFragment: () => splitUrlFragment,
     tokenizePath: () => tokenizePath,
     unregisterAdapter: () => unregisterAdapter,
     usccCheckChar: () => usccCheckChar,
@@ -330,7 +336,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.8.0";
 
   // src/contract.js
-  var CONTRACT_VERSION = 12;
+  var CONTRACT_VERSION = 13;
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
     runtimeVersion: VERSION,
@@ -447,14 +453,46 @@ var ScenarioTest = (() => {
       note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
     }),
     config: Object.freeze({
+      // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+      // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+      // 运行时实际消费的是场景级 envVars。
+      configKeys: Object.freeze([
+        "envs",
+        "defaultEnvKey",
+        "globals",
+        "vars",
+        "scenarioVars",
+        "variables",
+        "scenarios",
+        "requestTimeoutMs",
+        "maxResponseBytes",
+        "maxUploadBytes",
+        "storagePrefix",
+        "storageKeys",
+        "baseUrl",
+        "authorization",
+        "nodePlugins",
+        "envVars"
+      ]),
       // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
       scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
       environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
       variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+      baseUrl: Object.freeze({
+        protocol: "http(s)",
+        note: "\u73AF\u5883 baseUrl \u58F0\u660E\u65F6\u5FC5\u987B\u662F http(s):// URL\uFF1B\u672A\u58F0\u660E\uFF08\u6216\u4E3A\u7A7A\uFF09\u65F6\u56DE\u9000\u9876\u5C42 baseUrl\uFF0C\u4E24\u8005\u90FD\u4E3A\u7A7A\u65F6\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4F7F\u7528\u5F53\u524D\u9875\u9762\u5730\u5740\uFF0CCLI run \u4ECD\u9700 --base-url \u6216\u914D\u7F6E baseUrl"
+      }),
       manual: Object.freeze({
         type: "boolean",
         note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
       })
+    }),
+    retryUntil: Object.freeze({
+      keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+      // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+      retryOn: Object.freeze(["assertion", "error", "timeout"]),
+      defaultRetryOn: Object.freeze(["assertion"]),
+      note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
     }),
     scenario: Object.freeze({
       keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
@@ -511,6 +549,15 @@ var ScenarioTest = (() => {
     })
   });
 
+  // src/utils/safe-decode.js
+  function safeDecodeComponent(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
   // src/core.js
   var GLOBAL_TYPES = [...contract.globals.types];
   function isGlobalParam(item) {
@@ -536,6 +583,10 @@ var ScenarioTest = (() => {
     return Object.prototype.toString.call(value) === "[object Object]";
   }
   var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+  function normalizeByteLimit(value) {
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  }
   var PATH_SEGMENT = /[^.\[\]]+/y;
   var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
   var PATH_TOKEN_CACHE_LIMIT = 256;
@@ -746,13 +797,43 @@ var ScenarioTest = (() => {
     if (value === void 0 || value === null) return [];
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
   }
+  function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+  }
+  function queryKeys(url) {
+    const keys = /* @__PURE__ */ new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+      const key = pair.split("=")[0];
+      if (key) keys.add(safeDecodeComponent(key));
+    }
+    return keys;
+  }
+  function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  }
+  function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+      if (global.type !== "query" || existingKeys.has(global.name)) continue;
+      pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+  }
   function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
   }
   function parseBody(text, contentType) {
     if (!text) return null;
@@ -859,6 +940,7 @@ var ScenarioTest = (() => {
   }
   function stableStringify(value) {
     if (value === void 0) return "undefined";
+    if (typeof value === "bigint") return `bigint:${value.toString()}`;
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
     const entries = [];
@@ -869,8 +951,26 @@ var ScenarioTest = (() => {
     return `{${entries.join(",")}}`;
   }
   var INCLUDES_OBJECT_ACTUAL_REASON = 'includes \u4E0D\u652F\u6301\u5BF9\u8C61\u7C7B\u578B\u7684\u5B9E\u9645\u503C\uFF08String(actual) \u6052\u4E3A "[object Object]"\uFF0C\u65AD\u8A00\u5FC5\u7136\u5931\u8D25\uFF09\uFF1A\u5BF9\u8C61\u6DF1\u6BD4\u8F83\u8BF7\u6539\u7528 equals\uFF0C\u6216\u5BF9\u5177\u4F53\u5B57\u6BB5\u7528 path \u65AD\u8A00\uFF08\u5982 path: "data.id"\uFF09';
+  var validatedAssertions = /* @__PURE__ */ new WeakSet();
+  var MATCHES_PATTERN_CACHE_LIMIT = 128;
+  var matchesPatternCache = /* @__PURE__ */ new Map();
+  function compiledMatchesPattern(expected) {
+    const key = String(expected);
+    let compiled = matchesPatternCache.get(key);
+    if (!compiled) {
+      compiled = new RegExp(key);
+      if (matchesPatternCache.size >= MATCHES_PATTERN_CACHE_LIMIT) {
+        matchesPatternCache.delete(matchesPatternCache.keys().next().value);
+      }
+      matchesPatternCache.set(key, compiled);
+    }
+    return compiled;
+  }
   function evaluateAssertion(definition, response, runtime, context) {
-    validateAssertion(definition, context);
+    if (!validatedAssertions.has(definition)) {
+      validateAssertion(definition, context);
+      validatedAssertions.add(definition);
+    }
     return evaluateValidatedAssertion(definition, response, runtime, context);
   }
   function evaluateValidatedAssertion(definition, response, runtime, context) {
@@ -927,7 +1027,7 @@ var ScenarioTest = (() => {
       expected = resolve(definition.matches, runtime);
       if (!(definition.implicit === true && typeof actual !== "number")) {
         try {
-          passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual));
+          passed = passed && compiledMatchesPattern(expected).test(String(actual == null ? "" : actual));
         } catch {
           passed = false;
         }
@@ -1024,6 +1124,15 @@ var ScenarioTest = (() => {
       assertNotReservedVar(name, label);
     }
   }
+  function setRuntimeVar(vars, name, value) {
+    Object.defineProperty(vars, name, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    });
+    return value;
+  }
   function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
@@ -1043,7 +1152,7 @@ var ScenarioTest = (() => {
       const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
       if (value === void 0) {
         if (hasDefault) {
-          runtime.vars[definition.name] = resolve(definition.default, runtime);
+          setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
           continue;
         }
         if (definition.required === true) {
@@ -1057,7 +1166,7 @@ var ScenarioTest = (() => {
           warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
         }
       }
-      runtime.vars[definition.name] = value;
+      setRuntimeVar(runtime.vars, definition.name, value);
     }
     return { warnings, failures };
   }
@@ -1234,24 +1343,24 @@ var ScenarioTest = (() => {
         if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
           throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
         }
-        vars[name] = formatTimestamp(base, definition.format);
+        setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
       } else if (definition.unit != null && definition.unit !== "ms") {
         if (definition.unit !== "s") {
           throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
         }
-        vars[name] = Math.floor(base / 1e3);
+        setRuntimeVar(vars, name, Math.floor(base / 1e3));
       } else {
-        vars[name] = base;
+        setRuntimeVar(vars, name, base);
       }
       return;
     }
     if (definition.type === "uuid") {
       if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-      vars[name] = globalThis.crypto.randomUUID();
+      setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
       return;
     }
     if (definition.type === "uuidHex") {
-      vars[name] = uuidHex();
+      setRuntimeVar(vars, name, uuidHex());
       return;
     }
     if (definition.type === "idcard") {
@@ -1264,11 +1373,11 @@ var ScenarioTest = (() => {
         throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
       }
       const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-      vars[name] = buildChinaIdNumber({
+      setRuntimeVar(vars, name, buildChinaIdNumber({
         regionCode,
         birthDate: definition.birthDate,
         sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-      });
+      }));
       return;
     }
     if (definition.type === "luhn") {
@@ -1285,7 +1394,7 @@ var ScenarioTest = (() => {
         body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
       }
       const first = `${prefix}${body}`;
-      vars[name] = `${first}${luhnCheckDigit(first)}`;
+      setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
       return;
     }
     if (definition.type === "phone") {
@@ -1297,7 +1406,7 @@ var ScenarioTest = (() => {
       for (let i = 0; i < 8; i += 1) {
         tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
       }
-      vars[name] = `${prefix}${tail}`;
+      setRuntimeVar(vars, name, `${prefix}${tail}`);
       return;
     }
     if (definition.type === "uscc") {
@@ -1309,12 +1418,12 @@ var ScenarioTest = (() => {
       for (let i = 0; i < 9; i += 1) {
         orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
       }
-      vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+      setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
       return;
     }
     if (definition.type === "md5") {
       const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-      vars[name] = md5(source);
+      setRuntimeVar(vars, name, md5(source));
       return;
     }
     if (definition.type === "signature") {
@@ -1323,12 +1432,12 @@ var ScenarioTest = (() => {
       if (!secret) {
         throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
       }
-      vars[name] = generateSignature(params, secret);
+      setRuntimeVar(vars, name, generateSignature(params, secret));
       return;
     }
     if (definition.type === "enum") {
       const { values, weights } = normalizeEnumDefinition(definition);
-      vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+      setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
       return;
     }
     throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1397,8 +1506,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   var scenarioRegistry = /* @__PURE__ */ new Map();
   var adapterRegistry = /* @__PURE__ */ new Map();
   var currentConfig = null;
-  function invariant(condition, message) {
-    if (!condition) throw new TypeError(message);
+  function invariant(condition, message, code) {
+    if (!condition) {
+      const error = new TypeError(message);
+      if (code) error.code = code;
+      throw error;
+    }
   }
   function nonEmptyString(value) {
     return typeof value === "string" && Boolean(value.trim());
@@ -1421,16 +1534,58 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     return rows[a.length][b.length];
   }
-  function looksLikeKeyTypo(key, allowed) {
+  function findKeySuggestion(key, allowed) {
     const lower = key.toLowerCase();
-    return allowed.some((candidate) => {
+    return allowed.find((candidate) => {
       const target = candidate.toLowerCase();
       return target === lower || editDistance(lower, target) <= 1;
     });
   }
+  function looksLikeKeyTypo(key, allowed) {
+    return findKeySuggestion(key, allowed) !== void 0;
+  }
   var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
   function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-    return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+    const described = unknownKeys.map((key) => {
+      const suggestion = findKeySuggestion(key, allowed);
+      return suggestion ? `"${key}"\uFF08\u662F\u5426\u60F3\u5199 "${suggestion}"\uFF1F\uFF09` : `"${key}"`;
+    });
+    return `${label} \u5305\u542B\u672A\u77E5\u952E ${described.join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  }
+  function assertKnownKeys(input, allowed, label, hint = "") {
+    const unknownKeys = describeUnknownKeys(input, allowed);
+    invariant(
+      unknownKeys.length === 0,
+      unknownKeysMessage(label, unknownKeys, allowed, hint),
+      "SCENARIO_CONFIG_UNKNOWN_KEY"
+    );
+  }
+  function normalizeBaseUrl(value, label) {
+    if (value === void 0 || value === null) return value;
+    invariant(
+      typeof value === "string",
+      `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+      "SCENARIO_CONFIG_BASE_URL"
+    );
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    invariant(
+      /^https?:\/\//i.test(trimmed),
+      `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+      "SCENARIO_CONFIG_BASE_URL"
+    );
+    let parsed;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
+    }
+    invariant(
+      (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+      `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+      "SCENARIO_CONFIG_BASE_URL"
+    );
+    return trimmed;
   }
   function assertUnique(items, field, label) {
     const seen = /* @__PURE__ */ new Set();
@@ -1505,10 +1660,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
     );
     assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+    assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
     assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+    let generatedVarIndex = 0;
     for (const definition of input.generatedVars || []) {
-      invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-      invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+      generatedVarIndex += 1;
+      const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+      invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+      assertNotReservedVar(definition.name, `${label} name`);
       invariant(
         contract.generatedVars.types.includes(definition.type),
         `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -1575,12 +1735,29 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           step.retryUntil.assertions === void 0,
           `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
         );
+        const unknownRetryKeys = Object.keys(step.retryUntil).filter((key) => !contract.retryUntil.keys.includes(key));
+        invariant(
+          unknownRetryKeys.length === 0,
+          `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.retryUntil.keys.join("/")}`
+        );
         const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
         const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
         const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);
         invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
         invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
         invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+        if (step.retryUntil.retryOn !== void 0) {
+          invariant(
+            Array.isArray(step.retryUntil.retryOn),
+            `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF09`
+          );
+          for (const retryType of step.retryUntil.retryOn) {
+            invariant(
+              contract.retryUntil.retryOn.includes(retryType),
+              `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u9879\u53EA\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(retryType)}\uFF09`
+            );
+          }
+        }
       }
       if (step.extract !== void 0) {
         invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -1680,14 +1857,21 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   }
   function defineConfig(input) {
     invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+    assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
     assertTemplatePathsOnly(input, "\u914D\u7F6E");
+    const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
     const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-      ...env,
-      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-    })) : [];
+    const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+      invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
+      assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+      return {
+        ...env,
+        globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+      };
+    }) : [];
     for (const env of envs) {
       invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
+      env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
     }
     assertUnique(envs, "key", "\u73AF\u5883 key");
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -1709,7 +1893,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
       invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
       invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+      assertKnownKeys(item, contract.config.variableKeys, `\u53D8\u91CF ${item.name}`, "\uFF08\u53D8\u91CF\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+      if (item.label !== void 0) invariant(typeof item.label === "string", `\u53D8\u91CF ${item.name} \u7684 label \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
       if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+      if (item.required !== void 0) invariant(typeof item.required === "boolean", `\u53D8\u91CF ${item.name} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
       return { ...item };
     }) : [];
     assertUnique(variables, "name", "\u53D8\u91CF name");
@@ -1719,6 +1906,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
     return {
       ...input,
+      baseUrl,
       globals,
       envs,
       scenarios,
@@ -1801,6 +1989,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   function timeoutErrorMessage(timeoutMs) {
     return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
   }
+  function isTimeoutError(error) {
+    return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+  }
+  function describeError(error) {
+    const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
+    const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+    return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+  }
   function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -1874,7 +2070,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           );
         }
       }
-      vars[name] = value;
+      setRuntimeVar(vars, name, value);
     }
     for (const definition of scenario.generatedVars || []) {
       if (!definition?.name) continue;
@@ -1908,10 +2104,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     return null;
   }
-  function readBodyChunks(response, signal) {
+  function readBodyChunks(response, signal, maxBytes = 0) {
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     if (!response.body) return Promise.resolve([]);
     const reader = response.body.getReader();
     const chunks = [];
+    let totalBytes = 0;
     return new Promise((resolve2, reject) => {
       const onAbort = () => {
         reader.cancel().catch(() => {
@@ -1930,6 +2128,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            totalBytes += value.byteLength;
+            if (maxBytes > 0 && totalBytes > maxBytes) {
+              reader.cancel().catch(() => {
+              });
+              throw createResponseTooLargeError(totalBytes, maxBytes);
+            }
             chunks.push(value);
           }
           resolve2(chunks);
@@ -1941,6 +2145,82 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       })();
     });
   }
+  function createResponseTooLargeError(bytesRead, limitBytes) {
+    const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+    error.scenarioResponseTooLarge = true;
+    error.responseTooLarge = { bytesRead, limitBytes };
+    return error;
+  }
+  function resolveMaxResponseBytes(options = {}) {
+    const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+    return normalizeByteLimit(value);
+  }
+  function resolveMaxUploadBytes(options = {}) {
+    const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+    return value === void 0 ? void 0 : normalizeByteLimit(value);
+  }
+  function createSaveBodyStream(body, signal, maxBytes) {
+    if (!body) {
+      return new ReadableStream({
+        start(controller) {
+          if (signal?.aborted) controller.error(abortReason(signal));
+          else controller.close();
+        }
+      });
+    }
+    const reader = body.getReader();
+    let totalBytes = 0;
+    let finished = false;
+    let onAbort = null;
+    const cleanup = () => {
+      finished = true;
+      if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    };
+    const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+    });
+    return new ReadableStream({
+      start(controller) {
+        if (!signal) return;
+        onAbort = () => {
+          if (finished) return;
+          cleanup();
+          cancelReader(abortReason(signal));
+          controller.error(abortReason(signal));
+        };
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      },
+      async pull(controller) {
+        if (finished) return;
+        try {
+          const { done, value } = await reader.read();
+          if (finished) return;
+          if (done) {
+            cleanup();
+            controller.close();
+            return;
+          }
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            cleanup();
+            cancelReader();
+            controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+            return;
+          }
+          controller.enqueue(value);
+        } catch (error) {
+          if (finished) return;
+          cleanup();
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        cleanup();
+        return cancelReader(reason);
+      }
+    });
+  }
   function decoderForContentType(contentType) {
     const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
     if (!match) return new TextDecoder();
@@ -1950,20 +2230,37 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       return new TextDecoder();
     }
   }
-  async function readResponse(response, step, io, runtime, signal) {
+  async function readResponse(response, step, io, runtime, signal, options = {}) {
     const headers = headersToObject(response.headers);
     const contentType = String(headers["content-type"] || "");
-    const chunks = await readBodyChunks(response, signal);
-    if (step.saveResponseAs && io?.saveResponse) {
-      const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-      let offset = 0;
-      for (const chunk of chunks) {
-        data.set(chunk, offset);
-        offset += chunk.length;
+    const maxResponseBytes = resolveMaxResponseBytes(options);
+    if (step.saveResponseAs) {
+      const relativePath = resolveString(step.saveResponseAs, runtime);
+      const metadata = { contentType, headers, maxResponseBytes };
+      if (io?.saveResponseStream) {
+        const saved = await io.saveResponseStream(
+          relativePath,
+          createSaveBodyStream(response.body, signal, maxResponseBytes),
+          metadata
+        );
+        return { status: response.status, headers, body: saved, bodyText: null };
       }
-      const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-      return { status: response.status, headers, body: saved, bodyText: null };
+      if (io?.saveResponse) {
+        const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+        const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+        const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+        if (chunks2.length > 1) {
+          let offset = 0;
+          for (const chunk of chunks2) {
+            data.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+        }
+        const saved = await io.saveResponse(relativePath, data, metadata);
+        return { status: response.status, headers, body: saved, bodyText: null };
+      }
     }
+    const chunks = await readBodyChunks(response, signal, maxResponseBytes);
     const decoder = decoderForContentType(contentType);
     const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
@@ -1977,20 +2274,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
-      const existingKeys = /* @__PURE__ */ new Set();
-      const queryIndex = requestPath.indexOf("?");
-      if (queryIndex >= 0) {
-        for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-          const key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
-        }
-      }
-      const queryParts = [];
-      for (const global of globals) {
-        if (global.type !== "query" || existingKeys.has(global.name)) continue;
-        queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-      }
-      if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+      requestPath = appendGlobalQuery(requestPath, globals, runtime);
       const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
       if (cookieParts.length) {
         const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -2011,8 +2295,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
       if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-      const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+      const upload = await options.io.createUploadBody(
+        resolve(request.fileUpload, runtime),
+        runtime,
+        { maxUploadBytes: resolveMaxUploadBytes(options) }
+      );
       fetchOptions.body = upload.body;
+      if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+        fetchOptions.duplex = "half";
+      }
       for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
       for (const key of Object.keys(headers)) {
         if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -2030,7 +2321,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     fetchOptions.signal = requestSignal.signal;
     try {
       const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-      const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+      const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
       return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
     } catch (error) {
       if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2049,7 +2340,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   }
   var AdapterExecutionError = class extends Error {
     constructor(adapterName, originalError, step) {
-      const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+      const detail = originalError?.message || (originalError === void 0 ? "undefined" : String(originalError));
+      const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${detail}`;
       super(message, { cause: originalError });
       this.name = "AdapterExecutionError";
       this.adapterName = adapterName;
@@ -2057,11 +2349,17 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
       if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
       if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+      if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+      if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
     }
   };
   function raceWithSignal(promise, signal) {
     if (!signal) return promise;
-    if (signal.aborted) return Promise.reject(abortReason(signal));
+    if (signal.aborted) {
+      promise.catch(() => {
+      });
+      return Promise.reject(abortReason(signal));
+    }
     return new Promise((resolveRace, rejectRace) => {
       const onAbort = () => rejectRace(abortReason(signal));
       signal.addEventListener("abort", onAbort, { once: true });
@@ -2152,6 +2450,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         adapters,
         requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
       };
+      if (options.maxResponseBytes === void 0) options.maxResponseBytes = engineOptions.maxResponseBytes;
+      if (options.maxUploadBytes === void 0) options.maxUploadBytes = engineOptions.maxUploadBytes;
       if (step.when !== void 0) {
         const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
         if (!shouldRun) {
@@ -2176,42 +2476,117 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       let stepWarnings = [];
       const retry = step.retryUntil || null;
       const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+      const retryOn = new Set(
+        retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
+      );
+      const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
       const retryStartTime = now();
       const maxElapsedMs = retry?.maxElapsedMs || 3e5;
+      let lastAttemptError = null;
+      const retryTimeoutError = (attemptCount) => {
+        const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
+        return createTimeoutError(
+          maxElapsedMs,
+          `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attemptCount} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+        );
+      };
       try {
         for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
           if (options.signal?.aborted) throw abortReason(options.signal);
-          if (retry && now() - retryStartTime > maxElapsedMs) {
-            throw createTimeoutError(
-              maxElapsedMs,
-              `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
-\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
-            );
+          if (retry) {
+            const elapsedMs = now() - retryStartTime;
+            const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
+            if (expired) throw retryTimeoutError(attempt - 1);
           }
-          const selection = chooseAdapter(step, adapters);
-          const attemptStartedAt = now();
-          lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
-          if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
-            lastExecution.response.durationMs = now() - attemptStartedAt;
+          let attemptDeadline = null;
+          if (enforceAttemptDeadline) {
+            const remainingMs = maxElapsedMs - (now() - retryStartTime);
+            if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+            attemptDeadline = createRequestSignal(options.signal, remainingMs);
           }
-          runtime.lastResponse = lastExecution.response;
-          runtime.lastResponseBody = lastExecution.response.body;
-          const extractResult = applyExtract(step, lastExecution.response, runtime);
-          stepWarnings = extractResult.warnings;
-          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-          if (extractResult.failures.length) assertions.push(...extractResult.failures);
-          if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+          let attemptError = null;
+          let attemptErrorType = "";
+          try {
+            const selection = chooseAdapter(step, adapters);
+            const attemptStartedAt = now();
+            const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
+            const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
+            lastExecution = attemptDeadline ? await raceWithSignal(execution, attemptDeadline.signal) : await execution;
+            if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
+              lastExecution.response.durationMs = now() - attemptStartedAt;
+            }
+            runtime.lastResponse = lastExecution.response;
+            runtime.lastResponseBody = lastExecution.response.body;
+            const extractResult = applyExtract(step, lastExecution.response, runtime);
+            stepWarnings = extractResult.warnings;
+            assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+            if (extractResult.failures.length) assertions.push(...extractResult.failures);
+          } catch (error) {
+            if (options.signal?.aborted) throw error;
+            if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+              throw retryTimeoutError(attempt);
+            }
+            const errorType = isTimeoutError(error) ? "timeout" : "error";
+            if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+            attemptError = error;
+            attemptErrorType = errorType;
+            lastAttemptError = error;
+            stepWarnings = [];
+            assertions = [];
+          } finally {
+            attemptDeadline?.dispose();
+          }
+          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+            throw retryTimeoutError(attempt);
+          }
+          const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
+          if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
           const rawIntervalMs = Number(retry.intervalMs);
           const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
-          await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-            step,
-            attempt,
-            totalAttempts,
-            intervalMs,
-            status: lastExecution.response?.status ?? null,
-            failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-          });
-          await delay(intervalMs, options.signal);
+          if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+            throw retryTimeoutError(attempt);
+          }
+          const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+          const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+          const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+          if (attemptCallback) {
+            const callbackInfo = {
+              step,
+              attempt,
+              totalAttempts,
+              intervalMs: waitBeforeCallback,
+              status: attemptError ? null : lastExecution.response?.status ?? null,
+              failedAssertion,
+              errorType: attemptErrorType,
+              errorMessage: attemptError ? describeError(attemptError) : ""
+            };
+            const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+            if (enforceAttemptDeadline) {
+              const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+              if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+              const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+              try {
+                await raceWithSignal(callbackPromise, callbackDeadline.signal);
+              } catch (error) {
+                if (options.signal?.aborted) throw error;
+                if (callbackDeadline.timedOut() || now() - retryStartTime >= maxElapsedMs) {
+                  throw retryTimeoutError(attempt);
+                }
+                throw error;
+              } finally {
+                callbackDeadline.dispose();
+              }
+            } else {
+              await callbackPromise;
+            }
+          }
+          if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+            throw retryTimeoutError(attempt);
+          }
+          const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+          await delay(waitMs, options.signal);
         }
         const failed = assertions.find((item) => !item.passed);
         return {
@@ -2236,6 +2611,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
         const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
         const path = context && context.path || resolveString(step.path || "", runtime);
+        const responseTooLarge = error?.responseTooLarge || null;
+        const uploadTooLarge = error?.uploadTooLarge || null;
+        const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
           method,
@@ -2245,6 +2623,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           passed: false,
           cancelled,
           timedOut,
+          errorCode,
+          ...responseTooLarge ? { responseTooLarge } : {},
+          ...uploadTooLarge ? { uploadTooLarge } : {},
           error: errorMessage,
           warnings: [],
           assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -2306,7 +2687,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
 
   // src/capabilities.js
   function buildCapabilities(inputContract = contract) {
-    const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+    const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
     return {
       schema: "scenario-test-capabilities",
       version: inputContract.runtimeVersion,
@@ -2343,10 +2724,21 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         note: globals.note
       },
       config: {
+        configKeys: [...config.configKeys],
         scenarioItemKeys: [...config.scenarioItemKeys],
         environmentKeys: [...config.environmentKeys],
         variableKeys: [...config.variableKeys],
+        baseUrl: {
+          protocol: config.baseUrl.protocol,
+          note: config.baseUrl.note
+        },
         manual: { ...config.manual }
+      },
+      retryUntil: {
+        keys: [...retryUntil.keys],
+        retryOn: [...retryUntil.retryOn],
+        defaultRetryOn: [...retryUntil.defaultRetryOn],
+        note: retryUntil.note
       },
       scenario: {
         keys: [...scenario.keys],
@@ -2411,11 +2803,17 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     lines.push("");
     lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
     lines.push("");
+    lines.push(`config \u9876\u5C42\u5B57\u6BB5: ${capabilities.config.configKeys.join(" / ")}`);
     lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+    lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
     lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
     lines.push("");
     lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    if (capabilities.retryUntil) {
+      lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
+      lines.push(`  ${capabilities.retryUntil.note}`);
+    }
     lines.push("");
     lines.push("CLI \u547D\u4EE4:");
     for (const command of capabilities.cli.commands) {
@@ -4275,8 +4673,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         queryPart.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           params.push({ name: key, value: val });
         });
       }
@@ -4652,7 +5050,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
       steps = steps || [];
-      var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
       var node = document.getElementById("reportPanel");
       var reportTab = document.getElementById("reportTab");
       var reportTabBadge = document.getElementById("reportTabBadge");
@@ -4665,7 +5062,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         reportTabBadge.classList.toggle("is-alert", failedCount > 0);
         reportTabBadge.style.display = failedCount > 0 ? "" : "none";
       }
-      if (!node) return report;
+      if (!node) return null;
+      if (node.classList.contains("hidden")) return null;
+      var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
       if (!steps.length) {
         node.innerHTML = '<div class="report-empty"><div class="report-empty__title">\u6267\u884C\u540E\u751F\u6210\u62A5\u544A</div><div class="report-empty__hint">\u7ED3\u679C\u6458\u8981\u4E0E\u5931\u8D25\u8BCA\u65AD\u5C06\u5728\u8FD9\u91CC\u5C55\u793A</div></div>';
         return report;
@@ -4779,8 +5178,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         searchStr.split("&").forEach(function(pair) {
           if (!pair) return;
           var parts = pair.split("=");
-          var key = decodeURIComponent(parts[0] || "");
-          var val = decodeURIComponent(parts.slice(1).join("=") || "");
+          var key = safeDecodeComponent(parts[0] || "");
+          var val = safeDecodeComponent(parts.slice(1).join("=") || "");
           if (key) params[key] = val;
         });
       }
@@ -5038,6 +5437,64 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     };
   }();
   var ui_adhoc_default = workbenchAdhoc;
+
+  // src/browser/ui/curl.js
+  function shellSingleQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'";
+  }
+  function buildStepCurl(step, options) {
+    if (!step) return "";
+    var opts = options || {};
+    var runtime = { vars: opts.vars || {} };
+    var globals = opts.globals || [];
+    var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
+    var stepPath = step.path || step.request && step.request.path || "";
+    var stepParams = step.params || step.request && step.request.params;
+    var requestPath = buildUrl(stepPath, stepParams, runtime);
+    var absoluteUrl = /^(?:https?:)?\/\//i.test(requestPath);
+    var allowEnvironment = !absoluteUrl || step.request && step.request.useEnvironmentAuthorization === true;
+    var environmentGlobals = allowEnvironment ? globals : [];
+    requestPath = appendGlobalQuery(requestPath, environmentGlobals, runtime);
+    var headers = {};
+    var cookieParts = environmentGlobals.filter(function(global) {
+      return global.type === "cookie";
+    }).map(function(global) {
+      return global.name + "=" + resolveString(global.value, runtime);
+    });
+    environmentGlobals.forEach(function(g) {
+      if (g.type === "header" && g.name) {
+        headers[g.name] = resolveString(g.value || "", runtime);
+      }
+    });
+    if (step.request && step.request.headers) {
+      var reqHeaders = step.request.headers;
+      if (typeof reqHeaders === "object" && reqHeaders !== null) {
+        Object.keys(reqHeaders).forEach(function(k) {
+          headers[k] = resolveString(String(reqHeaders[k]), runtime);
+        });
+      }
+    }
+    if (cookieParts.length) {
+      var cookieKey = Object.keys(headers).find(function(key) {
+        return key.toLowerCase() === "cookie";
+      });
+      var mergedCookie = cookieKey ? headers[cookieKey] + "; " + cookieParts.join("; ") : cookieParts.join("; ");
+      if (cookieKey) headers[cookieKey] = mergedCookie;
+      else headers.Cookie = mergedCookie;
+    }
+    var fullUrl = joinUrl(opts.baseUrl || "", requestPath);
+    var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
+    Object.keys(headers).forEach(function(key) {
+      parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
+    });
+    if (step.request && step.request.body != null) {
+      var bodyVal = step.request.body;
+      var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
+      bodyStr = resolveString(bodyStr, runtime);
+      parts.push("-d " + shellSingleQuote(bodyStr));
+    }
+    return parts.join(" \\\n  ");
+  }
 
   // src/browser/ui/runtime.js
   function createWorkbenchRuntime(options) {
@@ -5466,7 +5923,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function renderReportPanel() {
       state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
-    function setSidePanelTab(tabName) {
+    function setSidePanelTab(tabName, options2) {
       var showReport = tabName === "report";
       var statsTab = document.getElementById("statsTab");
       var reportTab = document.getElementById("reportTab");
@@ -5483,6 +5940,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         reportTab.classList.toggle("is-active", showReport);
         reportTab.setAttribute("aria-selected", showReport ? "true" : "false");
       }
+      if (showReport && !(options2 && options2.preservePanel)) renderReportPanel();
     }
     function bindSidePanelTabs() {
       var statsTab = document.getElementById("statsTab");
@@ -5495,15 +5953,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       });
       setSidePanelTab("stats");
     }
-    function expandStepDetails(stepIndex) {
-      var items = document.querySelectorAll("#stepsList li");
-      var item = items[stepIndex];
-      if (!item) return;
-      var panel = item.querySelector(".details-panel");
-      var chevron = item.querySelector(".chevron");
-      if (panel) panel.classList.add("open");
-      if (chevron) chevron.classList.add("rotate-180");
-    }
     var engine = createEngine({ config: appConfig });
     async function executeStep(step, runtime, cfg) {
       var request = step.request || {};
@@ -5515,10 +5964,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4),
         // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
         onAttempt: function(info) {
-          var detail = "status " + info.status + (info.failedAssertion ? "\uFF0C" + info.failedAssertion : "");
+          var label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
+          var detail = info.errorType ? info.errorMessage || "" : "status " + info.status + (info.failedAssertion ? "\uFF0C" + info.failedAssertion : "");
           uiView.setRunState(
             "running",
-            "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21\u672A\u901A\u8FC7\uFF08" + detail + "\uFF09\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5"
+            "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21" + label + (detail ? "\uFF08" + detail + "\uFF09" : "") + "\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5"
           );
         }
       });
@@ -5674,7 +6124,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (reportPanel) {
         reportPanel.innerHTML = '<div class="report-content"><div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-800 space-y-2"><div class="font-bold text-xs flex items-center gap-1.5 text-rose-700"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span>' + esc(runState) + '</span></div><div class="text-xs text-rose-700 leading-relaxed font-mono whitespace-pre-wrap break-all">' + esc(message) + '</div><div class="text-[11px] text-rose-600/80 pt-1 border-t border-rose-200/60">\u53EF\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u6309\u94AE\u68C0\u67E5\u73AF\u5883\u53C2\u6570\uFF0C\u6216\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002</div></div></div>';
       }
-      setSidePanelTab("report");
+      setSidePanelTab("report", { preservePanel: true });
     }
     function showExecutionConfigError(error) {
       showDiagnosticError(error, /缺少场景凭据|配置/.test(error && error.message ? error.message : "") ? "\u914D\u7F6E\u7F3A\u5931" : "\u6267\u884C\u524D\u5931\u8D25");
@@ -6255,13 +6705,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }, 1500);
       }
     }
-    function shellSingleQuote(value) {
-      return "'" + String(value).replace(/'/g, "'\\''") + "'";
-    }
-    function generateStepCurl(step, stepIndex) {
+    function generateStepCurl(step) {
       if (!step) return "";
-      var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      var baseUrl = getRequestBaseUrl();
       var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
       var resolvedVars = clone2(rawVars);
       if (state.activeRuntime && state.activeRuntime.vars) {
@@ -6269,66 +6714,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       } else if (state.stepRuntime && state.stepRuntime.vars) {
         Object.assign(resolvedVars, state.stepRuntime.vars);
       }
-      var runtime = { vars: resolvedVars };
-      var stepPath = step.path || step.request && step.request.path || "";
-      var stepParams = step.params || step.request && step.request.params;
-      var requestPath = buildUrl(stepPath, stepParams, runtime);
-      var globals = getEffectiveGlobals();
-      var headers = {};
-      var queryIndex = requestPath.indexOf("?");
-      var existingKeys = /* @__PURE__ */ new Set();
-      if (queryIndex >= 0) {
-        requestPath.slice(queryIndex + 1).split("&").forEach(function(pair) {
-          var key = pair.split("=")[0];
-          if (key) existingKeys.add(decodeURIComponent(key));
-        });
-      }
-      var queryParts = [];
-      globals.forEach(function(global) {
-        if (global.type !== "query" || existingKeys.has(global.name)) return;
-        queryParts.push.apply(queryParts, queryPairs(global.name, resolve(global.value, runtime)));
+      return buildStepCurl(step, {
+        baseUrl: getRequestBaseUrl(),
+        vars: resolvedVars,
+        globals: getEffectiveGlobals()
       });
-      if (queryParts.length) {
-        requestPath += (queryIndex >= 0 ? "&" : "?") + queryParts.join("&");
-      }
-      var cookieParts = globals.filter(function(global) {
-        return global.type === "cookie";
-      }).map(function(global) {
-        return global.name + "=" + resolveString(global.value, runtime);
-      });
-      globals.forEach(function(g) {
-        if (g.type === "header" && g.name) {
-          headers[g.name] = resolveString(g.value || "", runtime);
-        }
-      });
-      if (step.request && step.request.headers) {
-        var reqHeaders = step.request.headers;
-        if (typeof reqHeaders === "object" && reqHeaders !== null) {
-          Object.keys(reqHeaders).forEach(function(k) {
-            headers[k] = resolveString(String(reqHeaders[k]), runtime);
-          });
-        }
-      }
-      if (cookieParts.length) {
-        var cookieKey = Object.keys(headers).find(function(key) {
-          return key.toLowerCase() === "cookie";
-        });
-        var mergedCookie = cookieKey ? headers[cookieKey] + "; " + cookieParts.join("; ") : cookieParts.join("; ");
-        if (cookieKey) headers[cookieKey] = mergedCookie;
-        else headers.Cookie = mergedCookie;
-      }
-      var fullUrl = joinUrl(baseUrl, requestPath);
-      var parts = ["curl -X " + method + " " + shellSingleQuote(fullUrl)];
-      Object.keys(headers).forEach(function(key) {
-        parts.push("-H " + shellSingleQuote(key + ": " + String(headers[key])));
-      });
-      if (step.request && step.request.body != null) {
-        var bodyVal = step.request.body;
-        var bodyStr = typeof bodyVal === "string" ? bodyVal : JSON.stringify(bodyVal);
-        bodyStr = resolveString(bodyStr, runtime);
-        parts.push("-d " + shellSingleQuote(bodyStr));
-      }
-      return parts.join(" \\\n  ");
     }
     function bindStepCurlActions() {
       var ul = document.getElementById("stepsList");

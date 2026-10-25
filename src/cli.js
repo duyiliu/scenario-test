@@ -669,8 +669,11 @@ async function runCommand(args) {
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
             async onAttempt(info) {
-                const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
-                entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次未通过（${detail}），${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                const label = info.errorType === "timeout" ? "超时" : (info.errorType ? "连接失败" : "未通过");
+                const detail = info.errorType
+                    ? (info.errorMessage ? escapeInlineText(info.errorMessage) : "")
+                    : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
+                entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次${label}${detail ? `（${detail}）` : ""}，${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result) {
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
@@ -910,11 +913,13 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
         // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
         // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
         const environment = selectEnvironment(config, envKey);
-        // --base-url 临时覆盖代理目标（与 run 模式一致）；日志标注覆盖来源，避免与配置环境混淆
+        // --base-url 临时覆盖代理目标（与 run 模式一致）；未覆盖时与 run/doctor 同口径：
+        // 环境未声明 baseUrl 则回退顶层 config.baseUrl，而不是得到空代理目标。
         const overridden = Boolean(baseUrlOverride);
+        const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
         return {
             key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
-            target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+            target: String(target).replace(/\/+$/, "")
         };
     }
     return {
