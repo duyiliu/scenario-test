@@ -66,6 +66,13 @@ try {
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").getAttribute("type"), "text", "非凭据变量保持明文输入");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
+        // 环境级变量：切换环境后页面变量立即回退/覆盖到该环境的 envs[].vars，切回默认环境恢复
+        await page.locator("#configToggleBtn").click();
+        await page.locator("#environmentInput").selectOption("mock-env-vars");
+        assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP-FROM-ENV", "切换环境后应使用该环境的 env.vars");
+        await page.locator("#environmentInput").selectOption("mock");
+        assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP", "切回环境后应恢复配置 vars");
+        await page.locator("#configCloseBtn").click();
         await page.locator("#themeSelect").selectOption("claude-code");
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f5f0ea");

@@ -146,12 +146,27 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     return vars;
 }
 
+// 环境级变量：显式传入 environment 对象/环境 key 时按 key 从 config.envs 选取；
+// 未显式指定时回落到 config.defaultEnvKey。env.vars 只作为 vars 的一层，
+// 调用方显式传入的 vars（CLI --vars 已合并）仍然优先。
+function selectedEnvironmentVars(config, options = {}) {
+    const explicit = options.environment ?? options.env ?? options.environmentKey;
+    let environment = null;
+    if (isPlainObject(explicit)) {
+        environment = explicit;
+    } else {
+        const key = typeof explicit === "string" && explicit ? explicit : config.defaultEnvKey;
+        environment = (Array.isArray(config.envs) ? config.envs : []).find((item) => item && item.key === key) || null;
+    }
+    return isPlainObject(environment?.vars) ? environment.vars : {};
+}
+
 export function createRuntime(scenario, options = {}) {
     const config = options.config || {};
     return {
         vars: buildGeneratedVars(
             scenario,
-            { ...(config.vars || {}), ...(options.vars || {}) },
+            { ...(config.vars || {}), ...selectedEnvironmentVars(config, options), ...(options.vars || {}) },
             options.environmentVariables || {}
         ),
         lastResponse: null,
@@ -593,6 +608,7 @@ export function createEngine(engineOptions = {}) {
         const config = runOptions.config || engineOptions.config || {};
         const runtime = createRuntime(scenario, {
             config,
+            environment: runOptions.environment ?? runOptions.env ?? engineOptions.environment ?? engineOptions.env,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
         });

@@ -4,7 +4,13 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { type: "query", name: "source", value: "scenario-test" }
     ],
     envs: [
-        { key: "mock", name: "Mock 环境", baseUrl: "http://127.0.0.1:4310" }
+        { key: "mock", name: "Mock 环境", baseUrl: "http://127.0.0.1:4310" },
+        {
+            key: "mock-env-vars",
+            name: "Mock 环境级变量",
+            baseUrl: "http://127.0.0.1:4310",
+            vars: { expectedStatus: "UP-FROM-ENV" }
+        }
     ],
     defaultEnvKey: "mock",
     storagePrefix: "scenario-test.example-basic",

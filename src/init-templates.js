@@ -25,7 +25,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 
 1. 只处理本次指定的一个业务功能。先给出功能卡片：功能目标、参与角色、触发入口、前置条件、关键业务规则、状态变化、直接相关接口、测试数据与清理条件；再给出该功能的场景矩阵，列明每个场景的验证目标、前置条件、步骤、预期结果和是否写数据。无法确认的内容列为待确认项，不得把范围扩展到相邻功能。
 2. 业务功能是设计边界，场景是该功能下的一条独立验证路径。按证据覆盖成功路径、业务规则/参数校验、权限、边界值、重复操作或幂等、合法与非法状态流转；没有证据的类别不生成。一个场景可以包含准备、执行、查询验证和精确清理等多个 HTTP 步骤，但这些步骤只服务于目标功能，不把多个业务功能串成一个大场景。认证等公共前置只作为准备步骤，不改变场景归属。
-3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。临时联调可用 \`--vars key=value\`（可重复，优先级最高，值支持 \`{{ }}\` 模板）覆盖配置变量，用 \`--timeout <ms>\` 覆盖配置 \`requestTimeoutMs\`，不必复制或修改配置。
+3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据，环境差异变量（租户、账号等）放对应 \`envs[].vars\`，随 \`--env\` / 浏览器切换环境生效；敏感值仍建议走 \`variables[].env\` 系统环境变量。\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。临时联调可用 \`--vars key=value\`（可重复，优先级最高，值支持 \`{{ }}\` 模板）覆盖配置变量，用 \`--timeout <ms>\` 覆盖配置 \`requestTimeoutMs\`，不必复制或修改配置。
 4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
 5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数只能写在步骤顶层 \`params\`，不能写成 \`request.params\`；GET/HEAD 不能携带请求体（\`request.body\`、\`request.fileUpload\` 定义期即被拒），请求参数一律放 \`params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤；\`from: "headers"\` 的 path 首段按头名大小写不敏感匹配（任意大小写命中同一响应头，无需为大小写变体重复配置），首段之后的子路径在头值上取。断言操作符：${OPERATORS_BACKTICK}；数值比较（如总数字段不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），列表条数/字符串长度/对象键数用 \`length: N\`（数组元素数、字符串字符数、对象键数，非容器类型直接失败），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒，单次请求耗时）。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败；可加 \`default\` 给可选字段声明兜底值（支持模板，与 required 互斥，声明后缺失不产生 warning）。路径中的数组下标支持负数取倒数项（如 \`records[-1]\` 为末项，\`records[-2]\` 为倒数第二项）。\`when\` 对象形式来源为 \`from: "vars"\`（已提取变量）、\`from: "lastResponse"\`（上一步响应 body，path 子路径取值同 extract from:"body"）或 \`from: "status"\`（上一步 HTTP 状态码，数值），也可用 \`target: "status"\` 读上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。模板 \`{{ }}\` 只做路径取值，不支持比较、三元、逻辑运算或函数调用（如 \`{{vars.a > 0}}\` 定义期即被拒），条件判断用 \`assertions\` 或 \`when\` 对象形式。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；Node CLI 当前不提供自动 Cookie Jar。
@@ -49,7 +49,7 @@ const SCENARIO_PATTERNS = [
     "3. 一个场景可以包含准备、执行、查询验证和精确清理等多个步骤，但所有步骤只服务于目标功能。不要为了追求“完整流程”把相邻业务功能串入同一场景。认证等公共前置可以作为准备步骤。",
     "4. 建议使用 scenarios/<功能标识>/<验证路径>.js 组织文件，并使用 <功能标识>-<验证路径> 作为稳定场景 id，例如 order-review-success、order-review-forbidden；运行时仍使用扁平 scenarios 清单，不需要新增功能分组字段。",
     "5. 每个场景独立运行：自己满足前置条件或读取配置变量，自己提取 ID，不能依赖其他场景或上次运行留下的数据。",
-    "6. 确认场景内每个接口的方法、路径、认证位置、请求字段、响应结构、是否写数据和安全清理方式。在 scenario.config.js 注册场景 id、名称和文件地址；文件注册 id 必须一致。",
+    "6. 确认场景内每个接口的方法、路径、认证位置、请求字段、响应结构、是否写数据和安全清理方式。在 scenario.config.js 注册场景 id、名称和文件地址；文件注册 id 必须一致。环境差异变量写入对应 env.vars（随 --env/浏览器切换生效，优先级高于 config vars、低于 --vars），敏感值仍优先用 variables[].env。",
     "7. 每一步都写 name、method、path、status；关键业务结果写 assertions；跨步骤数据通过 extract 保存；from: 'headers' 的 path 首段头名大小写不敏感匹配（与断言 from: 'headers'、header 简写同口径），首段后的子路径在头值上取。Query 参数写在步骤顶层 params，不写 request.params；GET/HEAD 不写请求体（request.body、request.fileUpload 定义期即被拒），参数一律放 params。",
     "8. runId 和 runNo 由运行时自动生成，不要在 vars、variables、envVars、generatedVars 或 extract 中定义。模式中的状态、格式、错误码和响应字段都是结构占位，必须有项目证据才能采用。 需要唯一号码/证号的测试数据在 generatedVars 声明：身份证 { name, type: 'idcard', birthDate, gender }、银行卡 { name, type: 'luhn', length, prefix }、手机号 { name, type: 'phone', prefix }、统一社会信用代码 { name, type: 'uscc', regionCode }，引擎按轮次生成校验位合法且跨轮唯一的值，用 {{vars.<name>}} 引用。 时间窗/过期类参数用 timestamp 类型：{ name, type: 'timestamp', offset: '-7d', unit: 's' } 或 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }（offset 数字+单位 ms/s/m/h/d/w；format 与 unit 互斥），禁止写死时间戳或日期字符串。业务主键 UUID 用 { name, type: 'uuid' }（带连字符），32 位无连字符用 uuidHex。渠道/状态等枚举参数需要随机但可复现的取值时用 enum：{ name, type: 'enum', values: [<候选>], weights: [<非负权重，可选>] }，缺省等权、权重 0 的候选永不选中，按轮次确定性抽取；候选必须有项目证据。",
     "9. 无法确认的必填请求值放入配置 vars 留空，并在 variables 声明 required: true；不得用 PDF、pdf、SUCCESS 或 scenario-{{vars.runNo}} 充当未知枚举。",
@@ -200,6 +200,8 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
             key: "local",
             name: "本地开发",
             baseUrl: "http://localhost:8080",
+            // 环境差异变量（租户/账号等）写在这里，随 --env 与浏览器切换生效
+            vars: {},
             // 未确认前保持为空；按真实项目需要添加 header / cookie / query
             globals: []
         }
@@ -251,7 +253,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \`scenario.config.js\` 只有五个核心概念：
 
-- \`envs\`：环境名称和接口基础地址。每个环境必须有唯一的 \`key\`。
+- \`envs\`：环境名称和接口基础地址。每个环境必须有唯一的 \`key\`；环境差异变量可写在对应 \`envs[].vars\`，随所选环境生效（敏感值仍建议用 \`variables[].env\`）。
 - \`globals\`：全局参数，追加到每个请求。支持 ${GLOBALS_TYPES_BACKTICK} 三种类型，可配置在顶层（所有环境生效）或单个环境内。值支持 \`{{vars.xxx}}\` 模板；步骤显式声明的同名参数优先于全局参数。CLI 可用 \`SCENARIO_GLOBALS\` 环境变量（JSON 数组）覆盖，如 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`。
 - \`vars\`：本项目启动时使用的默认变量。私有项目可在这里保存团队联调 Key、Secret、Token、测试账号等。
 - \`variables\`：页面上需要展示或允许覆盖的变量元数据，包括标签、是否必填，以及可选的 CLI 环境变量名。实际默认值优先写在 \`vars\`，不要重复维护。
@@ -265,8 +267,8 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { type: "header", name: "X-Project", value: "project-test" }
     ],
     envs: [
-        { key: "local", name: "本地开发", baseUrl: "http://localhost:8080" },
-        { key: "test", name: "测试环境", baseUrl: "https://test.example.com" }
+        { key: "local", name: "本地开发", baseUrl: "http://localhost:8080", vars: { tenant: "local-tenant" } },
+        { key: "test", name: "测试环境", baseUrl: "https://test.example.com", vars: { tenant: "test-tenant" } }
     ],
     defaultEnvKey: "local",
     requestTimeoutMs: 30000,
@@ -287,9 +289,9 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 变量优先级固定如下：
 
-\`CLI 环境变量 / 浏览器页面覆盖 > scenario.config.js 的 vars > 场景 vars > variables[].defaultValue\`
+\`CLI --vars > CLI 环境变量（variables[].env）/ 浏览器页面覆盖 > 选中 env.vars > config.vars > variables[].defaultValue（仅未提供时兜底）。场景 vars 作为场景内默认值，可被上述配置变量覆盖。\`
 
-浏览器中保存的变量会按项目 \`storagePrefix\` 和环境保存到 LocalStorage；点击清除当前环境覆盖后，立即回退到 \`vars\`。CLI 只读取系统环境变量和配置文件，不读取浏览器 LocalStorage。 \`init\` 会根据项目目录名生成隔离前缀。
+浏览器中保存的变量会按项目 \`storagePrefix\` 和环境保存到 LocalStorage；点击清除当前环境覆盖后，立即回退到该环境的 \`envs[].vars\` / \`config.vars\`。CLI 只读取系统环境变量和配置文件，不读取浏览器 LocalStorage。 \`init\` 会根据项目目录名生成隔离前缀。
 
 ## 编写场景
 

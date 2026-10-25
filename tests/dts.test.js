@@ -76,6 +76,9 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     // WhenDefinition 的来源/响应级目标与 contract 一致
     assert.match(dts, /from\?: WhenSource/);
     assert.match(dts, /target\?: WhenTarget/);
+    // 环境级变量（contract v13）：Environment 暴露 vars 且说明优先级
+    assert.match(dts, /export interface Environment \{[^}]*vars\?: Record<string, unknown>;/s);
+    assert.match(dts, /config\.vars < envs\[\]\.vars < --vars/);
 });
 
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {

@@ -334,7 +334,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -453,7 +453,9 @@ var contract = Object.freeze({
   config: Object.freeze({
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
+    // envs[].vars：随所选环境生效的变量。优先级 config.vars < envs[].vars < --vars；
+    // variables[].env 的系统环境变量仍可覆盖 envs[].vars，variables[].defaultValue 只在未提供时兜底。
+    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     manual: Object.freeze({
       type: "boolean",
@@ -1704,10 +1706,15 @@ function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-  const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-    ...env,
-    globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-  })) : [];
+  const envs = Array.isArray(input.envs) ? input.envs.map((env) => {
+    invariant(env.vars === void 0 || isPlainObject(env.vars), `\u73AF\u5883 ${env.key || "?"} \u7684 vars \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    if (env.vars !== void 0) assertNoReservedVars(env.vars, `\u73AF\u5883 ${env.key || "?"} \u7684 vars`);
+    return {
+      ...env,
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`),
+      vars: { ...env.vars || {} }
+    };
+  }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
   }
@@ -1908,12 +1915,23 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
   }
   return vars;
 }
+function selectedEnvironmentVars(config, options = {}) {
+  const explicit = options.environment ?? options.env ?? options.environmentKey;
+  let environment = null;
+  if (isPlainObject(explicit)) {
+    environment = explicit;
+  } else {
+    const key = typeof explicit === "string" && explicit ? explicit : config.defaultEnvKey;
+    environment = (Array.isArray(config.envs) ? config.envs : []).find((item) => item && item.key === key) || null;
+  }
+  return isPlainObject(environment?.vars) ? environment.vars : {};
+}
 function createRuntime(scenario, options = {}) {
   const config = options.config || {};
   return {
     vars: buildGeneratedVars(
       scenario,
-      { ...config.vars || {}, ...options.vars || {} },
+      { ...config.vars || {}, ...selectedEnvironmentVars(config, options), ...options.vars || {} },
       options.environmentVariables || {}
     ),
     lastResponse: null,
@@ -2280,6 +2298,7 @@ function createEngine(engineOptions = {}) {
     const config = runOptions.config || engineOptions.config || {};
     const runtime = createRuntime(scenario, {
       config,
+      environment: runOptions.environment ?? runOptions.env ?? engineOptions.environment ?? engineOptions.env,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
     });

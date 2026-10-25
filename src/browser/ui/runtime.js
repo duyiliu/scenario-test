@@ -265,7 +265,12 @@ export function createWorkbenchRuntime(options) {
 
     function getConfiguredScenarioVariables() {
         var config = appConfig;
-        return isPlainObject(config.scenarioVars) ? config.scenarioVars : {};
+        var base = isPlainObject(config.scenarioVars) ? config.scenarioVars : {};
+        // 环境级变量覆盖 config.vars / variables.defaultValue；页面输入与 LocalStorage
+        // 仍由 getStoredScenarioVariables 作为更高优先级覆盖。
+        var environment = getSelectedEnvironment();
+        var environmentVars = environment && isPlainObject(environment.vars) ? environment.vars : {};
+        return Object.assign({}, base, environmentVars);
     }
 
     function getStoredScenarioVariables() {
@@ -407,11 +412,15 @@ export function createWorkbenchRuntime(options) {
             throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
         }
         var identifiers = createRunIdentifiers();
+        var environment = getSelectedEnvironment();
+        var environmentVars = environment && isPlainObject(environment.vars) ? environment.vars : {};
         // 保留变量 runId/runNo 由运行时自动生成，声明源冲突在使用前尽早报错
         assertNoReservedVars(scenario.vars, '场景 vars');
         assertNoReservedVars(cfg.vars, '配置 vars');
+        assertNoReservedVars(environmentVars, '环境 vars');
         assertNoReservedVars(scenarioVars, '页面场景变量');
-        var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
+        // 优先级：场景 vars < config.vars < 选中环境 vars < 页面输入/LocalStorage < 运行时标识
+        var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, environmentVars, scenarioVars, identifiers);
         (scenario.generatedVars || []).forEach(function (def) {
             if (!def || !def.name) return;
             assertNotReservedVar(def.name, 'generatedVars');

@@ -60,6 +60,8 @@ export interface Environment {
     baseUrl?: string;
     globals?: GlobalParam[];
     authorization?: string;
+    /** 随该环境生效的变量：config.vars < envs[].vars < --vars（CLI）/ 页面覆盖（浏览器） */
+    vars?: Record<string, unknown>;
 }
 
 export interface ConfigVariable {
@@ -262,6 +264,10 @@ export interface Runtime {
 
 export interface EngineOptions {
     config?: ScenarioConfig;
+    /** 所选环境（对象或 key）；缺省回落到 config.defaultEnvKey，用于合并 envs[].vars */
+    environment?: Environment | string;
+    /** 等价于 environment: <环境 key> */
+    env?: string;
     baseUrl?: string;
     authorization?: string;
     globals?: GlobalParam[];
@@ -296,6 +302,10 @@ export interface RetryAttemptInfo {
 
 export interface RunOptions {
     config?: ScenarioConfig;
+    /** 本次执行所选环境（对象或 key）；缺省回落到 config.defaultEnvKey */
+    environment?: Environment | string;
+    /** 等价于 environment: <环境 key> */
+    env?: string;
     vars?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;

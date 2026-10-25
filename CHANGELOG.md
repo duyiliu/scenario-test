@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### DSL
+
+- `envs[].vars` 环境级变量（contract v12 → v13，issue #58）：环境可声明随所选环境生效的变量，优先级固定为 `config.vars < 选中 env.vars < --vars`；`variables[].env` 系统环境变量仍可覆盖 `env.vars`，`variables[].defaultValue` 仅在未提供时兜底，`runId`/`runNo` 等保留变量禁止在环境 vars 中声明。CLI `--env`、浏览器切换环境与引擎 `environment`/`env` 选项均使用同一口径；同步投射 capabilities、`dist/scenario-test.d.ts` 的 `Environment.vars`、AI Prompt、模式库与项目 README 模板。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。

@@ -330,7 +330,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.8.0";
 
   // src/contract.js
-  var CONTRACT_VERSION = 12;
+  var CONTRACT_VERSION = 13;
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
     runtimeVersion: VERSION,
@@ -449,7 +449,9 @@ var ScenarioTest = (() => {
     config: Object.freeze({
       // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
       scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-      environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
+      // envs[].vars：随所选环境生效的变量。优先级 config.vars < envs[].vars < --vars；
+      // variables[].env 的系统环境变量仍可覆盖 envs[].vars，variables[].defaultValue 只在未提供时兜底。
+      environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
       variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
       manual: Object.freeze({
         type: "boolean",
@@ -1700,10 +1702,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
     assertTemplatePathsOnly(input, "\u914D\u7F6E");
     const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-      ...env,
-      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-    })) : [];
+    const envs = Array.isArray(input.envs) ? input.envs.map((env) => {
+      invariant(env.vars === void 0 || isPlainObject(env.vars), `\u73AF\u5883 ${env.key || "?"} \u7684 vars \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      if (env.vars !== void 0) assertNoReservedVars(env.vars, `\u73AF\u5883 ${env.key || "?"} \u7684 vars`);
+      return {
+        ...env,
+        globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`),
+        vars: { ...env.vars || {} }
+      };
+    }) : [];
     for (const env of envs) {
       invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
     }
@@ -1904,12 +1911,23 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     return vars;
   }
+  function selectedEnvironmentVars(config, options = {}) {
+    const explicit = options.environment ?? options.env ?? options.environmentKey;
+    let environment = null;
+    if (isPlainObject(explicit)) {
+      environment = explicit;
+    } else {
+      const key = typeof explicit === "string" && explicit ? explicit : config.defaultEnvKey;
+      environment = (Array.isArray(config.envs) ? config.envs : []).find((item) => item && item.key === key) || null;
+    }
+    return isPlainObject(environment?.vars) ? environment.vars : {};
+  }
   function createRuntime(scenario, options = {}) {
     const config = options.config || {};
     return {
       vars: buildGeneratedVars(
         scenario,
-        { ...config.vars || {}, ...options.vars || {} },
+        { ...config.vars || {}, ...selectedEnvironmentVars(config, options), ...options.vars || {} },
         options.environmentVariables || {}
       ),
       lastResponse: null,
@@ -2276,6 +2294,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       const config = runOptions.config || engineOptions.config || {};
       const runtime = createRuntime(scenario, {
         config,
+        environment: runOptions.environment ?? runOptions.env ?? engineOptions.environment ?? engineOptions.env,
         vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
         environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
       });
@@ -5291,7 +5310,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     function getConfiguredScenarioVariables() {
       var config = appConfig;
-      return isPlainObject2(config.scenarioVars) ? config.scenarioVars : {};
+      var base = isPlainObject2(config.scenarioVars) ? config.scenarioVars : {};
+      var environment = getSelectedEnvironment();
+      var environmentVars = environment && isPlainObject2(environment.vars) ? environment.vars : {};
+      return Object.assign({}, base, environmentVars);
     }
     function getStoredScenarioVariables() {
       var environment = getSelectedEnvironment();
@@ -5421,10 +5443,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }).join("\u3001") + "\u3002\u8BF7\u5728\u201C\u914D\u7F6E\u53C2\u6570 \u2192 \u5F53\u524D\u573A\u666F\u51ED\u636E\u201D\u4E2D\u586B\u5199\u5E76\u4FDD\u5B58\u3002");
       }
       var identifiers = createRunIdentifiers2();
+      var environment = getSelectedEnvironment();
+      var environmentVars = environment && isPlainObject2(environment.vars) ? environment.vars : {};
       assertNoReservedVars2(scenario.vars, "\u573A\u666F vars");
       assertNoReservedVars2(cfg.vars, "\u914D\u7F6E vars");
+      assertNoReservedVars2(environmentVars, "\u73AF\u5883 vars");
       assertNoReservedVars2(scenarioVars, "\u9875\u9762\u573A\u666F\u53D8\u91CF");
-      var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
+      var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, environmentVars, scenarioVars, identifiers);
       (scenario.generatedVars || []).forEach(function(def) {
         if (!def || !def.name) return;
         assertNotReservedVar2(def.name, "generatedVars");

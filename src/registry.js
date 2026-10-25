@@ -376,10 +376,16 @@ export function defineConfig(input) {
     invariant(isPlainObject(input), "配置必须是对象");
     assertTemplatePathsOnly(input, "配置");
     const globals = normalizeGlobals(input.globals, "全局");
-    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-        ...env,
-        globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`)
-    })) : [];
+    const envs = Array.isArray(input.envs) ? input.envs.map((env) => {
+        invariant(env.vars === undefined || isPlainObject(env.vars), `环境 ${env.key || "?"} 的 vars 必须是对象`);
+        // 环境级变量同样不能声明 runId/runNo 等保留变量，尽早报错而不是等到执行期
+        if (env.vars !== undefined) assertNoReservedVars(env.vars, `环境 ${env.key || "?"} 的 vars`);
+        return {
+            ...env,
+            globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`),
+            vars: { ...(env.vars || {}) }
+        };
+    }) : [];
     for (const env of envs) {
         invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "每个环境必须包含非空 key 和 name");
     }

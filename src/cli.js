@@ -526,8 +526,10 @@ function selectEnvironment(config, key) {
     return environment;
 }
 
-function configVariables(config, overrides = {}) {
-    const values = { ...(config.vars || {}) };
+function configVariables(config, overrides = {}, environmentVars = {}) {
+    // 优先级：config.vars < 选中 env.vars < variables[].env 系统环境变量 < --vars。
+    // variables[].defaultValue 仅在没有任何来源提供该变量时兜底，不会覆盖 env.vars。
+    const values = { ...(config.vars || {}), ...(environmentVars || {}) };
     const provided = overrides && typeof overrides === "object" ? overrides : {};
     for (const definition of config.variables || []) {
         const environmentName = definition.env;
@@ -542,7 +544,7 @@ function configVariables(config, overrides = {}) {
         if (definition.required && (effective === undefined || effective === "")) {
             throw new CliUsageError(
                 `缺少变量 ${definition.name}${environmentName ? `，请设置环境变量 ${environmentName}` : ""}`,
-                environmentName ? `设置 ${environmentName} 或通过 --vars ${definition.name}=<value> 后重新运行。` : `请在配置的 vars 或 variables.defaultValue 中提供该变量，或通过 --vars ${definition.name}=<value> 临时注入。`
+                environmentName ? `设置 ${environmentName} 或通过 --vars ${definition.name}=<value> 后重新运行。` : `请在配置的 vars、所选环境的 vars 或 variables.defaultValue 中提供该变量，或通过 --vars ${definition.name}=<value> 临时注入。`
             );
         }
     }
@@ -600,11 +602,13 @@ async function runCommand(args) {
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
     const baseOptions = {
         config,
+        // 显式传入所选环境：引擎据此合并 env.vars（未传时回落到 config.defaultEnvKey）。
+        environment,
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
         authorization: args.authorization || environment.authorization || config.authorization || "",
         globals: mergeGlobals(config.globals, environment.globals, envGlobals),
         requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
-        vars: configVariables(config, args.vars),
+        vars: configVariables(config, args.vars, environment.vars),
         environmentVariables: process.env,
         io: ScenarioTest.createNodeIo(configDir),
         adapters

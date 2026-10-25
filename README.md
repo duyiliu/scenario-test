@@ -132,7 +132,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --timeout 5000
 ```
 
-`--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
+`--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars`、所选环境 `envs[].vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。环境差异变量（租户、账号等）可写在对应 `envs[].vars`，随 `--env` 与浏览器切换环境生效；敏感值仍建议走 `variables[].env` 环境变量。
 
 ### 体检
 

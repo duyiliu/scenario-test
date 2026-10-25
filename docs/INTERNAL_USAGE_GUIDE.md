@@ -187,7 +187,7 @@ ScenarioTest.registerAdapter("database", dbAdapter);
 
 ## 环境变量
 
-优先级：CLI 环境变量 / 浏览器页面覆盖 > scenario.config.js 的 vars > 场景 vars > variables[].defaultValue
+优先级：CLI `--vars` > CLI 环境变量（`variables[].env`）/ 浏览器页面覆盖 > 选中环境 `envs[].vars` > `scenario.config.js` 的 `vars` > `variables[].defaultValue`（仅未提供时兜底）。场景 `vars` 作为场景内默认值，可被上述配置变量覆盖。
 
 ```javascript
 // 配置文件
@@ -246,9 +246,9 @@ npx @yc_yzkj/scenario-test --all
 ```javascript
 // scenario.config.js
 envs: [
-    { key: "local", name: "本地", baseUrl: "http://localhost:8080" },
-    { key: "dev", name: "开发", baseUrl: "https://dev.example.com" },
-    { key: "test", name: "测试", baseUrl: "https://test.example.com" }
+    { key: "local", name: "本地", baseUrl: "http://localhost:8080", vars: { tenant: "local-tenant" } },
+    { key: "dev", name: "开发", baseUrl: "https://dev.example.com", vars: { tenant: "dev-tenant" } },
+    { key: "test", name: "测试", baseUrl: "https://test.example.com", vars: { tenant: "test-tenant" } }
 ]
 ```
 

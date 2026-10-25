@@ -38,8 +38,9 @@ async function withServer(handler, run) {
     }
 }
 
-test("contract v12 与 --help 投射 --vars/--timeout", () => {
-    assert.equal(CONTRACT_VERSION, 12);
+test("contract 从 v12 起投射 --vars/--timeout，v13 新增 envs[].vars", () => {
+    assert.equal(CONTRACT_VERSION, 13);
+    assert.ok(contract.config.environmentKeys.includes("vars"));
     assert.equal(contract.cli.options.vars.kind, "value");
     assert.equal(contract.cli.options.vars.repeatable, true);
     assert.match(contract.cli.options.vars.description, /key=value/);
