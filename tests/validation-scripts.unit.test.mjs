@@ -5,12 +5,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { supportsCoverageThresholds } from "../scripts/coverage-policy.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const packageInfo = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const scripts = packageInfo.scripts;
-const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
-const supportsCoverageThresholds = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 8);
+const supportsCoverage = supportsCoverageThresholds(process.versions.node);
 
 test("test:unit 同时收集 .test.js 与 .unit.test.mjs，浏览器 .mjs 用例由独立脚本显式执行", () => {
     assert.match(scripts["test:unit"], /tests\/\*\.test\.js/);
@@ -27,7 +27,7 @@ test("test:all 汇总单元与浏览器用例，check/check:all 都验证覆盖�
     assert.match(scripts.check, /npm run test:unit/);
     assert.match(scripts.check, /npm run check:coverage/);
     assert.doesNotMatch(scripts.check, /test:browser|test:ui-style|test:all/);
-    assert.equal(scripts["check:all"], "npm run build && npm run test:all && npm run check:coverage");
+    assert.equal(scripts["check:all"], "npm run check && npm run test:browser && npm run test:ui-style");
 });
 
 test("test:coverage 仅统计 src/，并启用 line 90 / branch 80 阈值", () => {
@@ -41,7 +41,7 @@ test("test:coverage 仅统计 src/，并启用 line 90 / branch 80 阈值", () =
 });
 
 test("test:coverage 实际只报告 src/，并因阈值不足以非零状态退出", {
-    skip: supportsCoverageThresholds ? false : "需要 Node.js 22.8+ 的覆盖率过滤与阈值参数"
+    skip: supportsCoverage ? false : "需要 Node.js 22.8+ 的覆盖率过滤与阈值参数"
 }, () => {
     const include = scripts["test:coverage"].match(/--test-coverage-include="([^"]+)"/);
     const lines = scripts["test:coverage"].match(/--test-coverage-lines=(\d+)/);

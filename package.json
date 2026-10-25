@@ -34,7 +34,7 @@
     "check:eol": "node scripts/check-eol.mjs",
     "check:coverage": "node scripts/check-coverage.mjs",
     "check": "npm run build && npm run test:unit && npm run check:coverage",
-    "check:all": "npm run build && npm run test:all && npm run check:coverage"
+    "check:all": "npm run check && npm run test:browser && npm run test:ui-style"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0"
