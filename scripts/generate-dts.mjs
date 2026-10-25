@@ -91,9 +91,22 @@ export interface ScenarioConfig {
     scenarios?: ScenarioListItem[];
     requestTimeoutMs?: number;
     storagePrefix?: string;
+    /** 浏览器工作台 LocalStorage 键覆盖；未声明的键沿用 storagePrefix 生成的默认值 */
+    storageKeys?: {
+        baseUrl?: string;
+        authorization?: string;
+        globals?: string;
+        environment?: string;
+        theme?: string;
+        scenarioVars?: string;
+        pinnedScenarios?: string;
+    };
+    /** 顶层回退地址：环境未声明 baseUrl 时使用；声明时必须是 http(s):// URL */
     baseUrl?: string;
     authorization?: string;
     nodePlugins?: string[];
+    /** 兼容历史配置字段；运行时实际消费的是场景级 envVars */
+    envVars?: Record<string, string>;
 }
 
 /** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration */
@@ -376,9 +389,11 @@ export declare const contract: {
     generatedVars: { types: readonly GeneratedVarType[] };
     globals: { types: readonly GlobalParamType[]; note: string };
     config: {
+        configKeys: readonly string[];
         scenarioItemKeys: readonly string[];
         environmentKeys: readonly string[];
         variableKeys: readonly string[];
+        baseUrl: { protocol: string; note: string };
         manual: { type: string; note: string };
     };
     scenario: {

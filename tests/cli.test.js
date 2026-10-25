@@ -686,6 +686,31 @@ test("CLI run --env 指定未知环境时报错退出，不静默回退", async 
     }
 });
 
+test("CLI run：环境 baseUrl 为纯空白时回退顶层 baseUrl", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-whitespace-base-"));
+    const hits = [];
+    const server = http.createServer((request, response) => {
+        hits.push(request.url);
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({baseUrl:"http://127.0.0.1:${port}",envs:[{key:"mock",name:"Mock",baseUrl:"   "}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"),
+            `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",steps:[{name:"h",path:"health",status:200}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--all"]);
+        assert.equal(result.code, 0, result.stderr);
+        assert.deepEqual(hits, ["/health"], "空白环境 baseUrl 不应遮蔽顶层回退地址");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI run --base-url 临时覆盖环境地址且 SCENARIO_AUTH 注入 Authorization", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-base-"));
     const hits = [];
