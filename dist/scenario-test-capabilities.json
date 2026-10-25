@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -281,6 +281,10 @@
       "json": {
         "kind": "flag",
         "description": "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）"
+      },
+      "junit": {
+        "kind": "value",
+        "description": "run 结束时写入 JUnit XML 报告（场景→testsuite，步骤→testcase；路径相对当前工作目录）"
       },
       "token": {
         "kind": "value",

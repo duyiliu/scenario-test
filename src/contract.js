@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 12;
+export const CONTRACT_VERSION = 13;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -188,6 +188,11 @@ export const contract = Object.freeze({
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
             json: { kind: "flag", prop: "json", description: "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）" },
+            junit: {
+                kind: "value",
+                prop: "junit",
+                description: "run 结束时写入 JUnit XML 报告（场景→testsuite，步骤→testcase；路径相对当前工作目录）"
+            },
             token: {
                 kind: "value", prop: "authorization",
                 aliases: ["authorization"],

@@ -130,9 +130,16 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --vars clientId=temporary-client `
   --vars "clientSecret={{vars.defaultSecret}}" `
   --timeout 5000
+
+# 输出 JUnit XML（GitLab / Jenkins / Azure DevOps 测试报告面板可直接消费）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --all `
+  --junit .\reports\junit.xml
 ```
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
+
+`--junit <文件>` 在 run 结束时写出标准 JUnit XML：每个场景一个 `<testsuite>`、每个步骤一个 `<testcase>`，包含失败断言消息与耗时；`failurePolicy: stop` 后未执行的步骤映射为 `<skipped>` 并注明原因，条件跳过同样记为 skipped。stdout 人类可读输出与退出码保持不变；文件路径相对当前工作目录，父目录不存在时自动创建。
 
 ### 体检
 
@@ -191,7 +198,7 @@ scenario-test/
 - `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
-- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
+- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码；`run --junit <文件>` 写出 JUnit XML 报告，供 CI 测试报告面板直接消费。
 - `manual: true` 场景默认不参与 `--all`。
 - 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。

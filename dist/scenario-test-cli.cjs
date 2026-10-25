@@ -342,7 +342,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -512,6 +512,11 @@ var contract = Object.freeze({
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
       json: { kind: "flag", prop: "json", description: "run/capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF0C\u4EBA\u7C7B\u53EF\u8BFB\u8FDB\u5EA6\u4E0E\u7ED3\u8BBA\u8D70 stderr\uFF09" },
+      junit: {
+        kind: "value",
+        prop: "junit",
+        description: "run \u7ED3\u675F\u65F6\u5199\u5165 JUnit XML \u62A5\u544A\uFF08\u573A\u666F\u2192testsuite\uFF0C\u6B65\u9AA4\u2192testcase\uFF1B\u8DEF\u5F84\u76F8\u5BF9\u5F53\u524D\u5DE5\u4F5C\u76EE\u5F55\uFF09"
+      },
       token: {
         kind: "value",
         prop: "authorization",
@@ -3590,6 +3595,148 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/junit.js
+var XML_INVALID_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+function sanitizeXml(value) {
+  return String(value ?? "").replace(XML_INVALID_CHARS, "\uFFFD");
+}
+function escapeXmlText(value) {
+  return sanitizeXml(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r/g, "&#13;");
+}
+function escapeXmlAttribute(value) {
+  return escapeXmlText(value).replace(/"/g, "&quot;").replace(/'/g, "&apos;").replace(/\n/g, "&#10;").replace(/\t/g, "&#9;");
+}
+function formatSeconds(durationMs) {
+  const value = Number(durationMs);
+  return (Number.isFinite(value) && value > 0 ? value / 1e3 : 0).toFixed(3);
+}
+function describeValue(value) {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === void 0 ? String(value) : serialized;
+  } catch {
+    return String(value);
+  }
+}
+function appendEachDetails(lines, details, prefix) {
+  for (const item of details || []) {
+    const label = `${prefix}\u7B2C ${Number(item?.index) + 1} \u9879`;
+    for (const assertion of item?.assertions || []) {
+      if (assertion.passed) continue;
+      const name = assertion.name || "\u65AD\u8A00";
+      lines.push(`${label} ${name}: expected=${describeValue(assertion.expected)} actual=${describeValue(assertion.actual)}`);
+      if (assertion.reason) lines.push(`${label} \u539F\u56E0: ${assertion.reason}`);
+      appendEachDetails(lines, assertion.detail, `${label} \u203A `);
+    }
+  }
+}
+function failureBody(result) {
+  const lines = [];
+  if (result.error && !(result.assertions || []).some((item) => !item.passed && item.name === result.error)) {
+    lines.push(result.error);
+  }
+  for (const assertion of result.assertions || []) {
+    if (assertion.passed) continue;
+    const name = assertion.name || "\u65AD\u8A00";
+    lines.push(`${name}: expected=${describeValue(assertion.expected)} actual=${describeValue(assertion.actual)}`);
+    if (assertion.reason) lines.push(`\u539F\u56E0: ${assertion.reason}`);
+    appendEachDetails(lines, assertion.detail, "");
+  }
+  for (const warning of result.warnings || []) lines.push(`\u8B66\u544A: ${warning}`);
+  return lines.length ? lines : [result.error || "\u6B65\u9AA4\u5931\u8D25"];
+}
+function indentedXmlLines(lines, indent) {
+  const output = [];
+  for (const raw of lines) {
+    for (const line of String(raw).split(/\r\n|\n|\r/)) {
+      output.push(`${indent}${escapeXmlText(line)}`);
+    }
+  }
+  return output;
+}
+function unexecutedReason(report, scenario) {
+  if (report.status === "CANCELLED") return "\u6267\u884C\u5DF2\u53D6\u6D88\uFF0C\u6B65\u9AA4\u672A\u6267\u884C";
+  if (scenario?.failurePolicy === "continue") return "\u6267\u884C\u4E2D\u65AD\uFF0C\u6B65\u9AA4\u672A\u6267\u884C";
+  return "\u56E0 failurePolicy: stop\uFF0C\u4E0A\u4E00\u6B65\u5931\u8D25\u540E\u6B65\u9AA4\u672A\u6267\u884C";
+}
+function testcaseXml(suite, index, report) {
+  const scenario = suite.scenario || {};
+  const steps = scenario.steps || [];
+  const result = report.results?.[index];
+  const testcaseName = result?.name || steps[index]?.name || `\u6B65\u9AA4 ${index + 1}`;
+  const attrs = [
+    `name="${escapeXmlAttribute(testcaseName)}"`,
+    `classname="${escapeXmlAttribute(suite.name || report.scenarioName || "scenario-test")}"`,
+    `time="${formatSeconds(result?.duration)}"`
+  ];
+  const lines = [`      <testcase ${attrs.join(" ")}>`];
+  if (!result) {
+    lines.push(`        <skipped message="${escapeXmlAttribute(unexecutedReason(report, scenario))}"/>`);
+  } else if (result.skipped) {
+    lines.push('        <skipped message="when \u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u6B65\u9AA4\u672A\u6267\u884C"/>');
+  } else if (!result.passed) {
+    const message = result.error || "\u6B65\u9AA4\u5931\u8D25";
+    lines.push(`        <failure message="${escapeXmlAttribute(message)}" type="AssertionError">`);
+    lines.push(...indentedXmlLines(failureBody(result), "          "));
+    lines.push("        </failure>");
+  }
+  lines.push("      </testcase>");
+  return lines;
+}
+function suiteXml(suite) {
+  const report = suite.report;
+  const scenario = suite.scenario || {};
+  const planned = Math.max(Number(report.planned) || 0, report.results?.length || 0, scenario.steps?.length || 0);
+  const executedResults = report.results || [];
+  const unexecuted = Math.max(0, planned - executedResults.length);
+  const failures = executedResults.filter((item) => !item.skipped && !item.passed).length;
+  const skipped = executedResults.filter((item) => item.skipped).length + unexecuted;
+  const time = executedResults.reduce((total, item) => total + (Number(item.duration) || 0), 0);
+  const suiteName = report.scenarioName || scenario.name || suite.name || "scenario-test";
+  const attrs = [
+    `name="${escapeXmlAttribute(suiteName)}"`,
+    `tests="${planned}"`,
+    `failures="${failures}"`,
+    `errors="0"`,
+    `skipped="${skipped}"`,
+    `time="${formatSeconds(time)}"`
+  ];
+  const lines = [`  <testsuite ${attrs.join(" ")}>`];
+  for (let index = 0; index < planned; index += 1) lines.push(...testcaseXml({ ...suite, name: suiteName }, index, report));
+  lines.push("  </testsuite>");
+  return { xml: lines, planned, failures, skipped, time };
+}
+function buildJUnitXml(suites) {
+  const rendered = [];
+  let tests = 0;
+  let failures = 0;
+  let skipped = 0;
+  let time = 0;
+  for (const suite of suites || []) {
+    const item = suiteXml(suite);
+    rendered.push(...item.xml);
+    tests += item.planned;
+    failures += item.failures;
+    skipped += item.skipped;
+    time += item.time;
+  }
+  const rootAttrs = [
+    'name="scenario-test"',
+    `tests="${tests}"`,
+    `failures="${failures}"`,
+    'errors="0"',
+    `skipped="${skipped}"`,
+    `time="${formatSeconds(time)}"`
+  ];
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuites ${rootAttrs.join(" ")}>`,
+    ...rendered,
+    "</testsuites>",
+    ""
+  ].join("\n");
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -3661,7 +3808,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, junit: "", help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4125,6 +4272,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
   const reports = [];
+  const junitSuites = [];
   for (const entry of entries) {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
@@ -4187,6 +4335,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
     reports.push(report);
+    junitSuites.push({ report, scenario });
     total += report.planned;
     passedTotal += report.passedSteps;
     const stoppedUnexecuted = report.planned - report.executed - report.skipped;
@@ -4223,6 +4372,11 @@ Overall: ${passedTotal}/${total} passed`);
     const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
+  }
+  if (args.junit) {
+    const junitPath = import_node_path6.default.resolve(args.junit);
+    import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(junitPath), { recursive: true });
+    import_node_fs6.default.writeFileSync(junitPath, buildJUnitXml(junitSuites), "utf8");
   }
 }
 var FAILURE_BODY_LIMIT = 2e3;

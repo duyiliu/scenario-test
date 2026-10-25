@@ -30,6 +30,7 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.deepEqual(caps.cli.commands, [...contract.cli.commands]);
     assert.ok(caps.cli.options["fail-on-skip"]);
     assert.equal(caps.cli.options.json.kind, "flag");
+    assert.equal(caps.cli.options.junit.kind, "value");
     assert.equal(caps.config.manual.type, "boolean");
     // 每个操作符含说明与类型约束
     for (const [name, meta] of Object.entries(caps.assertions.operators)) {

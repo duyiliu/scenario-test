@@ -15,6 +15,7 @@ import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { buildJUnitXml } from "./junit.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -97,7 +98,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, junit: "", help: false };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -625,6 +626,7 @@ async function runCommand(args) {
     // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
     const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
     const reports = [];
+    const junitSuites = [];
     for (const entry of entries) {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
@@ -703,6 +705,7 @@ async function runCommand(args) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
         reports.push(report);
+        junitSuites.push({ report, scenario });
         total += report.planned;
         passedTotal += report.passedSteps;
         // 因 failurePolicy:stop 未执行到位的步骤按失败统计；SKIP 步骤单独计数不并入失败
@@ -737,6 +740,13 @@ async function runCommand(args) {
         // 退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
         const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    }
+    if (args.junit) {
+        // JUnit 报告与 stdout/退出码正交：失败场景照常写报告，退出码仍由上方统计决定。
+        // 相对路径按当前工作目录解析（与 --config 相同），父目录不存在时一并创建。
+        const junitPath = path.resolve(args.junit);
+        fs.mkdirSync(path.dirname(junitPath), { recursive: true });
+        fs.writeFileSync(junitPath, buildJUnitXml(junitSuites), "utf8");
     }
 }
 

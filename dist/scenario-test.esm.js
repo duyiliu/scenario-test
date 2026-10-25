@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 12;
+var CONTRACT_VERSION = 13;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -411,6 +411,11 @@ var contract = Object.freeze({
       "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "\u5B58\u5728\u4EFB\u4F55 SKIP \u6B65\u9AA4\u65F6\u6700\u7EC8\u9000\u51FA\u7801\u4E3A 1" },
       "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "\u5141\u8BB8\u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6\uFF08\u6709\u5B89\u5168\u98CE\u9669\uFF09" },
       json: { kind: "flag", prop: "json", description: "run/capabilities/doctor \u8F93\u51FA\u673A\u5668\u53EF\u8BFB JSON\uFF08stdout \u7EAF\u51C0\uFF0C\u4EBA\u7C7B\u53EF\u8BFB\u8FDB\u5EA6\u4E0E\u7ED3\u8BBA\u8D70 stderr\uFF09" },
+      junit: {
+        kind: "value",
+        prop: "junit",
+        description: "run \u7ED3\u675F\u65F6\u5199\u5165 JUnit XML \u62A5\u544A\uFF08\u573A\u666F\u2192testsuite\uFF0C\u6B65\u9AA4\u2192testcase\uFF1B\u8DEF\u5F84\u76F8\u5BF9\u5F53\u524D\u5DE5\u4F5C\u76EE\u5F55\uFF09"
+      },
       token: {
         kind: "value",
         prop: "authorization",
