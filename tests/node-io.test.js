@@ -131,6 +131,60 @@ test("createUploadBody：maxUploadBytes 超限返回结构化错误，边界值�
     }
 });
 
+test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超限/未配置上限回退内容正确", async () => {
+    const workspace = makeWorkspace();
+    const originalOpenAsBlob = fs.openAsBlob;
+    const originalReadFileSync = fs.readFileSync;
+    let reads = 0;
+    try {
+        const sampleSize = fs.statSync(path.join(workspace, "sample.txt")).size;
+        // 模拟 Node 18：无 fs.openAsBlob，上传体只能回退 readFileSync
+        fs.openAsBlob = undefined;
+        fs.readFileSync = function countingReadFileSync(...args) {
+            reads += 1;
+            return originalReadFileSync.apply(this, args);
+        };
+
+        // 超限：stat 阶段即拒绝，不得为构造上传体读取文件内容
+        const limited = createNodeIo(workspace, { maxUploadBytes: sampleSize - 1 });
+        await assert.rejects(
+            () => limited.createUploadBody("sample.txt"),
+            (error) => {
+                assert.match(error.message, /上传文件超过大小上限/);
+                assert.deepEqual(error.uploadTooLarge, { actualBytes: sampleSize, limitBytes: sampleSize - 1 });
+                return true;
+            }
+        );
+        assert.equal(reads, 0, "超限应在 readFileSync 前拒绝");
+
+        // 未配置上限（旧调用形态）：回退生成内容、字段名与文件名均正确的 FormData
+        const unlimited = createNodeIo(workspace);
+        const upload = await unlimited.createUploadBody({
+            filePath: "sample.txt",
+            fieldName: "attachment",
+            filename: "renamed.txt",
+            fields: { note: "hello" }
+        });
+        const file = upload.body.get("attachment");
+        assert.ok(file instanceof File);
+        assert.equal(file.name, "renamed.txt");
+        assert.equal(await file.text(), "upload-payload");
+        assert.equal(upload.body.get("note"), "hello");
+        assert.ok(reads > 0, "无 openAsBlob 时应走 readFileSync 回退");
+
+        // 恰好达到上限：允许上传，内容仍正确
+        const exact = createNodeIo(workspace, { maxUploadBytes: sampleSize });
+        const exactUpload = await exact.createUploadBody("sample.txt");
+        const exactFile = exactUpload.body.get("file");
+        assert.equal(exactFile.name, "sample.txt");
+        assert.equal(await exactFile.text(), "upload-payload");
+    } finally {
+        fs.openAsBlob = originalOpenAsBlob;
+        fs.readFileSync = originalReadFileSync;
+        fs.rmSync(workspace, { recursive: true, force: true });
+    }
+});
+
 // ==================== 安全边界 ====================
 
 test("saveResponseStream：流式写入内容与 saveResponse 一致，失败时删除半截文件", async () => {
