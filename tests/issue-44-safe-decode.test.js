@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildUrl, createEngine, defineScenario } from "../src/index.js";
+import { appendQueryPairs, buildUrl, createEngine, defineScenario, queryKeys } from "../src/index.js";
 import { safeDecodeComponent } from "../src/utils/safe-decode.js";
-import { appendQueryParams, existingQueryKeys } from "../src/utils/url-query.js";
 import workbenchView from "../src/browser/ui/ui-view.js";
 import workbenchAdhoc from "../src/browser/ui/ui-adhoc.js";
 
@@ -24,10 +23,10 @@ test("safeDecodeComponent 对畸形编码回退原串，合法编码保持解码
 
 // Issue #44：全局 query 必须拼在 fragment 之前，否则参数成为 fragment 内容、不随请求发送
 test("url-query：fragment 保留且 query 参数始终追加在 # 之前", () => {
-    assert.equal(appendQueryParams("api#frag", ["source=x"]), "api?source=x#frag");
-    assert.equal(appendQueryParams("api?x=1#frag", ["source=x"]), "api?x=1&source=x#frag");
-    assert.equal(appendQueryParams("api?x=1", ["source=x"]), "api?x=1&source=x");
-    assert.deepEqual([...existingQueryKeys("api?bad%zz=1&%E4%B8%AD=2#frag")], ["bad%zz", "中"]);
+    assert.equal(appendQueryPairs("api#frag", ["source=x"]), "api?source=x#frag");
+    assert.equal(appendQueryPairs("api?x=1#frag", ["source=x"]), "api?x=1&source=x#frag");
+    assert.equal(appendQueryPairs("api?x=1", ["source=x"]), "api?x=1&source=x");
+    assert.deepEqual([...queryKeys("api?bad%zz=1&%E4%B8%AD=2#frag")], ["bad%zz", "中"]);
 });
 
 test("buildUrl：step.params 追加在 fragment 之前", () => {

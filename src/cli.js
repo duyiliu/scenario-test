@@ -853,11 +853,13 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
         // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
         // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
         const environment = selectEnvironment(config, envKey);
-        // --base-url 临时覆盖代理目标（与 run 模式一致）；日志标注覆盖来源，避免与配置环境混淆
+        // --base-url 临时覆盖代理目标（与 run 模式一致）；未覆盖时与 run/doctor 同口径：
+        // 环境未声明 baseUrl 则回退顶层 config.baseUrl，而不是得到空代理目标。
         const overridden = Boolean(baseUrlOverride);
+        const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
         return {
             key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
-            target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+            target: String(target).replace(/\/+$/, "")
         };
     }
     return {

@@ -351,6 +351,42 @@ try {
     } finally {
         fs.rmSync(evilPath, { force: true });
     }
+    // config.storageKeys 是浏览器工作台公开配置：defineConfig 不得当未知键拒绝，
+    // 且自定义键必须真正用于 LocalStorage 读写（主题作为可观测面）。
+    const storageKeysPagePath = path.join(root, "examples/basic/storage-keys-regression.html");
+    fs.writeFileSync(storageKeysPagePath, `<!doctype html>
+<html lang="zh-CN">
+<body style="margin:0">
+    <div id="scenario-test" style="height:100vh"></div>
+    <script src="../../dist/scenario-test.umd.js"></script>
+    <script>
+        localStorage.setItem("custom.storage.theme", "claude-code");
+        ScenarioTest.createApp({
+            mount: "#scenario-test",
+            config: ScenarioTest.defineConfig({
+                envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+                storageKeys: { theme: "custom.storage.theme" },
+                scenarios: []
+            })
+        });
+    </script>
+</body>
+</html>`, "utf8");
+    try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        await page.goto(`http://127.0.0.1:${port}/storage-keys-regression.html`, { waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#scenario-test-root"));
+        assert.equal(
+            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")),
+            true,
+            "storageKeys.theme 应作为自定义 LocalStorage 键被读取"
+        );
+        await page.locator("#themeSelect").selectOption("default");
+        assert.equal(await page.evaluate(() => localStorage.getItem("custom.storage.theme")), "default", "主题切换应写入自定义 storageKeys.theme");
+        await page.close();
+    } finally {
+        fs.rmSync(storageKeysPagePath, { force: true });
+    }
 } finally {
     await browser?.close();
     server.kill();
