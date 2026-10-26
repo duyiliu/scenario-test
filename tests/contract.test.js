@@ -51,6 +51,9 @@ test("when 来源含 vars/lastResponse/status；extract 来源与 required 语�
 });
 
 test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip/bail", () => {
+    assert.ok(contract.config.configKeys.includes("requestTimeoutMs"));
+    assert.ok(contract.config.configKeys.includes("baseUrl"));
+    assert.ok(contract.config.configKeys.includes("envs"));
     assert.ok(contract.config.scenarioItemKeys.includes("id"));
     assert.ok(contract.config.scenarioItemKeys.includes("url"));
     assert.ok(contract.config.scenarioItemKeys.includes("manual"));

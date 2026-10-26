@@ -309,6 +309,32 @@ try {
         await page.close();
     }
 
+    // Issue #44：cURL 预览对带 fragment 的路径同样要把全局 query 拼在 # 之前；
+    // 已有 query 含畸形百分号编码时也不得抛 URIError。
+    const curlPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const curlPageErrors = [];
+    curlPage.on("pageerror", (error) => curlPageErrors.push(error.message));
+    await curlPage.route(/\/scenarios\/health\.js(?:\?.*)?$/, (route) => route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        body: 'ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({ name: "cURL fragment", steps: [{ name: "带 fragment 的步骤", method: "GET", path: "health?bad%zz=1#frag", params: { id: "42" } }] }));'
+    }));
+    await curlPage.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
+    await curlPage.waitForFunction(() => document.querySelectorAll("[data-curl-step]").length === 1);
+    await curlPage.evaluate(() => {
+        Object.defineProperty(navigator, "clipboard", {
+            value: { writeText: async (text) => { window.__lastCopiedText = text; } },
+            configurable: true
+        });
+    });
+    await curlPage.locator("[data-curl-step='0']").click();
+    await curlPage.waitForFunction(() => document.querySelector("[data-curl-step='0']").textContent.includes("已复制"));
+    const curlText = await curlPage.evaluate(() => window.__lastCopiedText);
+    const curlUrl = /curl -X GET '([^']+)'/.exec(curlText)?.[1] || "";
+    assert.match(curlUrl, /\/health\?bad%zz=1&id=42&source=scenario-test#frag$/, `cURL URL 应保留 fragment 并把 step.params/全局 query 放在 # 之前: ${curlText}`);
+    assert.deepEqual(curlPageErrors, [], `cURL 预览不应产生 pageerror: ${curlPageErrors.join(", ")}`);
+    await curlPage.close();
+
     // ?scenario= 白名单：URL 参数指向未列入配置清单的文件时必须拒绝加载，
     // 不得把工作区内任意 JS 当场景脚本执行（registerScenario 校验在脚本执行之后，挡不住注入）
     const evilPath = path.join(root, "examples/basic/evil-unlisted-test.js");
@@ -324,6 +350,42 @@ try {
         await page.close();
     } finally {
         fs.rmSync(evilPath, { force: true });
+    }
+    // config.storageKeys 是浏览器工作台公开配置：defineConfig 不得当未知键拒绝，
+    // 且自定义键必须真正用于 LocalStorage 读写（主题作为可观测面）。
+    const storageKeysPagePath = path.join(root, "examples/basic/storage-keys-regression.html");
+    fs.writeFileSync(storageKeysPagePath, `<!doctype html>
+<html lang="zh-CN">
+<body style="margin:0">
+    <div id="scenario-test" style="height:100vh"></div>
+    <script src="../../dist/scenario-test.umd.js"></script>
+    <script>
+        localStorage.setItem("custom.storage.theme", "claude-code");
+        ScenarioTest.createApp({
+            mount: "#scenario-test",
+            config: ScenarioTest.defineConfig({
+                envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+                storageKeys: { theme: "custom.storage.theme" },
+                scenarios: []
+            })
+        });
+    </script>
+</body>
+</html>`, "utf8");
+    try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        await page.goto(`http://127.0.0.1:${port}/storage-keys-regression.html`, { waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#scenario-test-root"));
+        assert.equal(
+            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")),
+            true,
+            "storageKeys.theme 应作为自定义 LocalStorage 键被读取"
+        );
+        await page.locator("#themeSelect").selectOption("default");
+        assert.equal(await page.evaluate(() => localStorage.getItem("custom.storage.theme")), "default", "主题切换应写入自定义 storageKeys.theme");
+        await page.close();
+    } finally {
+        fs.rmSync(storageKeysPagePath, { force: true });
     }
 } finally {
     await browser?.close();

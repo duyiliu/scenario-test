@@ -123,7 +123,7 @@ test("CLI run includes 对象实际值失败输出语义化原因（数组/字�
     }
 });
 
-test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定位/短值保持单行）", async () => {
+test("CLI run 失败长值输出行级对齐 diff（hunk 上下文/差异定位/短值保持单行）", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-diff-"));
     // 长 JSON 响应体（bodyText 断言序列化超 80 字符触发分块）+ 短 JSON（保持单行格式）
     const longBody = JSON.stringify({ code: "OK", message: "处理成功", payload: { items: [1, 2, 3], traceId: "trace-0001" } });
@@ -151,20 +151,20 @@ test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定�
             child.on("close", (code) => resolve({ code, stdout, stderr }));
         });
         assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
-        // 长值断言：单行头（值经 JSON.stringify 截断展示）后跟结构化分块
+        // 长值断言：单行头（值经 JSON.stringify 截断展示）后跟行级对齐 diff
         assert.match(result.stdout, /\[FAIL\] 长响应体/);
         assert.match(result.stdout, /- 响应原文比对: expected=/);
-        assert.match(result.stdout, /期望值（expected）:/);
-        assert.match(result.stdout, /实际值（actual）:/);
-        // 多行响应体按真实换行拆行，行号 1 基 + | 前缀
-        assert.match(result.stdout, /\| 1 \| /);
+        // 两侧均超限且同为字符串：行级对齐 hunk（差异行 ±2 行上下文，- 期望行 / + 实际行）
+        assert.match(result.stdout, /行级差异（仅展开差异行 ±2 行上下文/);
+        assert.match(result.stdout, /- 1\s+\| x{40}/);
+        assert.match(result.stdout, /\+\s+1 \| \{\\"code\\":\\"OK\\"/);
         // 字符串首个差异定位：两串首字符即异（期望 x 开头、实际 { 开头）
         assert.match(result.stdout, /首个差异在第 1 个字符/);
         // 短值断言：不产生任何分块行（保持既有单行格式）
         assert.match(result.stdout, /\[FAIL\] 短响应体/);
         assert.match(result.stdout, /- status: expected="DOWN" actual="UP"/);
-        // 极性守卫：分块标题只出现一次（长值断言），短值断言不产生分块
-        assert.equal(result.stdout.split("期望值（expected）:").length - 1, 1, "分块标题只应来自长值断言一处");
+        // 极性守卫：行级对齐标题只出现一次（长值断言），短值断言不产生分块
+        assert.equal(result.stdout.split("行级差异").length - 1, 1, "行级对齐标题只应来自长值断言一处");
     } finally {
         server.close();
         fs.rmSync(directory, { recursive: true, force: true });
@@ -686,6 +686,31 @@ test("CLI run --env 指定未知环境时报错退出，不静默回退", async 
     }
 });
 
+test("CLI run：环境 baseUrl 为纯空白时回退顶层 baseUrl", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-whitespace-base-"));
+    const hits = [];
+    const server = http.createServer((request, response) => {
+        hits.push(request.url);
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({baseUrl:"http://127.0.0.1:${port}",envs:[{key:"mock",name:"Mock",baseUrl:"   "}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/health.js"),
+            `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",steps:[{name:"h",path:"health",status:200}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--all"]);
+        assert.equal(result.code, 0, result.stderr);
+        assert.deepEqual(hits, ["/health"], "空白环境 baseUrl 不应遮蔽顶层回退地址");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI run --base-url 临时覆盖环境地址且 SCENARIO_AUTH 注入 Authorization", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-base-"));
     const hits = [];
@@ -986,6 +1011,41 @@ test("CLI run --json：stdout 纯净可解析，单场景输出 report、多场�
         assert.match(multi.stderr, /\[FAIL\] broken/);
         assert.match(multi.stderr, /Overall: 1\/2 passed/);
         assert.doesNotMatch(multi.stdout, /\[FAIL\]|\[PASS\]|Overall:|结论：/);
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("CLI run --json：上传超限保留结构化 uploadTooLarge 且退出码非零", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-upload-"));
+    let hits = 0;
+    const server = http.createServer((_request, response) => {
+        hits += 1;
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end("{}");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        const upload = Buffer.from("0123456789", "utf8");
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "upload.bin"), upload);
+        fs.writeFileSync(path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],maxUploadBytes:5,scenarios:[{id:"upload",name:"Upload",url:"scenarios/upload.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/upload.js"),
+            `ScenarioTest.registerScenario("upload",ScenarioTest.defineScenario({name:"Upload",steps:[{name:"上传",method:"POST",path:"upload",request:{fileUpload:{filePath:"upload.bin",fieldName:"file"}}}]}));`, "utf8");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--scenario", "upload", "--json"]);
+        assert.notEqual(result.code, 0, "上传超限应使 CLI 退出码非 0");
+        const report = JSON.parse(result.stdout);
+        const step = report.results[0];
+        assert.equal(report.status, "FAILED");
+        assert.equal(step.passed, false);
+        assert.equal(step.errorCode, "uploadTooLarge");
+        assert.deepEqual(step.uploadTooLarge, { actualBytes: upload.byteLength, limitBytes: 5 });
+        assert.match(step.error, /上传文件超过大小上限/);
+        assert.match(result.stderr, /\[FAIL\] 上传/);
+        assert.equal(hits, 0, "超限应在发起上传前被拒绝");
     } finally {
         server.close();
         fs.rmSync(directory, { recursive: true, force: true });

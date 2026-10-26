@@ -48,6 +48,7 @@ function writeFixture(directory, port) {
             { id: "failing", name: "Failing", url: "scenarios/failing.js" },
             { id: "passing", name: "Passing", url: "scenarios/passing.js" },
             { id: "later", name: "Later", url: "scenarios/later.js" },
+            { id: "stop", name: "Stop", url: "scenarios/stop.js" },
             { id: "skippable", name: "Skippable", url: "scenarios/skippable.js" },
             { id: "manual", name: "ManualOnly", url: "scenarios/manual.js", manual: true }
         ]
@@ -62,19 +63,21 @@ function writeFixture(directory, port) {
         `ScenarioTest.registerScenario("passing",ScenarioTest.defineScenario({name:"Passing",steps:[{name:"pass-step",path:"pass",status:200}]}));`, "utf8");
     fs.writeFileSync(path.join(directory, "scenarios/later.js"),
         `ScenarioTest.registerScenario("later",ScenarioTest.defineScenario({name:"Later",steps:[{name:"later-step",path:"pass",status:200}]}));`, "utf8");
+    fs.writeFileSync(path.join(directory, "scenarios/stop.js"),
+        `ScenarioTest.registerScenario("stop",ScenarioTest.defineScenario({name:"Stop",failurePolicy:"stop",steps:[{name:"stop-fail",path:"pass",status:200,assertions:[{path:"status",equals:"DOWN"}]},{name:"stop-never",path:"pass",status:200}]}));`, "utf8");
     fs.writeFileSync(path.join(directory, "scenarios/skippable.js"),
         `ScenarioTest.registerScenario("skippable",ScenarioTest.defineScenario({name:"Skippable",steps:[{name:"skip-step",path:"pass",status:200,when:{from:"vars",path:"missing",exists:true}}]}));`, "utf8");
     fs.writeFileSync(path.join(directory, "scenarios/manual.js"),
         `ScenarioTest.registerScenario("manual",ScenarioTest.defineScenario({name:"ManualOnly",steps:[{name:"manual-step",path:"pass",status:200}]}));`, "utf8");
 }
 
-test("contract v13 投射 --bail 到 capabilities、文本与 --help", () => {
-    assert.equal(CONTRACT_VERSION, 13);
+test("contract v14 投射 --bail 到 capabilities、文本与 --help", () => {
+    assert.equal(CONTRACT_VERSION, 14);
     assert.equal(contract.cli.options.bail.kind, "flag");
     assert.equal(contract.cli.options.bail.prop, "bail");
 
     const capabilities = buildCapabilities(contract);
-    assert.equal(capabilities.contractVersion, 13);
+    assert.equal(capabilities.contractVersion, 14);
     assert.equal(capabilities.cli.options.bail.kind, "flag");
     assert.match(renderCapabilitiesText(capabilities), /--bail/);
 
@@ -140,11 +143,23 @@ test("--bail 遇首个失败场景即停，文本与 JSON 显式标注未执行�
             assert.deepEqual(afterPassJson.scenarios.map((report) => report.status), ["PASSED", "FAILED", "NOT_RUN"]);
             assert.equal(afterPassJson.scenarios[2].scenarioId, "later");
 
+            // failurePolicy:stop 未执行到位的步骤同样使场景 FAILED，并触发 --bail
+            // --scenario 按配置清单顺序执行，故用 stop 后的 skippable 验证截断
+            const stopped = await runCli(["--config", configPath, "--scenario", "stop,skippable", "--bail", "--json"]);
+            assert.equal(stopped.code, 1, stopped.stderr);
+            const stoppedJson = JSON.parse(stopped.stdout);
+            assert.deepEqual(stoppedJson.scenarios.map((report) => report.status), ["FAILED", "NOT_RUN"]);
+            assert.equal(stoppedJson.scenarios[0].planned, 2);
+            assert.equal(stoppedJson.scenarios[0].executed, 1);
+            assert.equal(stoppedJson.scenarios[0].failed, 1);
+            assert.equal(stoppedJson.scenarios[1].scenarioId, "skippable");
+            assert.match(stopped.stderr, /因 stop 策略未执行 1 步，因 --bail 跳过 1 个场景/);
+
             // --all --bail：manual 场景不参与，也不会被标成未执行
             const allBailed = await runCli(["--config", configPath, "--all", "--bail"]);
             assert.equal(allBailed.code, 1, allBailed.stderr);
             assert.doesNotMatch(allBailed.stdout, /manual-step|ManualOnly/);
-            assert.match(allBailed.stdout, /--bail 已开启：首个失败场景后跳过 3 个未执行场景/);
+            assert.match(allBailed.stdout, /--bail 已开启：首个失败场景后跳过 4 个未执行场景/);
         });
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
@@ -172,6 +187,75 @@ test("--bail 不把 SKIP 当失败，且与 --fail-on-skip 互不干扰", async 
             assert.match(result.stdout, /--fail-on-skip 已开启，存在 1 个 SKIP 步骤/);
             assert.match(result.stdout, /\[NOT RUN\] Passing \(passing\)/);
             assert.match(result.stdout, /--bail 已开启：首个失败场景后跳过 1 个未执行场景/);
+        });
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test("--bail 与 --concurrency 组合：已在执行场景跑完，未启动场景标记 NOT_RUN", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-issue71-bail-concurrency-"));
+    try {
+        // 版本断言以外的场景按配置顺序：先失败 + 慢场景并发启动，后续两个不应被调度
+        fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+            envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:__PORT__" }],
+            scenarios: [
+                { id: "failing", name: "Failing", url: "scenarios/failing.js" },
+                { id: "slow", name: "Slow", url: "scenarios/slow.js" },
+                { id: "later", name: "Later", url: "scenarios/later.js" },
+                { id: "passing", name: "Passing", url: "scenarios/passing.js" }
+            ]
+        }));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/failing.js"),
+            `ScenarioTest.registerScenario("failing",ScenarioTest.defineScenario({name:"Failing",steps:[{name:"fail-step",path:"pass",status:200,assertions:[{path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/slow.js"),
+            `ScenarioTest.registerScenario("slow",ScenarioTest.defineScenario({name:"Slow",steps:[{name:"slow-step",path:"slow",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/later.js"),
+            `ScenarioTest.registerScenario("later",ScenarioTest.defineScenario({name:"Later",steps:[{name:"later-step",path:"pass",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/passing.js"),
+            `ScenarioTest.registerScenario("passing",ScenarioTest.defineScenario({name:"Passing",steps:[{name:"pass-step",path:"pass",status:200}]}));`, "utf8");
+
+        const hits = [];
+        await withServer((request, response) => {
+            hits.push(request.url);
+            // 慢场景保证失败场景先返回，验证「已在执行场景跑完、未启动场景不再启动」
+            const delay = request.url === "/slow" ? 200 : 0;
+            setTimeout(() => {
+                response.writeHead(200, { "Content-Type": "application/json" });
+                response.end(JSON.stringify({ status: "UP" }));
+            }, delay);
+        }, async (port) => {
+            const configPath = path.join(directory, "scenario.config.js");
+            fs.writeFileSync(configPath, fs.readFileSync(configPath, "utf8").replace("__PORT__", String(port)), "utf8");
+
+            // 并发 + 不传 --bail：四个场景全部执行，行为不变
+            const allRun = await runCli(["--config", configPath, "--scenario", "failing,slow,later,passing", "--concurrency", "2"]);
+            assert.equal(allRun.code, 1, allRun.stderr);
+            assert.match(allRun.stdout, /\[PASS\] slow-step/);
+            assert.match(allRun.stdout, /\[PASS\] later-step/);
+            assert.match(allRun.stdout, /\[PASS\] pass-step/);
+            assert.equal(hits.length, 4, `未传 --bail 时应全部执行，实际请求: ${hits.join(",")}`);
+
+            // 并发 + --bail：failing 与 slow 已启动并跑完，later/passing 不再启动
+            hits.length = 0;
+            const bailed = await runCli(["--config", configPath, "--scenario", "failing,slow,later,passing", "--concurrency", "2", "--bail", "--json"]);
+            assert.equal(bailed.code, 1, bailed.stderr);
+            assert.deepEqual(hits, ["/pass", "/slow"], `已启动场景应跑完且不调度后续场景，实际请求: ${hits.join(",")}`);
+            assert.match(bailed.stderr, /\[NOT RUN\] Later \(later\)/);
+            assert.match(bailed.stderr, /\[NOT RUN\] Passing \(passing\)/);
+            assert.doesNotMatch(bailed.stderr, /\[NOT RUN\] Slow/);
+            assert.match(bailed.stderr, /--bail 已开启：首个失败场景后跳过 2 个未执行场景/);
+
+            const parsed = JSON.parse(bailed.stdout);
+            assert.deepEqual(parsed.scenarios.map((report) => report.status), ["FAILED", "PASSED", "NOT_RUN", "NOT_RUN"]);
+            assert.deepEqual(parsed.scenarios.map((report) => report.scenarioName), ["Failing", "Slow", "Later", "Passing"]);
+            assert.equal(parsed.scenarios[2].scenarioId, "later");
+            assert.equal(parsed.scenarios[3].scenarioId, "passing");
+            assert.equal(parsed.scenarios[2].notRun, true);
+            assert.equal(parsed.scenarios[3].notRun, true);
+            assert.deepEqual(parsed.scenarios[2].results, []);
+            assert.match(bailed.stdout, /"scenarioName": "Later"/);
         });
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });

@@ -245,7 +245,7 @@ var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_promises = require("node:readline/promises");
+var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
 
 // src/node.js
@@ -263,6 +263,8 @@ __export(node_exports, {
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
   VERSION: () => VERSION,
+  appendGlobalQuery: () => appendGlobalQuery,
+  appendQueryPairs: () => appendQueryPairs,
   applyExtract: () => applyExtract,
   applyGeneratedVar: () => applyGeneratedVar,
   assertNoReservedVars: () => assertNoReservedVars,
@@ -309,12 +311,14 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   normalizeWhenDefinition: () => normalizeWhenDefinition,
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
+  queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -327,6 +331,8 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setRuntimeVar: () => setRuntimeVar,
+  splitUrlFragment: () => splitUrlFragment,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
@@ -342,7 +348,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -459,14 +465,46 @@ var contract = Object.freeze({
     note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
   }),
   config: Object.freeze({
+    // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+    // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+    // 运行时实际消费的是场景级 envVars。
+    configKeys: Object.freeze([
+      "envs",
+      "defaultEnvKey",
+      "globals",
+      "vars",
+      "scenarioVars",
+      "variables",
+      "scenarios",
+      "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
+      "storagePrefix",
+      "storageKeys",
+      "baseUrl",
+      "authorization",
+      "nodePlugins",
+      "envVars"
+    ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+    baseUrl: Object.freeze({
+      protocol: "http(s)",
+      note: "\u73AF\u5883 baseUrl \u58F0\u660E\u65F6\u5FC5\u987B\u662F http(s):// URL\uFF1B\u672A\u58F0\u660E\uFF08\u6216\u4E3A\u7A7A\uFF09\u65F6\u56DE\u9000\u9876\u5C42 baseUrl\uFF0C\u4E24\u8005\u90FD\u4E3A\u7A7A\u65F6\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4F7F\u7528\u5F53\u524D\u9875\u9762\u5730\u5740\uFF0CCLI run \u4ECD\u9700 --base-url \u6216\u914D\u7F6E baseUrl"
+    }),
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
     })
+  }),
+  retryUntil: Object.freeze({
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+    retryOn: Object.freeze(["assertion", "error", "timeout"]),
+    defaultRetryOn: Object.freeze(["assertion"]),
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
   }),
   scenario: Object.freeze({
     keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
@@ -503,6 +541,7 @@ var contract = Object.freeze({
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -522,6 +561,15 @@ var contract = Object.freeze({
     })
   })
 });
+
+// src/utils/safe-decode.js
+function safeDecodeComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 // src/core.js
 var GLOBAL_TYPES = [...contract.globals.types];
@@ -548,6 +596,10 @@ function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+function normalizeByteLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 var PATH_SEGMENT = /[^.\[\]]+/y;
 var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
@@ -758,13 +810,43 @@ function queryPairs(key, value) {
   if (value === void 0 || value === null) return [];
   return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
+function splitUrlFragment(url) {
+  const text = String(url || "");
+  const fragmentIndex = text.indexOf("#");
+  return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+function queryKeys(url) {
+  const keys = /* @__PURE__ */ new Set();
+  const { path: path7 } = splitUrlFragment(url);
+  const queryIndex = path7.indexOf("?");
+  if (queryIndex < 0) return keys;
+  for (const pair of path7.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(safeDecodeComponent(key));
+  }
+  return keys;
+}
+function appendQueryPairs(url, pairs) {
+  const text = String(url || "");
+  if (!pairs || !pairs.length) return text;
+  const { path: path7, fragment } = splitUrlFragment(text);
+  return `${path7}${path7.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+function appendGlobalQuery(url, globals, runtime) {
+  const existingKeys = queryKeys(url);
+  const pairs = [];
+  for (const global of globals || []) {
+    if (global.type !== "query" || existingKeys.has(global.name)) continue;
+    pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+  }
+  return appendQueryPairs(url, pairs);
+}
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
   const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-  if (!pairs.length) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+  return appendQueryPairs(rawPath, pairs);
 }
 function parseBody(text, contentType2) {
   if (!text) return null;
@@ -1055,6 +1137,15 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
+function setRuntimeVar(vars, name, value) {
+  Object.defineProperty(vars, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return value;
+}
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
@@ -1074,7 +1165,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        runtime.vars[definition.name] = resolve(definition.default, runtime);
+        setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
         continue;
       }
       if (definition.required === true) {
@@ -1088,7 +1179,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    runtime.vars[definition.name] = value;
+    setRuntimeVar(runtime.vars, definition.name, value);
   }
   return { warnings, failures };
 }
@@ -1265,24 +1356,24 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
         throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
       }
-      vars[name] = formatTimestamp(base, definition.format);
+      setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
     } else if (definition.unit != null && definition.unit !== "ms") {
       if (definition.unit !== "s") {
         throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
       }
-      vars[name] = Math.floor(base / 1e3);
+      setRuntimeVar(vars, name, Math.floor(base / 1e3));
     } else {
-      vars[name] = base;
+      setRuntimeVar(vars, name, base);
     }
     return;
   }
   if (definition.type === "uuid") {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    vars[name] = globalThis.crypto.randomUUID();
+    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
     return;
   }
   if (definition.type === "uuidHex") {
-    vars[name] = uuidHex();
+    setRuntimeVar(vars, name, uuidHex());
     return;
   }
   if (definition.type === "idcard") {
@@ -1295,11 +1386,11 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
     }
     const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-    vars[name] = buildChinaIdNumber({
+    setRuntimeVar(vars, name, buildChinaIdNumber({
       regionCode,
       birthDate: definition.birthDate,
       sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-    });
+    }));
     return;
   }
   if (definition.type === "luhn") {
@@ -1316,7 +1407,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
     const first = `${prefix}${body}`;
-    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
     return;
   }
   if (definition.type === "phone") {
@@ -1328,7 +1419,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 8; i += 1) {
       tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
-    vars[name] = `${prefix}${tail}`;
+    setRuntimeVar(vars, name, `${prefix}${tail}`);
     return;
   }
   if (definition.type === "uscc") {
@@ -1340,12 +1431,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 9; i += 1) {
       orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
     }
-    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
     return;
   }
   if (definition.type === "md5") {
     const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-    vars[name] = md5(source);
+    setRuntimeVar(vars, name, md5(source));
     return;
   }
   if (definition.type === "signature") {
@@ -1354,12 +1445,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (!secret) {
       throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
     }
-    vars[name] = generateSignature(params, secret);
+    setRuntimeVar(vars, name, generateSignature(params, secret));
     return;
   }
   if (definition.type === "enum") {
     const { values, weights } = normalizeEnumDefinition(definition);
-    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1380,6 +1471,10 @@ function formatDuration(milliseconds) {
 // src/utils/failure-diff.js
 var SHORT_VALUE_LIMIT = 80;
 var MAX_LINES = 20;
+var HUNK_CONTEXT = 2;
+var MAX_DIFF_CELLS = 4e6;
+var MAX_DIFF_TOTAL_LINES = 2e5;
+var HUNK_SKIPPED_MARK = "\u2026\uFF08\u4E2D\u95F4\u76F8\u540C\u884C\u5DF2\u7701\u7565\uFF09";
 var CONTEXT_RADIUS = 40;
 var MAX_LINE_WIDTH = 240;
 var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
@@ -1406,19 +1501,25 @@ function formatFailureValue(value) {
   if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
   return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
 }
+function escapeStringLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)));
+}
+function escapeJsonLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(line));
+}
 function splitStringLines(text, prefix) {
   const raw = String(text).split(/\r\n|\n|\r/);
   const width = String(raw.length).length;
-  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)))}`);
+  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${escapeStringLineContent(line)}`);
 }
 function prettyLines(value) {
   let text;
   try {
-    text = defuseCiCommandMarkers(escapeC1(JSON.stringify(value, null, 2) ?? String(value)));
+    text = JSON.stringify(value, null, 2) ?? String(value);
   } catch {
-    text = defuseCiCommandMarkers(String(value));
+    text = String(value);
   }
-  const lines = text.split("\n");
+  const lines = text.split("\n").map(escapeJsonLineContent);
   if (lines.length > MAX_LINES) {
     return [
       ...lines.slice(0, MAX_LINES),
@@ -1451,19 +1552,135 @@ function firstDifferenceLines(expected, actual, prefix) {
 function failureDiffLines(expected, actual, prefix = "") {
   if (isShortValue(expected) && isShortValue(actual)) return [];
   const lines = [];
-  if (!isShortValue(expected)) {
-    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
-    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
-  }
-  if (!isShortValue(actual)) {
-    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
-    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+  const bothLong = !isShortValue(expected) && !isShortValue(actual);
+  const aligned = bothLong ? alignedDiffLines(expected, actual, prefix) : null;
+  if (aligned) {
+    lines.push(...aligned);
+  } else {
+    if (!isShortValue(expected)) {
+      lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
+      lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
+    }
+    if (!isShortValue(actual)) {
+      lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
+      lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+    }
   }
   lines.push(...firstDifferenceLines(
     typeof expected === "string" ? expected : void 0,
     typeof actual === "string" ? actual : void 0,
     `${prefix}  `
   ));
+  return lines;
+}
+function valueToRawLines(value, isStringValue) {
+  if (isStringValue) return String(value).split(/\r\n|\n|\r/);
+  let text;
+  try {
+    text = JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.split("\n");
+}
+function diffLineOps(expectedLines, actualLines) {
+  if (expectedLines.length + actualLines.length > MAX_DIFF_TOTAL_LINES) return null;
+  let start = 0;
+  const minLines = Math.min(expectedLines.length, actualLines.length);
+  while (start < minLines && expectedLines[start] === actualLines[start]) start += 1;
+  let endA = expectedLines.length;
+  let endB = actualLines.length;
+  while (endA > start && endB > start && expectedLines[endA - 1] === actualLines[endB - 1]) {
+    endA -= 1;
+    endB -= 1;
+  }
+  const midA = endA - start;
+  const midB = endB - start;
+  if ((midA + 1) * (midB + 1) > MAX_DIFF_CELLS) return null;
+  const ops = [];
+  for (let i2 = 0; i2 < start; i2 += 1) ops.push({ t: "=", e: i2, a: i2 });
+  const stride = midB + 1;
+  const lcs = new Int32Array((midA + 1) * stride);
+  for (let i2 = midA - 1; i2 >= 0; i2 -= 1) {
+    for (let j2 = midB - 1; j2 >= 0; j2 -= 1) {
+      lcs[i2 * stride + j2] = expectedLines[start + i2] === actualLines[start + j2] ? lcs[(i2 + 1) * stride + (j2 + 1)] + 1 : Math.max(lcs[(i2 + 1) * stride + j2], lcs[i2 * stride + (j2 + 1)]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < midA && j < midB) {
+    if (expectedLines[start + i] === actualLines[start + j]) {
+      ops.push({ t: "=", e: start + i, a: start + j });
+      i += 1;
+      j += 1;
+    } else if (lcs[(i + 1) * stride + j] >= lcs[i * stride + (j + 1)]) {
+      ops.push({ t: "-", e: start + i });
+      i += 1;
+    } else {
+      ops.push({ t: "+", a: start + j });
+      j += 1;
+    }
+  }
+  while (i < midA) {
+    ops.push({ t: "-", e: start + i });
+    i += 1;
+  }
+  while (j < midB) {
+    ops.push({ t: "+", a: start + j });
+    j += 1;
+  }
+  for (let k = 0; k < expectedLines.length - endA; k += 1) ops.push({ t: "=", e: endA + k, a: endB + k });
+  return ops;
+}
+function alignedDiffLines(expected, actual, prefix) {
+  const bothStrings = typeof expected === "string" && typeof actual === "string";
+  if (!bothStrings && !(typeof expected !== "string" && typeof actual !== "string")) return null;
+  const expectedLines = valueToRawLines(expected, bothStrings);
+  const actualLines = valueToRawLines(actual, bothStrings);
+  const ops = diffLineOps(expectedLines, actualLines);
+  if (!ops) return null;
+  const groups = [];
+  let previousChange = -1;
+  for (let index = 0; index < ops.length; index += 1) {
+    if (ops[index].t === "=") continue;
+    if (groups.length === 0 || index - previousChange - 1 > HUNK_CONTEXT * 2) {
+      groups.push({ from: index, to: index });
+    } else {
+      groups[groups.length - 1].to = index;
+    }
+    previousChange = index;
+  }
+  if (groups.length === 0) return null;
+  const rendered = [];
+  groups.forEach((group, groupIndex) => {
+    if (groupIndex > 0) rendered.push(null);
+    const from = Math.max(0, group.from - HUNK_CONTEXT);
+    const to = Math.min(ops.length - 1, group.to + HUNK_CONTEXT);
+    for (let index = from; index <= to; index += 1) rendered.push(ops[index]);
+  });
+  let expectedWidth = 1;
+  let actualWidth = 1;
+  for (const op of rendered) {
+    if (!op) continue;
+    if (op.e !== void 0) expectedWidth = Math.max(expectedWidth, String(op.e + 1).length);
+    if (op.a !== void 0) actualWidth = Math.max(actualWidth, String(op.a + 1).length);
+  }
+  const escapeContent = bothStrings ? escapeStringLineContent : escapeJsonLineContent;
+  const lines = [`${prefix}  \u884C\u7EA7\u5DEE\u5F02\uFF08\u4EC5\u5C55\u5F00\u5DEE\u5F02\u884C \xB1${HUNK_CONTEXT} \u884C\u4E0A\u4E0B\u6587\uFF0C- \u671F\u671B\u884C / + \u5B9E\u9645\u884C\uFF09:`];
+  for (const op of rendered) {
+    if (!op) {
+      lines.push(`${prefix}    ${HUNK_SKIPPED_MARK}`);
+      continue;
+    }
+    const expectedCell = op.e === void 0 ? " ".repeat(expectedWidth) : String(op.e + 1).padStart(expectedWidth);
+    const actualCell = op.a === void 0 ? " ".repeat(actualWidth) : String(op.a + 1).padStart(actualWidth);
+    const content = op.t === "+" ? escapeContent(actualLines[op.a]) : escapeContent(expectedLines[op.e]);
+    lines.push(capContentLine(`${prefix}    ${op.t === "=" ? " " : op.t} ${expectedCell} ${actualCell} | ${content}`, prefix.length));
+  }
+  if (lines.length > MAX_LINES) {
+    const total = lines.length;
+    return [...lines.slice(0, MAX_LINES), `${prefix}    \u2026\uFF08\u5171 ${total} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`];
+  }
   return lines;
 }
 function expandValueLines(value, prefix, baseLength) {
@@ -1523,11 +1740,36 @@ function validateAdapterResponse(response, adapterName = "unknown") {
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
 var currentConfig = null;
-function invariant(condition, message) {
-  if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+  if (!condition) {
+    const error = new TypeError(message);
+    if (code) error.code = code;
+    throw error;
+  }
 }
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
+}
+function describeValue(value) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return "\u6570\u7EC4";
+  if (isPlainObject(value)) return "\u5BF9\u8C61";
+  return String(value);
+}
+function inheritedEnumerableKey(value) {
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+  }
+  return null;
+}
+function isPlainHeadersObject(value) {
+  if (!isPlainObject(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === null) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+  if (prototype.constructor.prototype !== prototype) return false;
+  return inheritedEnumerableKey(value) === null;
 }
 function describeUnknownKeys(input, allowed) {
   const allowedSet = new Set(allowed);
@@ -1547,16 +1789,58 @@ function editDistance(a, b) {
   }
   return rows[a.length][b.length];
 }
-function looksLikeKeyTypo(key, allowed) {
+function findKeySuggestion(key, allowed) {
   const lower = key.toLowerCase();
-  return allowed.some((candidate) => {
+  return allowed.find((candidate) => {
     const target = candidate.toLowerCase();
     return target === lower || editDistance(lower, target) <= 1;
   });
 }
+function looksLikeKeyTypo(key, allowed) {
+  return findKeySuggestion(key, allowed) !== void 0;
+}
 var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-  return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  const described = unknownKeys.map((key) => {
+    const suggestion = findKeySuggestion(key, allowed);
+    return suggestion ? `"${key}"\uFF08\u662F\u5426\u60F3\u5199 "${suggestion}"\uFF1F\uFF09` : `"${key}"`;
+  });
+  return `${label} \u5305\u542B\u672A\u77E5\u952E ${described.join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+}
+function assertKnownKeys(input, allowed, label, hint = "") {
+  const unknownKeys = describeUnknownKeys(input, allowed);
+  invariant(
+    unknownKeys.length === 0,
+    unknownKeysMessage(label, unknownKeys, allowed, hint),
+    "SCENARIO_CONFIG_UNKNOWN_KEY"
+  );
+}
+function normalizeBaseUrl(value, label) {
+  if (value === void 0 || value === null) return value;
+  invariant(
+    typeof value === "string",
+    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  invariant(
+    /^https?:\/\//i.test(trimmed),
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
+  }
+  invariant(
+    (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  return trimmed;
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1631,10 +1915,15 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+  let generatedVarIndex = 0;
   for (const definition of input.generatedVars || []) {
-    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    generatedVarIndex += 1;
+    const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+    invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+    assertNotReservedVar(definition.name, `${label} name`);
     invariant(
       contract.generatedVars.types.includes(definition.type),
       `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -1643,10 +1932,16 @@ function defineScenario(input) {
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    const stepLabel = `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`;
     if (step.request !== void 0) {
       invariant(
         isPlainObject(step.request),
         `\u6B65\u9AA4 ${step.name} \u7684 request \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5728\u8FD0\u884C\u671F\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09`
+      );
+      const inheritedRequestKey = inheritedEnumerableKey(step.request);
+      invariant(
+        inheritedRequestKey === null,
+        `${stepLabel} \u7684 request \u5305\u542B\u7EE7\u627F\u7684\u53EF\u679A\u4E3E\u5B57\u6BB5 "${inheritedRequestKey}"\uFF08\u8FD0\u884C\u671F clone \u53EA\u4FDD\u7559\u81EA\u6709\u5B57\u6BB5\uFF0C\u4F1A\u9759\u9ED8\u4E22\u5931\uFF1B\u8BF7\u6539\u4E3A\u5BF9\u8C61\u81EA\u6709\u5B57\u6BB5\uFF09`
       );
       if (step.request.params !== void 0) {
         invariant(
@@ -1701,12 +1996,29 @@ function defineScenario(input) {
         step.retryUntil.assertions === void 0,
         `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
       );
+      const unknownRetryKeys = Object.keys(step.retryUntil).filter((key) => !contract.retryUntil.keys.includes(key));
+      invariant(
+        unknownRetryKeys.length === 0,
+        `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.retryUntil.keys.join("/")}`
+      );
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
       const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 3e5);
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.retryOn !== void 0) {
+        invariant(
+          Array.isArray(step.retryUntil.retryOn),
+          `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF09`
+        );
+        for (const retryType of step.retryUntil.retryOn) {
+          invariant(
+            contract.retryUntil.retryOn.includes(retryType),
+            `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u9879\u53EA\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(retryType)}\uFF09`
+          );
+        }
+      }
     }
     if (step.extract !== void 0) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -1799,6 +2111,44 @@ function defineScenario(input) {
       rejectedKeys.length === 0,
       unknownKeysMessage(`\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`, rejectedKeys, contract.scenario.stepKeys)
     );
+    if (step.timeoutMs !== void 0) {
+      invariant(
+        typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
+        `${stepLabel} \u7684 timeoutMs \u5FC5\u987B\u662F\u6B63\u6570\uFF08\u6BEB\u79D2\uFF0C\u4E14\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.timeoutMs)}\u2014\u2014\u975E\u6CD5\u503C\u4F1A\u88AB\u8FD0\u884C\u671F\u9759\u9ED8\u94B3\u5236\u4E3A 30000ms\uFF09`
+      );
+    }
+    if (requestDef.timeoutMs !== void 0) {
+      const requestTimeoutMs = requestDef.timeoutMs;
+      const isWholeTemplate = typeof requestTimeoutMs === "string" && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(requestTimeoutMs);
+      invariant(
+        isWholeTemplate || typeof requestTimeoutMs === "number" && Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0,
+        `${stepLabel} \u7684 request.timeoutMs \u5FC5\u987B\u662F\u6B63\u6570\u6216\u6574\u4E32 {{ }} \u6A21\u677F\uFF08\u5F53\u524D ${describeValue(requestTimeoutMs)}\u2014\u2014\u975E\u6CD5\u503C\u4F1A\u88AB\u8FD0\u884C\u671F\u9759\u9ED8\u94B3\u5236\u4E3A 30000ms\uFF09`
+      );
+    }
+    if (step.saveResponseAs !== void 0) {
+      invariant(
+        nonEmptyString(step.saveResponseAs),
+        `${stepLabel} \u7684 saveResponseAs \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.saveResponseAs)}\u2014\u2014\u7A7A\u4E32\u4F1A\u9759\u9ED8\u4E0D\u4FDD\u5B58\uFF09`
+      );
+    }
+    if (step.path !== void 0) {
+      invariant(
+        typeof step.path === "string",
+        `${stepLabel} \u7684 path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.path)}\uFF09`
+      );
+    }
+    if (requestDef.path !== void 0) {
+      invariant(
+        typeof requestDef.path === "string",
+        `${stepLabel} \u7684 request.path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(requestDef.path)}\uFF09`
+      );
+    }
+    if (requestDef.headers !== void 0) {
+      invariant(
+        isPlainHeadersObject(requestDef.headers),
+        `${stepLabel} \u7684 request.headers \u5FC5\u987B\u662F\u666E\u901A\u5BF9\u8C61\uFF08\u5F53\u524D ${describeValue(requestDef.headers)}\u2014\u2014\u975E\u5BF9\u8C61\u4F1A\u88AB\u5C55\u5F00\u6210\u5B57\u7B26\u4E32\u4E0B\u6807\u952E\uFF0C\u4EA7\u751F\u65E0\u6548\u8BF7\u6C42\u5934\uFF09`
+      );
+    }
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
@@ -1806,14 +2156,21 @@ function defineScenario(input) {
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+  assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
+  const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-  const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-    ...env,
-    globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
-  })) : [];
+  const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+    invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
+    assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    return {
+      ...env,
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+    };
+  }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
+    env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -1835,7 +2192,10 @@ function defineConfig(input) {
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
     invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
     invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+    assertKnownKeys(item, contract.config.variableKeys, `\u53D8\u91CF ${item.name}`, "\uFF08\u53D8\u91CF\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (item.label !== void 0) invariant(typeof item.label === "string", `\u53D8\u91CF ${item.name} \u7684 label \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
     if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+    if (item.required !== void 0) invariant(typeof item.required === "boolean", `\u53D8\u91CF ${item.name} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     return { ...item };
   }) : [];
   assertUnique(variables, "name", "\u53D8\u91CF name");
@@ -1845,6 +2205,7 @@ function defineConfig(input) {
   invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
   return {
     ...input,
+    baseUrl,
     globals,
     envs,
     scenarios,
@@ -1927,6 +2288,14 @@ function abortReason(signal) {
 function timeoutErrorMessage(timeoutMs) {
   return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
 }
+function isTimeoutError(error) {
+  return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+function describeError(error) {
+  const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
+  const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+  return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
   if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -1947,13 +2316,56 @@ function createTimeoutError(timeoutMs, message) {
   error.scenarioTimedOut = true;
   return error;
 }
+var MAX_TIMER_DELAY_MS = 2147483647;
+function scheduleTimeout(callback, timeoutMs) {
+  let timer = null;
+  let disposed = false;
+  const deadline = now() + timeoutMs;
+  const tick = () => {
+    if (disposed) return;
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      callback();
+      return;
+    }
+    timer = setTimeout(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
+  };
+  tick();
+  return {
+    clear() {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    }
+  };
+}
+function resolveTimeoutMs(step, request, options) {
+  const stepTimeoutSource = step.timeoutMs || void 0;
+  if (stepTimeoutSource !== void 0) {
+    const stepTimeout = Number(stepTimeoutSource);
+    return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 3e4;
+  }
+  if (request.timeoutMs !== void 0) {
+    const requestTimeoutSource = request.timeoutMs;
+    const hasNumericType = typeof requestTimeoutSource === "number" || typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "";
+    const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
+    if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+      const value = typeof requestTimeoutSource === "string" || typeof requestTimeoutSource === "object" && requestTimeoutSource !== null ? JSON.stringify(requestTimeoutSource) : String(requestTimeoutSource);
+      throw new Error(
+        `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7684 request.timeoutMs \u89E3\u6790\u540E\u4E0D\u662F\u6709\u6548\u7684\u6B63\u6570\u6BEB\u79D2\uFF08\u5F53\u524D ${value}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u53D8\u91CF\u503C`
+      );
+    }
+    return requestTimeout;
+  }
+  const configuredTimeout = Number(options.requestTimeoutMs);
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 3e4;
+}
 function createRequestSignal(parentSignal, timeoutMs) {
   const controller = new AbortController();
   let timedOut = false;
   const abort = () => controller.abort(abortReason(parentSignal));
   if (parentSignal?.aborted) abort();
   else parentSignal?.addEventListener("abort", abort, { once: true });
-  const timer = timeoutMs > 0 ? setTimeout(() => {
+  const timer = timeoutMs > 0 ? scheduleTimeout(() => {
     timedOut = true;
     controller.abort(createTimeoutError(timeoutMs));
   }, timeoutMs) : null;
@@ -1963,7 +2375,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
       return timedOut;
     },
     dispose() {
-      if (timer) clearTimeout(timer);
+      if (timer) timer.clear();
       parentSignal?.removeEventListener("abort", abort);
     }
   };
@@ -2000,7 +2412,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         );
       }
     }
-    vars[name] = value;
+    setRuntimeVar(vars, name, value);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
@@ -2034,10 +2446,12 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-function readBodyChunks(response, signal) {
+function readBodyChunks(response, signal, maxBytes = 0) {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
+  let totalBytes = 0;
   return new Promise((resolve2, reject) => {
     const onAbort = () => {
       reader.cancel().catch(() => {
@@ -2056,6 +2470,12 @@ function readBodyChunks(response, signal) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            reader.cancel().catch(() => {
+            });
+            throw createResponseTooLargeError(totalBytes, maxBytes);
+          }
           chunks.push(value);
         }
         resolve2(chunks);
@@ -2067,6 +2487,82 @@ function readBodyChunks(response, signal) {
     })();
   });
 }
+function createResponseTooLargeError(bytesRead, limitBytes) {
+  const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  error.scenarioResponseTooLarge = true;
+  error.responseTooLarge = { bytesRead, limitBytes };
+  return error;
+}
+function resolveMaxResponseBytes(options = {}) {
+  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value);
+}
+function resolveMaxUploadBytes(options = {}) {
+  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value === void 0 ? void 0 : normalizeByteLimit(value);
+}
+function createSaveBodyStream(body, signal, maxBytes) {
+  if (!body) {
+    return new ReadableStream({
+      start(controller) {
+        if (signal?.aborted) controller.error(abortReason(signal));
+        else controller.close();
+      }
+    });
+  }
+  const reader = body.getReader();
+  let totalBytes = 0;
+  let finished = false;
+  let onAbort = null;
+  const cleanup = () => {
+    finished = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    onAbort = null;
+  };
+  const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+  });
+  return new ReadableStream({
+    start(controller) {
+      if (!signal) return;
+      onAbort = () => {
+        if (finished) return;
+        cleanup();
+        cancelReader(abortReason(signal));
+        controller.error(abortReason(signal));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          cleanup();
+          controller.close();
+          return;
+        }
+        totalBytes += value.byteLength;
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          cleanup();
+          cancelReader();
+          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (finished) return;
+        cleanup();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return cancelReader(reason);
+    }
+  });
+}
 function decoderForContentType(contentType2) {
   const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType2 || ""));
   if (!match) return new TextDecoder();
@@ -2076,20 +2572,37 @@ function decoderForContentType(contentType2) {
     return new TextDecoder();
   }
 }
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
-  const chunks = await readBodyChunks(response, signal);
-  if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
+  const maxResponseBytes = resolveMaxResponseBytes(options);
+  if (step.saveResponseAs) {
+    const relativePath = resolveString(step.saveResponseAs, runtime);
+    const metadata = { contentType: contentType2, headers, maxResponseBytes };
+    if (io?.saveResponseStream) {
+      const saved = await io.saveResponseStream(
+        relativePath,
+        createSaveBodyStream(response.body, signal, maxResponseBytes),
+        metadata
+      );
+      return { status: response.status, headers, body: saved, bodyText: null };
     }
-    const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType: contentType2, headers });
-    return { status: response.status, headers, body: saved, bodyText: null };
+    if (io?.saveResponse) {
+      const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+      const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+      if (chunks2.length > 1) {
+        let offset = 0;
+        for (const chunk of chunks2) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+      const saved = await io.saveResponse(relativePath, data, metadata);
+      return { status: response.status, headers, body: saved, bodyText: null };
+    }
   }
+  const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType2);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   return { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
@@ -2103,20 +2616,7 @@ async function executeHttp(step, runtime, options) {
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
-    const existingKeys = /* @__PURE__ */ new Set();
-    const queryIndex = requestPath.indexOf("?");
-    if (queryIndex >= 0) {
-      for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-        const key = pair.split("=")[0];
-        if (key) existingKeys.add(decodeURIComponent(key));
-      }
-    }
-    const queryParts = [];
-    for (const global of globals) {
-      if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-    }
-    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+    requestPath = appendGlobalQuery(requestPath, globals, runtime);
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -2137,8 +2637,15 @@ async function executeHttp(step, runtime, options) {
   if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-    const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+    const upload = await options.io.createUploadBody(
+      resolve(request.fileUpload, runtime),
+      runtime,
+      { maxUploadBytes: resolveMaxUploadBytes(options) }
+    );
     fetchOptions.body = upload.body;
+    if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+      fetchOptions.duplex = "half";
+    }
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -2150,13 +2657,12 @@ async function executeHttp(step, runtime, options) {
       fetchOptions.body = JSON.stringify(request.body);
     }
   }
-  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
-  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const timeoutMs = resolveTimeoutMs(step, request, options);
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2175,7 +2681,8 @@ async function executeHttp(step, runtime, options) {
 }
 var AdapterExecutionError = class extends Error {
   constructor(adapterName, originalError, step) {
-    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    const detail = originalError?.message || (originalError === void 0 ? "undefined" : String(originalError));
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${detail}`;
     super(message, { cause: originalError });
     this.name = "AdapterExecutionError";
     this.adapterName = adapterName;
@@ -2183,11 +2690,17 @@ var AdapterExecutionError = class extends Error {
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
     if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+    if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+    if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
   }
 };
 function raceWithSignal(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  if (signal.aborted) {
+    promise.catch(() => {
+    });
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise((resolveRace, rejectRace) => {
     const onAbort = () => rejectRace(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
@@ -2206,9 +2719,8 @@ function raceWithSignal(promise, signal) {
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
   let output;
-  const request = isPlainObject(step.request) ? step.request : {};
-  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
-  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
+  const timeoutMs = resolveTimeoutMs(step, request, options);
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
   try {
@@ -2278,6 +2790,8 @@ function createEngine(engineOptions = {}) {
       adapters,
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
+    if (options.maxResponseBytes === void 0) options.maxResponseBytes = engineOptions.maxResponseBytes;
+    if (options.maxUploadBytes === void 0) options.maxUploadBytes = engineOptions.maxUploadBytes;
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
@@ -2302,42 +2816,117 @@ function createEngine(engineOptions = {}) {
     let stepWarnings = [];
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+    const retryOn = new Set(
+      retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
+    );
+    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
+    let lastAttemptError = null;
+    const retryTimeoutError = (attemptCount) => {
+      const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
+      return createTimeoutError(
+        maxElapsedMs,
+        `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attemptCount} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+      );
+    };
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
-        if (retry && now() - retryStartTime > maxElapsedMs) {
-          throw createTimeoutError(
-            maxElapsedMs,
-            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
-\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
-          );
+        if (retry) {
+          const elapsedMs = now() - retryStartTime;
+          const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
+          if (expired) throw retryTimeoutError(attempt - 1);
         }
-        const selection = chooseAdapter(step, adapters);
-        const attemptStartedAt = now();
-        lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
-        if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
-          lastExecution.response.durationMs = now() - attemptStartedAt;
+        let attemptDeadline = null;
+        if (enforceAttemptDeadline) {
+          const remainingMs = maxElapsedMs - (now() - retryStartTime);
+          if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+          attemptDeadline = createRequestSignal(options.signal, remainingMs);
         }
-        runtime.lastResponse = lastExecution.response;
-        runtime.lastResponseBody = lastExecution.response.body;
-        const extractResult = applyExtract(step, lastExecution.response, runtime);
-        stepWarnings = extractResult.warnings;
-        assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-        if (extractResult.failures.length) assertions.push(...extractResult.failures);
-        if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+        let attemptError = null;
+        let attemptErrorType = "";
+        try {
+          const selection = chooseAdapter(step, adapters);
+          const attemptStartedAt = now();
+          const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
+          const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
+          lastExecution = attemptDeadline ? await raceWithSignal(execution, attemptDeadline.signal) : await execution;
+          if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
+            lastExecution.response.durationMs = now() - attemptStartedAt;
+          }
+          runtime.lastResponse = lastExecution.response;
+          runtime.lastResponseBody = lastExecution.response.body;
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = extractResult.warnings;
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
+        } catch (error) {
+          if (options.signal?.aborted) throw error;
+          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+            throw retryTimeoutError(attempt);
+          }
+          const errorType = isTimeoutError(error) ? "timeout" : "error";
+          if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+          attemptError = error;
+          attemptErrorType = errorType;
+          lastAttemptError = error;
+          stepWarnings = [];
+          assertions = [];
+        } finally {
+          attemptDeadline?.dispose();
+        }
+        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          throw retryTimeoutError(attempt);
+        }
+        const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
+        if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
         const rawIntervalMs = Number(retry.intervalMs);
         const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
-        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-          step,
-          attempt,
-          totalAttempts,
-          intervalMs,
-          status: lastExecution.response?.status ?? null,
-          failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-        });
-        await delay(intervalMs, options.signal);
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+        const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+        if (attemptCallback) {
+          const callbackInfo = {
+            step,
+            attempt,
+            totalAttempts,
+            intervalMs: waitBeforeCallback,
+            status: attemptError ? null : lastExecution.response?.status ?? null,
+            failedAssertion,
+            errorType: attemptErrorType,
+            errorMessage: attemptError ? describeError(attemptError) : ""
+          };
+          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          if (enforceAttemptDeadline) {
+            const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+            if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+            const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+            try {
+              await raceWithSignal(callbackPromise, callbackDeadline.signal);
+            } catch (error) {
+              if (options.signal?.aborted) throw error;
+              if (callbackDeadline.timedOut() || now() - retryStartTime >= maxElapsedMs) {
+                throw retryTimeoutError(attempt);
+              }
+              throw error;
+            } finally {
+              callbackDeadline.dispose();
+            }
+          } else {
+            await callbackPromise;
+          }
+        }
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -2362,6 +2951,9 @@ function createEngine(engineOptions = {}) {
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
       const path7 = context && context.path || resolveString(step.path || "", runtime);
+      const responseTooLarge = error?.responseTooLarge || null;
+      const uploadTooLarge = error?.uploadTooLarge || null;
+      const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
@@ -2371,6 +2963,9 @@ function createEngine(engineOptions = {}) {
         passed: false,
         cancelled,
         timedOut,
+        errorCode,
+        ...responseTooLarge ? { responseTooLarge } : {},
+        ...uploadTooLarge ? { uploadTooLarge } : {},
         error: errorMessage,
         warnings: [],
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -2432,7 +3027,7 @@ async function runScenario(scenario, options = {}) {
 
 // src/capabilities.js
 function buildCapabilities(inputContract = contract) {
-  const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+  const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
   return {
     schema: "scenario-test-capabilities",
     version: inputContract.runtimeVersion,
@@ -2469,10 +3064,21 @@ function buildCapabilities(inputContract = contract) {
       note: globals.note
     },
     config: {
+      configKeys: [...config.configKeys],
       scenarioItemKeys: [...config.scenarioItemKeys],
       environmentKeys: [...config.environmentKeys],
       variableKeys: [...config.variableKeys],
+      baseUrl: {
+        protocol: config.baseUrl.protocol,
+        note: config.baseUrl.note
+      },
       manual: { ...config.manual }
+    },
+    retryUntil: {
+      keys: [...retryUntil.keys],
+      retryOn: [...retryUntil.retryOn],
+      defaultRetryOn: [...retryUntil.defaultRetryOn],
+      note: retryUntil.note
     },
     scenario: {
       keys: [...scenario.keys],
@@ -2537,11 +3143,17 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
   lines.push("");
+  lines.push(`config \u9876\u5C42\u5B57\u6BB5: ${capabilities.config.configKeys.join(" / ")}`);
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+  lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+  if (capabilities.retryUntil) {
+    lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
+    lines.push(`  ${capabilities.retryUntil.note}`);
+  }
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {
@@ -2558,6 +3170,8 @@ function renderCapabilitiesText(capabilities) {
 // src/node/io.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_stream = require("node:stream");
+var import_promises = require("node:stream/promises");
 
 // src/utils/path-validator.js
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -2628,43 +3242,122 @@ function validatePath(root, userPath, options = {}) {
 }
 
 // src/node/io.js
-function createNodeIo(workspace = process.cwd()) {
+function createNodeIo(workspace = process.cwd(), options = {}) {
   const root = import_node_path2.default.resolve(workspace);
-  return {
-    async createUploadBody(definition) {
-      const filePath = typeof definition === "string" ? definition : definition.filePath;
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, filePath);
-      } catch (error) {
-        throw new Error(
-          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+  const defaultMaxUploadBytes = normalizeByteLimit(options.maxUploadBytes);
+  function resolveUploadPath(filePath) {
+    try {
+      return validatePath(root, filePath);
+    } catch (error) {
+      throw new Error(
+        `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
 \u539F\u56E0: ${error.message}
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
+      );
+    }
+  }
+  function resolveSavePath(relativePath) {
+    try {
+      return validatePath(root, relativePath);
+    } catch (error) {
+      throw new Error(
+        `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+      );
+    }
+  }
+  function resolveWriteTarget(absolutePath) {
+    let current = absolutePath;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 32; depth += 1) {
+      let stat;
+      try {
+        stat = import_node_fs2.default.lstatSync(current);
+      } catch (error) {
+        if (error.code === "ENOENT") return current;
+        throw error;
       }
+      if (!stat.isSymbolicLink()) return current;
+      if (seen.has(current)) throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u5305\u542B\u7B26\u53F7\u94FE\u63A5\u5FAA\u73AF: ${absolutePath}`);
+      seen.add(current);
+      const linkTarget = import_node_fs2.default.readlinkSync(current);
+      current = import_node_path2.default.resolve(import_node_path2.default.dirname(current), linkTarget);
+    }
+    throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u7B26\u53F7\u94FE\u63A5\u5C42\u7EA7\u8FC7\u6DF1: ${absolutePath}`);
+  }
+  return {
+    async createUploadBody(definition, runtime, callOptions = {}) {
+      const filePath = typeof definition === "string" ? definition : definition.filePath;
+      const absolutePath = resolveUploadPath(filePath);
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      const stat = import_node_fs2.default.statSync(absolutePath);
+      if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
+      const callMaxUploadBytes = callOptions?.maxUploadBytes;
+      const maxUploadBytes = callMaxUploadBytes === void 0 || callMaxUploadBytes === null ? defaultMaxUploadBytes : normalizeByteLimit(callMaxUploadBytes);
+      if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
+        const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
+        error.scenarioUploadTooLarge = true;
+        error.uploadTooLarge = { actualBytes: stat.size, limitBytes: maxUploadBytes };
+        throw error;
+      }
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
+      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, relativePath);
-      } catch (error) {
-        throw new Error(
-          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
-\u539F\u56E0: ${error.message}
-\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      const absolutePath = resolveSavePath(relativePath);
       import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
+    },
+    async saveResponseStream(relativePath, body, metadata = {}) {
+      const absolutePath = resolveSavePath(relativePath);
+      const writeTarget = resolveWriteTarget(absolutePath);
+      if (writeTarget !== absolutePath) {
+        try {
+          validatePath(root, writeTarget, { allowAbsolute: true });
+        } catch (error) {
+          throw new Error(
+            `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+          );
+        }
+      }
+      const directory = import_node_path2.default.dirname(writeTarget);
+      import_node_fs2.default.mkdirSync(directory, { recursive: true });
+      const tempPath = import_node_path2.default.join(
+        directory,
+        `.${import_node_path2.default.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+      const file = import_node_fs2.default.createWriteStream(tempPath);
+      let size = 0;
+      const counter = new import_node_stream.Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.byteLength;
+          callback(null, chunk);
+        }
+      });
+      try {
+        const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
+        await (0, import_promises.pipeline)(source, counter, file);
+        import_node_fs2.default.renameSync(tempPath, writeTarget);
+      } catch (error) {
+        if (!file.closed) {
+          await new Promise((resolveClose) => {
+            file.once("close", resolveClose);
+            file.destroy();
+          });
+        }
+        import_node_fs2.default.rmSync(tempPath, { force: true });
+        throw error;
+      }
+      return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -2747,7 +3440,7 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
-8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002
+8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
 10. \u4E0D\u4FEE\u6539\u4E1A\u52A1\u4EE3\u7801\u3001\u6784\u5EFA\u914D\u7F6E\u6216\u516C\u5171\u8FD0\u884C\u65F6\uFF1B\u4E0D\u5199\u5165\u751F\u4EA7\u5730\u5740\u3001\u4E2A\u4EBA\u6570\u636E\u3001\u56FA\u5B9A Token \u6216\u975E\u6D4B\u8BD5\u51ED\u636E\u3002
 11. \u843D\u76D8\u540E\u9010\u6587\u4EF6\u81EA\u68C0\uFF1A\u4E0D\u5F97\u51FA\u73B0\u65E0\u8BC1\u636E\u7684 SUCCESS\u3001PDF\u3001pdf\u3001\u9519\u8BEF\u5B57\u6BB5\u65AD\u8A00\u6216 \`retryUntil + exists\`\uFF1B\u6240\u6709\u5916\u90E8\u8F93\u5165\u53D8\u91CF\u5FC5\u987B\u5728\u914D\u7F6E\u4E2D\u58F0\u660E\uFF0C\u573A\u666F vars \u53EA\u4FDD\u5B58\u6D4B\u8BD5\u6807\u8BB0\u3001\u63D0\u53D6\u7ED3\u679C\u6216\u5185\u90E8\u72B6\u6001\u3002\u53D1\u73B0\u8FDD\u89C4\u5FC5\u987B\u5148\u4FEE\u6B63\u518D\u62A5\u544A\u3002
@@ -2838,7 +3531,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  "\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002",
+  '\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD ECONNREFUSED \u65F6\uFF0C\u53EF\u52A0 retryOn: ["assertion", "error", "timeout"] \u8BA9\u8FDE\u63A5\u5931\u8D25\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF1B\u9ED8\u8BA4 ["assertion"] \u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5148\u786E\u8BA4\u5B89\u5168\u3002',
   "",
   "## \u6A21\u5F0F\u4E94\uFF1A\u4E3A\u6821\u9A8C\u5931\u8D25\u4E0E\u6743\u9650\u62D2\u7EDD\u5206\u522B\u5EFA\u573A\u666F",
   "",
@@ -3052,7 +3745,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
 - \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
-- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
+- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
 - \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\uFF0C\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
 - SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
@@ -3380,6 +4073,39 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+function checkConfigBaseUrl(config) {
+  const environments = Array.isArray(config.envs) ? config.envs : [];
+  const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const missingKeys = environments.filter((env) => !String(env.baseUrl || "").trim()).map((env) => env.key);
+  if (environments.length === 0) {
+    if (fallback) {
+      return { name: "base-url", status: "PASS", message: `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u9876\u5C42 baseUrl \u53EF\u7528: ${fallback}`, fix: "" };
+    }
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: "\u914D\u7F6E\u672A\u58F0\u660E envs \u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl",
+      fix: "\u5728 scenario.config.js \u4E2D\u8865\u5145 envs[].baseUrl \u6216\u9876\u5C42 baseUrl\uFF08http(s)://\uFF09"
+    };
+  }
+  if (fallback) {
+    return {
+      name: "base-url",
+      status: "PASS",
+      message: missingKeys.length ? `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u5355\u72EC\u8BBE\u7F6E baseUrl\uFF0C\u5C06\u56DE\u9000\u9876\u5C42 baseUrl: ${fallback}` : `\u73AF\u5883 baseUrl \u5DF2\u58F0\u660E\uFF08http(s)://\uFF09\uFF0C\u9876\u5C42\u56DE\u9000\u5730\u5740: ${fallback}`,
+      fix: ""
+    };
+  }
+  if (missingKeys.length) {
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u8BBE\u7F6E baseUrl\uFF0C\u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl`,
+      fix: "\u4E3A\u6BCF\u4E2A\u73AF\u5883\u8865\u5145 http(s):// baseUrl\uFF0C\u6216\u58F0\u660E\u9876\u5C42 baseUrl \u4F5C\u4E3A\u56DE\u9000"
+    };
+  }
+  return { name: "base-url", status: "PASS", message: "\u6240\u6709\u73AF\u5883\u5747\u5DF2\u58F0\u660E http(s):// baseUrl", fix: "" };
+}
 function satisfiesNodeEngine(version, range) {
   const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
   if (!match) return false;
@@ -3438,15 +4164,32 @@ function buildDoctorReport(options) {
       config = loadConfigFile(configPath, api);
       checks.push({ name: "config-load", status: "PASS", message: `\u914D\u7F6E\u53EF\u52A0\u8F7D: ${configPath}`, fix: "" });
     } catch (error) {
+      const reason = String(error?.message || error);
       checks.push({
         name: "config-load",
         status: "FAIL",
-        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${error.message}\uFF09`,
+        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${reason}\uFF09`,
         fix: "\u68C0\u67E5\u914D\u7F6E\u8BED\u6CD5\u4E0E defineConfig \u8C03\u7528\uFF1B\u4FEE\u590D\u540E\u91CD\u65B0\u8FD0\u884C doctor"
       });
+      if (error?.code === "SCENARIO_CONFIG_UNKNOWN_KEY") {
+        checks.push({
+          name: "config-keys",
+          status: "FAIL",
+          message: `\u914D\u7F6E\u5B57\u6BB5\u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u6309\u62A5\u9519\u4E2D\u300C\u662F\u5426\u60F3\u5199\u300D\u6216\u5141\u8BB8\u7684\u952E\u540D\u4FEE\u6B63\u62FC\u5199"
+        });
+      } else if (error?.code === "SCENARIO_CONFIG_BASE_URL") {
+        checks.push({
+          name: "base-url",
+          status: "FAIL",
+          message: `baseUrl \u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u5C06 envs[].baseUrl \u6216\u9876\u5C42 baseUrl \u6539\u4E3A http:// \u6216 https:// \u5F00\u5934\u7684\u5B8C\u6574 URL"
+        });
+      }
     }
   }
   if (config) {
+    checks.push(checkConfigBaseUrl(config));
     const entries = config.scenarios || [];
     if (entries.length === 0) {
       checks.push({ name: "scenario-list", status: "PASS", message: "\u914D\u7F6E\u4E2D\u6682\u65E0\u53EF\u68C0\u67E5\u7684\u573A\u666F\uFF08scenarios \u4E3A\u7A7A\uFF09", fix: "" });
@@ -3662,7 +4405,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, bail: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, bail: false, json: false, help: false };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -3712,6 +4455,9 @@ function parseArgs(argv) {
   if (args.all && args.scenario) throw new CliUsageError("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u8BF7\u79FB\u9664\u5176\u4E2D\u4E00\u4E2A\u9009\u9879\u540E\u91CD\u8BD5\u3002");
   if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
     throw new CliUsageError("--port \u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570", "\u8BF7\u4E3A --port \u9009\u62E9 1 \u5230 65535 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
+  }
+  if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
+    throw new CliUsageError("--concurrency \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u8BF7\u4E3A --concurrency \u9009\u62E9 1 \u6216\u66F4\u5927\u7684\u6574\u6570\uFF1B\u9ED8\u8BA4 1 \u4FDD\u6301\u4E32\u884C\u3002");
   }
   if (args.timeout !== void 0 && (!Number.isFinite(args.timeout) || args.timeout <= 0)) {
     throw new CliUsageError(
@@ -3825,7 +4571,7 @@ function resolveInitDirectory(projectRoot, value) {
 }
 async function askInitMode(directory) {
   if (!process.stdin.isTTY) return "keep";
-  const rl = (0, import_promises.createInterface)({ input: process.stdin, output: process.stdout });
+  const rl = (0, import_promises2.createInterface)({ input: process.stdin, output: process.stdout });
   try {
     const answer = await rl.question(
       `\u76EE\u6807\u76EE\u5F55 ${directory} \u5DF2\u5B58\u5728\u3002
@@ -4125,8 +4871,8 @@ ${choices.join("\n")}${remaining > 0 ? `
   let skippedTotal = 0;
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-  const reports = [];
-  const notRunReports = [];
+  const reports = new Array(entries.length);
+  const notRunIndices = [];
   const buildNotRunReport = (entry) => ({
     scenarioId: entry.id,
     scenarioName: entry.name || entry.id,
@@ -4142,8 +4888,17 @@ ${choices.join("\n")}${remaining > 0 ? `
     results: [],
     vars: {}
   });
-  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
-    const entry = entries[entryIndex];
+  const accumulateReport = (report) => {
+    total += report.planned;
+    passedTotal += report.passedSteps;
+    const stoppedUnexecuted = report.planned - report.executed - report.skipped;
+    actualFailedTotal += report.failed;
+    stoppedUnexecutedTotal += stoppedUnexecuted;
+    failedTotal += report.failed + stoppedUnexecuted;
+    skippedTotal += report.skipped;
+  };
+  const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
+  const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
     if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
@@ -4160,74 +4915,113 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-    print(`
+    entryPrint(`
 # ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
       // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
       async onAttempt(info) {
-        const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-        print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        const label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
+        const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
+        entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result) {
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-        print(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
+        entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
-          print(`  [WARN] ${escapeInlineText(warning)}`);
+          entryPrint(`  [WARN] ${escapeInlineText(warning)}`);
         }
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              print(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
-              if (sub.reason) print(`        \u539F\u56E0: ${escapeInlineText(sub.reason)}`);
+              entryPrint(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+              if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(sub.reason)}`);
               for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
-                print(line);
+                entryPrint(line);
               }
               printEachDetail(sub.detail, `${label} \u203A `);
             }
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          print(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
-          if (assertion.reason) print(`      \u539F\u56E0: ${escapeInlineText(assertion.reason)}`);
+          entryPrint(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+          if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(assertion.reason)}`);
           for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
-            print(line);
+            entryPrint(line);
           }
           printEachDetail(assertion.detail, "");
         }
-        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print);
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
       }
     });
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
-    reports.push(report);
-    total += report.planned;
-    passedTotal += report.passedSteps;
-    const stoppedUnexecuted = report.planned - report.executed - report.skipped;
-    actualFailedTotal += report.failed;
-    stoppedUnexecutedTotal += stoppedUnexecuted;
-    failedTotal += report.failed + stoppedUnexecuted;
-    skippedTotal += report.skipped;
-    print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
-    if (args.bail && report.status === "FAILED") {
-      for (const remaining of entries.slice(entryIndex + 1)) {
-        const notRun = buildNotRunReport(remaining);
-        notRunReports.push(notRun);
-        reports.push(notRun);
-      }
-      break;
+    return report;
+  };
+  let bailFailed = false;
+  const markNotRun = () => {
+    for (let index = 0; index < entries.length; index += 1) {
+      if (reports[index]) continue;
+      reports[index] = buildNotRunReport(entries[index]);
+      notRunIndices.push(index);
     }
+  };
+  if (args.concurrency <= 1) {
+    for (let index = 0; index < entries.length; index += 1) {
+      const report = await runEntry(entries[index], print);
+      reports[index] = report;
+      accumulateReport(report);
+      print(reportSummary(report));
+      if (args.bail && report.status === "FAILED") {
+        bailFailed = true;
+        markNotRun();
+        break;
+      }
+    }
+  } else {
+    let nextIndex = 0;
+    let firstError = null;
+    let hasError = false;
+    const workerCount = Math.min(args.concurrency, entries.length);
+    const worker = async () => {
+      while (true) {
+        if (hasError || bailFailed) return;
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= entries.length) return;
+        const bufferedLines = [];
+        const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+        try {
+          const report = await runEntry(entries[index], bufferedPrint);
+          reports[index] = report;
+          accumulateReport(report);
+          bufferedPrint(reportSummary(report));
+          if (args.bail && report.status === "FAILED") bailFailed = true;
+        } catch (error) {
+          if (!hasError) {
+            hasError = true;
+            firstError = error;
+          }
+        } finally {
+          for (const line of bufferedLines) print(line);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    if (hasError) throw firstError;
+    if (bailFailed) markNotRun();
   }
-  if (notRunReports.length) {
-    for (const report of notRunReports) {
+  if (notRunIndices.length) {
+    for (const index of notRunIndices) {
+      const report = reports[index];
       print(`[NOT RUN] ${escapeInlineText(report.scenarioName)} (${escapeInlineText(report.scenarioId)}) \u2014 ${report.reason}`);
     }
     print(`
---bail \u5DF2\u5F00\u542F\uFF1A\u9996\u4E2A\u5931\u8D25\u573A\u666F\u540E\u8DF3\u8FC7 ${notRunReports.length} \u4E2A\u672A\u6267\u884C\u573A\u666F`);
+--bail \u5DF2\u5F00\u542F\uFF1A\u9996\u4E2A\u5931\u8D25\u573A\u666F\u540E\u8DF3\u8FC7 ${notRunIndices.length} \u4E2A\u672A\u6267\u884C\u573A\u666F`);
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
@@ -4237,7 +5031,7 @@ Overall: ${passedTotal}/${total} passed`);
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
     process.exitCode = 1;
   }
-  const bailSummary = notRunReports.length ? `\uFF0C\u56E0 --bail \u8DF3\u8FC7 ${notRunReports.length} \u4E2A\u573A\u666F` : "";
+  const bailSummary = notRunIndices.length ? `\uFF0C\u56E0 --bail \u8DF3\u8FC7 ${notRunIndices.length} \u4E2A\u573A\u666F` : "";
   const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65${bailSummary}`;
   if (actualFailedTotal > 0) {
     print(`
@@ -4351,9 +5145,10 @@ function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
   if (config.envs?.length) {
     const environment = selectEnvironment(config, envKey);
     const overridden = Boolean(baseUrlOverride);
+    const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
     return {
       key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
-      target: String(overridden ? baseUrlOverride : environment.baseUrl || "").replace(/\/+$/, "")
+      target: String(target).replace(/\/+$/, "")
     };
   }
   return {
