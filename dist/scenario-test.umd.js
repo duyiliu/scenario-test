@@ -6076,7 +6076,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       var after = state.varsTrail[stepIndex] || before.vars;
       var displayVars = {};
       Object.keys(after || {}).forEach(function(name) {
-        displayVars[name] = isSecretVarName(name) && after[name] != null && after[name] !== "" ? maskSecret(after[name]) : after[name];
+        var value = after[name];
+        var scalar = typeof value === "string" || typeof value === "number";
+        displayVars[name] = isSecretVarName(name) && value != null && value !== "" && scalar ? maskSecret(value) : value;
       });
       return { vars: displayVars, changedKeys: diffVars(before.vars, after) };
     }

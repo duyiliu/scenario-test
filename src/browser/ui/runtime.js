@@ -638,9 +638,11 @@ export function createWorkbenchRuntime(options) {
         // 与 CLI 同一脱敏口径：运行时变量面板不回显 Token/Secret 等敏感值
         var displayVars = {};
         Object.keys(after || {}).forEach(function (name) {
-            displayVars[name] = core.isSecretVarName(name) && after[name] != null && after[name] !== ''
-                ? core.maskSecret(after[name])
-                : after[name];
+            var value = after[name];
+            var scalar = typeof value === 'string' || typeof value === 'number';
+            displayVars[name] = core.isSecretVarName(name) && value != null && value !== '' && scalar
+                ? core.maskSecret(value)
+                : value;
         });
         return { vars: displayVars, changedKeys: diffVars(before.vars, after) };
     }
