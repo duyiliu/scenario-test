@@ -144,3 +144,38 @@ test("CLI --junit 写出报告：stdout/退出码保持原口径，路径父目�
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
+
+test("CLI --junit + --concurrency：套件仍按配置清单顺序输出（与 --json 同序）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-junit-conc-"));
+    const server = http.createServer((request, response) => {
+        if (request.url.endsWith("bad")) {
+            response.writeHead(500, { "Content-Type": "application/json" });
+            response.end(JSON.stringify({ message: "失败" }));
+            return;
+        }
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"alpha",name:"场景甲",url:"scenarios/a.js"},{id:"beta",name:"场景乙 & <特>",url:"scenarios/b.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/a.js"), `ScenarioTest.registerScenario("alpha",ScenarioTest.defineScenario({name:"场景甲",steps:[{name:"甲一步",path:"ok",status:200}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/b.js"), `ScenarioTest.registerScenario("beta",ScenarioTest.defineScenario({name:"场景乙 & <特>",failurePolicy:"stop",steps:[{name:"乙失败",path:"bad",assertions:[{path:"message",equals:"期望值"}]},{name:"乙未执行",path:"ok",status:200}]}));`, "utf8");
+
+        const junitPath = path.join(directory, "junit-conc.xml");
+        const result = await runCli(["--config", path.join(directory, "scenario.config.js"), "--all", "--concurrency", "2", "--junit", junitPath]);
+
+        assert.equal(result.code, 1, result.stderr);
+        const xml = fs.readFileSync(junitPath, "utf8");
+        // 并发下完成顺序不定，但 XML 套件顺序必须与配置清单一致：甲在乙前
+        const alphaIndex = xml.indexOf('<testsuite name="场景甲"');
+        const betaIndex = xml.indexOf('<testsuite name="场景乙 &amp; &lt;特&gt;"');
+        assert.ok(alphaIndex >= 0 && betaIndex > alphaIndex, `套件顺序应为甲在前：\n${xml}`);
+        assert.ok(xml.includes('<skipped message="因 failurePolicy: stop，上一步失败后步骤未执行"/>'));
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
