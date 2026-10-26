@@ -130,6 +130,44 @@ test("serve 同源代理：非静态请求转发到环境 baseUrl，静态文件
     }
 });
 
+test("serve：环境 baseUrl 为纯空白时回退顶层 baseUrl，doctor 同口径 PASS", async () => {
+    const { server: mock, received, port: mockPort } = await startMockBackend();
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-top-fallback-"));
+    const dir = path.join(project, "scenario-test");
+    fs.mkdirSync(dir, { recursive: true });
+    const configPath = path.join(dir, "scenario.config.js");
+    fs.writeFileSync(configPath, `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+        baseUrl: "http://127.0.0.1:${mockPort}",
+        envs: [{ key: "local", name: "本地", baseUrl: "   " }],
+        defaultEnvKey: "local",
+        scenarios: []
+    }));`, "utf8");
+    fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>scenario</title>", "utf8");
+
+    // doctor 与 serve 必须使用同一条回退规则：环境缺省 baseUrl 时回退顶层 baseUrl
+    const doctorResult = spawnSync(process.execPath, [cli, "doctor", "--config", configPath, "--json"], { encoding: "utf8" });
+    const doctorReport = JSON.parse(doctorResult.stdout);
+    const baseUrlCheck = doctorReport.checks.find((check) => check.name === "base-url");
+    assert.ok(baseUrlCheck, "doctor 应输出 base-url 检查项");
+    assert.equal(baseUrlCheck.status, "PASS");
+    assert.match(baseUrlCheck.message, /回退顶层 baseUrl/);
+
+    const servePort = await freePort();
+    const child = spawn(process.execPath, [cli, "serve", "--config", configPath, "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+        await waitForOutput(child, "场景测试工作台");
+        await waitForOutput(child, `接口代理: local -> http://127.0.0.1:${mockPort}`);
+        const response = await fetch(`http://127.0.0.1:${servePort}/api/top-level-fallback`);
+        assert.equal(response.status, 200);
+        assert.equal(received.length, 1, "代理请求应到达顶层 baseUrl 指定的上游");
+        assert.equal(received[0].url, "/api/top-level-fallback");
+    } finally {
+        child.kill();
+        mock.close();
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
+
 test("serve：端口占用时友好退出，不输出未处理异常", async () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-port-"));
     const configPath = path.join(project, "scenario.config.js");
@@ -255,21 +293,22 @@ test("serve：https 上游不再崩溃，连接失败返回 502 且进程存活"
     }
 });
 
-// 崩溃回归：无协议 baseUrl（如内网手滑写 "192.168.1.5:8080"）历史上同步抛
-// ERR_INVALID_URL 导致 serve 进程退出。现在必须降级 502 并保持存活。
-test("serve：无协议 baseUrl 不再崩溃，返回 502 且进程存活", async () => {
+// 崩溃回归：无协议代理目标（如内网手滑写 "192.168.1.5:8080"）历史上同步抛
+// ERR_INVALID_URL 导致 serve 进程退出。配置文件里的非法 baseUrl 现已由 defineConfig
+// 定义期拒绝，因此这里用 --base-url 覆盖进入同一代理路径，仍须降级 502 并保持存活。
+test("serve：无协议 --base-url 不再崩溃，返回 502 且进程存活", async () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-noproto-"));
     const dir = path.join(project, "scenario-test");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-        envs: [{ key: "lan", name: "内网", baseUrl: "192.168.1.5:8080" }],
+        envs: [{ key: "lan", name: "内网", baseUrl: "http://127.0.0.1:1" }],
         defaultEnvKey: "lan",
         scenarios: []
     }));`, "utf8");
     fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>scenario</title>", "utf8");
 
     const servePort = await freePort();
-    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--base-url", "192.168.1.5:8080", "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
     let exited = null;
     child.on("exit", (code) => { exited = code; });
     try {

@@ -4,6 +4,10 @@ import { esc, safeJson, copyText } from "./ui-utils.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
+import { applyCurlProxyHeaders, buildStepCurl } from './curl.js';
+
+// 保持既有内部测试/调用方从 runtime 导入 curl 辅助函数的兼容性
+export { applyCurlProxyHeaders };
 
 // 构造 serve 环境路由头：环境 key 经 URL 编码，保证非 ASCII / 特殊字符能作为 Fetch 头值。
 // 非代理模式或没有可识别环境时返回 null，不注入任何头。
@@ -11,18 +15,6 @@ export function buildProxyEnvHeaders(environmentKey) {
     if (!environmentKey) return null;
     var headers = {};
     headers[core.SERVE_ENV_HEADER] = core.encodeServeEnvKey(environmentKey);
-    return headers;
-}
-
-// 生成 curl 时合并代理路由头：requestPath 必须传模板解析后的真实路径——
-// 模板可能把看起来相对的 stepPath 解析成外部绝对 URL，此时不能附带本地路由头。
-// 同名头按 HTTP 语义大小写不敏感覆盖，避免生成两个同名头导致 serve 无法识别环境。
-export function applyCurlProxyHeaders(headers, requestPath, proxyHeaders) {
-    if (!proxyHeaders) return headers;
-    if (/^(?:https?:)?\/\//i.test(String(requestPath || ''))) return headers;
-    Object.keys(proxyHeaders).forEach(function (key) {
-        core.setHeaderValue(headers, key, proxyHeaders[key]);
-    });
     return headers;
 }
 
@@ -561,10 +553,13 @@ export function createWorkbenchRuntime(options) {
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
             onAttempt: function (info) {
-                var detail = 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
+                var label = info.errorType === 'timeout' ? '超时' : (info.errorType ? '连接失败' : '未通过');
+                var detail = info.errorType
+                    ? (info.errorMessage || '')
+                    : 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
                 uiView.setRunState('running',
                     '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
-                    + ' 次未通过（' + detail + '），' + info.intervalMs + 'ms 后重试');
+                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试');
             }
         });
     }
@@ -1376,16 +1371,8 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
-    // POSIX shell 单引号转义：单引号内不做 $VAR/$(...)/反引号展开，值中的 ' 用 '\'' 收尾再续开。
-    // 复制出的命令与工作台实际发送值一致，也避免变量值借复制粘贴注入命令。
-    function shellSingleQuote(value) {
-        return "'" + String(value).replace(/'/g, "'\\''") + "'";
-    }
-
-    function generateStepCurl(step, stepIndex) {
+    function generateStepCurl(step) {
         if (!step) return '';
-        var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
-        var baseUrl = getRequestBaseUrl();
         var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
         var resolvedVars = clone(rawVars);
         if (state.activeRuntime && state.activeRuntime.vars) {
@@ -1393,76 +1380,13 @@ export function createWorkbenchRuntime(options) {
         } else if (state.stepRuntime && state.stepRuntime.vars) {
             Object.assign(resolvedVars, state.stepRuntime.vars);
         }
-        var runtime = { vars: resolvedVars };
-        var stepPath = step.path || (step.request && step.request.path) || '';
-        var stepParams = step.params || (step.request && step.request.params);
-        var requestPath = core.buildUrl(stepPath, stepParams, runtime);
-
-        var globals = getEffectiveGlobals();
-        var headers = {};
-
-        // 拼接 globals 的 query
-        var queryIndex = requestPath.indexOf('?');
-        var existingKeys = new Set();
-        if (queryIndex >= 0) {
-            requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
-                var key = pair.split('=')[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
-            });
-        }
-        var queryParts = [];
-        globals.forEach(function (global) {
-            if (global.type !== 'query' || existingKeys.has(global.name)) return;
-            queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
+        return buildStepCurl(step, {
+            baseUrl: getRequestBaseUrl(),
+            vars: resolvedVars,
+            globals: getEffectiveGlobals(),
+            // 代理模式下复制出的 curl 也必须复现当前所选环境
+            proxyHeaders: getProxyRequestHeaders()
         });
-        if (queryParts.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
-        }
-
-        // 拼接 globals 的 cookie
-        var cookieParts = globals
-            .filter(function (global) { return global.type === 'cookie'; })
-            .map(function (global) { return global.name + '=' + core.resolveString(global.value, runtime); });
-
-        // headers
-        globals.forEach(function (g) {
-            if (g.type === 'header' && g.name) {
-                headers[g.name] = core.resolveString(g.value || '', runtime);
-            }
-        });
-        if (step.request && step.request.headers) {
-            var reqHeaders = step.request.headers;
-            if (typeof reqHeaders === 'object' && reqHeaders !== null) {
-                Object.keys(reqHeaders).forEach(function (k) {
-                    headers[k] = core.resolveString(String(reqHeaders[k]), runtime);
-                });
-            }
-        }
-        if (cookieParts.length) {
-            var cookieKey = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'cookie'; });
-            var mergedCookie = cookieKey ? (headers[cookieKey] + '; ' + cookieParts.join('; ')) : cookieParts.join('; ');
-            if (cookieKey) headers[cookieKey] = mergedCookie;
-            else headers.Cookie = mergedCookie;
-        }
-
-        // 复制出的 curl 要复现工作台当前所选环境：代理模式下同样携带环境路由头；
-        // 用解析后的 requestPath 判断绝对 URL，模板解析出的外部地址不得附带本地路由头
-        applyCurlProxyHeaders(headers, requestPath, getProxyRequestHeaders());
-
-        var fullUrl = core.joinUrl(baseUrl, requestPath);
-        var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
-
-        Object.keys(headers).forEach(function (key) {
-            parts.push('-H ' + shellSingleQuote(key + ': ' + String(headers[key])));
-        });
-
-        if (step.request && step.request.body != null) {
-            var bodyVal = step.request.body;
-            var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
-            bodyStr = core.resolveString(bodyStr, runtime);
-            parts.push('-d ' + shellSingleQuote(bodyStr));
-        }
-        return parts.join(' \\\n  ');
     }
 
     function bindStepCurlActions() {

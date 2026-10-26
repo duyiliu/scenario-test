@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
+import { Readable } from "node:stream";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -770,9 +771,12 @@ test("保留变量 runId/runNo 禁止在 config vars、generatedVars、envVars �
     await assert.rejects(engineFor({ vars: { runId: "x" } }).runScenario(defineScenario({ name: "R", steps: [{ name: "s", path: "x" }] })), /保留变量/);
     // scenario.vars 定义期拒绝
     assert.throws(() => defineScenario({ name: "R", vars: { runNo: "x" }, steps: [{ name: "s", path: "x" }] }), /保留变量/);
-    // envVars / generatedVars 运行期拒绝
-    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", envVars: { runId: "ENV_X" }, steps: [{ name: "s", path: "x" }] })), /保留变量/);
-    await assert.rejects(engineFor().runScenario(defineScenario({ name: "R", generatedVars: [{ name: "runNo", type: "timestamp" }], steps: [{ name: "s", path: "x" }] })), /保留变量/);
+    // envVars / generatedVars 定义期拒绝；绕过定义期直接 runScenario 仍由运行期兜底
+    assert.throws(() => defineScenario({ name: "R", envVars: { runId: "ENV_X" }, steps: [{ name: "s", path: "x" }] }), /保留变量/);
+    assert.throws(() => defineScenario({ name: "R", generatedVars: [{ name: "runNo", type: "timestamp" }], steps: [{ name: "s", path: "x" }] }), /保留变量/);
+    const raw = (extra) => ({ name: "R", steps: [{ name: "s", path: "x" }], ...extra });
+    await assert.rejects(engineFor().runScenario(raw({ envVars: { runId: "ENV_X" } })), /保留变量/);
+    await assert.rejects(engineFor().runScenario(raw({ generatedVars: [{ name: "runNo", type: "timestamp" }] })), /保留变量/);
 });
 
 test("extract required:true 路径不存在时步骤失败；默认路径缺失产生 warning 并保持兼容", async () => {
@@ -920,20 +924,32 @@ test("读体阶段受超时控制：响应头到达后 body 挂起也会 TIMEOUT
     assert.match(result.error, /请求超时/);
 });
 
-test("负 / 字符串 \"0\" / Infinity 超时值不触发即时超时且不崩溃（钳制为默认值）", async () => {
-    // 这些非法值都经 || 链或 Number.isFinite 钳制为默认 30000；此处仅验证
-    // 不会误判为"立即超时"或抛异常，正常响应仍通过（钳制逻辑见 executeHttp）
+test("非法 timeoutMs 定义期拒绝；绕过定义期直接 runStep 仍钳制为默认值", async () => {
+    // Issue #45：负 / 字符串 "0" / Infinity 此前被 executeHttp 的 || 链或 Number.isFinite
+    // 静默钳制为默认 30000ms，超时配置实际失效——现在定义期即拒
+    for (const timeoutMs of [-5, "0", Infinity, 0, NaN, "5000"]) {
+        assert.throws(
+            () => defineScenario({
+                name: "钳制",
+                steps: [{ name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] }]
+            }),
+            /timeoutMs 必须是正数/,
+            `timeoutMs=${JSON.stringify(timeoutMs)} 应在定义期被拒绝`
+        );
+    }
+    // 运行期兜底不变：直接 runStep（未经 defineScenario）的非法值仍钳制为默认 30000，
+    // 不会「立即超时」或抛异常，正常响应仍通过
     for (const timeoutMs of [-5, "0", Infinity]) {
-        const scenario = defineScenario({
-            name: "钳制",
-            steps: [{ name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] }]
-        });
-        const report = await createEngine({
+        const engine = createEngine({
             baseUrl: "https://mock.local",
             fetch: async () => new Promise((resolve) => setTimeout(() => resolve(jsonResponse({ code: 200 })), 20))
-        }).runScenario(scenario);
-        assert.equal(report.failed, 0, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
-        assert.equal(report.results[0].status, 200);
+        });
+        const result = await engine.runStep(
+            { name: "s", path: "api", timeoutMs, assertions: [{ path: "code", equals: 200 }] },
+            { vars: {}, lastResponse: null, lastResponseBody: null }
+        );
+        assert.equal(result.passed, true, `timeoutMs=${JSON.stringify(timeoutMs)} 不应触发即时超时`);
+        assert.equal(result.status, 200);
     }
 });
 
@@ -1353,6 +1369,38 @@ test("fileUpload：io 构造上传体，omitContentType 时删除步骤 Content-
     assert.match(noIoReport.results[0].error, /当前运行环境不支持 fileUpload/);
 });
 
+test("fileUpload：Node Readable/异步可迭代上传体补 duplex: half", async () => {
+    const seen = [];
+    let call = 0;
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async createUploadBody() {
+                call += 1;
+                return {
+                    body: call === 1
+                        ? Readable.from([Buffer.from("streamed")])
+                        : (async function* chunks() { yield "async-iterable"; })(),
+                    omitContentType: true
+                };
+            }
+        },
+        fetch: async (_url, options) => {
+            seen.push(options.duplex);
+            return jsonResponse({ ok: true });
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "流式上传",
+        steps: [
+            { name: "Node Readable", method: "POST", request: { fileUpload: { filePath: "a.txt" } } },
+            { name: "异步可迭代", method: "POST", request: { fileUpload: { filePath: "b.txt" } } }
+        ]
+    }));
+    assert.equal(report.failed, 0, JSON.stringify(report.results));
+    assert.deepEqual(seen, ["half", "half"]);
+});
+
 test("saveResponseAs：模板路径解析后调用 io.saveResponse，body 替换为保存信息", async () => {
     const saved = [];
     const engine = createEngine({
@@ -1379,6 +1427,194 @@ test("saveResponseAs：模板路径解析后调用 io.saveResponse，body 替换
     assert.equal(response.body.savedTo, `out/${report.vars.runNo}.bin`.replace("out/", "/workspace/out/"));
     assert.equal(response.body.size, "binary-ish".length);
     assert.equal(response.bodyText, null);
+});
+
+test("saveResponseAs：io 提供 saveResponseStream 时直接流式保存，不做全量缓冲", async () => {
+    const calls = [];
+    const saved = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        maxResponseBytes: 1024,
+        io: {
+            async saveResponse() {
+                calls.push("fallback");
+                throw new Error("存在 saveResponseStream 时不应走缓冲回退");
+            },
+            async saveResponseStream(relativePath, stream, metadata) {
+                calls.push("stream");
+                const reader = stream.getReader();
+                const chunks = [];
+                let size = 0;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    size += value.byteLength;
+                }
+                const data = new Uint8Array(size);
+                let offset = 0;
+                for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+                saved.push({ relativePath, data, metadata });
+                return { savedTo: `/workspace/${relativePath}`, size, contentType: metadata.contentType };
+            }
+        },
+        fetch: async () => new Response("stream-payload", { headers: { "Content-Type": "application/octet-stream" } })
+    });
+    const scenario = defineScenario({
+        name: "流式保存",
+        steps: [{ name: "下载", path: "files/report", saveResponseAs: "out/{{vars.runNo}}.bin" }]
+    });
+    const report = await engine.runScenario(scenario);
+    assert.equal(report.failed, 0, JSON.stringify(report.results));
+    assert.deepEqual(calls, ["stream"]);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].relativePath, `out/${report.vars.runNo}.bin`);
+    assert.equal(saved[0].metadata.contentType, "application/octet-stream");
+    assert.equal(saved[0].metadata.maxResponseBytes, 1024);
+    assert.equal(Buffer.from(saved[0].data).toString(), "stream-payload");
+    assert.equal(report.results[0].response.bodyText, null);
+});
+
+test("saveResponseAs：仅实现 saveResponseStream 的 IO 在无响应体时仍保存零字节文件", async () => {
+    const saved = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        io: {
+            async saveResponseStream(relativePath, stream, metadata) {
+                const reader = stream.getReader();
+                let size = 0;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    size += value.byteLength;
+                }
+                saved.push({ relativePath, size, metadata });
+                return { savedTo: `/workspace/${relativePath}`, size, contentType: metadata.contentType };
+            }
+        },
+        fetch: async () => new Response(null, { status: 204 })
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "无响应体保存",
+        steps: [{ name: "下载", path: "empty", saveResponseAs: "out/empty.bin" }]
+    }));
+    assert.equal(report.results[0].passed, true, JSON.stringify(report.results));
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].relativePath, "out/empty.bin");
+    assert.equal(saved[0].size, 0);
+    assert.equal(report.results[0].response.body.savedTo, "/workspace/out/empty.bin");
+    assert.equal(report.results[0].response.bodyText, null);
+});
+
+test("maxResponseBytes：超限返回结构化 responseTooLarge，边界值通过，未设置保持不限", async () => {
+    const scenario = defineScenario({
+        name: "响应上限",
+        steps: [{ name: "下载", path: "files/report" }]
+    });
+    const withBody = (body, options = {}) => createEngine({
+        baseUrl: "https://mock.local",
+        ...options,
+        fetch: async () => new Response(body)
+    });
+
+    const over = await withBody("123456", { maxResponseBytes: 5 }).runScenario(scenario);
+    assert.equal(over.status, "FAILED");
+    const overResult = over.results[0];
+    assert.equal(overResult.status, "ERROR");
+    assert.equal(overResult.errorCode, "responseTooLarge");
+    assert.deepEqual(overResult.responseTooLarge, { bytesRead: 6, limitBytes: 5 });
+    assert.match(overResult.error, /响应体超过大小上限: 已读取 6 字节，限制 5 字节/);
+
+    // 边界值：恰好等于上限必须通过
+    const boundary = await withBody("12345", { maxResponseBytes: 5 }).runScenario(scenario);
+    assert.equal(boundary.results[0].passed, true);
+
+    // config 中的上限同样生效；run options 优先于引擎级配置
+    const fromConfig = await withBody("123456", { config: { maxResponseBytes: 5 } }).runScenario(scenario);
+    assert.equal(fromConfig.results[0].errorCode, "responseTooLarge");
+    const overridden = await withBody("123456", { maxResponseBytes: 100 }).runScenario(scenario, { maxResponseBytes: 5 });
+    assert.equal(overridden.results[0].errorCode, "responseTooLarge");
+
+    // 未设置上限时维持既有行为（大响应照常通过）
+    const unlimited = await withBody("1234567890").runScenario(scenario);
+    assert.equal(unlimited.results[0].passed, true);
+});
+
+test("maxResponseBytes：超限结构字段只报告已读取字节数，不谎报完整响应体大小", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        maxResponseBytes: 5,
+        fetch: async () => new Response(new ReadableStream({
+            start(controller) {
+                // 三个 4 字节分块：第二个分块后累计 8 字节越限并取消，第三块不应被读取
+                controller.enqueue(new Uint8Array(4));
+                controller.enqueue(new Uint8Array(4));
+                controller.enqueue(new Uint8Array(4));
+                controller.close();
+            }
+        }))
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "分块超限",
+        steps: [{ name: "下载", path: "chunked" }]
+    }));
+    const result = report.results[0];
+    assert.equal(result.errorCode, "responseTooLarge");
+    assert.deepEqual(result.responseTooLarge, { bytesRead: 8, limitBytes: 5 });
+    assert.ok(result.responseTooLarge.bytesRead < 12, "bytesRead 是提前中止时已读取量，不是完整响应体 12 字节");
+    assert.match(result.error, /已读取 8 字节，限制 5 字节/);
+});
+
+test("normalizeByteLimit：响应限制对 0/负数/NaN/Infinity/null 均视为不限，正数向下取整", async () => {
+    const scenario = defineScenario({
+        name: "上限归一化",
+        steps: [{ name: "下载", path: "files/report" }]
+    });
+    const withBody = (body, options = {}) => createEngine({
+        baseUrl: "https://mock.local",
+        ...options,
+        fetch: async () => new Response(body)
+    });
+    for (const limit of [0, -1, Number.NaN, Infinity, null]) {
+        const report = await withBody("123456", { maxResponseBytes: limit }).runScenario(scenario);
+        assert.equal(report.results[0].passed, true, `maxResponseBytes=${String(limit)} 应视为不限制`);
+    }
+    // 正数小数按字节向下取整：5.9 → 5
+    const floorPass = await withBody("12345", { maxResponseBytes: 5.9 }).runScenario(scenario);
+    assert.equal(floorPass.results[0].passed, true);
+    const floorFail = await withBody("123456", { maxResponseBytes: 5.9 }).runScenario(scenario);
+    assert.deepEqual(floorFail.results[0].responseTooLarge, { bytesRead: 6, limitBytes: 5 });
+
+    // run options 显式 null 按归一化规则视为不限，必须覆盖引擎/配置的正数上限
+    const engineLimited = await withBody("123456", { maxResponseBytes: 5 })
+        .runScenario(scenario, { maxResponseBytes: null });
+    assert.equal(engineLimited.results[0].passed, true);
+    const configLimited = await withBody("123456", { config: { maxResponseBytes: 5 } })
+        .runScenario(scenario, { maxResponseBytes: null });
+    assert.equal(configLimited.results[0].passed, true);
+});
+
+test("maxUploadBytes：config/run options 透传给 io.createUploadBody", async () => {
+    const seen = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        maxUploadBytes: 9,
+        io: {
+            async createUploadBody(definition, runtime, options) {
+                seen.push({ definition, options });
+                return { body: "RAW-BODY", omitContentType: true };
+            }
+        },
+        fetch: async () => jsonResponse({ ok: true })
+    });
+    const scenario = defineScenario({
+        name: "上传上限透传",
+        steps: [{ name: "上传", method: "POST", request: { fileUpload: { filePath: "a.txt" } } }]
+    });
+    await engine.runScenario(scenario);
+    assert.deepEqual(seen[0].options, { maxUploadBytes: 9 });
+    await engine.runScenario(scenario, { maxUploadBytes: 3 });
+    assert.deepEqual(seen[1].options, { maxUploadBytes: 3 });
 });
 
 // ==================== generatedVars luhn / phone / uscc（测试造数） ====================
