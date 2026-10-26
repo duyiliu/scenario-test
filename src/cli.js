@@ -15,6 +15,7 @@ import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { createCurlDraft, createHarDraft, DEFAULT_MAX_IMPORT_ENTRIES, ImportError, parseHostFilter, readHarFile, renderDraftFile } from "./import.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -97,7 +98,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -238,6 +239,14 @@ ${optionHelp}
                         内容与 dist/scenario-test-capabilities.json 一致）
   doctor                项目静态体检：Node 版本、配置/场景加载、DSL 校验
                         与 AI 规则就绪检查；有 FAIL 时退出码 1
+
+导入命令:
+  import --har <file>   解析浏览器/抓包 HAR，过滤静态资源与 OPTIONS 预检，
+                        为每个 API 请求生成可重放的场景步骤草稿
+  import --curl "<cmd>" 解析单条 curl，生成单步骤草稿；Authorization/Cookie
+                        等敏感头替换为 {{vars.*}} 占位
+  --output <file>       自定义输出文件；默认 scenarios/imported-<ts>.js
+  --host <host,...>     只导入指定主机的请求；--max-entries 限制导入条数（默认 50）
 
 认证选项:
   环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌；避免令牌进入进程参数。
@@ -1096,6 +1105,86 @@ async function serveCommand(args) {
     });
 }
 
+function importTimestamp(date = new Date()) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function scenarioIdFromOutput(output, timestamp) {
+    const stem = path.basename(output, path.extname(output)).trim();
+    const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
+    return normalized || `imported-${timestamp}`;
+}
+
+function defaultImportOutput(timestamp) {
+    let candidate = path.resolve("scenarios", `imported-${timestamp}.js`);
+    let suffix = 2;
+    while (fs.existsSync(candidate)) {
+        candidate = path.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+        suffix += 1;
+    }
+    return candidate;
+}
+
+function importCommand(args) {
+    if (args.har && args.curl) {
+        throw new CliUsageError("--har 与 --curl 不能同时使用", "一次导入只选择一种来源：HAR 文件或单条 curl 命令。");
+    }
+    if (!args.har && !args.curl) {
+        throw new CliUsageError(
+            "import 需要 --har 或 --curl",
+            "示例：node scenario-test-cli.cjs import --har session.har；或 import --curl \"curl -X GET https://api.example.com/health\"。"
+        );
+    }
+    const maxEntries = Number(args.maxEntries);
+    if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+        throw new CliUsageError("--max-entries 必须是大于等于 1 的整数", "默认 50；请选择一个正整数上限后重试。");
+    }
+    const timestamp = importTimestamp();
+    const output = args.output ? path.resolve(args.output) : defaultImportOutput(timestamp);
+    const id = scenarioIdFromOutput(output, timestamp);
+    let draft;
+    try {
+        draft = args.har
+            ? createHarDraft(readHarFile(args.har), {
+                source: args.har === "-" ? "stdin（HAR）" : path.basename(args.har),
+                maxEntries,
+                hosts: parseHostFilter(args.host)
+            })
+            : createCurlDraft(args.curl);
+    } catch (error) {
+        if (error instanceof ImportError) throw new CliUsageError(error.message, error.hint || undefined);
+        throw error;
+    }
+    if (!draft.scenario.steps.length) {
+        throw new CliUsageError(
+            `未从 ${args.har ? "HAR " : "curl 命令"}中解析出可导入的 API 请求`,
+            "HAR 可能只包含静态资源、预检请求或被 --host/--max-entries 过滤；请检查输入与过滤条件。"
+        );
+    }
+    const content = renderDraftFile(draft, { id, generatedAt: new Date().toISOString() });
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.writeFileSync(output, content, "utf8");
+    const relativeOutput = path.relative(process.cwd(), output).split(path.sep).join("/") || output;
+    console.log(`已生成场景草稿: ${relativeOutput}`);
+    console.log(`场景 id: ${id}`);
+    console.log(`导入步骤: ${draft.scenario.steps.length}`);
+    if (draft.stats) {
+        const filtered = (draft.stats.filteredStatic || 0) + (draft.stats.filteredInvalid || 0);
+        console.log(`扫描请求: ${draft.stats.total}；过滤静态/预检/无效 ${filtered}；主机过滤 ${draft.stats.filteredHost || 0}；超出上限 ${draft.stats.omittedByLimit || 0}`);
+    }
+    const variables = Object.keys(draft.scenario.vars || {});
+    if (variables.length) {
+        console.log(`敏感头/查询参数占位变量: ${variables.join(", ")}`);
+        console.log("提示: 请在 scenario.config.js 的 vars 或 run --vars 中提供真实值，不要提交明文凭据。");
+    }
+    console.log(`提示: 在 scenario.config.js 的 scenarios 中添加 { id: ${JSON.stringify(id)}, url: ${JSON.stringify(relativeOutput)} } 后即可 run。`);
+    if (args.curl) {
+        console.log("\n单步骤片段（可直接粘贴到 steps 数组）：");
+        console.log(JSON.stringify(draft.scenario.steps[0], null, 2));
+    }
+}
+
 function capabilitiesCommand(args) {
     const capabilities = buildCapabilities(contract);
     if (args.json) {
@@ -1135,6 +1224,7 @@ async function main() {
     else if (args.command === "serve") await serveCommand(args);
     else if (args.command === "capabilities") capabilitiesCommand(args);
     else if (args.command === "doctor") doctorCommand(args);
+    else if (args.command === "import") importCommand(args);
     else await runCommand(args);
 }
 

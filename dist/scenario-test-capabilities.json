@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 13,
+  "contractVersion": 14,
   "assertions": {
     "operators": {
       "exists": {
@@ -250,7 +250,8 @@
       "serve",
       "init",
       "capabilities",
-      "doctor"
+      "doctor",
+      "import"
     ],
     "options": {
       "config": {
@@ -332,6 +333,30 @@
         "aliases": [
           "authorization"
         ]
+      },
+      "har": {
+        "kind": "value",
+        "description": "import：HAR 文件路径（- 表示从 stdin 读取）"
+      },
+      "curl": {
+        "kind": "value",
+        "description": "import：curl 命令文本；单请求生成单步骤草稿"
+      },
+      "output": {
+        "kind": "value",
+        "description": "import：输出场景文件（默认 scenarios/imported-<ts>.js）",
+        "aliases": [
+          "out"
+        ]
+      },
+      "host": {
+        "kind": "value",
+        "description": "import：仅导入指定主机（可逗号分隔多个）"
+      },
+      "max-entries": {
+        "kind": "value",
+        "description": "import：最多导入请求数，默认 50（防超大 HAR 生成失控场景）",
+        "parse": "number"
       }
     }
   }
