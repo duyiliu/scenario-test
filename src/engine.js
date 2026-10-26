@@ -572,7 +572,7 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
     // request 对象整体 resolve 后再取 timeoutMs：request.timeoutMs 支持整串 {{ }} 模板
     // （如 "{{vars.timeout}}"），与 executeHttp 同口径；其余字段仍在 execute 前按
     // beforeExecute 修改后的 step 重新解析，钩子语义不变
-    const request = isPlainObject(step.request) ? resolve(clone(step.request), runtime) : {};
+    const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
     // 与 executeHttp 同一超时链路口径：step.timeoutMs → request.timeoutMs → 配置默认值；
     // 模板解析后的非法值明确报错，直接 runStep 的非法 step.timeoutMs 仍钳制为 30000
     const timeoutMs = resolveTimeoutMs(step, request, options);
