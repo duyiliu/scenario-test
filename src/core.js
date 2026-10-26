@@ -1231,6 +1231,14 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
 }
 
+// 凭据类变量名/头名启发式：CLI、工作台与报告脱敏共用同一份名单。
+// auth 覆盖 authorization/authentication；api[-_]?key 覆盖 apiKey/api_key。
+export const SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+
+export function isSecretName(name) {
+    return SECRET_VAR_PATTERN.test(String(name ?? ""));
+}
+
 export function maskSecret(value) {
     if (value === undefined || value === null || value === "") return "";
     const text = String(value);

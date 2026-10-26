@@ -251,6 +251,7 @@ var ScenarioTest = (() => {
     PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
     RESERVED_VARS: () => RESERVED_VARS,
     SAVED_RESPONSE: () => SAVED_RESPONSE,
+    SECRET_VAR_PATTERN: () => SECRET_VAR_PATTERN,
     TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
     TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
     USCC_ALPHABET: () => USCC_ALPHABET,
@@ -268,7 +269,7 @@ var ScenarioTest = (() => {
     buildUsccCode: () => buildUsccCode,
     clearAdapters: () => clearAdapters,
     clearScenarios: () => clearScenarios,
-    clone: () => clone,
+    clone: () => clone2,
     contract: () => contract,
     createApp: () => createApp,
     createEngine: () => createEngine,
@@ -293,6 +294,7 @@ var ScenarioTest = (() => {
     headersToObject: () => headersToObject,
     isGlobalParam: () => isGlobalParam,
     isPlainObject: () => isPlainObject,
+    isSecretName: () => isSecretName,
     joinUrl: () => joinUrl,
     listAdapters: () => listAdapters,
     luhnCheckDigit: () => luhnCheckDigit,
@@ -576,7 +578,7 @@ var ScenarioTest = (() => {
     }
     return [...merged.values()];
   }
-  function clone(value) {
+  function clone2(value) {
     return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
   }
   function isPlainObject(value) {
@@ -702,7 +704,7 @@ var ScenarioTest = (() => {
   var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
   function resolveClone(value, runtime) {
     const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone2(value), runtime) : fast;
   }
   function resolveCloneFast(value, runtime, ancestors) {
     if (typeof value === "string") return resolveString(value, runtime);
@@ -1441,6 +1443,10 @@ var ScenarioTest = (() => {
       return;
     }
     throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
+  }
+  var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+  function isSecretName(name) {
+    return SECRET_VAR_PATTERN.test(String(name ?? ""));
   }
   function maskSecret(value) {
     if (value === void 0 || value === null || value === "") return "";
@@ -4284,6 +4290,129 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   }();
   var ui_style_default = workbenchStyle;
 
+  // src/utils/redact.js
+  var SUBSTRING_REDACT_MIN_LENGTH = 6;
+  var sanitizedReports = /* @__PURE__ */ new WeakSet();
+  function addSecret(target, value) {
+    if (value === void 0 || value === null || value === "") return;
+    target.add(String(value));
+  }
+  function collectLeafSecrets(value, target, seen = /* @__PURE__ */ new Set()) {
+    if (value === void 0 || value === null) return;
+    if (typeof value !== "object") {
+      addSecret(target, value);
+      return;
+    }
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) collectLeafSecrets(item, target, seen);
+      return;
+    }
+    for (const item of Object.values(value)) collectLeafSecrets(item, target, seen);
+  }
+  function collectSecretValues(source, target = /* @__PURE__ */ new Set()) {
+    const seen = /* @__PURE__ */ new Set();
+    const visit = (value, key, inheritedSensitive) => {
+      if (value === void 0 || value === null) return;
+      const sensitive = inheritedSensitive || key !== "" && isSecretName(key);
+      if (sensitive) {
+        collectLeafSecrets(value, target);
+        return;
+      }
+      if (typeof value !== "object") return;
+      if (seen.has(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item, "", false);
+        return;
+      }
+      for (const [childKey, item] of Object.entries(value)) visit(item, childKey, false);
+    };
+    visit(source, "", false);
+    return target;
+  }
+  function collectQuerySecrets(url, target) {
+    if (typeof url !== "string") return;
+    const fragmentIndex = url.indexOf("#");
+    const withoutFragment = fragmentIndex < 0 ? url : url.slice(0, fragmentIndex);
+    const queryIndex = withoutFragment.indexOf("?");
+    if (queryIndex < 0) return;
+    for (const pair of withoutFragment.slice(queryIndex + 1).split("&")) {
+      if (!pair) continue;
+      const separator = pair.indexOf("=");
+      if (separator < 0) continue;
+      const key = safeDecodeComponent(pair.slice(0, separator));
+      if (!key || !isSecretName(key)) continue;
+      const rawValue = pair.slice(separator + 1);
+      addSecret(target, rawValue);
+      addSecret(target, safeDecodeComponent(rawValue));
+    }
+  }
+  function collectReportQuerySecrets(report, target) {
+    const reports = Array.isArray(report?.scenarios) ? report.scenarios : [report];
+    for (const item of reports) {
+      for (const result of item?.results || []) collectQuerySecrets(result?.path, target);
+    }
+  }
+  function redactText(text, secrets) {
+    if (!text || !secrets.size) return text;
+    let result = text;
+    const ordered = [...secrets].filter(Boolean).sort((left, right) => right.length - left.length);
+    for (const secret of ordered) {
+      if (result === secret) return maskSecret(secret);
+      if (secret.length < SUBSTRING_REDACT_MIN_LENGTH || !result.includes(secret)) continue;
+      result = result.split(secret).join(maskSecret(secret));
+    }
+    return result;
+  }
+  function sanitizeValue(value, secrets, key, inheritedSensitive, seen) {
+    if (value === void 0 || value === null) return value;
+    const sensitive = inheritedSensitive || key !== "" && isSecretName(key);
+    const type = typeof value;
+    if (type === "string") return sensitive ? maskSecret(value) : redactText(value, secrets);
+    if (type === "number" || type === "bigint") {
+      const text = String(value);
+      return sensitive || secrets.has(text) ? maskSecret(text) : value;
+    }
+    if (type === "boolean") return sensitive ? maskSecret(value) : value;
+    if (type !== "object") return value;
+    if (!Array.isArray(value) && !isPlainObject(value)) return value;
+    if (seen.has(value)) return seen.get(value);
+    if (Array.isArray(value)) {
+      const result2 = [];
+      seen.set(value, result2);
+      for (const item of value) result2.push(sanitizeValue(item, secrets, "", sensitive, seen));
+      return result2;
+    }
+    const result = {};
+    seen.set(value, result);
+    for (const symbol of Object.getOwnPropertySymbols(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, symbol);
+      if (descriptor) Object.defineProperty(result, symbol, descriptor);
+    }
+    for (const [childKey, item] of Object.entries(value)) {
+      Object.defineProperty(result, childKey, {
+        value: sanitizeValue(item, secrets, childKey, sensitive, seen),
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
+    }
+    return result;
+  }
+  function sanitizeReportForOutput(report, options = {}) {
+    if (report && typeof report === "object" && sanitizedReports.has(report)) return report;
+    const secrets = new Set(options.secrets instanceof Set ? options.secrets : []);
+    collectSecretValues(report, secrets);
+    if (options.vars) collectSecretValues(options.vars, secrets);
+    for (const extra of options.extraValues || []) addSecret(secrets, extra);
+    collectReportQuerySecrets(report, secrets);
+    const sanitized = sanitizeValue(report, secrets, "", false, /* @__PURE__ */ new WeakMap());
+    if (sanitized && typeof sanitized === "object") sanitizedReports.add(sanitized);
+    return sanitized;
+  }
+
   // src/browser/ui/ui-view.js
   var workbenchView = function() {
     "use strict";
@@ -4759,12 +4888,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     function renderVarsSection(view) {
       if (!view || !view.vars) return "";
-      var keys = Object.keys(view.vars);
+      var vars = sanitizeReportForOutput({ vars: view.vars }).vars;
+      var keys = Object.keys(vars);
       if (!keys.length) return "";
       var changed = view.changedKeys || [];
       var rows = keys.map(function(key) {
         var isChanged = changed.indexOf(key) >= 0;
-        return '<tr class="' + (isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) + (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(view.vars[key])) + "</td></tr>";
+        return '<tr class="' + (isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) + (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(vars[key])) + "</td></tr>";
       }).join("");
       return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80"><summary>\u8FD0\u884C\u65F6\u53D8\u91CF \xB7 ' + keys.length + " \u9879" + (changed.length ? "\uFF08\u672C\u6B65\u53D8\u66F4 " + changed.length + "\uFF09" : "") + '</summary><div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider"><tr><th class="px-3 py-1.5">\u53D8\u91CF\u540D</th><th class="px-3 py-1.5">\u503C\uFF08\u672C\u6B65\u9AA4\u6267\u884C\u540E\uFF09</th></tr></thead><tbody class="divide-y divide-slate-100">' + rows + "</tbody></table></div></details>";
     }
@@ -4961,6 +5091,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       }).join("");
     }
     function renderStepItem(s, i, executionMode, varsView) {
+      s = sanitizeReportForOutput({ results: [s] }, { vars: varsView && varsView.vars }).results[0];
       var ok = s.passed;
       var skipped = s.skipped;
       var seqNum = i + 1;
@@ -5043,7 +5174,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         window.__R.applyFilter();
       }
     }
-    function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
+    function buildOverallReport2(steps, scenario, scenarioFile, executionMode, environment, secretVars) {
       steps = steps || [];
       var total = steps.length;
       var skipped = steps.filter(function(item) {
@@ -5064,7 +5195,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       }, 0);
       var cancelled = cancelledCount > 0;
       var status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
-      return {
+      var report = {
         title: scenario && scenario.name || scenarioFile || "\u6D4B\u8BD5\u62A5\u544A",
         scenarioFile: scenarioFile || "",
         executionMode: executionMode || "full",
@@ -5101,9 +5232,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           };
         })
       };
+      return sanitizeReportForOutput(report, { vars: secretVars });
     }
     function buildMarkdownReport2(report) {
       if (!report) return "";
+      report = sanitizeReportForOutput(report);
       var summary = report.summary || {};
       var lines = [];
       lines.push("# " + mdInline(report.title || "\u6D4B\u8BD5\u62A5\u544A"));
@@ -5154,7 +5287,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       });
       return lines.join("\n");
     }
-    function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
+    function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment, secretVars) {
       steps = steps || [];
       var node = document.getElementById("reportPanel");
       var reportTab = document.getElementById("reportTab");
@@ -5170,7 +5303,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       }
       if (!node) return null;
       if (node.classList.contains("hidden")) return null;
-      var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
+      var report = buildOverallReport2(steps, scenario, scenarioFile, executionMode, environment, secretVars);
       if (!steps.length) {
         node.innerHTML = '<div class="report-empty"><div class="report-empty__title">\u6267\u884C\u540E\u751F\u6210\u62A5\u544A</div><div class="report-empty__hint">\u7ED3\u679C\u6458\u8981\u4E0E\u5931\u8D25\u8BCA\u65AD\u5C06\u5728\u8FD9\u91CC\u5C55\u793A</div></div>';
         return report;
@@ -5219,13 +5352,14 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       renderPendingSteps,
       renderStepsAll,
       appendStepResult,
-      buildOverallReport,
+      buildOverallReport: buildOverallReport2,
       buildMarkdownReport: buildMarkdownReport2,
       eachDetailRows: eachDetailRows2,
       renderReportPanel
     };
   }();
   var ui_view_default = workbenchView;
+  var buildOverallReport = workbenchView.buildOverallReport;
   var buildMarkdownReport = workbenchView.buildMarkdownReport;
   var eachDetailRows = workbenchView.eachDetailRows;
 
@@ -5297,7 +5431,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         lastResponse: null,
         lastResponseBody: null
       };
-      var request = resolveAdhocValue(clone(step.request || {}), runtime) || {};
+      var request = resolveAdhocValue(clone2(step.request || {}), runtime) || {};
       var resolvedPath = resolveAdhocValue(step.path || request.path || "", runtime);
       var parsed = parseQueryParamsFromUrl(resolvedPath);
       var rawParams = step.params || request.params;
@@ -5456,13 +5590,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         var environment = getEnvFn ? getEnvFn() : null;
         var runtimeVars = getVarsFn ? getVarsFn() : {};
         var runtime = {
-          vars: clone(runtimeVars),
+          vars: clone2(runtimeVars),
           lastResponse: null,
           lastResponseBody: null,
           baseUrl: getBaseUrlFn ? getBaseUrlFn() : "",
           authorization: getAuthFn ? getAuthFn() : "",
           globals: getGlobalsFn ? getGlobalsFn() : [],
-          environment: environment ? clone(environment) : null,
+          environment: environment ? clone2(environment) : null,
           startedAt: Date.now(),
           abortController: new AbortController(),
           cancelled: false
@@ -5608,7 +5742,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     var uiStyle = ui_style_default;
     var uiView = ui_view_default;
     var uiAdhoc = ui_adhoc_default;
-    var clone2 = clone;
+    var clone3 = clone2;
     var isPlainObject2 = isPlainObject;
     var assertNotReservedVar2 = assertNotReservedVar;
     var assertNoReservedVars2 = assertNoReservedVars;
@@ -6026,8 +6160,16 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function renderFilterAll() {
       uiView.renderFilterAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : []);
     }
+    function getReportSanitizerVars() {
+      var merged = /* @__PURE__ */ Object.create(null);
+      (state.varsTrail || []).forEach(function(vars) {
+        if (vars) Object.assign(merged, vars);
+      });
+      if (state.stepRuntime && state.stepRuntime.vars) Object.assign(merged, state.stepRuntime.vars);
+      return merged;
+    }
     function renderReportPanel() {
-      state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+      state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment(), getReportSanitizerVars());
     }
     function setSidePanelTab(tabName, options2) {
       var showReport = tabName === "report";
@@ -6088,7 +6230,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         baseUrl: getRequestBaseUrl(),
         authorization: getEffectiveAuthorization(),
         globals: getEffectiveGlobals(),
-        environment: environment ? clone2(environment) : null,
+        environment: environment ? clone3(environment) : null,
         startedAt: Date.now(),
         abortController: new AbortController(),
         cancelled: false
@@ -6458,7 +6600,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }).join("");
       });
     }
-    var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
     function renderScenarioVariableInputs() {
       var container = document.getElementById("scenarioVarsInput");
       if (!container) return;
@@ -6470,7 +6611,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       var stored = getStoredScenarioVariables();
       container.innerHTML = defs.map(function(def) {
         var value = stored[def.name] || "";
-        var isSecret = SECRET_VAR_PATTERN.test(def.name);
+        var isSecret = isSecretName(def.name);
         return '<label class="flex flex-col gap-1.5"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + " (" + esc(def.name) + ")" + (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">\u663E\u793A</button>' : "") + '</span><input id="scenarioVar_' + esc(def.name) + '" type="' + (isSecret ? "password" : "text") + '" value="' + esc(value) + '" placeholder="\u8BF7\u8F93\u5165 ' + esc(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></label>';
       }).join("");
     }
@@ -6751,7 +6892,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }, 1500);
       }
       function handleCopy(btn, getText) {
-        var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+        var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment(), getReportSanitizerVars());
         if (!report) return;
         Promise.resolve().then(function() {
           return getText(report);
@@ -6814,7 +6955,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function generateStepCurl(step) {
       if (!step) return "";
       var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
-      var resolvedVars = clone2(rawVars);
+      var resolvedVars = clone3(rawVars);
       if (state.activeRuntime && state.activeRuntime.vars) {
         Object.assign(resolvedVars, state.activeRuntime.vars);
       } else if (state.stepRuntime && state.stepRuntime.vars) {
@@ -7014,7 +7155,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             rejectLoad(new Error("\u573A\u666F\u6587\u4EF6\u5FC5\u987B\u901A\u8FC7 ScenarioTest.registerScenario \u6CE8\u518C: " + file));
             return;
           }
-          state.scenario = clone2(scenario);
+          state.scenario = clone3(scenario);
           state.steps = [];
           state.stepRuntime = null;
           state.stepCheckpoints = [];

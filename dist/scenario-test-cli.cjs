@@ -259,6 +259,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SECRET_VAR_PATTERN: () => SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -276,7 +277,7 @@ __export(node_exports, {
   buildUsccCode: () => buildUsccCode,
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
-  clone: () => clone,
+  clone: () => clone2,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -303,6 +304,7 @@ __export(node_exports, {
   headersToObject: () => headersToObject,
   isGlobalParam: () => isGlobalParam,
   isPlainObject: () => isPlainObject,
+  isSecretName: () => isSecretName,
   joinUrl: () => joinUrl,
   listAdapters: () => listAdapters,
   loadConfigFile: () => loadConfigFile,
@@ -588,7 +590,7 @@ function mergeGlobals(...lists) {
   }
   return [...merged.values()];
 }
-function clone(value) {
+function clone2(value) {
   return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 }
 function isPlainObject(value) {
@@ -714,7 +716,7 @@ function resolve(value, runtime) {
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
   const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone2(value), runtime) : fast;
 }
 function resolveCloneFast(value, runtime, ancestors) {
   if (typeof value === "string") return resolveString(value, runtime);
@@ -1453,6 +1455,10 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
+}
+var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+function isSecretName(name) {
+  return SECRET_VAR_PATTERN.test(String(name ?? ""));
 }
 function maskSecret(value) {
   if (value === void 0 || value === null || value === "") return "";
@@ -4207,6 +4213,129 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/utils/redact.js
+var SUBSTRING_REDACT_MIN_LENGTH = 6;
+var sanitizedReports = /* @__PURE__ */ new WeakSet();
+function addSecret(target, value) {
+  if (value === void 0 || value === null || value === "") return;
+  target.add(String(value));
+}
+function collectLeafSecrets(value, target, seen = /* @__PURE__ */ new Set()) {
+  if (value === void 0 || value === null) return;
+  if (typeof value !== "object") {
+    addSecret(target, value);
+    return;
+  }
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectLeafSecrets(item, target, seen);
+    return;
+  }
+  for (const item of Object.values(value)) collectLeafSecrets(item, target, seen);
+}
+function collectSecretValues(source, target = /* @__PURE__ */ new Set()) {
+  const seen = /* @__PURE__ */ new Set();
+  const visit = (value, key, inheritedSensitive) => {
+    if (value === void 0 || value === null) return;
+    const sensitive = inheritedSensitive || key !== "" && isSecretName(key);
+    if (sensitive) {
+      collectLeafSecrets(value, target);
+      return;
+    }
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, "", false);
+      return;
+    }
+    for (const [childKey, item] of Object.entries(value)) visit(item, childKey, false);
+  };
+  visit(source, "", false);
+  return target;
+}
+function collectQuerySecrets(url, target) {
+  if (typeof url !== "string") return;
+  const fragmentIndex = url.indexOf("#");
+  const withoutFragment = fragmentIndex < 0 ? url : url.slice(0, fragmentIndex);
+  const queryIndex = withoutFragment.indexOf("?");
+  if (queryIndex < 0) return;
+  for (const pair of withoutFragment.slice(queryIndex + 1).split("&")) {
+    if (!pair) continue;
+    const separator = pair.indexOf("=");
+    if (separator < 0) continue;
+    const key = safeDecodeComponent(pair.slice(0, separator));
+    if (!key || !isSecretName(key)) continue;
+    const rawValue = pair.slice(separator + 1);
+    addSecret(target, rawValue);
+    addSecret(target, safeDecodeComponent(rawValue));
+  }
+}
+function collectReportQuerySecrets(report, target) {
+  const reports = Array.isArray(report?.scenarios) ? report.scenarios : [report];
+  for (const item of reports) {
+    for (const result of item?.results || []) collectQuerySecrets(result?.path, target);
+  }
+}
+function redactText(text, secrets) {
+  if (!text || !secrets.size) return text;
+  let result = text;
+  const ordered = [...secrets].filter(Boolean).sort((left, right) => right.length - left.length);
+  for (const secret of ordered) {
+    if (result === secret) return maskSecret(secret);
+    if (secret.length < SUBSTRING_REDACT_MIN_LENGTH || !result.includes(secret)) continue;
+    result = result.split(secret).join(maskSecret(secret));
+  }
+  return result;
+}
+function sanitizeValue(value, secrets, key, inheritedSensitive, seen) {
+  if (value === void 0 || value === null) return value;
+  const sensitive = inheritedSensitive || key !== "" && isSecretName(key);
+  const type = typeof value;
+  if (type === "string") return sensitive ? maskSecret(value) : redactText(value, secrets);
+  if (type === "number" || type === "bigint") {
+    const text = String(value);
+    return sensitive || secrets.has(text) ? maskSecret(text) : value;
+  }
+  if (type === "boolean") return sensitive ? maskSecret(value) : value;
+  if (type !== "object") return value;
+  if (!Array.isArray(value) && !isPlainObject(value)) return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const result2 = [];
+    seen.set(value, result2);
+    for (const item of value) result2.push(sanitizeValue(item, secrets, "", sensitive, seen));
+    return result2;
+  }
+  const result = {};
+  seen.set(value, result);
+  for (const symbol of Object.getOwnPropertySymbols(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, symbol);
+    if (descriptor) Object.defineProperty(result, symbol, descriptor);
+  }
+  for (const [childKey, item] of Object.entries(value)) {
+    Object.defineProperty(result, childKey, {
+      value: sanitizeValue(item, secrets, childKey, sensitive, seen),
+      enumerable: true,
+      writable: true,
+      configurable: true
+    });
+  }
+  return result;
+}
+function sanitizeReportForOutput(report, options = {}) {
+  if (report && typeof report === "object" && sanitizedReports.has(report)) return report;
+  const secrets = new Set(options.secrets instanceof Set ? options.secrets : []);
+  collectSecretValues(report, secrets);
+  if (options.vars) collectSecretValues(options.vars, secrets);
+  for (const extra of options.extraValues || []) addSecret(secrets, extra);
+  collectReportQuerySecrets(report, secrets);
+  const sanitized = sanitizeValue(report, secrets, "", false, /* @__PURE__ */ new WeakMap());
+  if (sanitized && typeof sanitized === "object") sanitizedReports.add(sanitized);
+  return sanitized;
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -4783,7 +4912,8 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
         const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
         entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
-      async onStep(result) {
+      async onStep(result, index, runtime) {
+        result = sanitizeReportForOutput({ results: [result] }, { vars: runtime?.vars || {} }).results[0];
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
         entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
@@ -4882,7 +5012,8 @@ Overall: ${passedTotal}/${total} passed`);
   }
   if (args.json) {
     const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}
+    const sanitized = sanitizeReportForOutput(payload);
+    process.stdout.write(`${JSON.stringify(sanitized, null, 2)}
 `);
   }
 }

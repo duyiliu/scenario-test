@@ -15,6 +15,7 @@ import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { sanitizeReportForOutput } from "./utils/redact.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -675,7 +676,10 @@ async function runCommand(args) {
                     : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
                 entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次${label}${detail ? `（${detail}）` : ""}，${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
-            async onStep(result) {
+            async onStep(result, index, runtime) {
+                // 人类可读输出与 --json 共用报告脱敏口径：失败 diff、响应体、路径中的
+                // 敏感变量/认证头只展示 maskSecret 形态，原始值仍保留在引擎返回结果中
+                result = sanitizeReportForOutput({ results: [result] }, { vars: runtime?.vars || {} }).results[0];
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
                 entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
@@ -796,7 +800,10 @@ async function runCommand(args) {
         // 单场景输出 report 本身，多场景顶层包 { scenarios: [...] }。
         // 退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
         const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
-        process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+        // --json 是报告输出面：vars、断言 expected/actual/detail、请求/响应头体统一脱敏；
+        // 与人类可读输出同口径，避免 CI 看板/日志拿到原始密钥
+        const sanitized = sanitizeReportForOutput(payload);
+        process.stdout.write(`${JSON.stringify(sanitized, null, 2)}\n`);
     }
 }
 

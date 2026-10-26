@@ -24,6 +24,10 @@ All notable changes to this project will be documented in this file.
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
+### 安全与诊断
+
+- 敏感变量/认证头报告脱敏（issue #90）：CLI 失败 diff、失败响应体、`run --json` 报告与浏览器工作台步骤详情/运行时变量面板/Markdown/JSON 报告统一调用 `maskSecret`。变量名或头名命中 `token|secret|password|passwd|auth|credential|api[-_]?key` 时按 `前4...后4`（≤12 字符为 `***`）展示；命中敏感变量的断言 expected/actual、响应体回显与 URL query 敏感值同样脱敏，普通变量与普通字段保持原样。浏览器凭据输入框改用 `core.isSecretName`，与 CLI 共用同一名单。脱敏仅作用于输出视图，`runScenario` 编程接口返回值仍保留原始调试数据。
+
 ### 产物
 
 - `node.js` 入口不再透传 `index.js` 的 `createApp`：改为逐项枚举核心导出 + 浏览器占位函数（`typeof` 仍为 `function`，调用时报「仅在浏览器环境可用」而非 `document is not defined`）。Node/CLI 产物随之不再打进浏览器工作台与 Tailwind 内联样式（此前 `cli.js` 把 `import * as ScenarioTest` 整个命名空间对象传入 loader/插件工厂，esbuild 无法 tree-shake）；`scenario-test.cjs`/`scenario-test-cli.cjs` 显著瘦身。UMD/ESM 浏览器产物的 `createApp` 不变。

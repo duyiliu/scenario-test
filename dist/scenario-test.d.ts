@@ -411,6 +411,11 @@ export function md5(value: unknown): string;
 export function clone<T>(value: T): T;
 /** 字节上限归一化：有限正数向下取整，0/负数/NaN/Infinity/空值均视为“不限制”（返回 0） */
 export function normalizeByteLimit(value: unknown): number;
+/** 脱敏展示：>12 字符输出「前4...后4」，否则「***」；空值输出空串 */
+export function maskSecret(value: unknown): string;
+/** 凭据类变量名/头名判定（token/secret/password/auth/credential/api-key 等） */
+export function isSecretName(name: unknown): boolean;
+export const SECRET_VAR_PATTERN: RegExp;
 export function formatDuration(milliseconds: number): string;
 /** 模板路径严格分词：合法路径返回 token 数组（每次调用返回独立可变副本，改写不影响内部缓存）；畸形写法（vars[]、a..b、["a" > "b"]）返回 null */
 export function tokenizePath(valuePath: string): string[] | null;

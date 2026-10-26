@@ -479,8 +479,18 @@ export function createWorkbenchRuntime(options) {
         uiView.renderFilterAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : []);
     }
 
+    // 报告脱敏上下文：合并各步快照，保证回退/单步后仍能识别配置、extract 得到的敏感变量
+    function getReportSanitizerVars() {
+        var merged = Object.create(null);
+        (state.varsTrail || []).forEach(function (vars) {
+            if (vars) Object.assign(merged, vars);
+        });
+        if (state.stepRuntime && state.stepRuntime.vars) Object.assign(merged, state.stepRuntime.vars);
+        return merged;
+    }
+
     function renderReportPanel() {
-        state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+        state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment(), getReportSanitizerVars());
     }
 
     function setSidePanelTab(tabName, options) {
@@ -971,9 +981,8 @@ export function createWorkbenchRuntime(options) {
         });
     }
 
-    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换
-    var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
-
+    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换；
+    // 名单与 CLI/报告脱敏共用 core.isSecretName，避免两套口径漂移
     function renderScenarioVariableInputs() {
         var container = document.getElementById('scenarioVarsInput');
         if (!container) return;
@@ -986,7 +995,7 @@ export function createWorkbenchRuntime(options) {
         container.innerHTML = defs.map(function (def) {
             var value = stored[def.name] || '';
             // 凭据类变量掩码显示（可切换明文），避免联调时 Token 在屏幕侧显
-            var isSecret = SECRET_VAR_PATTERN.test(def.name);
+            var isSecret = core.isSecretName(def.name);
             return '<label class="flex flex-col gap-1.5">' +
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')' +
                     (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">显示</button>' : '') +
@@ -1292,7 +1301,7 @@ export function createWorkbenchRuntime(options) {
             }, 1500);
         }
         function handleCopy(btn, getText) {
-            var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+            var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment(), getReportSanitizerVars());
             if (!report) return;
             Promise.resolve()
                 .then(function () { return getText(report); })

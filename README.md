@@ -209,6 +209,7 @@ scenario-test/
 - 场景文件是可执行代码，只加载可信来源。
 - 不要提交生产凭据、个人数据或真实 Token。
 - CLI/CI 优先通过环境变量提供敏感值。
+- CLI 失败 diff/报告、`run --json` 与工作台报告会对命中 token/secret/password/auth/credential/api-key 的变量名、`Authorization` 等敏感头及相关断言值做脱敏展示（`前4...后4`，短值为 `***`）；普通变量保持明文。
 - 浏览器本地存储适合受控联调环境，不应保存生产凭据。
 
 详细说明见 [SECURITY.md](SECURITY.md)。

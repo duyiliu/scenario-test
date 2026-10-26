@@ -1,5 +1,6 @@
 import { esc, fmt, safeJson } from './ui-utils.js';
 import { safeDecodeComponent } from '../../utils/safe-decode.js';
+import { sanitizeReportForOutput } from '../../utils/redact.js';
 
 const workbenchView = (function () {
     'use strict';
@@ -530,7 +531,9 @@ const workbenchView = (function () {
     // 回答两个调试问题：本步骤的 {{vars.*}} 解析成了什么、本步 extract 写入了什么
     function renderVarsSection(view) {
         if (!view || !view.vars) return '';
-        var keys = Object.keys(view.vars);
+        // 变量面板同样走报告脱敏：clientSecret/apiToken 等按键名掩码，普通变量保持原值
+        var vars = sanitizeReportForOutput({ vars: view.vars }).vars;
+        var keys = Object.keys(vars);
         if (!keys.length) return '';
         var changed = view.changedKeys || [];
         var rows = keys.map(function (key) {
@@ -539,7 +542,7 @@ const workbenchView = (function () {
                 '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) +
                     (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">本步变更</span>' : '') +
                 '</td>' +
-                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(view.vars[key])) + '</td>' +
+                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(vars[key])) + '</td>' +
             '</tr>';
         }).join('');
         return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80">' +
@@ -867,6 +870,8 @@ const workbenchView = (function () {
     }
 
     function renderStepItem(s, i, executionMode, varsView) {
+        // 步骤详情（请求/响应/断言）统一走报告脱敏；varsView 提供敏感变量值用于识别回显
+        s = sanitizeReportForOutput({ results: [s] }, { vars: varsView && varsView.vars }).results[0];
         var ok = s.passed;
         var skipped = s.skipped;
         var seqNum = i + 1;
@@ -1090,7 +1095,7 @@ const workbenchView = (function () {
         }
     }
 
-    function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment) {
+    function buildOverallReport(steps, scenario, scenarioFile, executionMode, environment, secretVars) {
         steps = steps || [];
         var total = steps.length;
         var skipped = steps.filter(function (item) { return item.skipped; }).length;
@@ -1101,7 +1106,7 @@ const workbenchView = (function () {
         var duration = steps.reduce(function (sum, item) { return sum + (item.duration || 0); }, 0);
         var cancelled = cancelledCount > 0;
         var status = cancelled ? 'CANCELLED' : failed > 0 ? 'FAILED' : (executed === 0 ? 'SKIPPED' : 'PASSED');
-        return {
+        var report = {
             title: (scenario && scenario.name) || scenarioFile || '测试报告',
             scenarioFile: scenarioFile || '',
             executionMode: executionMode || 'full',
@@ -1138,10 +1143,12 @@ const workbenchView = (function () {
                 };
             })
         };
+        return sanitizeReportForOutput(report, { vars: secretVars });
     }
 
     function buildMarkdownReport(report) {
         if (!report) return '';
+        report = sanitizeReportForOutput(report);
         var summary = report.summary || {};
         var lines = [];
         lines.push('# ' + mdInline(report.title || '测试报告'));
@@ -1198,7 +1205,7 @@ const workbenchView = (function () {
         return lines.join('\n');
     }
 
-    function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
+    function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment, secretVars) {
         steps = steps || [];
         var node = document.getElementById('reportPanel');
         var reportTab = document.getElementById('reportTab');
@@ -1217,7 +1224,7 @@ const workbenchView = (function () {
         // 页签切回报告时由 setSidePanelTab 补一次全量渲染。返回 null 表示未缓存报告，
         // 复制按钮经 state.lastReport 缺失时回退现场重建，不受影响。
         if (node.classList.contains('hidden')) return null;
-        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
+        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment, secretVars);
         if (!steps.length) {
             node.innerHTML = '<div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div>';
             return report;
@@ -1320,5 +1327,6 @@ const workbenchView = (function () {
 
 export default workbenchView;
 // 具名导出供 Node 侧单测直接消费（浏览器入口仍走默认导出，形状不变）
+export const buildOverallReport = workbenchView.buildOverallReport;
 export const buildMarkdownReport = workbenchView.buildMarkdownReport;
 export const eachDetailRows = workbenchView.eachDetailRows;

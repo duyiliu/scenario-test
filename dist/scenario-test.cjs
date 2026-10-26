@@ -250,6 +250,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SECRET_VAR_PATTERN: () => SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -267,7 +268,7 @@ __export(node_exports, {
   buildUsccCode: () => buildUsccCode,
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
-  clone: () => clone,
+  clone: () => clone2,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -294,6 +295,7 @@ __export(node_exports, {
   headersToObject: () => headersToObject,
   isGlobalParam: () => isGlobalParam,
   isPlainObject: () => isPlainObject,
+  isSecretName: () => isSecretName,
   joinUrl: () => joinUrl,
   listAdapters: () => listAdapters,
   loadConfigFile: () => loadConfigFile,
@@ -580,7 +582,7 @@ function mergeGlobals(...lists) {
   }
   return [...merged.values()];
 }
-function clone(value) {
+function clone2(value) {
   return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 }
 function isPlainObject(value) {
@@ -706,7 +708,7 @@ function resolve(value, runtime) {
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
   const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone2(value), runtime) : fast;
 }
 function resolveCloneFast(value, runtime, ancestors) {
   if (typeof value === "string") return resolveString(value, runtime);
@@ -1445,6 +1447,10 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
+}
+var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+function isSecretName(name) {
+  return SECRET_VAR_PATTERN.test(String(name ?? ""));
 }
 function maskSecret(value) {
   if (value === void 0 || value === null || value === "") return "";
@@ -3186,6 +3192,7 @@ function createApp() {
   PHONE_TEST_PREFIXES,
   RESERVED_VARS,
   SAVED_RESPONSE,
+  SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET,
@@ -3230,6 +3237,7 @@ function createApp() {
   headersToObject,
   isGlobalParam,
   isPlainObject,
+  isSecretName,
   joinUrl,
   listAdapters,
   loadConfigFile,
