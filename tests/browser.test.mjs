@@ -291,6 +291,7 @@ try {
 
         // 混合结果：全部执行完成的进度是 100%，通过率仍独立显示为 2/3。
         await page.locator('[data-scenario-file="scenarios/continue-after-failure.js"]').click();
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("失败后继续执行示例"));
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelectorAll('#stepsList li[data-passed="true"]').length === 2);
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
@@ -302,6 +303,7 @@ try {
         await page.screenshot({ path: path.join(artifacts, `${viewport.name}-failure-diagnosis.png`), fullPage: true });
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("健康检查示例"));
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
         assert.equal(externalRequests.length, 0, `检测到外部 CDN 请求: ${externalRequests.join(", ")}`);
