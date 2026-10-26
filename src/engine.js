@@ -11,10 +11,12 @@ import {
     joinUrl,
     parseBody,
     evaluateWhen,
-    queryPairs,
+    appendGlobalQuery,
+    normalizeByteLimit,
     resolve,
     resolveClone,
-    resolveString
+    resolveString,
+    setRuntimeVar
 } from "./core.js";
 import { contract } from "./contract.js";
 import { defineScenario, listAdapters } from "./registry.js";
@@ -31,6 +33,24 @@ function abortReason(signal) {
 
 function timeoutErrorMessage(timeoutMs) {
     return `请求超时（${timeoutMs}ms）`;
+}
+
+// 单次执行失败是否由请求/适配器超时引起：优先看 createRequestSignal 写入的结构化标记，
+// 不依赖本地化错误文案。
+function isTimeoutError(error) {
+    return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+
+// 供 retryOn/onAttempt 与重试超时消息使用的错误文本：fetch 的 TypeError("fetch failed")
+// 把真实原因收在 cause，透出 ECONNREFUSED/ENOTFOUND 等，便于 CI 与进度行直接定位。
+function describeError(error) {
+    const message = String(error?.message || error || "请求执行失败");
+    const causeDetail = error?.cause
+        ? (error.cause.code || error.cause.message || String(error.cause))
+        : "";
+    return causeDetail && !message.includes(causeDetail)
+        ? `${message}（${causeDetail}）`
+        : message;
 }
 
 function delay(milliseconds, signal) {
@@ -62,6 +82,65 @@ function createTimeoutError(timeoutMs, message) {
     return error;
 }
 
+// Node/浏览器 setTimeout 单次延时上限（2^31-1ms）：超过会被实现截断为 1ms。
+// 大超时按剩余时间分段续排，避免「配置 2147483648ms 却约 1ms 就超时」。
+const MAX_TIMER_DELAY_MS = 2147483647;
+
+function scheduleTimeout(callback, timeoutMs) {
+    let timer = null;
+    let disposed = false;
+    const deadline = now() + timeoutMs;
+    const tick = () => {
+        if (disposed) return;
+        const remaining = deadline - now();
+        if (remaining <= 0) {
+            callback();
+            return;
+        }
+        timer = setTimeout(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
+    };
+    tick();
+    return {
+        clear() {
+            disposed = true;
+            if (timer) clearTimeout(timer);
+        }
+    };
+}
+
+// 超时链：step.timeoutMs（定义期已校验正数）→ request.timeoutMs（整串模板在
+// 运行期解析）→ 配置默认值。request.timeoutMs 解析后的非法值不能继续静默钳制，
+// 否则超时配置失效且无法定位——在发请求前明确报错。
+function resolveTimeoutMs(step, request, options) {
+    // step.timeoutMs 不解析模板；直接 runStep 绕过定义期时保留既有兜底：
+    // 非法值按 30000ms，避免负数/Infinity/字符串 "0" 导致永不超时
+    const stepTimeoutSource = step.timeoutMs || undefined;
+    if (stepTimeoutSource !== undefined) {
+        const stepTimeout = Number(stepTimeoutSource);
+        return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 30000;
+    }
+    if (request.timeoutMs !== undefined) {
+        const requestTimeoutSource = request.timeoutMs;
+        // 模板解析结果可能是 boolean/数组/对象：Number(true) === 1、Number([5000]) === 5000，
+        // 直接 Number() 会把非数字值当成有效超时——只接受 number 或非空数字字符串
+        const hasNumericType = typeof requestTimeoutSource === "number"
+            || (typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "");
+        const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
+        if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+            const value = typeof requestTimeoutSource === "string"
+                || (typeof requestTimeoutSource === "object" && requestTimeoutSource !== null)
+                ? JSON.stringify(requestTimeoutSource)
+                : String(requestTimeoutSource);
+            throw new Error(
+                `步骤 ${step.name || "未命名步骤"} 的 request.timeoutMs 解析后不是有效的正数毫秒（当前 ${value}），请检查变量值`
+            );
+        }
+        return requestTimeout;
+    }
+    const configuredTimeout = Number(options.requestTimeoutMs);
+    return Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 30000;
+}
+
 function createRequestSignal(parentSignal, timeoutMs) {
     const controller = new AbortController();
     // 超时状态由 signal 内部维护，不依赖浏览器是否把 abort reason 传播为 fetch 拒绝原因
@@ -70,7 +149,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
     if (parentSignal?.aborted) abort();
     else parentSignal?.addEventListener("abort", abort, { once: true });
     const timer = timeoutMs > 0
-        ? setTimeout(() => { timedOut = true; controller.abort(createTimeoutError(timeoutMs)); }, timeoutMs)
+        ? scheduleTimeout(() => { timedOut = true; controller.abort(createTimeoutError(timeoutMs)); }, timeoutMs)
         : null;
     return {
         signal: controller.signal,
@@ -78,7 +157,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
             return timedOut;
         },
         dispose() {
-            if (timer) clearTimeout(timer);
+            if (timer) timer.clear();
             parentSignal?.removeEventListener("abort", abort);
         }
     };
@@ -131,7 +210,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
                 );
             }
         }
-        vars[name] = value;
+        setRuntimeVar(vars, name, value);
     }
     for (const definition of scenario.generatedVars || []) {
         if (!definition?.name) continue;
@@ -190,10 +269,16 @@ function chooseAdapter(step, adapters) {
 
 // 读取响应体并支持中途取消：fetch 的 signal abort 是否传播给 body 流随实现而异，
 // 这里显式监听 signal，保证"读体"阶段同样受超时/取消控制。
-function readBodyChunks(response, signal) {
+// maxBytes > 0 时边读边计数：超过上限立即取消读取并抛出结构化错误，
+// 不把超限响应完整读进内存（非 saveResponseAs 路径同样受上限保护）。
+function readBodyChunks(response, signal, maxBytes = 0) {
+    // 无 body 的响应也必须先检查中止：fetch 忽略 abort 并在总时限后返回时，
+    // 不能继续进入 saveResponseAs 等后续副作用。
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     if (!response.body) return Promise.resolve([]);
     const reader = response.body.getReader();
     const chunks = [];
+    let totalBytes = 0;
     return new Promise((resolve, reject) => {
         const onAbort = () => {
             reader.cancel().catch(() => {});
@@ -208,6 +293,11 @@ function readBodyChunks(response, signal) {
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+                    totalBytes += value.byteLength;
+                    if (maxBytes > 0 && totalBytes > maxBytes) {
+                        reader.cancel().catch(() => {});
+                        throw createResponseTooLargeError(totalBytes, maxBytes);
+                    }
                     chunks.push(value);
                 }
                 resolve(chunks);
@@ -220,6 +310,101 @@ function readBodyChunks(response, signal) {
     });
 }
 
+function createResponseTooLargeError(bytesRead, limitBytes) {
+    // 超限即取消读取以保护内存，无法得知后续响应总长度；字段必须诚实地表达
+    // “已读取字节数”，不能命名为完整响应体的实际大小
+    const error = new Error(`响应体超过大小上限: 已读取 ${bytesRead} 字节，限制 ${limitBytes} 字节`);
+    error.scenarioResponseTooLarge = true;
+    error.responseTooLarge = { bytesRead, limitBytes };
+    return error;
+}
+
+function resolveMaxResponseBytes(options = {}) {
+    // 只有 undefined 表示“未提供”，继续回落 config；显式 null/0/负数等按
+    // normalizeByteLimit 统一归一化为不限，避免 run options 无法覆盖引擎/配置上限
+    const value = options.maxResponseBytes === undefined
+        ? options.config?.maxResponseBytes
+        : options.maxResponseBytes;
+    return normalizeByteLimit(value);
+}
+
+// 上传上限要把“未声明”和“显式 0/null=不限制”区分开：前者回落到 config 或
+// createNodeIo 默认值，后者必须覆盖上游上限。返回 undefined 表示调用方未声明上限。
+function resolveMaxUploadBytes(options = {}) {
+    // 与 maxResponseBytes 同一归一化口径：只有 undefined 才回落 config；
+    // 显式 null/0/负数等统一由 normalizeByteLimit 视为不限
+    const value = options.maxUploadBytes === undefined
+        ? options.config?.maxUploadBytes
+        : options.maxUploadBytes;
+    return value === undefined ? undefined : normalizeByteLimit(value);
+}
+
+// 流式保存的响应体包装：边转发边计数字节、监听取消/超时 signal，并把读取错误
+// （包括字符串等非 Error 拒绝值）传给下游流水线。body 为空时也返回已关闭的空流，
+// 保证只实现 saveResponseStream 的 io 仍能创建零字节文件。
+function createSaveBodyStream(body, signal, maxBytes) {
+    if (!body) {
+        return new ReadableStream({
+            start(controller) {
+                if (signal?.aborted) controller.error(abortReason(signal));
+                else controller.close();
+            }
+        });
+    }
+    const reader = body.getReader();
+    let totalBytes = 0;
+    let finished = false;
+    let onAbort = null;
+    const cleanup = () => {
+        finished = true;
+        if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+        onAbort = null;
+    };
+    const cancelReader = (reason) => reader.cancel(reason).catch(() => {});
+    return new ReadableStream({
+        start(controller) {
+            if (!signal) return;
+            onAbort = () => {
+                if (finished) return;
+                cleanup();
+                cancelReader(abortReason(signal));
+                controller.error(abortReason(signal));
+            };
+            if (signal.aborted) onAbort();
+            else signal.addEventListener("abort", onAbort, { once: true });
+        },
+        async pull(controller) {
+            if (finished) return;
+            try {
+                const { done, value } = await reader.read();
+                // 等待读取期间可能已被取消，此时不再 enqueue/close
+                if (finished) return;
+                if (done) {
+                    cleanup();
+                    controller.close();
+                    return;
+                }
+                totalBytes += value.byteLength;
+                if (maxBytes > 0 && totalBytes > maxBytes) {
+                    cleanup();
+                    cancelReader();
+                    controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+                    return;
+                }
+                controller.enqueue(value);
+            } catch (error) {
+                if (finished) return;
+                cleanup();
+                controller.error(error);
+            }
+        },
+        cancel(reason) {
+            cleanup();
+            return cancelReader(reason);
+        }
+    });
+}
+
 // 按 content-type 的 charset 构造解码器（如 GBK 老系统）；缺省或非法/不支持的 charset 回退 UTF-8
 function decoderForContentType(contentType) {
     const match = /charset\s*=\s*"?([^;"\s]+)"?/i.exec(String(contentType || ""));
@@ -227,17 +412,39 @@ function decoderForContentType(contentType) {
     try { return new TextDecoder(match[1]); } catch { return new TextDecoder(); }
 }
 
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
     const headers = headersToObject(response.headers);
     const contentType = String(headers["content-type"] || "");
-    const chunks = await readBodyChunks(response, signal);
-    if (step.saveResponseAs && io?.saveResponse) {
-        const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-        let offset = 0;
-        for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-        const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-        return { status: response.status, headers, body: saved, bodyText: null };
+    const maxResponseBytes = resolveMaxResponseBytes(options);
+    if (step.saveResponseAs) {
+        const relativePath = resolveString(step.saveResponseAs, runtime);
+        const metadata = { contentType, headers, maxResponseBytes };
+        // 优先流式落盘：response.body 直接接到 io 的文件流，避免响应体全量驻留内存；
+        // 包装流同时负责 maxResponseBytes 校验与超时/取消，失败时 io 只清理本次临时文件
+        if (io?.saveResponseStream) {
+            const saved = await io.saveResponseStream(
+                relativePath,
+                createSaveBodyStream(response.body, signal, maxResponseBytes),
+                metadata
+            );
+            return { status: response.status, headers, body: saved, bodyText: null };
+        }
+        // 回退：环境仅实现 saveResponse 时仍先缓冲，但上限检查发生在写盘之前
+        if (io?.saveResponse) {
+            const chunks = await readBodyChunks(response, signal, maxResponseBytes);
+            const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            // 单块响应直接复用（fetch 的 chunk 已是独立 Uint8Array），多块才合并；
+            // 避免旧实现无论块数都再复制一份造成的峰值翻倍
+            const data = chunks.length === 1 ? chunks[0] : new Uint8Array(total);
+            if (chunks.length > 1) {
+                let offset = 0;
+                for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+            }
+            const saved = await io.saveResponse(relativePath, data, metadata);
+            return { status: response.status, headers, body: saved, bodyText: null };
+        }
     }
+    const chunks = await readBodyChunks(response, signal, maxResponseBytes);
     const decoder = decoderForContentType(contentType);
     const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
     return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
@@ -253,22 +460,8 @@ async function executeHttp(step, runtime, options) {
     const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
     const globals = options.globals || [];
     if (allowEnvironmentAuthorization && globals.length) {
-        // query：追加 URL 参数，跳过步骤参数已存在的 key
-        const existingKeys = new Set();
-        const queryIndex = requestPath.indexOf("?");
-        if (queryIndex >= 0) {
-            for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-                const key = pair.split("=")[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
-            }
-        }
-        const queryParts = [];
-        for (const global of globals) {
-            if (global.type !== "query" || existingKeys.has(global.name)) continue;
-            // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
-            queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-        }
-        if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+        // query：追加 URL 参数，跳过步骤参数已存在的 key；与浏览器 cURL 预览共用实现
+        requestPath = appendGlobalQuery(requestPath, globals, runtime);
         // cookie：多个全局 cookie 合并为一个 Cookie 头，追加到已有 Cookie 之后
         const cookieParts = globals
             .filter((global) => global.type === "cookie")
@@ -295,8 +488,20 @@ async function executeHttp(step, runtime, options) {
     if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
     if (request.fileUpload) {
         if (!options.io?.createUploadBody) throw new Error("当前运行环境不支持 fileUpload");
-        const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+        const upload = await options.io.createUploadBody(
+            resolve(request.fileUpload, runtime),
+            runtime,
+            { maxUploadBytes: resolveMaxUploadBytes(options) }
+        );
         fetchOptions.body = upload.body;
+        // 自定义 io 返回 Web ReadableStream、Node Readable 或其他异步可迭代流时，
+        // Node fetch 必须显式声明半双工；FormData（Blob/File）不受此限制
+        if (upload.body && (
+            typeof upload.body.getReader === "function"
+            || typeof upload.body[Symbol.asyncIterator] === "function"
+        )) {
+            fetchOptions.duplex = "half";
+        }
         for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
         for (const key of Object.keys(headers)) {
             if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -308,14 +513,12 @@ async function executeHttp(step, runtime, options) {
             fetchOptions.body = JSON.stringify(request.body);
         }
     }
-    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
-    // 非法/非正超时统一钳制为默认值，避免负数/Infinity/字符串"0"导致永不超时
-    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
+    const timeoutMs = resolveTimeoutMs(step, request, options);
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     fetchOptions.signal = requestSignal.signal;
     try {
         const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
-        const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+        const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
         return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
     } catch (error) {
         // 失败也返回注入后的最终请求（Authorization/全局头/合并 cookie/query）与超时标记，
@@ -337,7 +540,11 @@ async function executeHttp(step, runtime, options) {
 
 class AdapterExecutionError extends Error {
     constructor(adapterName, originalError, step) {
-        const message = `适配器 ${adapterName} 执行失败: ${originalError.message}`;
+        // 适配器可能 reject 非 Error 值（字符串/null 等）：直接读 .message 会抛 TypeError
+        // 或输出 undefined，掩盖真实失败原因；统一降级为 String()（null/undefined 保留可读文案）。
+        const detail = originalError?.message
+            || (originalError === undefined ? "undefined" : String(originalError));
+        const message = `适配器 ${adapterName} 执行失败: ${detail}`;
         // cause 保留原始错误链；结构化标记透传——适配器内部超时/请求现场被包装后
         // 仍按 TIMEOUT 归类并透出 method/path/request，不再降级为无上下文的 ERROR
         super(message, { cause: originalError });
@@ -347,6 +554,8 @@ class AdapterExecutionError extends Error {
         this.stepName = step?.name || "未命名步骤";
         if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
         if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+        if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+        if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
     }
 }
 
@@ -355,7 +564,12 @@ class AdapterExecutionError extends Error {
 // 否则挂死的适配器会让整个场景永久卡住（retryUntil.maxElapsedMs 只在 attempt 之间检查）。
 function raceWithSignal(promise, signal) {
     if (!signal) return promise;
-    if (signal.aborted) return Promise.reject(abortReason(signal));
+    if (signal.aborted) {
+        // 竞速开始前 signal 已中止：仍要挂接底层 Promise 的 rejection 处理，
+        // 否则它在稍后拒绝时会成为 unhandledRejection（取消语义已由返回的 reject 表达）。
+        promise.catch(() => {});
+        return Promise.reject(abortReason(signal));
+    }
     return new Promise((resolveRace, rejectRace) => {
         const onAbort = () => rejectRace(abortReason(signal));
         signal.addEventListener("abort", onAbort, { once: true });
@@ -370,11 +584,13 @@ async function executeAdapter(adapter, adapterName, step, runtime, options) {
     if (!adapter) throw new Error(`未注册步骤适配器: ${adapterName || "unknown"}`);
 
     let output;
-    const request = isPlainObject(step.request) ? step.request : {};
+    // request 对象整体 resolve 后再取 timeoutMs：request.timeoutMs 支持整串 {{ }} 模板
+    // （如 "{{vars.timeout}}"），与 executeHttp 同口径；其余字段仍在 execute 前按
+    // beforeExecute 修改后的 step 重新解析，钩子语义不变
+    const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
     // 与 executeHttp 同一超时链路口径：step.timeoutMs → request.timeoutMs → 配置默认值；
-    // 非法/非正值钳制为 30000，避免 "0"/负数/Infinity 导致永不超时
-    const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 30000);
-    const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30000;
+    // 模板解析后的非法值明确报错，直接 runStep 的非法 step.timeoutMs 仍钳制为 30000
+    const timeoutMs = resolveTimeoutMs(step, request, options);
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     // 适配器钩子与 execute 都拿到带超时的 signal（原 options.signal 仍可由父级取消）
     const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
@@ -470,6 +686,11 @@ export function createEngine(engineOptions = {}) {
             adapters,
             requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 30000
         };
+        // 常见写法会把可选配置字段（值为 undefined）整体透传进 run options；
+        // 展开会用它覆盖引擎级上限，导致已配置的限制被静默绕过。只有 undefined
+        // 才回填引擎级值，显式 null/0 仍保留为“运行级不限”。
+        if (options.maxResponseBytes === undefined) options.maxResponseBytes = engineOptions.maxResponseBytes;
+        if (options.maxUploadBytes === undefined) options.maxUploadBytes = engineOptions.maxUploadBytes;
         if (step.when !== undefined) {
             const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
             if (!shouldRun) {
@@ -496,60 +717,184 @@ export function createEngine(engineOptions = {}) {
         // maxAttempts 语义 = 最大尝试总次数（含首次请求），与字段名一致；默认 10。
         // 历史实现为 maxAttempts + 1（重试次数语义），与字段名矛盾，v0.5.18 起对齐。
         const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+        // retryOn 默认 ["assertion"] 保持既有语义；未声明/非法值不会意外开启 error/timeout 重试。
+        const retryOn = new Set(
+            retry
+                ? (retry.retryOn === undefined
+                    ? contract.retryUntil.defaultRetryOn
+                    : (Array.isArray(retry.retryOn) ? retry.retryOn : []))
+                    .filter((type) => contract.retryUntil.retryOn.includes(type))
+                : []
+        );
+        // 只有显式启用 error/timeout 重试的路径才把 maxElapsedMs 扩展到在途执行、
+        // 异步回调与迟到响应；默认/仅 assertion 路径保持旧语义（只在尝试之间检查总时限）。
+        const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
+        let lastAttemptError = null;
+        const retryTimeoutError = (attemptCount) => {
+            const lastErrorText = lastAttemptError
+                ? `\n最后错误: ${describeError(lastAttemptError)}`
+                : "";
+            return createTimeoutError(
+                maxElapsedMs,
+                `重试超时: 已尝试 ${attemptCount} 次，耗时超过 ${maxElapsedMs}ms${lastErrorText}\n` +
+                `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
+            );
+        };
         try {
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
                 // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
-                if (retry && (now() - retryStartTime) > maxElapsedMs) {
-                    throw createTimeoutError(
-                        maxElapsedMs,
-                        `重试超时: 已尝试 ${attempt - 1} 次，耗时超过 ${maxElapsedMs}ms\n` +
-                        `提示: 考虑调整 retryUntil.maxElapsedMs 或检查接口响应`
-                    );
+                // 默认/仅 assertion 路径保持旧实现严格大于（耗时恰好等于 maxElapsedMs 仍发起下一次尝试）；
+                // 显式 error/timeout 重试路径在到达总时限（>=）时立即结束。
+                if (retry) {
+                    const elapsedMs = now() - retryStartTime;
+                    const expired = enforceAttemptDeadline
+                        ? elapsedMs >= maxElapsedMs
+                        : elapsedMs > maxElapsedMs;
+                    if (expired) throw retryTimeoutError(attempt - 1);
                 }
 
-                const selection = chooseAdapter(step, adapters);
-                const attemptStartedAt = now();
-                lastExecution = selection
-                    ? await executeAdapter(selection.adapter, selection.name, step, runtime, options)
-                    : await executeHttp(step, runtime, options);
-                // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
-                // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
-                if (lastExecution.response && typeof lastExecution.response === "object"
-                    && lastExecution.response.durationMs === undefined) {
-                    lastExecution.response.durationMs = now() - attemptStartedAt;
+                // 单次执行也必须受总时限约束：在途请求可能跑得比剩余 maxElapsedMs 更久
+                // （timeoutMs 更大或适配器忽略 signal）。为本次尝试创建截止 signal，
+                // 到期主动 abort，并与执行 Promise 竞速，保证步骤不会在总时限后仍 PASSED。
+                let attemptDeadline = null;
+                if (enforceAttemptDeadline) {
+                    const remainingMs = maxElapsedMs - (now() - retryStartTime);
+                    if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+                    attemptDeadline = createRequestSignal(options.signal, remainingMs);
                 }
-                runtime.lastResponse = lastExecution.response;
-                // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
-                runtime.lastResponseBody = lastExecution.response.body;
-                const extractResult = applyExtract(step, lastExecution.response, runtime);
-                stepWarnings = extractResult.warnings;
-                assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-                // required: true 且路径不存在 → 当前步骤失败
-                if (extractResult.failures.length) assertions.push(...extractResult.failures);
-                if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
+
+                let attemptError = null;
+                let attemptErrorType = "";
+                try {
+                    const selection = chooseAdapter(step, adapters);
+                    const attemptStartedAt = now();
+                    const attemptOptions = attemptDeadline
+                        ? { ...options, signal: attemptDeadline.signal }
+                        : options;
+                    const execution = selection
+                        ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions)
+                        : executeHttp(step, runtime, attemptOptions);
+                    lastExecution = attemptDeadline
+                        ? await raceWithSignal(execution, attemptDeadline.signal)
+                        : await execution;
+                    // 单次请求耗时（毫秒）：供 { target: "duration", lte: N } 等耗时断言使用；
+                    // 适配器自带计时时不覆盖。计入 result.response，报告/工作台可见
+                    if (lastExecution.response && typeof lastExecution.response === "object"
+                        && lastExecution.response.durationMs === undefined) {
+                        lastExecution.response.durationMs = now() - attemptStartedAt;
+                    }
+                    runtime.lastResponse = lastExecution.response;
+                    // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
+                    runtime.lastResponseBody = lastExecution.response.body;
+                    const extractResult = applyExtract(step, lastExecution.response, runtime);
+                    stepWarnings = extractResult.warnings;
+                    assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+                    // required: true 且路径不存在 → 当前步骤失败
+                    if (extractResult.failures.length) assertions.push(...extractResult.failures);
+                } catch (error) {
+                    // 取消始终立即终止，不参与重试（含等待间隔中的取消由 delay 拒绝）
+                    if (options.signal?.aborted) throw error;
+                    // 总时限到期中断在途执行：按 retryUntil 超时返回 TIMEOUT，而不是把
+                    // 截止 signal 的 abort 当成普通网络错误继续重试。
+                    if (enforceAttemptDeadline
+                        && (attemptDeadline?.timedOut()
+                            || (now() - retryStartTime) >= maxElapsedMs)) {
+                        throw retryTimeoutError(attempt);
+                    }
+                    const errorType = isTimeoutError(error) ? "timeout" : "error";
+                    // 未开启对应 retryOn 或已是最后一次尝试：保持历史语义，直接交给外层 catch 归类
+                    if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+                    attemptError = error;
+                    attemptErrorType = errorType;
+                    lastAttemptError = error;
+                    // 失败尝试没有可信响应/断言结果：清掉上一轮值，避免 onAttempt 透出陈旧状态
+                    stepWarnings = [];
+                    assertions = [];
+                } finally {
+                    attemptDeadline?.dispose();
+                }
+
+                // 即使执行成功，只要实际耗时已达到总时限也不能通过（fetch/适配器可能
+                // 忽略 abort 后才返回）；按总时限返回 TIMEOUT。
+                if (enforceAttemptDeadline && (attemptDeadline?.timedOut()
+                    || (now() - retryStartTime) >= maxElapsedMs)) {
+                    throw retryTimeoutError(attempt);
+                }
+
+                const failedAssertion = attemptError
+                    ? ""
+                    : (assertions.find((item) => !item.passed)?.name || "");
+                if (!attemptError
+                    && (assertions.every((item) => item.passed)
+                        || attempt === totalAttempts
+                        || !retryOn.has("assertion"))) break;
 
                 // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
                 // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
                 // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
                 const rawIntervalMs = Number(retry.intervalMs);
                 const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
-                // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
-                // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
-                // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
-                await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-                    step,
-                    attempt,
-                    totalAttempts,
-                    intervalMs,
-                    status: lastExecution.response?.status ?? null,
-                    failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-                });
-                await delay(intervalMs, options.signal);
+                // 总时限已到（仅新重试路径）：不再回调/等待，直接按 TO 结束。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
+                // 回调前估算实际等待，仅用于进度提示；回调结束后会重新按剩余额度计算。
+                const remainingForWait = enforceAttemptDeadline
+                    ? Math.max(0, maxElapsedMs - (now() - retryStartTime))
+                    : Infinity;
+                const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+                const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+                if (attemptCallback) {
+                    const callbackInfo = {
+                        step,
+                        attempt,
+                        totalAttempts,
+                        intervalMs: waitBeforeCallback,
+                        status: attemptError ? null : (lastExecution.response?.status ?? null),
+                        failedAssertion,
+                        errorType: attemptErrorType,
+                        errorMessage: attemptError ? describeError(attemptError) : ""
+                    };
+                    // 异步 onAttempt 同样受总时限约束：回调挂起/耗时超限时不能拖过 maxElapsedMs。
+                    // 包一层 Promise 把同步抛错也纳入竞速；竞速后重新检查是否已到期。
+                    const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+                    if (enforceAttemptDeadline) {
+                        const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+                        if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+                        const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+                        try {
+                            await raceWithSignal(callbackPromise, callbackDeadline.signal);
+                        } catch (error) {
+                            if (options.signal?.aborted) throw error;
+                            if (callbackDeadline.timedOut()
+                                || (now() - retryStartTime) >= maxElapsedMs) {
+                                throw retryTimeoutError(attempt);
+                            }
+                            throw error;
+                        } finally {
+                            callbackDeadline.dispose();
+                        }
+                    } else {
+                        await callbackPromise;
+                    }
+                }
+                // 回调可能已消耗掉剩余额度：重新计算等待时长，到期就直接 TO（仅新重试路径）。
+                if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
+                    throw retryTimeoutError(attempt);
+                }
+                // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
+                // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
+                // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
+                const waitMs = enforceAttemptDeadline
+                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
+                    : intervalMs;
+                // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
+                await delay(waitMs, options.signal);
             }
             const failed = assertions.find((item) => !item.passed);
             return {
@@ -585,6 +930,10 @@ export function createEngine(engineOptions = {}) {
             const method = (context && context.method)
                 || String(step.method || (step.request && step.request.method) || "GET").toUpperCase();
             const path = (context && context.path) || resolveString(step.path || "", runtime);
+            // 大小上限错误以结构化字段随结果透出（CLI/工作台可直接读取，无需解析本地化文案）
+            const responseTooLarge = error?.responseTooLarge || null;
+            const uploadTooLarge = error?.uploadTooLarge || null;
+            const errorCode = responseTooLarge ? "responseTooLarge" : (uploadTooLarge ? "uploadTooLarge" : "");
             return {
                 name: step.name || "未命名步骤",
                 method,
@@ -594,6 +943,9 @@ export function createEngine(engineOptions = {}) {
                 passed: false,
                 cancelled,
                 timedOut,
+                errorCode,
+                ...(responseTooLarge ? { responseTooLarge } : {}),
+                ...(uploadTooLarge ? { uploadTooLarge } : {}),
                 error: errorMessage,
                 warnings: [],
                 assertions: [{ name: cancelled ? "执行未取消" : (timedOut ? "请求未超时" : "请求执行成功"), passed: false, actual: errorMessage, expected: "无异常" }],
