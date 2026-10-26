@@ -12,6 +12,12 @@ function makeWorkspace() {
     return workspace;
 }
 
+function removeWorkspace(workspace) {
+    // Windows 上杀毒/索引服务可能短暂占用刚写入的文件；Node 的 rmSync 会在
+    // ENOTEMPTY/EPERM/EBUSY 时按 maxRetries 重试，避免清理竞态把测试判红。
+    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 FormData", async () => {
     const workspace = makeWorkspace();
     try {
@@ -32,7 +38,7 @@ test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 
         assert.equal(upload.body.get("note"), "hello");
         assert.equal(upload.body.get("count"), "3");
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -46,7 +52,7 @@ test("createUploadBody：字符串定义回退 file 字段与 basename 文件名
         assert.equal(file.name, "sample.txt");
         assert.equal(await file.text(), "upload-payload");
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -64,7 +70,7 @@ test("createUploadBody：路径穿越与空路径拒绝", async () => {
         );
         await assert.rejects(() => io.createUploadBody(""), /文件上传路径不安全/);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -74,7 +80,7 @@ test("createUploadBody：工作区内不存在的文件报错", async () => {
         const io = createNodeIo(workspace);
         await assert.rejects(() => io.createUploadBody("missing.txt"), /上传文件不存在/);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -127,7 +133,7 @@ test("createUploadBody：maxUploadBytes 超限返回结构化错误，边界值�
             }
         );
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -181,7 +187,7 @@ test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超�
     } finally {
         fs.openAsBlob = originalOpenAsBlob;
         fs.readFileSync = originalReadFileSync;
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -266,7 +272,7 @@ test("saveResponseStream：流式写入内容与 saveResponse 一致，失败时
             ["buffered.bin", "existing.bin", "nonerror.bin", "streamed.bin"]
         );
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -314,7 +320,7 @@ test("saveResponseStream：符号链接目标跟随链接更新真实文件并�
         assert.equal(fs.readFileSync(targetPath, "utf8"), "keep-target");
         assert.deepEqual(fs.readdirSync(workspace).sort(), ["link.bin", "sample.txt", "target.bin"]);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -362,7 +368,7 @@ test("maxResponseBytes + saveResponseAs：超限结构化报错且不留下半�
         assert.equal(exactReport.results[0].passed, true);
         assert.equal(fs.readFileSync(path.join(workspace, "out", "exact.bin"), "utf8"), "1234567890");
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -409,7 +415,7 @@ test("saveResponseStream：流式保存响应体挂起时超时/用户取消均�
         assert.equal(fs.existsSync(path.join(workspace, "out", "hang.bin")), false);
         assert.deepEqual(fs.readdirSync(path.join(workspace, "out")), []);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -449,7 +455,7 @@ test("run options 显式 undefined 不覆盖引擎级 maxResponseBytes/maxUpload
         assert.equal(responseResult.errorCode, "responseTooLarge");
         assert.deepEqual(responseResult.responseTooLarge, { bytesRead: 6, limitBytes: 5 });
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -479,7 +485,7 @@ test("run options 显式 null 将上传上限覆盖为不限，不传时仍受 c
         assert.equal(unlimited.results[0].passed, true, JSON.stringify(unlimited.results));
         assert.equal(fetchCalls, 1, "显式 null 应把上传上限覆盖为不限并发起请求");
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -494,7 +500,7 @@ test("saveResponse：递归建目录写入并返回 savedTo/size/contentType", a
         assert.equal(path.dirname(saved.savedTo), path.join(workspace, "responses", "run-1"));
         assert.deepEqual(fs.readFileSync(saved.savedTo), Buffer.from(data));
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -513,7 +519,7 @@ test("saveResponse：路径穿越拒绝，工作区外不可写", async () => {
         );
         assert.equal(fs.existsSync(path.join(path.dirname(workspace), "escape.json")), false);
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
     }
 });
 
@@ -542,7 +548,7 @@ test("junction/符号链接越界：词法在界内但实路径出界的上传�
         );
         assert.equal(fs.existsSync(path.join(outside, "out.bin")), false, "不得写出到链接目标目录");
     } finally {
-        fs.rmSync(workspace, { recursive: true, force: true });
+        removeWorkspace(workspace);
         fs.rmSync(outside, { recursive: true, force: true });
     }
 });

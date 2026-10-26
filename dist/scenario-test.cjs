@@ -2697,6 +2697,9 @@ function createEngine(engineOptions = {}) {
         }
         const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
         await delay(waitMs, options.signal);
+        if (enforceAttemptDeadline && waitMs < intervalMs) {
+          throw retryTimeoutError(attempt);
+        }
       }
       const failed = assertions.find((item) => !item.passed);
       return {

@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - 浏览器测试支持 `PLAYWRIGHT_CHANNEL` 覆盖浏览器通道；默认仍用本机 Chrome，CI 使用 Playwright 安装的 Chromium。README/AGENTS 补充 CI 说明与徽章，新增 `tests/ci-config.test.js` 校验工作流触发条件、矩阵与命令。
 - 校正 `check:eol` 的能力边界：Git 在提交/检出时按 `.gitattributes` 将普通文本 CRLF 归一为 LF，CI 无法看到仅行尾不同的本地编辑；该命令检测真正进入索引/工作区的 CRLF（生成物、外部工具或强制写入）。`tests/eol.test.js` 新增真实 git 仓库用例，锁定“索引 CRLF 必失败”与“普通 CRLF-only 编辑经干净检出归一后通过”。
 - `npm test` 与 `test:coverage` 改用 `scripts/run-tests.mjs` 显式收集 `tests/*.test.js`：修复 Windows 的 cmd 不展开通配符、Node 20 的 `--test` 不支持 glob 导致 unit 矩阵报“找不到文件”的问题；新增 `tests/run-tests.test.js` 锁定收集口径与包脚本。
+- 修复 CI 矩阵暴露的两处平台/版本差异：`retryUntil` 在等待被剩余总时限截断后直接返回 TIMEOUT，避免 Node 20 的定时器略早触发导致多发起一次尝试；`tests/node-io.test.js` 的临时工作区清理使用 `fs.rmSync` 的 `maxRetries`，避免 Windows 上杀毒/索引服务短暂占用文件时 `ENOTEMPTY` 误判。
 
 ### CLI
 

@@ -880,6 +880,11 @@ export function createEngine(engineOptions = {}) {
                     : intervalMs;
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
                 await delay(waitMs, options.signal);
+                // 本次等待已按剩余总时限截断：总时限已经用完，不能因定时器略早触发
+                // （Node 20 的 setTimeout 精度）再发起一次请求，否则会多出一次尝试。
+                if (enforceAttemptDeadline && waitMs < intervalMs) {
+                    throw retryTimeoutError(attempt);
+                }
             }
             const failed = assertions.find((item) => !item.passed);
             return {
