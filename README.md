@@ -227,6 +227,7 @@ scenario-test/
 - `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
 - 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
+- 路径支持通配段 `[*]`：`extract: [{ name: "ids", path: "items[*].id" }]` 产出 `[1,2,3]`；元素缺失该子路径时跳过、空数组产出 `[]`、非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（`groups[*].members[*].id`）展平为一级数组，结果可直接用于 `length`/`includes`/`each` 断言。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
 

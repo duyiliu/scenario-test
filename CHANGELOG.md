@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 
+- `extract` / 断言 / 模板共用的路径支持通配段 `[*]`（contract v13 → v14）：`items[*].id` 逐元素提取并产出数组（如 `[1,2,3]`），元素缺失该子路径时跳过、不产生 `undefined` 洞，空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default`/warning 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。`a[0]`/`a[-1]`/引号键/原型链安全键等既有标量行为不变，纯标量路径仍走原热路径。断言 path 上的通配结果可直接配合 `each`/`length`/`includes` 使用；契约说明、capabilities、d.ts、AI Prompt/模式库/项目 README 模板与根 README 同步投射。
+
 ### CLI
 
 - 新增 `import` 子命令（contract v13 → v14，issue #89）：`--har <file>` 解析浏览器/抓包 HAR，过滤静态资源（JS/CSS/图片/字体等）与 OPTIONS 预检，为每个 API 请求生成标准场景步骤草稿；`--curl "<命令>"` 解析单条 curl（支持 `-X/-H/-d/--json/-G/-u/-b`、引号与续行），生成单步骤草稿。默认写入 `scenarios/imported-<ts>.js`，可用 `--output`/`--out` 指定；`--host` 过滤主机，`--max-entries` 限制导入条数（默认 50）。Authorization/Cookie 等敏感头及敏感 query 参数替换为 `{{vars.*}}` 占位并在场景 `vars` 中留空，二进制/multipart 请求体降级为注释，草稿可直接由 `run` 加载重放（status 占位需人工确认）。命令与选项同步投射 capabilities JSON/文本、`--help` 与 `dist/scenario-test.d.ts`。
