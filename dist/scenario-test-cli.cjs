@@ -3121,8 +3121,11 @@ function createEngine(engineOptions = {}) {
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const remainingBeforeWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, remainingBeforeWait)) : intervalMs;
+        const waitReachesDeadline = enforceAttemptDeadline && waitMs >= remainingBeforeWait;
         await delay(waitMs, options.signal);
+        if (waitReachesDeadline) throw retryTimeoutError(attempt);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
