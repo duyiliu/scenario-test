@@ -13,7 +13,7 @@ function jsonResponse(body, status = 200) {
     return new Response(payload, { status, headers: { "Content-Type": "application/json" } });
 }
 
-test("contract v13 声明步骤级 always，且定义期只接受布尔值", () => {
+test("contract v14 声明步骤级 always，且定义期只接受布尔值", () => {
     assert.ok(contract.scenario.stepKeys.includes("always"));
     assert.equal(contract.scenario.always.type, "boolean");
     assert.equal(contract.scenario.always.field, "always");
@@ -141,6 +141,71 @@ test("取消执行默认不执行清理，并在 cleanup 诊断中说明", async
     assert.equal(report.cleanup.executed, 0);
     assert.equal(report.cleanup.status, "SKIPPED");
     assert.match(report.diagnostics[0], /执行已取消，1 个 always 清理步骤未执行/);
+});
+
+test("取消发生在清理阶段：剩余清理不再执行，cleanup 状态为 CANCELLED", async () => {
+    const controller = new AbortController();
+    const calls = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (url) => {
+            calls.push(url);
+            return jsonResponse({}, 204);
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "清理中取消",
+        steps: [
+            { name: "主步骤", path: "main", status: 200 },
+            { name: "清理一", always: true, path: "cleanup-1", status: 204 },
+            { name: "清理二", always: true, path: "cleanup-2", status: 204 }
+        ]
+    }), {
+        signal: controller.signal,
+        onStep: (result) => {
+            if (result.name === "清理一") controller.abort();
+        }
+    });
+
+    assert.deepEqual(calls, ["https://mock.local/main", "https://mock.local/cleanup-1"]);
+    assert.equal(report.status, "CANCELLED");
+    assert.equal(report.cleanup.planned, 2);
+    assert.equal(report.cleanup.executed, 1);
+    assert.equal(report.cleanup.passed, 1);
+    assert.equal(report.cleanup.status, "CANCELLED");
+    assert.match(report.diagnostics[0], /执行已取消，1 个 always 清理步骤未执行/);
+});
+
+test("清理步骤失败后继续执行剩余清理步骤，并逐条给出诊断", async () => {
+    const calls = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (url) => {
+            calls.push(url);
+            return url.endsWith("/cleanup-1") ? jsonResponse({}, 500) : jsonResponse({}, 204);
+        }
+    });
+    const report = await engine.runScenario(defineScenario({
+        name: "多个清理",
+        steps: [
+            { name: "主步骤", path: "main", status: 200 },
+            { name: "清理一", always: true, path: "cleanup-1", status: 204 },
+            { name: "清理二", always: true, path: "cleanup-2", status: 204 }
+        ]
+    }));
+
+    assert.deepEqual(calls, [
+        "https://mock.local/main",
+        "https://mock.local/cleanup-1",
+        "https://mock.local/cleanup-2"
+    ]);
+    assert.equal(report.status, "FAILED");
+    assert.equal(report.cleanup.planned, 2);
+    assert.equal(report.cleanup.passed, 1);
+    assert.equal(report.cleanup.failed, 1);
+    assert.equal(report.cleanup.status, "FAILED");
+    assert.equal(report.diagnostics.length, 1);
+    assert.match(report.diagnostics[0], /清理步骤「清理一」失败/);
 });
 
 test("超时属于失败而非取消，仍执行 always 清理", async () => {
