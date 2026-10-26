@@ -1,5 +1,6 @@
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
+import { RESOLVE_WARNINGS } from "./resolve-warnings.js";
 import { safeDecodeComponent } from "./utils/safe-decode.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
@@ -143,9 +144,17 @@ export function evalExpression(expression, runtime) {
     // 定义期 tokenizePath 拒绝，运行期同口径判缺而非借前导点兼容取到值
     if (text.startsWith("vars.")) {
         const sub = text.slice(5);
-        return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : undefined;
+        if (!sub || sub.startsWith(".")) return undefined;
+        const value = getByPath(runtime.vars, sub);
+        if (value === undefined) recordMissingTopLevelVar(runtime, sub);
+        return value;
     }
-    if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+    if (text.startsWith("vars[")) {
+        const sub = text.slice(4);
+        const value = getByPath(runtime.vars, sub);
+        if (value === undefined) recordMissingTopLevelVar(runtime, sub);
+        return value;
+    }
     if (text.startsWith("lastResponse.")) {
         const sub = text.slice(13);
         return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : undefined;
@@ -157,7 +166,31 @@ export function evalExpression(expression, runtime) {
     }
     if (text.startsWith("lastResponseBody[")) return getByPath(runtime.lastResponseBody, text.slice(16));
     if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, text)) return runtime.vars[text];
-    return getByPath(runtime.vars, text);
+    const value = getByPath(runtime.vars, text);
+    if (value === undefined) recordMissingTopLevelVar(runtime, text);
+    return value;
+}
+
+// 仅诊断顶层变量缺失：vars.user.name 中 user 已声明、name 取不到属对象子路径缺失，不告警；
+// lastResponse/lastResponseBody 缺失同样不告警。extract 失败会写入自有 undefined 键，
+// 因此后续模板引用只保留原 extract warning，不会重复告警。
+function recordMissingTopLevelVar(runtime, valuePath) {
+    const collector = runtime?.[RESOLVE_WARNINGS];
+    if (!collector) return;
+    const name = topLevelPathKey(valuePath);
+    if (name === null) return;
+    if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, name)) return;
+    if (collector.seen.has(name)) return;
+    collector.seen.add(name);
+    collector.warnings.push(`模板变量 vars.${name} 未定义，已按空字符串解析；请检查变量名拼写或 extract 配置`);
+}
+
+function topLevelPathKey(valuePath) {
+    const tokens = tokenizePath(valuePath);
+    if (!tokens || !tokens.length) return null;
+    const token = tokens[0];
+    const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+    return inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
 }
 
 export function resolveString(value, runtime) {

@@ -774,6 +774,105 @@ test("extract required:true 路径不存在时步骤失败；默认路径缺失�
     assert.equal(relaxedReport.results[0].passed, true);
 });
 
+test("模板顶层变量缺失产生步骤 warning：去重、when、retryUntil 与 extract 边界", async () => {
+    const requests = [];
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (url, options) => {
+            requests.push({ url, headers: options.headers });
+            return jsonResponse({ ok: true, ready: true });
+        }
+    });
+
+    const report = await engine.runScenario(defineScenario({
+        name: "缺失变量诊断",
+        vars: { empty: "", user: { id: 1 } },
+        steps: [{
+            name: "请求模板",
+            path: "api/{{vars.tokn}}/{{vars.tokn}}",
+            request: {
+                headers: {
+                    Authorization: "Bearer {{vars.tokn}}",
+                    "X-Bare": "{{bareToken}}",
+                    "X-Empty": "{{vars.empty}}",
+                    "X-Sub": "{{vars.user.name}}",
+                    "X-Prev": "{{lastResponse.headers.x}}",
+                    "X-Bracket": "{{vars[\"tokn\"]}}"
+                }
+            },
+            assertions: [{ path: "ok", equals: true }]
+        }]
+    }));
+    const result = report.results[0];
+    assert.equal(result.passed, true);
+    // tokn 在同一步骤被路径/头/下标写法多次引用、bareToken 为裸变量：各报一次；子路径/lastResponse/空串不报
+    assert.deepEqual(result.warnings.slice().sort(), [
+        "模板变量 vars.bareToken 未定义，已按空字符串解析；请检查变量名拼写或 extract 配置",
+        "模板变量 vars.tokn 未定义，已按空字符串解析；请检查变量名拼写或 extract 配置"
+    ]);
+    // 行为保持不变：仍按空串解析，不因新增诊断改变请求
+    assert.equal(result.path, "api//");
+    assert.equal(requests[0].headers.Authorization, "Bearer ");
+    assert.equal(requests[0].headers["X-Bare"], "");
+    assert.equal(requests[0].headers["X-Empty"], "");
+    assert.equal(requests[0].headers["X-Sub"], "");
+    assert.equal(requests[0].headers["X-Prev"], "");
+    assert.equal(requests[0].headers["X-Bracket"], "");
+
+    let attempts = 0;
+    const retryReport = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => {
+            attempts += 1;
+            return jsonResponse({ ready: false });
+        }
+    }).runScenario(defineScenario({
+        name: "重试去重",
+        steps: [{
+            name: "轮询缺失变量",
+            path: "poll/{{vars.missing}}",
+            retryUntil: { maxAttempts: 2, intervalMs: 100 },
+            assertions: [{ path: "ready", equals: true }]
+        }]
+    }));
+    assert.equal(attempts, 2);
+    assert.equal(retryReport.results[0].warnings.length, 1);
+    assert.match(retryReport.results[0].warnings[0], /vars\.missing/);
+
+    const skipReport = await engine.runScenario(defineScenario({
+        name: "when 模板缺失",
+        steps: [{ name: "条件跳过", path: "x", when: "{{vars.enabled}}", status: 200 }]
+    }));
+    assert.equal(skipReport.results[0].skipped, true);
+    assert.equal(skipReport.results[0].warnings.length, 1);
+    assert.match(skipReport.results[0].warnings[0], /vars\.enabled/);
+
+    const extractReport = await engine.runScenario(defineScenario({
+        name: "extract 失败不重复告警",
+        steps: [{
+            name: "提取缺失",
+            path: "x",
+            extract: [{ name: "missing", path: "nope" }],
+            assertions: [{ name: "引用已提取变量", path: "ok", notEquals: "{{vars.missing}}" }]
+        }]
+    }));
+    assert.equal(extractReport.results[0].passed, true);
+    assert.equal(extractReport.results[0].warnings.length, 1);
+    assert.match(extractReport.results[0].warnings[0], /提取变量 missing/);
+    assert.doesNotMatch(extractReport.results[0].warnings[0], /模板变量/);
+
+    const errorReport = await createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async () => { throw new Error("mock network down"); }
+    }).runScenario(defineScenario({
+        name: "失败步骤仍保留模板诊断",
+        steps: [{ name: "请求失败", path: "broken/{{vars.errorToken}}" }]
+    }));
+    assert.equal(errorReport.results[0].status, "ERROR");
+    assert.equal(errorReport.results[0].warnings.length, 1);
+    assert.match(errorReport.results[0].warnings[0], /vars\.errorToken/);
+});
+
 test("SKIP 统计：全跳过为 SKIPPED，部分跳过保持 PASSED，SKIP 不计 executed/passedSteps", async () => {
     const engine = createEngine({
         baseUrl: "https://mock.local",

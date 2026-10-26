@@ -45,6 +45,15 @@ test("Markdown 报告值拼接转义：换行折叠为字面量，防拆行/伪�
     assert.ok(!md.includes("警告B\n"), "警告不得包含真实换行");
 });
 
+test("Markdown 报告展示模板缺失变量 warning（复用既有 warnings 通道）", () => {
+    const md = buildMarkdownReport({
+        steps: [failedStep({
+            warnings: ["模板变量 vars.tokn 未定义，已按空字符串解析；请检查变量名拼写或 extract 配置"]
+        })]
+    });
+    assert.ok(md.includes("警告**: 模板变量 vars.tokn 未定义"), "Markdown 应透出模板缺失变量 warning");
+});
+
 test("Markdown 报告值拼接转义：反斜杠先行转义，字面量与转义标记不混淆", () => {
     const report = {
         steps: [failedStep({

@@ -45,6 +45,39 @@ test("CLI 从公共 JS 配置执行场景", async () => {
     }
 });
 
+test("CLI run 将模板缺失变量输出为步骤 [WARN]（同一变量只报一次）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-warn-"));
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"warn",name:"Warn",url:"scenarios/warn.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/warn.js"), `ScenarioTest.registerScenario("warn",ScenarioTest.defineScenario({name:"Warn",steps:[{name:"缺失变量",path:"health",status:200,request:{headers:{Authorization:"Bearer {{vars.tokn}}","X-Same":"{{vars.tokn}}"}},assertions:[{path:"ok",equals:true}]}]}));`, "utf8");
+        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.setEncoding("utf8");
+            child.stderr.setEncoding("utf8");
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /\[PASS\] 缺失变量/);
+        assert.match(result.stdout, /\[WARN\] 模板变量 vars\.tokn 未定义/);
+        assert.equal(result.stdout.split("[WARN]").length - 1, 1, "同一变量在同一步骤只应产生一条 warning");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI run 失败输出单列 each 元素级明细行（嵌套递归）", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-each-"));
     const server = http.createServer((request, response) => {

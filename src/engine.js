@@ -19,6 +19,7 @@ import {
     setRuntimeVar
 } from "./core.js";
 import { contract } from "./contract.js";
+import { RESOLVE_WARNINGS } from "./resolve-warnings.js";
 import { defineScenario, listAdapters } from "./registry.js";
 import { validateAdapterResponse } from "./adapter-types.js";
 import { escapeInlineText } from "./utils/failure-diff.js";
@@ -676,6 +677,12 @@ export function createEngine(engineOptions = {}) {
         // 才回填引擎级值，显式 null/0 仍保留为“运行级不限”。
         if (options.maxResponseBytes === undefined) options.maxResponseBytes = engineOptions.maxResponseBytes;
         if (options.maxUploadBytes === undefined) options.maxUploadBytes = engineOptions.maxUploadBytes;
+        // 步骤级模板诊断：整个步骤（含 when、retryUntil 各次尝试、extract/断言）共享一份去重集合，
+        // 同一变量只告警一次；finally 恢复原 collector，避免污染 runtime 或嵌套调用。
+        const resolveWarnings = { seen: new Set(), warnings: [] };
+        const previousResolveWarnings = runtime[RESOLVE_WARNINGS];
+        runtime[RESOLVE_WARNINGS] = resolveWarnings;
+        try {
         if (step.when !== undefined) {
             const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
             if (!shouldRun) {
@@ -688,7 +695,7 @@ export function createEngine(engineOptions = {}) {
                     passed: true,
                     skipped: true,
                     error: "",
-                    warnings: [],
+                    warnings: [...resolveWarnings.warnings],
                     assertions: [],
                     request: null,
                     response: null
@@ -890,7 +897,7 @@ export function createEngine(engineOptions = {}) {
                 duration: now() - startedAt,
                 passed: !failed,
                 error: failed?.name || "",
-                warnings: stepWarnings,
+                warnings: [...resolveWarnings.warnings, ...stepWarnings],
                 assertions,
                 request: lastExecution.request,
                 response: lastExecution.response
@@ -932,11 +939,15 @@ export function createEngine(engineOptions = {}) {
                 ...(responseTooLarge ? { responseTooLarge } : {}),
                 ...(uploadTooLarge ? { uploadTooLarge } : {}),
                 error: errorMessage,
-                warnings: [],
+                warnings: [...resolveWarnings.warnings],
                 assertions: [{ name: cancelled ? "执行未取消" : (timedOut ? "请求未超时" : "请求执行成功"), passed: false, actual: errorMessage, expected: "无异常" }],
                 request: (context && context.request) || null,
                 response: null
             };
+        }
+        } finally {
+            if (previousResolveWarnings === undefined) delete runtime[RESOLVE_WARNINGS];
+            else runtime[RESOLVE_WARNINGS] = previousResolveWarnings;
         }
     }
 
