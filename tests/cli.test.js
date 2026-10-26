@@ -123,7 +123,7 @@ test("CLI run includes 对象实际值失败输出语义化原因（数组/字�
     }
 });
 
-test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定位/短值保持单行）", async () => {
+test("CLI run 失败长值输出行级对齐 diff（hunk 上下文/差异定位/短值保持单行）", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-diff-"));
     // 长 JSON 响应体（bodyText 断言序列化超 80 字符触发分块）+ 短 JSON（保持单行格式）
     const longBody = JSON.stringify({ code: "OK", message: "处理成功", payload: { items: [1, 2, 3], traceId: "trace-0001" } });
@@ -151,20 +151,20 @@ test("CLI run 失败长值输出结构化 diff 分块（多行拆行/差异定�
             child.on("close", (code) => resolve({ code, stdout, stderr }));
         });
         assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
-        // 长值断言：单行头（值经 JSON.stringify 截断展示）后跟结构化分块
+        // 长值断言：单行头（值经 JSON.stringify 截断展示）后跟行级对齐 diff
         assert.match(result.stdout, /\[FAIL\] 长响应体/);
         assert.match(result.stdout, /- 响应原文比对: expected=/);
-        assert.match(result.stdout, /期望值（expected）:/);
-        assert.match(result.stdout, /实际值（actual）:/);
-        // 多行响应体按真实换行拆行，行号 1 基 + | 前缀
-        assert.match(result.stdout, /\| 1 \| /);
+        // 两侧均超限且同为字符串：行级对齐 hunk（差异行 ±2 行上下文，- 期望行 / + 实际行）
+        assert.match(result.stdout, /行级差异（仅展开差异行 ±2 行上下文/);
+        assert.match(result.stdout, /- 1\s+\| x{40}/);
+        assert.match(result.stdout, /\+\s+1 \| \{\\"code\\":\\"OK\\"/);
         // 字符串首个差异定位：两串首字符即异（期望 x 开头、实际 { 开头）
         assert.match(result.stdout, /首个差异在第 1 个字符/);
         // 短值断言：不产生任何分块行（保持既有单行格式）
         assert.match(result.stdout, /\[FAIL\] 短响应体/);
         assert.match(result.stdout, /- status: expected="DOWN" actual="UP"/);
-        // 极性守卫：分块标题只出现一次（长值断言），短值断言不产生分块
-        assert.equal(result.stdout.split("期望值（expected）:").length - 1, 1, "分块标题只应来自长值断言一处");
+        // 极性守卫：行级对齐标题只出现一次（长值断言），短值断言不产生分块
+        assert.equal(result.stdout.split("行级差异").length - 1, 1, "行级对齐标题只应来自长值断言一处");
     } finally {
         server.close();
         fs.rmSync(directory, { recursive: true, force: true });
