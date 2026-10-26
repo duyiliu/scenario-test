@@ -42,6 +42,8 @@ All notable changes to this project will be documented in this file.
 
 ### 浏览器工作台
 
+- adhoc 临时请求新增「转为步骤」（issue #91）：执行成功后可一键生成可粘贴进 `scenarios/*.js` 的 step 对象草稿，复用当次 method/path/params/headers/body 并将实际响应状态码写成 `status`；Authorization/Token/API Key/Cookie 等敏感请求头按 `SECRET_VAR_PATTERN` 转为 `{{vars.*}}` 占位，草稿同时自动复制到剪贴板并保留草稿区供手动复制。请求失败（ERROR/TIMEOUT 等无有效状态码）时拒绝生成，GET/HEAD 草稿自动省略会被定义期拒绝的请求体。
+
 - 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
 - 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。
 ## [0.8.0] - 2026-10-24
