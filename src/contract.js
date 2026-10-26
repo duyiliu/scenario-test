@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -143,14 +143,35 @@ export const contract = Object.freeze({
     }),
 
     config: Object.freeze({
+        // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+        // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+        // 运行时实际消费的是场景级 envVars。
+        configKeys: Object.freeze([
+            "envs", "defaultEnvKey", "globals", "vars", "scenarioVars", "variables",
+            "scenarios", "requestTimeoutMs", "maxResponseBytes", "maxUploadBytes",
+            "storagePrefix", "storageKeys", "baseUrl",
+            "authorization", "nodePlugins", "envVars"
+        ]),
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
         scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
         environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
         variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+        baseUrl: Object.freeze({
+            protocol: "http(s)",
+            note: "环境 baseUrl 声明时必须是 http(s):// URL；未声明（或为空）时回退顶层 baseUrl，两者都为空时浏览器工作台使用当前页面地址，CLI run 仍需 --base-url 或配置 baseUrl"
+        }),
         manual: Object.freeze({
             type: "boolean",
             note: "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
         })
+    }),
+
+    retryUntil: Object.freeze({
+        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+        // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+        retryOn: Object.freeze(["assertion", "error", "timeout"]),
+        defaultRetryOn: Object.freeze(["assertion"]),
+        note: "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
     }),
 
     scenario: Object.freeze({
@@ -179,6 +200,7 @@ export const contract = Object.freeze({
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
+            concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             "proxy-timeout": {
                 kind: "value", prop: "proxyTimeout", parse: "number",
                 description: "serve 上游空闲超时（毫秒，1-600000 整数），默认 30000"

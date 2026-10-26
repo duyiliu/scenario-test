@@ -17,7 +17,8 @@ npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts +
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
 npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
-npm run check          # npm run build && npm test
+npm run check          # npm run build && npm test && npm run test:browser
+npm run check:all      # 与 check 相同的兼容别名
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 
@@ -70,4 +71,4 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check && npm run test:browser`，打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check`（已含浏览器测试），打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。

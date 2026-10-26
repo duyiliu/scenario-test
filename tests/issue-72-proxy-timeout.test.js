@@ -86,8 +86,8 @@ function makeProject(backendPort) {
     return { project, configPath: path.join(dir, "scenario.config.js") };
 }
 
-test("contract v13 投射 --proxy-timeout 到 capabilities 与 --help", () => {
-    assert.equal(CONTRACT_VERSION, 13);
+test("contract v14 投射 --proxy-timeout 到 capabilities 与 --help", () => {
+    assert.equal(CONTRACT_VERSION, 14);
     const option = contract.cli.options["proxy-timeout"];
     assert.equal(option.kind, "value");
     assert.equal(option.prop, "proxyTimeout");
@@ -140,11 +140,11 @@ test("serve：缺省空闲超时为 30 秒，--proxy-timeout 可收紧/放宽（
         assert.equal(tightResponse.status, 502, "超过 --proxy-timeout 的上游应返回 502");
         assert.match(await tightResponse.text(), /Bad Gateway/);
 
-        // 3) 放宽到 5000ms：同一慢后端可完成（验收：--proxy-timeout 120000 生效的同一机制）
+        // 3) 放宽到 120000ms（验收值）：同一慢后端可完成；与 5000ms 共用同一 timeout 透传路径
         const loosePort = await freePort();
-        const looseChild = spawn(process.execPath, [cli, "serve", "--config", configPath, "--port", String(loosePort), "--proxy-timeout", "5000"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+        const looseChild = spawn(process.execPath, [cli, "serve", "--config", configPath, "--port", String(loosePort), "--proxy-timeout", "120000"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
         children.push(looseChild);
-        await waitForOutput(looseChild, "接口代理空闲超时: 5000ms（--proxy-timeout）");
+        await waitForOutput(looseChild, "接口代理空闲超时: 120000ms（--proxy-timeout）");
         const looseResponse = await fetch(`http://127.0.0.1:${loosePort}/api/slow`);
         assert.equal(looseResponse.status, 200, "放宽后的空闲超时应允许慢响应完成");
         assert.equal((await looseResponse.json()).slow, true);
