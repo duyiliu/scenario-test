@@ -34,7 +34,8 @@ test("多行字符串按真实换行拆行，行号 1 基对齐且行内容 JSON
     const expected = `line1-${pad}\nline2-${pad}\r\nline3-${pad}`;
     const actual = `line1-${pad}\nLINE2-${pad}\r\nline3-${pad}`;
     const lines = failureDiffLines(expected, actual, "");
-    const numberLines = lines.filter((line) => line.includes("2 | "));
+    // 差异行（-/+ 标注，行号列缺失侧补空格）各一条：期望第 2 行、实际第 2 行
+    const numberLines = lines.filter((line) => /^\s*[-+]\s*[\d ]*\| /.test(line));
     assert.ok(numberLines.length >= 2, "期望/实际两侧应各有第 2 行内容行");
     // CRLF 作为行分隔符被消费（与终端渲染一致），行内容干净不再含 \r；
     // 不可见字符差异体现在别处：见下方「末尾 \r」用例
@@ -48,18 +49,102 @@ test("多行字符串按真实换行拆行，行号 1 基对齐且行内容 JSON
     assert.ok(lines.some((line) => line.includes("长度 156 vs 156")), "长度信息以 vs 呈现");
 });
 
-test("末尾不可见字符差异可见：actual 多出的 \\r 拆出空行，行数差异暴露差异", () => {
+test("末尾不可见字符差异可见：actual 多出的 \\r 拆出空行，行级差异 + 行暴露", () => {
     // expected 无末尾 \r（1 行）、actual 有（拆成 2 行，第 2 行为空）——
-    // 「看起来一样其实含 \r」的差异通过分块行数与空行行可见，这正是行内容转义拆行的价值
+    // 「看起来一样其实含 \r」的差异通过行级对齐视图的 + 空行可见，这正是行内容转义拆行的价值
     const pad = "y".repeat(80);
     const lines = failureDiffLines(`ok-${pad}`, `ok-${pad}\r`, "");
-    const expectedBlock = lines.findIndex((line) => line.includes("期望值（expected）"));
-    const actualBlock = lines.findIndex((line) => line.includes("实际值（actual）"));
-    assert.ok(expectedBlock >= 0 && actualBlock > expectedBlock, "两侧均展开且期望块在前");
-    // 期望块 1 行内容（ok-…），实际块 2 行（第 2 行为空）
-    const expectedContent = lines.slice(expectedBlock, actualBlock).filter((line) => line.includes("| "));
-    assert.equal(expectedContent.length, 1, "期望块应恰好 1 行内容");
-    assert.ok(lines.slice(actualBlock).filter((line) => line.includes("| ")).some((line) => /\| $/.test(line)), "实际块应有末尾空行");
+    assert.ok(lines.some((line) => line.includes("行级差异")), "两侧均超限应使用行级对齐视图");
+    // 公共首行作为上下文行（空格标注，两侧行号均 1）
+    const contextLine = lines.find((line) => line.includes(" 1 1 | "));
+    assert.ok(contextLine && contextLine.includes("ok-"), "公共首行应作为上下文行出现");
+    // actual 多出的空行以 + 行呈现（期望侧行号列留空），内容为空
+    const plusLines = lines.filter((line) => /^\s*\+\s*2 \| $/.test(line));
+    assert.equal(plusLines.length, 1, "actual 侧多出的空行应恰好产生一条 + 行");
+    assert.ok(!lines.some((line) => /^\s*-\s/.test(line)), "无删除行");
+});
+
+test("两侧均超限的行级对齐：仅展开差异行 ±2 行上下文，-/+ 标注期望/实际行", () => {
+    const pad = "x".repeat(45);
+    const base = Array.from({ length: 20 }, (_, i) => `same-${i + 1}-${pad}`);
+    const expected = base.join("\n");
+    const actual = base.map((line, i) => (i === 4 ? `CHANGED-${i + 1}-${pad}` : line)).join("\n");
+    const lines = failureDiffLines(expected, actual, "");
+    assert.ok(lines.some((line) => line.includes("行级差异")), "应使用行级对齐 hunk 视图");
+    assert.ok(!lines.some((line) => line.includes("已省略")), "单一 hunk 无省略分隔行");
+    // 差异在第 5 行：- 期望行 / + 实际行成对出现
+    assert.ok(lines.some((line) => /^\s*-\s*5\s+\| same-5-/.test(line)), "期望第 5 行以 - 标注（实际列留空）");
+    assert.ok(lines.some((line) => /^\s*\+\s+5 \| CHANGED-5-/.test(line)), "实际第 5 行以 + 标注（期望列留空）");
+    // 上下文行（空格标注）覆盖第 3-7 行，窗口外不展开
+    for (const no of [3, 4, 6, 7]) {
+        assert.ok(lines.some((line) => line.includes(` ${no} ${no} | same-`)), `第 ${no} 行应作为上下文出现`);
+    }
+    for (const no of [2, 8]) {
+        assert.ok(!lines.some((line) => line.includes(` ${no} ${no} | same-`)), `窗口外第 ${no} 行不应展开`);
+    }
+    // 逐侧分块标题不再出现（行级对齐取代）
+    assert.ok(!lines.some((line) => line.includes("期望值（expected）")), "行级对齐取代逐侧分块");
+    assert.ok(!lines.some((line) => line.includes("实际值（actual）")), "行级对齐取代逐侧分块");
+});
+
+test("相邻差异间隔 ≤4 行合并为一个 hunk，>4 行以省略提示行分隔", () => {
+    const pad = "x".repeat(45);
+    const build = (changedNumbers) => Array.from({ length: 30 }, (_, i) => (changedNumbers.includes(i + 1) ? `DIFF-${i + 1}-${pad}` : `same-${i + 1}-${pad}`));
+    // 差异在第 5、9 行：中间仅 3 行相同（≤ 2×上下文），上下文重叠合并为一个 hunk
+    const merged = failureDiffLines(build([]).join("\n"), build([5, 9]).join("\n"), "");
+    assert.equal(merged.filter((line) => line.includes("行级差异")).length, 1, "单个视图标题");
+    assert.ok(!merged.some((line) => line.includes("已省略")), "间隔 ≤4 行应合并为一个 hunk");
+    assert.ok(merged.some((line) => /-\s+5\s+\| same-5-/.test(line)) && merged.some((line) => /\+\s+5\s+\| DIFF-5-/.test(line)), "第 5 行差异在合并 hunk 内");
+    assert.ok(merged.some((line) => /-\s+9\s+\| same-9-/.test(line)) && merged.some((line) => /\+\s+9\s+\| DIFF-9-/.test(line)), "第 9 行差异在合并 hunk 内");
+    // 差异在第 5、12 行：中间 6 行相同（> 2×上下文），分为两个 hunk 并以省略提示行分隔
+    const separated = failureDiffLines(build([]).join("\n"), build([5, 12]).join("\n"), "");
+    const separators = separated.filter((line) => line.includes("已省略"));
+    assert.equal(separators.length, 1, "两个 hunk 之间应恰好一条省略提示行");
+    // 两个 hunk 的窗口互不重叠：第一个 hunk 不应延伸到窗口外的第 9 行
+    assert.ok(!separated.some((line) => line.includes("same-9-")), "第一个 hunk 不应回溯到窗口外的第 9 行");
+    assert.ok(separated.some((line) => /\+\s+12\s+\| DIFF-12-/.test(line)), "第 12 行差异在第二个 hunk 内");
+});
+
+test("两侧均为结构值：pretty JSON 行级对齐，仅差异行 ±2 行上下文", () => {
+    const build = (flag) => ({ items: Array.from({ length: 15 }, (_, i) => ({ index: i, tag: `t${i}`, flag: i === 7 ? flag : "same" })) });
+    const lines = failureDiffLines(build("left"), build("right"), "");
+    assert.ok(lines.some((line) => line.includes("行级差异")), "结构值长值同样走行级对齐");
+    assert.ok(lines.some((line) => /-\s+\d+\s+\|\s+"flag": "left"/.test(line)), "期望侧差异行以 - 标注（实际列留空）");
+    assert.ok(lines.some((line) => /\+\s+\d+\s+\|\s+"flag": "right"/.test(line)), "实际侧差异行以 + 标注（期望列留空）");
+    assert.ok(lines.length <= 21, `仅差异 hunk 应远小于逐侧全量展开（≤21 行），实际 ${lines.length}`);
+});
+
+test("一侧字符串一侧结构值：类型不同退回逐侧分块", () => {
+    const long = "y".repeat(100);
+    const lines = failureDiffLines(long, { key: long }, "");
+    assert.ok(lines.some((line) => line.includes("期望值（expected）")), "类型不同时保留逐侧分块");
+    assert.ok(lines.some((line) => line.includes("实际值（actual）")), "类型不同时保留逐侧分块");
+    assert.ok(!lines.some((line) => line.includes("行级差异")), "类型不同不做行级对齐");
+});
+
+test("两侧行数规模超护栏：退回逐侧分块而非行级对齐（防 O(n·m) 失控）", () => {
+    // 3000 行 × 3000 行且几乎全不同：对齐中段规模约 9e6 > MAX_DIFF_CELLS 护栏
+    const expectedLines = Array.from({ length: 3000 }, (_, i) => `expected-line-${i}-` + "x".repeat(40));
+    const actualLines = Array.from({ length: 3000 }, (_, i) => `actual-line-${i}-` + "y".repeat(40));
+    const lines = failureDiffLines(expectedLines.join("\n"), actualLines.join("\n"), "");
+    assert.ok(lines.some((line) => line.includes("期望值（expected）")), "超护栏退回逐侧分块");
+    assert.ok(lines.some((line) => line.includes("实际值（actual）")), "超护栏退回逐侧分块");
+    assert.ok(!lines.some((line) => line.includes("行级差异")), "超护栏不做行级对齐");
+    assert.ok(lines.some((line) => line.includes("已截断")), "退回路径仍保留 20 行截断兜底");
+});
+
+test("行级对齐输出总量仍受 20 行截断兜底", () => {
+    const pad = "x".repeat(45);
+    const expected = Array.from({ length: 100 }, (_, i) => `same-${i + 1}-${pad}`);
+    // 差异行分散（间隔 > 4）：多个 hunk，总行数超 20 触发截断
+    const changed = expected.map((line, i) => ((i + 1) % 8 === 0 ? `DIFF-${i + 1}-${pad}` : line));
+    const lines = failureDiffLines(expected.join("\n"), changed.join("\n"), "");
+    // hunk 块截断为 20 行 + 1 行截断提示；两串不等再追加 3 行首个差异定位
+    assert.equal(lines.length, 24, `应截断为 21 行 hunk 块 + 3 行差异定位，实际 ${lines.length}`);
+    assert.match(lines[20], /共 \d+ 行，已截断/);
+    assert.ok(lines[0].includes("行级差异"), "视图标题保留在首行");
+    assert.ok(lines[21].includes("首个差异在第"), "差异定位行紧随截断提示之后");
+    assert.ok(lines.slice(1, 20).some((line) => /\+\s+8\s+\| DIFF-8-/.test(line)), "首个 hunk 的差异行应在截断前可见");
 });
 
 test("字符串首个差异定位：行数、窗口截断、相同前缀计算", () => {

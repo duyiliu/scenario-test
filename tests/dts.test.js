@@ -50,6 +50,7 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
     // CLI 选项名单同样由 contract 投影（新选项必须出现在 d.ts，而不是只靠 Record<string, ...> 泛化）
     assert.deepEqual(parseUnion(dts, "CliOption"), Object.keys(contract.cli.options).sort());
+    assert.deepEqual(parseUnion(dts, "RetryOn"), [...contract.retryUntil.retryOn].sort());
 });
 
 test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
@@ -78,6 +79,17 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     // WhenDefinition 的来源/响应级目标与 contract 一致
     assert.match(dts, /from\?: WhenSource/);
     assert.match(dts, /target\?: WhenTarget/);
+    // retryUntil.retryOn 与 onAttempt 错误信息由 contract/引擎行为投射
+    assert.match(dts, /retryOn\?: RetryOn\[\]/);
+    assert.match(dts, /errorType: "" \| "error" \| "timeout";/);
+    assert.match(dts, /errorMessage: string;/);
+});
+
+test("d.ts RequestDefinition 覆盖 request.path 与 request.timeoutMs", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    const members = interfaceMembers(dts, "RequestDefinition");
+    assert.ok(members.has("path"), "d.ts RequestDefinition 缺少 request.path（合法写法会被 TS 对象字面量检查拒绝）");
+    assert.ok(members.has("timeoutMs"), "d.ts RequestDefinition 缺少 request.timeoutMs");
 });
 
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {
@@ -148,6 +160,8 @@ const scenario = { name: "示例", steps: [{ name: "请求", method: "GET", path
 const entry = { id: "health", url: "scenarios/health.js", manual: true };
 /** @type {import('./types/scenario-test').Assertion} */
 const assertion = { path: "code", oneOf: [200, 201] };
+/** @type {import('./types/scenario-test').RequestDefinition} */
+const request = { path: "api/{{vars.id}}", timeoutMs: "{{vars.timeout}}", headers: { "X-Token": "{{vars.token}}" } };
 `, "utf8");
         // 非法用例：未知断言键应报错；startsWith 期望值必须 string
         fs.writeFileSync(path.join(dir, "bad.js"), `// @ts-check
