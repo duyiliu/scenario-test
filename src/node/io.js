@@ -81,8 +81,11 @@ export function createNodeIo(workspace = process.cwd(), options = {}) {
             const filename = definition.filename || path.basename(absolutePath);
             const form = new FormData();
             // Node 19.8+ 的 openAsBlob 让 FormData 直接引用文件（无需整文件入内存）；
-            // Node 18 没有该 API 时回退 readFileSync，保持既有兼容性
-            const blob = typeof fs.openAsBlob === "function"
+            // Node 18 没有该 API 时回退 readFileSync，保持既有兼容性。
+            // Windows 上 Blob 的文件句柄要到垃圾回收后才关闭，上传后文件仍被占用，
+            // 删除/覆盖工作区会报 ENOTEMPTY/EPERM；因此在 Windows 统一回退为内存 Blob。
+            const canOpenAsBlob = typeof fs.openAsBlob === "function" && process.platform !== "win32";
+            const blob = canOpenAsBlob
                 ? await fs.openAsBlob(absolutePath)
                 : new Blob([fs.readFileSync(absolutePath)]);
             form.append(fieldName, blob, filename);
