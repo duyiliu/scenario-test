@@ -43,8 +43,9 @@ test("when 来源含 vars/lastResponse/status；extract 来源与 required 语�
     assert.deepEqual(contract.assertions.from, ["body", "vars", "headers", "bodyText"]);
     assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
+    assert.deepEqual(contract.extract.scopes, ["step", "suite"]);
     assert.deepEqual(contract.extract.targets, ["status"]);
-    assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default"]);
+    assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default", "scope"]);
     assert.equal(contract.extract.required, "boolean");
     assert.deepEqual(contract.reservedVars, ["runId", "runNo", "__proto__", "constructor", "prototype"]);
     assert.deepEqual(contract.generatedVars.types, ["timestamp", "uuidHex", "md5", "signature", "idcard", "luhn", "phone", "uscc", "uuid", "enum"]);

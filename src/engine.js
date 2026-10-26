@@ -5,10 +5,12 @@ import {
     assertNotReservedVar,
     buildAssertions,
     buildUrl,
+    collectMissingTemplateVars,
     hasHeader,
     headersToObject,
     isPlainObject,
     joinUrl,
+    missingTemplateVarWarnings,
     parseBody,
     evaluateWhen,
     queryPairs,
@@ -140,7 +142,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         if (!contract.generatedVars.types.includes(definition.type)) {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
-        applyGeneratedVar(definition, vars, identifiers);
+        applyGeneratedVar(definition, vars, identifiers, { now: options.now });
     }
     // vars 由引擎统一构建，执行期 extract 是唯一写入方；不做冻结，场景/插件不应直接修改
     return vars;
@@ -148,15 +150,35 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
 
 export function createRuntime(scenario, options = {}) {
     const config = options.config || {};
-    return {
+    // run 级共享变量（#69）：suite 提取产物作为最低优先级基底，配置/场景 vars 可显式覆盖
+    const suiteVars = isPlainObject(options.suiteVars) ? options.suiteVars : {};
+    const runtime = {
         vars: buildGeneratedVars(
             scenario,
-            { ...(config.vars || {}), ...(options.vars || {}) },
-            options.environmentVariables || {}
+            { ...suiteVars, ...(config.vars || {}), ...(options.vars || {}) },
+            options.environmentVariables || {},
+            { now: options.now }
         ),
+        suiteVars,
         lastResponse: null,
-        lastResponseBody: null
+        lastResponseBody: null,
+        // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
+        cookieJar: []
     };
+    return runtime;
+}
+
+// 收集本步骤模板引用的未定义顶层变量（#66）。只扫描真正参与解析的字段，
+// 不扫描 name/adapter（前者原样展示、后者是模块名）
+function collectStepMissingVars(step, runtime, missing) {
+    collectMissingTemplateVars(step.path, runtime.vars, missing);
+    collectMissingTemplateVars(step.params, runtime.vars, missing);
+    collectMissingTemplateVars(step.request, runtime.vars, missing);
+    collectMissingTemplateVars(step.when, runtime.vars, missing);
+    collectMissingTemplateVars(step.assertions, runtime.vars, missing);
+    collectMissingTemplateVars(step.extract, runtime.vars, missing);
+    collectMissingTemplateVars(step.saveResponseAs, runtime.vars, missing);
+    return missing;
 }
 
 function chooseAdapter(step, adapters) {
@@ -212,20 +234,117 @@ function decoderForContentType(contentType) {
     try { return new TextDecoder(match[1]); } catch { return new TextDecoder(); }
 }
 
+// ===== 内存 Cookie Jar（#65，仅 run --cookie-jar 开启）=====
+// Set-Cookie 是响应级元数据，不进入对外 response 形状（Symbol 不会被 JSON 序列化）
+const SET_COOKIES = Symbol("scenario-test.setCookies");
+
+function defaultCookiePath(pathname) {
+    const index = String(pathname || "/").lastIndexOf("/");
+    if (index <= 0) return "/";
+    return String(pathname).slice(0, index) || "/";
+}
+
+function parseSetCookie(line, requestUrl) {
+    const text = String(line || "").trim();
+    if (!text) return null;
+    const parts = text.split(";");
+    const pair = parts.shift() || "";
+    const separator = pair.indexOf("=");
+    if (separator <= 0) return null;
+    const cookie = {
+        name: pair.slice(0, separator).trim(),
+        value: pair.slice(separator + 1).trim(),
+        domain: requestUrl.hostname.toLowerCase(),
+        path: defaultCookiePath(requestUrl.pathname),
+        expiresAt: Infinity,
+        secure: false
+    };
+    for (const attribute of parts) {
+        const eq = attribute.indexOf("=");
+        const key = (eq >= 0 ? attribute.slice(0, eq) : attribute).trim().toLowerCase();
+        const value = eq >= 0 ? attribute.slice(eq + 1).trim() : "";
+        if (key === "domain" && value) cookie.domain = value.replace(/^\./, "").toLowerCase();
+        else if (key === "path" && value.startsWith("/")) cookie.path = value;
+        else if (key === "max-age") {
+            const seconds = Number(value);
+            if (Number.isFinite(seconds)) cookie.expiresAt = Date.now() + seconds * 1000;
+        } else if (key === "expires") {
+            const timestamp = Date.parse(value);
+            if (Number.isFinite(timestamp)) cookie.expiresAt = timestamp;
+        } else if (key === "secure") cookie.secure = true;
+    }
+    return cookie;
+}
+
+function hostMatchesCookie(hostname, domain) {
+    const host = String(hostname || "").toLowerCase();
+    return host === domain || host.endsWith(`.${domain}`);
+}
+
+function pathMatchesCookie(pathname, cookiePath) {
+    if (pathname === cookiePath) return true;
+    const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
+    return pathname.startsWith(prefix);
+}
+
+function activeJarCookies(jar, url) {
+    return (jar || []).filter((cookie) =>
+        cookie.expiresAt > Date.now()
+        && hostMatchesCookie(url.hostname, cookie.domain)
+        && pathMatchesCookie(url.pathname || "/", cookie.path)
+        && (!cookie.secure || url.protocol === "https:"));
+}
+
+function storeSetCookies(runtime, lines, requestUrl) {
+    if (!lines || !lines.length) return;
+    if (!Array.isArray(runtime.cookieJar)) runtime.cookieJar = [];
+    for (const line of lines) {
+        const cookie = parseSetCookie(line, requestUrl);
+        if (!cookie) continue;
+        runtime.cookieJar = runtime.cookieJar.filter((item) =>
+            !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
+        // Max-Age<=0 / 已过期：删除同名 Cookie，不写入
+        if (cookie.expiresAt > Date.now()) runtime.cookieJar.push(cookie);
+    }
+}
+
+// 步骤显式 Cookie（含全局 cookie 参数合并结果）同名优先于 Jar
+function applyCookieJar(headers, runtime, url) {
+    const explicitKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
+    const explicitText = explicitKey ? String(headers[explicitKey] || "") : "";
+    const explicitNames = new Set(explicitText.split(";").map((pair) => pair.split("=")[0].trim().toLowerCase()).filter(Boolean));
+    const jarText = activeJarCookies(runtime.cookieJar, url)
+        .filter((cookie) => !explicitNames.has(cookie.name.toLowerCase()))
+        .map((cookie) => `${cookie.name}=${cookie.value}`)
+        .join("; ");
+    if (!jarText) return;
+    if (explicitKey) headers[explicitKey] = `${jarText}; ${explicitText}`;
+    else headers.Cookie = jarText;
+}
+
 async function readResponse(response, step, io, runtime, signal) {
     const headers = headersToObject(response.headers);
     const contentType = String(headers["content-type"] || "");
+    // Set-Cookie 可能是多值：优先用 Headers.getSetCookie()，缺失时回退单值。
+    // 必须在 saveResponseAs 提前返回之前采集，否则落盘步骤会丢 Cookie
+    const setCookies = typeof response.headers?.getSetCookie === "function"
+        ? response.headers.getSetCookie()
+        : (headers["set-cookie"] ? [headers["set-cookie"]] : []);
     const chunks = await readBodyChunks(response, signal);
     if (step.saveResponseAs && io?.saveResponse) {
         const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
         let offset = 0;
         for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
         const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType, headers });
-        return { status: response.status, headers, body: saved, bodyText: null };
+        const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+        if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+        return savedResponse;
     }
     const decoder = decoderForContentType(contentType);
     const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
-    return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
+    const responseData = { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
+    if (setCookies.length) responseData[SET_COOKIES] = setCookies;
+    return responseData;
 }
 
 async function executeHttp(step, runtime, options) {
@@ -275,6 +394,12 @@ async function executeHttp(step, runtime, options) {
     if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
         headers.Authorization = options.authorization;
     }
+    const requestUrl = joinUrl(options.baseUrl, requestPath);
+    let parsedRequestUrl = null;
+    if (options.cookieJar) {
+        try { parsedRequestUrl = new URL(requestUrl); } catch { parsedRequestUrl = null; }
+        if (parsedRequestUrl) applyCookieJar(headers, runtime, parsedRequestUrl);
+    }
     const fetchOptions = { method, headers };
     if (request.credentials !== undefined) fetchOptions.credentials = request.credentials;
     if (request.redirect !== undefined) fetchOptions.redirect = request.redirect;
@@ -299,8 +424,11 @@ async function executeHttp(step, runtime, options) {
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     fetchOptions.signal = requestSignal.signal;
     try {
-        const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
+        const response = await options.fetch(requestUrl, fetchOptions);
         const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+        if (options.cookieJar && parsedRequestUrl) {
+            storeSetCookies(runtime, responseData[SET_COOKIES], parsedRequestUrl);
+        }
         return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
     } catch (error) {
         // 失败也返回注入后的最终请求（Authorization/全局头/合并 cookie/query）与超时标记，
@@ -458,6 +586,8 @@ export function createEngine(engineOptions = {}) {
         if (step.when !== undefined) {
             const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
             if (!shouldRun) {
+                // when 模板引用缺失变量时仍要告警（条件本身按来源缺失/空串处理）
+                const missing = collectMissingTemplateVars(step.when, runtime.vars, new Set());
                 return {
                     name: step.name || "未命名步骤",
                     method: "SKIP",
@@ -466,8 +596,9 @@ export function createEngine(engineOptions = {}) {
                     duration: now() - startedAt,
                     passed: true,
                     skipped: true,
+                    always: step.always === true,
                     error: "",
-                    warnings: [],
+                    warnings: missingTemplateVarWarnings(missing),
                     assertions: [],
                     request: null,
                     response: null
@@ -477,6 +608,8 @@ export function createEngine(engineOptions = {}) {
         let lastExecution;
         let assertions = [];
         let stepWarnings = [];
+        // 未定义模板变量告警跨 retryUntil 尝试累积（同一变量只报一次）
+        const missingVars = new Set();
         const retry = step.retryUntil || null;
         // maxAttempts 语义 = 最大尝试总次数（含首次请求），与字段名一致；默认 10。
         // 历史实现为 maxAttempts + 1（重试次数语义），与字段名矛盾，v0.5.18 起对齐。
@@ -497,6 +630,8 @@ export function createEngine(engineOptions = {}) {
                     );
                 }
 
+                // 每次尝试前扫描模板：首次解析时才可能发现新缺失；Set 去重保证 retryUntil 只报一次
+                collectStepMissingVars(step, runtime, missingVars);
                 const selection = chooseAdapter(step, adapters);
                 const attemptStartedAt = now();
                 lastExecution = selection
@@ -512,7 +647,7 @@ export function createEngine(engineOptions = {}) {
                 // lastResponseBody 是解析后的响应体（双端一致）；原始文本见 response.bodyText
                 runtime.lastResponseBody = lastExecution.response.body;
                 const extractResult = applyExtract(step, lastExecution.response, runtime);
-                stepWarnings = extractResult.warnings;
+                stepWarnings = [...missingTemplateVarWarnings(missingVars), ...extractResult.warnings];
                 assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
                 // required: true 且路径不存在 → 当前步骤失败
                 if (extractResult.failures.length) assertions.push(...extractResult.failures);
@@ -520,9 +655,17 @@ export function createEngine(engineOptions = {}) {
 
                 // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
                 // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
-                // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
+                // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）。
+                // #8 指数退避：第 n 次重试等待 intervalMs * factor^(n-1)，封顶 maxIntervalMs。
                 const rawIntervalMs = Number(retry.intervalMs);
-                const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
+                const baseIntervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
+                const factor = Number(retry.intervalFactor);
+                const maxIntervalMs = Number(retry.maxIntervalMs);
+                const backoff = Number.isFinite(factor) && factor >= 1 ? factor ** (attempt - 1) : 1;
+                const intervalMs = Math.max(100, Math.min(
+                    baseIntervalMs * backoff,
+                    Number.isFinite(maxIntervalMs) && maxIntervalMs > 0 ? maxIntervalMs : Number.POSITIVE_INFINITY
+                ));
                 // 重试进度回调：轮询步骤在间隔内长时间静默，CLI/工作台可据此
                 // 输出「第 N/M 次未通过，X 后重试」避免日志看起来像挂死。
                 // ?? 与 onStep 合并口径一致：runOptions 显式传 undefined 视为未提供、回落引擎级
@@ -544,6 +687,7 @@ export function createEngine(engineOptions = {}) {
                 status: lastExecution.response.status,
                 duration: now() - startedAt,
                 passed: !failed,
+                always: step.always === true,
                 error: failed?.name || "",
                 warnings: stepWarnings,
                 assertions,
@@ -577,6 +721,7 @@ export function createEngine(engineOptions = {}) {
                 status: cancelled ? "CANCELLED" : (timedOut ? "TIMEOUT" : "ERROR"),
                 duration: now() - startedAt,
                 passed: false,
+                always: step.always === true,
                 cancelled,
                 timedOut,
                 error: errorMessage,
@@ -594,11 +739,45 @@ export function createEngine(engineOptions = {}) {
         const runtime = createRuntime(scenario, {
             config,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
-            environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
+            environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+            suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
+            now: runOptions.now || engineOptions.now
         });
         const results = [];
+        // failurePolicy:stop 后只继续执行 always 步骤（#56）；用户取消时不补跑清理
+        let halted = false;
         for (let index = 0; index < scenario.steps.length; index += 1) {
-            const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
+            const step = scenario.steps[index];
+            if (halted && step.always !== true) {
+                // 已取消时不再补跑任何步骤（包括 always）：取消语义优先
+                if (runOptions.signal?.aborted) break;
+                const skipped = {
+                    name: step.name || "未命名步骤",
+                    method: "SKIP",
+                    path: "",
+                    status: "SKIPPED",
+                    duration: 0,
+                    passed: true,
+                    skipped: true,
+                    error: "",
+                    warnings: ["前置步骤失败（failurePolicy: stop），非 always 步骤未执行"],
+                    assertions: [],
+                    request: null,
+                    response: null,
+                    stepNo: index + 1
+                };
+                results.push(skipped);
+                try {
+                    await (runOptions.onStep ?? engineOptions.onStep)?.(skipped, index, runtime);
+                } catch (hookError) {
+                    skipped.passed = false;
+                    skipped.skipped = false;
+                    skipped.status = "ERROR";
+                    skipped.error = `onStep 回调抛错: ${hookError?.message || hookError}`;
+                }
+                continue;
+            }
+            const result = await runStep(step, runtime, { ...runOptions, config });
             result.stepNo = index + 1;
             results.push(result);
             // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）。
@@ -617,7 +796,7 @@ export function createEngine(engineOptions = {}) {
                 result.error = message;
                 result.assertions.push({ name: "onStep 回调无异常", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "无异常" });
             }
-            if (!result.passed && scenario.failurePolicy !== "continue") break;
+            if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
             if (runOptions.signal?.aborted) break;
         }
         // SKIP 可观测性：skipped 优先于 passed，绝不把 SKIP 计入 passedSteps/executed
@@ -642,7 +821,10 @@ export function createEngine(engineOptions = {}) {
             failed,
             skipped,
             results,
-            vars: runtime.vars
+            // 取消导致未进入循环的剩余步骤（供 JUnit/报告标注）
+            unexecuted: scenario.steps.slice(results.length).map((step) => step.name || "未命名步骤"),
+            vars: runtime.vars,
+            suiteVars: { ...(runtime.suiteVars || {}) }
         };
     }
 

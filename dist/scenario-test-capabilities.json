@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 12,
+  "contractVersion": 13,
   "assertions": {
     "operators": {
       "exists": {
@@ -23,6 +23,10 @@
       "each": {
         "description": "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
         "valueType": "assertion"
+      },
+      "shape": {
+        "description": "结构级校验（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构，失败明细定位到字段路径与期望/实际类型",
+        "valueType": "any"
       },
       "matches": {
         "description": "正则表达式匹配字符串化后的实际值",
@@ -85,7 +89,26 @@
       "gte",
       "lt",
       "lte"
-    ]
+    ],
+    "shape": {
+      "keys": [
+        "type",
+        "required",
+        "properties",
+        "items",
+        "enum",
+        "additionalProperties"
+      ],
+      "types": [
+        "object",
+        "array",
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    }
   },
   "when": {
     "sources": [
@@ -106,7 +129,8 @@
       "target",
       "header",
       "required",
-      "default"
+      "default",
+      "scope"
     ],
     "from": [
       "body",
@@ -114,12 +138,16 @@
       "bodyText",
       "response"
     ],
+    "scopes": [
+      "step",
+      "suite"
+    ],
     "targets": [
       "status"
     ],
     "required": "boolean",
     "default": "any",
-    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配"
+    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配；scope: \"suite\" 时提取值写入本次 run 共享变量，后续场景可直接用 {{vars.<name>}} 引用（默认 step 仅当前场景可见）"
   },
   "reservedVars": [
     "runId",
@@ -155,14 +183,16 @@
       "id",
       "name",
       "url",
-      "manual"
+      "manual",
+      "tags"
     ],
     "environmentKeys": [
       "key",
       "name",
       "baseUrl",
       "globals",
-      "authorization"
+      "authorization",
+      "vars"
     ],
     "variableKeys": [
       "name",
@@ -174,6 +204,10 @@
     "manual": {
       "type": "boolean",
       "note": "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
+    },
+    "tags": {
+      "type": "string[]",
+      "note": "配置清单项声明 tags 用于 run --tag 筛选（重复参数之间为 OR，单个参数内逗号分隔为 AND；不会自动放行 manual:true 场景）；场景顶层 tags 为场景元数据"
     }
   },
   "scenario": {
@@ -183,7 +217,8 @@
       "vars",
       "envVars",
       "generatedVars",
-      "failurePolicy"
+      "failurePolicy",
+      "tags"
     ],
     "stepKeys": [
       "name",
@@ -198,12 +233,21 @@
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ],
     "failurePolicies": [
       "stop",
       "continue"
-    ]
+    ],
+    "retryUntilKeys": [
+      "maxAttempts",
+      "intervalMs",
+      "maxElapsedMs",
+      "intervalFactor",
+      "maxIntervalMs"
+    ],
+    "note": "always: true 的步骤在前置普通步骤失败（failurePolicy: stop）后仍会执行，用于 teardown；用户取消执行时不运行。retryUntil 第 n 次重试间隔 = intervalMs * intervalFactor^(n-1)，封顶 maxIntervalMs，且不低于 100ms"
   },
   "cli": {
     "commands": [
@@ -240,6 +284,32 @@
         "kind": "value",
         "description": "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs",
         "parse": "number"
+      },
+      "proxy-timeout": {
+        "kind": "value",
+        "description": "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）",
+        "parse": "number"
+      },
+      "data": {
+        "kind": "value",
+        "description": "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景"
+      },
+      "junit": {
+        "kind": "value",
+        "description": "输出 JUnit XML 报告到指定文件"
+      },
+      "tag": {
+        "kind": "value",
+        "description": "按标签筛选场景（可重复；重复参数之间为 OR，单个参数内逗号分隔为 AND）",
+        "repeatable": true
+      },
+      "bail": {
+        "kind": "flag",
+        "description": "任一场景失败后不再启动后续场景（已执行场景跑完）"
+      },
+      "cookie-jar": {
+        "kind": "flag",
+        "description": "run 为每个场景启用内存 Cookie Jar（自动携带 Set-Cookie，默认关闭）"
       },
       "port": {
         "kind": "value",

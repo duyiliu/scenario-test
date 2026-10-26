@@ -188,12 +188,13 @@ scenario-test/
 
 - 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
-- `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
+- `serve` 提供静态服务和同源接口代理：按浏览器当前环境逐请求路由（切换环境立即生效），同源请求的 `Origin`/`Referer` 会改写为目标源；上游空闲超时默认 30 秒，可用 `--proxy-timeout <ms>` 调整（1-600000）。为便于内网联调，https 上游沿用本地开发代理的 `rejectUnauthorized: false`（不校验自签证书），不要将 serve 暴露到本机回环之外。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
-- `manual: true` 场景默认不参与 `--all`。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
+- `run --bail` 在首个失败场景后停止启动后续场景；`run --data <json|jsonl|csv>` 按行注入变量执行；`run --junit <file>` 输出 JUnit XML；`run --cookie-jar` 启用单场景内存 Cookie Jar。
+- `manual: true` 场景默认不参与 `--all`；场景清单可声明 `tags`，`run --tag smoke` 筛选（重复参数 OR，逗号分隔 AND）。
+- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、环境级 `envs[].vars`、`extract scope: "suite"` 跨场景复用（如登录 token）、`shape` 结构断言、`always` 清理步骤与 `retryUntil` 指数退避、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
@@ -262,8 +263,12 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 ```powershell
 npm install
 npm run build
-npm test
-npm run test:browser
+npm run test:unit        # 单测/集成（tests/*.test.js）
+npm run test:coverage    # 仅 src/ 口径，line 90 / branch 80
+npm run test:browser     # Playwright 浏览器测试
+npm run check:all        # 构建 + unit + browser + ui-style + 行尾审计
 ```
+
+CI 在 GitHub Actions 上覆盖 Node 20/22 × Ubuntu/Windows 单测、覆盖率、浏览器测试与行尾审计，见 `.github/workflows/ci.yml`。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。

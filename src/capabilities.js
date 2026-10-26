@@ -19,7 +19,8 @@ export function buildCapabilities(inputContract = contract) {
             targets: [...(assertions.targets || [])],
             from: [...(assertions.from || [])],
             note: assertions.note,
-            numericOperators: [...assertions.numericOperators]
+            numericOperators: [...assertions.numericOperators],
+            ...(assertions.shape ? { shape: { keys: [...assertions.shape.keys], types: [...assertions.shape.types] } } : {})
         },
         when: {
             sources: [...when.sources],
@@ -29,6 +30,7 @@ export function buildCapabilities(inputContract = contract) {
         extract: {
             metaKeys: [...(extract.metaKeys || [])],
             from: [...extract.from],
+            scopes: [...(extract.scopes || [])],
             targets: [...(extract.targets || [])],
             required: extract.required,
             default: extract.default,
@@ -46,12 +48,15 @@ export function buildCapabilities(inputContract = contract) {
             scenarioItemKeys: [...config.scenarioItemKeys],
             environmentKeys: [...config.environmentKeys],
             variableKeys: [...config.variableKeys],
-            manual: { ...config.manual }
+            manual: { ...config.manual },
+            tags: { ...(config.tags || {}) }
         },
         scenario: {
             keys: [...scenario.keys],
             stepKeys: [...scenario.stepKeys],
-            failurePolicies: [...scenario.failurePolicies]
+            failurePolicies: [...scenario.failurePolicies],
+            retryUntilKeys: [...(scenario.retryUntilKeys || [])],
+            ...(scenario.note ? { note: scenario.note } : {})
         },
         cli: {
             commands: [...cli.commands],
@@ -102,6 +107,9 @@ export function renderCapabilitiesText(capabilities) {
     lines.push(`  ${capabilities.when.note}`);
     lines.push("");
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);
+    if (capabilities.extract.scopes?.length) {
+        lines.push(`  提取作用域 scope: ${capabilities.extract.scopes.join(" / ")}（suite 写入本次 run 共享变量）`);
+    }
     if (capabilities.extract.targets?.length) {
         lines.push(`  提取目标 target: ${capabilities.extract.targets.join(" / ")}；允许字段: ${capabilities.extract.metaKeys.join(" / ")}`);
     }
@@ -118,6 +126,10 @@ export function renderCapabilitiesText(capabilities) {
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    if (capabilities.scenario.retryUntilKeys?.length) {
+        lines.push(`retryUntil 字段: ${capabilities.scenario.retryUntilKeys.join(" / ")}`);
+    }
+    if (capabilities.scenario.note) lines.push(`  ${capabilities.scenario.note}`);
     lines.push("");
     lines.push("CLI 命令:");
     for (const command of capabilities.cli.commands) {

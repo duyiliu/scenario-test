@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 契约 v13
+
+- 断言新增 `shape`（jsonSchema-lite）：`type`/`required`/`properties`/`items`/`enum`/`additionalProperties`，失败明细按字段路径定位，可在 `each` 子断言内嵌套；未知 shape 键定义期拒绝。
+- 步骤新增 `always: true`：前置普通步骤失败（`failurePolicy: stop`）后仍执行清理步骤；用户取消时不执行，未执行的普通步骤在报告中标记 SKIP。
+- `retryUntil` 新增 `intervalFactor`/`maxIntervalMs` 指数退避（第 n 次间隔 `intervalMs * factor^(n-1)`，下限 100ms、封顶 maxIntervalMs）。
+- `extract` 新增 `scope: "suite"`：提取值写入本次 run 共享变量，后续场景可直接引用（如登录 token）。
+- 配置场景项/场景顶层新增 `tags`，`run --tag` 支持筛选（重复参数 OR、逗号分隔 AND）。
+- 环境新增 `envs[].vars`：优先级 `config.vars < env.vars < --vars`，浏览器切换环境同步生效。
+- CLI 新增 `--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--proxy-timeout`。
+
+### 修复
+
+- 敏感变量脱敏（#90）：`maskSecret` 接入 CLI 文本 diff、失败响应体、JUnit 与 `--json` 输出；`vars`/`authorization` 等命中变量名的值统一脱敏，浏览器复用同一变量名名单。
+- serve 代理按浏览器当前环境逐请求路由（#60），未知环境返回 502；同源请求的 `Origin`/`Referer` 改写为目标源（#67），外部来源原样转发。
+- 未定义模板变量不再静默：步骤级 `warnings` 提示 `vars.<name>`（#66），同一变量/重试轮次只报一次。
+- `run --cookie-jar`：单场景内存 Cookie Jar，支持 Domain/Path/Expires/Max-Age/Secure，显式 Cookie 同名优先，不落盘、不跨场景（#65）。
+
+### 测试与工程化
+
+- 新增 DSL/CLI/serve 特性测试；serve 拆为 `src/cli/serve-server.js` 以便单测（#33）。
+- `test:coverage` 只统计 `src/`（排除 dist/tests/scripts/browser），阈值 line 90 / branch 80（#48）。
+- 新增 GitHub Actions：Node 20/22 × Ubuntu/Windows 单测与行尾审计、覆盖率、Playwright 浏览器测试（#47）。
+- `generatedVars timestamp` 支持注入时钟（`options.now`），测试改为精确断言（#12）。
+
 ### CLI
 
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
