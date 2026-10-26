@@ -9,6 +9,7 @@ import test from "node:test";
 import * as nodeCore from "../src/core.js";
 import { copyText, esc, fmt, safeJson } from "../src/browser/ui/ui-utils.js";
 import { applyCurlProxyHeaders, buildProxyEnvHeaders } from "../src/browser/ui/runtime.js";
+import { buildStepCurl } from "../src/browser/ui/curl.js";
 
 function runtimeWith(vars = {}) {
     return { vars, lastResponse: null, lastResponseBody: null };
@@ -509,6 +510,27 @@ test("serve 代理 curl 头：同名头大小写不敏感覆盖，模板解析�
     const direct = { "X-Trace": "t" };
     nodeCore.setHeaderValue(direct, "x-trace", "override");
     assert.deepEqual(direct, { "x-trace": "override" });
+});
+
+test("buildStepCurl 在代理模式携带环境路由头，外部绝对 URL 不泄漏", () => {
+    const step = {
+        method: "GET",
+        path: "api/health",
+        request: { headers: { "X-Scenario-Test-Env": "local" } }
+    };
+    const relative = buildStepCurl(step, {
+        baseUrl: "http://127.0.0.1:4300",
+        proxyHeaders: { "x-scenario-test-env": "prod" }
+    });
+    assert.match(relative, /-H 'x-scenario-test-env: prod'/);
+    assert.doesNotMatch(relative, /X-Scenario-Test-Env: local/, "路由头必须大小写不敏感覆盖步骤同名头");
+
+    const external = buildStepCurl({ ...step, path: "https://external.example/api" }, {
+        baseUrl: "http://127.0.0.1:4300",
+        proxyHeaders: { "x-scenario-test-env": "prod" }
+    });
+    assert.match(external, /-H 'X-Scenario-Test-Env: local'/);
+    assert.doesNotMatch(external, /x-scenario-test-env: prod/, "外部绝对 URL 不得携带本地路由头");
 });
 
 test("serve 环境路由头：非 ASCII / 特殊字符 key 经 URL 编码后可安全作为 Fetch 头值", () => {

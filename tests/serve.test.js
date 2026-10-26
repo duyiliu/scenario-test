@@ -138,7 +138,10 @@ test("serve：环境 baseUrl 为纯空白时回退顶层 baseUrl，doctor 同口
     const configPath = path.join(dir, "scenario.config.js");
     fs.writeFileSync(configPath, `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         baseUrl: "http://127.0.0.1:${mockPort}",
-        envs: [{ key: "local", name: "本地", baseUrl: "   " }],
+        envs: [
+            { key: "local", name: "本地", baseUrl: "   " },
+            { key: "switched", name: "切换环境", baseUrl: "   " }
+        ],
         defaultEnvKey: "local",
         scenarios: []
     }));`, "utf8");
@@ -161,6 +164,14 @@ test("serve：环境 baseUrl 为纯空白时回退顶层 baseUrl，doctor 同口
         assert.equal(response.status, 200);
         assert.equal(received.length, 1, "代理请求应到达顶层 baseUrl 指定的上游");
         assert.equal(received[0].url, "/api/top-level-fallback");
+
+        // 切换到另一个同样未声明 baseUrl 的环境：仍按请求头实时回退顶层 baseUrl
+        const switched = await fetch(`http://127.0.0.1:${servePort}/api/switched-fallback`, {
+            headers: { "X-Scenario-Test-Env": "switched" }
+        });
+        assert.equal(switched.status, 200);
+        assert.equal(received.length, 2, "切换环境后仍应回退顶层 baseUrl");
+        assert.equal(received[1].url, "/api/switched-fallback");
     } finally {
         child.kill();
         mock.close();
