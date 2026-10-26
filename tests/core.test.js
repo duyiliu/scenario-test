@@ -494,6 +494,7 @@ test("通配路径 [*]：数组逐元素取值、跳过缺失子路径、空数�
             { members: [{ id: "c" }, { name: "缺少 id" }] },
             { members: null }
         ],
+        tagRows: [{ tags: ["a", "b"] }, { tags: [] }, { tags: ["c"] }],
         literal: { "*": "字面键" }
     };
     // 逐元素取子路径，元素缺失该子路径时跳过，不产生 undefined 洞
@@ -502,6 +503,8 @@ test("通配路径 [*]：数组逐元素取值、跳过缺失子路径、空数�
     assert.deepEqual(getByPath(body, "empty[*].id"), []);
     // 连续通配展平为一级数组；非数组（members: null）按该元素路径缺失跳过
     assert.deepEqual(getByPath(body, "groups[*].members[*].id"), ["a", "b", "c"]);
+    // 非通配叶值为数组时保留数组本身，不能被误当嵌套通配展平
+    assert.deepEqual(getByPath(body, "tagRows[*].tags"), [["a", "b"], [], ["c"]]);
     // 通配段末尾保留元素值本身；null 是真实值，不被当成缺失
     assert.deepEqual(getByPath({ items: [1, null, 2] }, "items[*]"), [1, null, 2]);
     // 稀疏数组空位不读取原型链同号成员，也不产出 undefined 洞

@@ -47,6 +47,7 @@ export type WhenTarget = ${quote(contract.when.targets)};
 export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
+export type RetryOn = ${quote(contract.retryUntil.retryOn)};
 
 export interface GlobalParam {
     type: GlobalParamType;
@@ -90,10 +91,27 @@ export interface ScenarioConfig {
     variables?: ConfigVariable[];
     scenarios?: ScenarioListItem[];
     requestTimeoutMs?: number;
+    /** 响应体大小上限（字节，0/未设置不限）；超限返回结构化 responseTooLarge 错误 */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限） */
+    maxUploadBytes?: number;
     storagePrefix?: string;
+    /** 浏览器工作台 LocalStorage 键覆盖；未声明的键沿用 storagePrefix 生成的默认值 */
+    storageKeys?: {
+        baseUrl?: string;
+        authorization?: string;
+        globals?: string;
+        environment?: string;
+        theme?: string;
+        scenarioVars?: string;
+        pinnedScenarios?: string;
+    };
+    /** 顶层回退地址：环境未声明 baseUrl 时使用；声明时必须是 http(s):// URL */
     baseUrl?: string;
     authorization?: string;
     nodePlugins?: string[];
+    /** 兼容历史配置字段；运行时实际消费的是场景级 envVars */
+    envVars?: Record<string, string>;
 }
 
 /** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration；path 支持点段/整数下标/引号键/通配段 [*]（仅数组展开，如 items[*].id） */
@@ -165,12 +183,18 @@ export interface RetryUntil {
     maxAttempts?: number;
     intervalMs?: number;
     maxElapsedMs?: number;
+    /** 参与重试的失败类型，默认 ["assertion"]；包含 error/timeout 时网络错误与单次请求超时也会继续轮询 */
+    retryOn?: RetryOn[];
 }
 
 export interface RequestDefinition {
     headers?: Record<string, string>;
+    /** 请求路径（step.path 优先）；支持 {{ }} 模板 */
+    path?: string;
     /** HTTP 方法（缺省 GET）；支持 {{ }} 模板——动态方法写这里（step.method 不做模板解析） */
     method?: string;
+    /** 超时毫秒数（正数）；支持整串 {{ }} 模板（如 "{{vars.timeout}}"），与 step.timeoutMs 同一超时链路（step 优先） */
+    timeoutMs?: number | string;
     body?: unknown;
     credentials?: "include" | "omit" | "same-origin";
     redirect?: "follow" | "error" | "manual";
@@ -235,6 +259,10 @@ export interface ScenarioStepResult {
     cancelled?: boolean;
     timedOut?: boolean;
     error?: string;
+    /** 结构化错误码：responseTooLarge / uploadTooLarge（大小上限类错误） */
+    errorCode?: string;
+    responseTooLarge?: { bytesRead: number; limitBytes: number };
+    uploadTooLarge?: { actualBytes: number; limitBytes: number };
     warnings?: string[];
     assertions: AssertionResult[];
     stepNo?: number;
@@ -270,6 +298,10 @@ export interface EngineOptions {
     environmentVariables?: Record<string, string | undefined>;
     fetch?: typeof globalThis.fetch;
     requestTimeoutMs?: number;
+    /** 响应体大小上限（字节，0/未设置不限） */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限） */
+    maxUploadBytes?: number;
     adapters?: Record<string, unknown>;
     isolateAdapters?: boolean;
     signal?: AbortSignal;
@@ -289,10 +321,14 @@ export interface RetryAttemptInfo {
     totalAttempts: number;
     /** 距下次尝试的等待毫秒数 */
     intervalMs: number;
-    /** 本次响应状态码（适配器响应可为非 number） */
+    /** 本次响应状态码（适配器响应可为非 number；执行异常时为 null） */
     status: unknown;
-    /** 首个未通过断言名 */
+    /** 首个未通过断言名（执行异常时为空串） */
     failedAssertion: string;
+    /** 失败类型：assertion 重试时为空串，执行异常为 error，单次请求超时为 timeout */
+    errorType: "" | "error" | "timeout";
+    /** 执行异常的错误信息（断言重试时为空串） */
+    errorMessage: string;
 }
 
 export interface RunOptions {
@@ -300,6 +336,10 @@ export interface RunOptions {
     vars?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;
+    /** 响应体大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
+    maxResponseBytes?: number;
+    /** 上传文件大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
+    maxUploadBytes?: number;
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
     onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
 }
@@ -340,6 +380,8 @@ export function createApp(options: { mount: string | Element; config?: ScenarioC
 export function validateAssertion(definition: Assertion, context?: unknown): Assertion;
 export function evaluateAssertion(definition: Assertion, response: unknown, runtime: unknown, context?: unknown): AssertionResult;
 export function applyExtract(step: { extract?: ExtractDefinition[] }, response: unknown, runtime: Runtime): { warnings: string[]; failures: AssertionResult[] };
+/** 安全写入运行时 vars：__proto__ 等原型链键也按普通自有键写入，不改变对象原型 */
+export function setRuntimeVar(vars: Record<string, unknown>, name: string, value: unknown): unknown;
 export function buildAssertions(step: Step, response: unknown, runtime: unknown, context?: unknown): AssertionResult[];
 export function resolve(value: unknown, runtime: unknown): unknown;
 export function joinUrl(baseUrl: string, requestPath: string): string;
@@ -348,6 +390,8 @@ export function queryPairs(key: string, value: unknown): string[];
 export function generateSignature(params: Record<string, unknown>, secretValue: string): string;
 export function md5(value: unknown): string;
 export function clone<T>(value: T): T;
+/** 字节上限归一化：有限正数向下取整，0/负数/NaN/Infinity/空值均视为“不限制”（返回 0） */
+export function normalizeByteLimit(value: unknown): number;
 export function formatDuration(milliseconds: number): string;
 /** 模板路径严格分词：合法路径返回 token 数组（每次调用返回独立可变副本，改写不影响内部缓存）；畸形写法（vars[]、a..b、["a" > "b"]）返回 null */
 export function tokenizePath(valuePath: string): string[] | null;
@@ -377,10 +421,18 @@ export declare const contract: {
     generatedVars: { types: readonly GeneratedVarType[] };
     globals: { types: readonly GlobalParamType[]; note: string };
     config: {
+        configKeys: readonly string[];
         scenarioItemKeys: readonly string[];
         environmentKeys: readonly string[];
         variableKeys: readonly string[];
+        baseUrl: { protocol: string; note: string };
         manual: { type: string; note: string };
+    };
+    retryUntil: {
+        keys: readonly string[];
+        retryOn: readonly RetryOn[];
+        defaultRetryOn: readonly RetryOn[];
+        note: string;
     };
     scenario: {
         keys: readonly string[];
