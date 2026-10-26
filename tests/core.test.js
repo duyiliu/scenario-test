@@ -485,6 +485,81 @@ test("数组负索引路径：[-N] 取倒数第 N 项，引号键与非数组维
     assert.equal(runtime.vars.lastId, "c");
 });
 
+test("通配路径 [*]：数组逐元素取值、跳过缺失子路径、空数组产 []，非数组按路径缺失处理", () => {
+    const body = {
+        items: [{ id: 1 }, { name: "缺少 id" }, { id: 3 }, null],
+        empty: [],
+        groups: [
+            { members: [{ id: "a" }, { id: "b" }] },
+            { members: [{ id: "c" }, { name: "缺少 id" }] },
+            { members: null }
+        ],
+        tagRows: [{ tags: ["a", "b"] }, { tags: [] }, { tags: ["c"] }],
+        literal: { "*": "字面键" }
+    };
+    // 逐元素取子路径，元素缺失该子路径时跳过，不产生 undefined 洞
+    assert.deepEqual(getByPath(body, "items[*].id"), [1, 3]);
+    assert.deepEqual(getByPath(body, "items[*].missing"), []);
+    assert.deepEqual(getByPath(body, "empty[*].id"), []);
+    // 连续通配展平为一级数组；非数组（members: null）按该元素路径缺失跳过
+    assert.deepEqual(getByPath(body, "groups[*].members[*].id"), ["a", "b", "c"]);
+    // 非通配叶值为数组时保留数组本身，不能被误当嵌套通配展平
+    assert.deepEqual(getByPath(body, "tagRows[*].tags"), [["a", "b"], [], ["c"]]);
+    // 通配段末尾保留元素值本身；null 是真实值，不被当成缺失
+    assert.deepEqual(getByPath({ items: [1, null, 2] }, "items[*]"), [1, null, 2]);
+    // 稀疏数组空位不读取原型链同号成员，也不产出 undefined 洞
+    const sparse = [];
+    sparse[1] = { id: 2 };
+    assert.deepEqual(getByPath({ items: sparse }, "items[*].id"), [2]);
+    // 非数组光标：通配段按路径缺失处理
+    assert.equal(getByPath({ items: { id: 1 } }, "items[*].id"), undefined);
+    assert.equal(getByPath({ items: "not-array" }, "items[*]"), undefined);
+    // 点段 * 与引号键 "*" 仍是字面键，只有方括号 [*] 是通配
+    assert.equal(getByPath(body, "literal.*"), "字面键");
+    assert.equal(getByPath(body, 'literal["*"]'), "字面键");
+    // 原型链安全键在通配展开后仍不可见
+    assert.deepEqual(getByPath({ items: [{}, { __proto__: null, id: 2 }] }, "items[*].__proto__"), []);
+});
+
+test("通配路径 [*] 接入 extract/断言/模板：数组变量、each/length/includes 与 required/default 组合", () => {
+    const body = { items: [{ id: 1 }, { id: 2 }, { name: "缺少 id" }], empty: [], plain: { id: 9 } };
+    const runtime = runtimeWith({ items: body.items });
+    const response = responseWith(body);
+
+    const result = applyExtract({
+        extract: [
+            { name: "ids", path: "items[*].id" },
+            { name: "emptyIds", path: "empty[*].id", required: true },
+            { name: "fallback", path: "plain[*].id", default: [] }
+        ]
+    }, response, runtime);
+    assert.deepEqual(runtime.vars.ids, [1, 2]);
+    assert.deepEqual(runtime.vars.emptyIds, []);
+    assert.deepEqual(runtime.vars.fallback, []);
+    assert.equal(result.warnings.length, 0);
+    assert.equal(result.failures.length, 0, "空数组是真实提取结果，不触发 required/default 缺失分支");
+
+    // required 在非数组路径上按缺失处理；单独场景验证 default 兜底
+    const requiredRuntime = runtimeWith({});
+    const required = applyExtract({ extract: [{ name: "missing", path: "plain[*].id", required: true }] }, response, requiredRuntime);
+    assert.equal(required.failures.length, 1);
+    assert.match(required.failures[0].name, /missing/);
+    assert.equal(requiredRuntime.vars.missing, undefined);
+
+    const defaultRuntime = runtimeWith({});
+    const defaulted = applyExtract({ extract: [{ name: "fallback", path: "plain[*].id", default: [] }] }, response, defaultRuntime);
+    assert.deepEqual(defaultRuntime.vars.fallback, []);
+    assert.equal(defaulted.warnings.length, 0);
+    assert.equal(defaulted.failures.length, 0);
+
+    // 断言 path 返回数组，可直接组合 length/includes/each；模板整串取值保留数组
+    assert.equal(evaluateAssertion({ path: "items[*].id", length: 2 }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "items[*].id", includes: 2 }, response, runtime).passed, true);
+    assert.equal(evaluateAssertion({ path: "items[*].id", each: { gte: 1, lte: 2 } }, response, runtime).passed, true);
+    assert.deepEqual(resolve("{{vars.items[*].id}}", runtime), [1, 2]);
+    assert.equal(resolve("ids={{vars.items[*].id}}", runtime), "ids=[1,2]");
+});
+
 test("全局参数：isGlobalParam 校验、normalize 转字符串、mergeGlobals 按 type:name 去重且后者覆盖", () => {
     assert.equal(isGlobalParam({ type: "header", name: "X-Token", value: "t" }), true);
     assert.equal(isGlobalParam({ type: "bogus", name: "X", value: 1 }), false);
