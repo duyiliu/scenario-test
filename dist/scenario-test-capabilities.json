@@ -151,6 +151,24 @@
     "note": "全局参数支持 header / cookie / query 三种类型，步骤显式声明或 URL 已有同名参数优先"
   },
   "config": {
+    "configKeys": [
+      "envs",
+      "defaultEnvKey",
+      "globals",
+      "vars",
+      "scenarioVars",
+      "variables",
+      "scenarios",
+      "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
+      "storagePrefix",
+      "storageKeys",
+      "baseUrl",
+      "authorization",
+      "nodePlugins",
+      "envVars"
+    ],
     "scenarioItemKeys": [
       "id",
       "name",
@@ -171,10 +189,31 @@
       "required",
       "defaultValue"
     ],
+    "baseUrl": {
+      "protocol": "http(s)",
+      "note": "环境 baseUrl 声明时必须是 http(s):// URL；未声明（或为空）时回退顶层 baseUrl，两者都为空时浏览器工作台使用当前页面地址，CLI run 仍需 --base-url 或配置 baseUrl"
+    },
     "manual": {
       "type": "boolean",
       "note": "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
     }
+  },
+  "retryUntil": {
+    "keys": [
+      "maxAttempts",
+      "intervalMs",
+      "maxElapsedMs",
+      "retryOn"
+    ],
+    "retryOn": [
+      "assertion",
+      "error",
+      "timeout"
+    ],
+    "defaultRetryOn": [
+      "assertion"
+    ],
+    "note": "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
   },
   "scenario": {
     "keys": [
@@ -244,6 +283,11 @@
       "port": {
         "kind": "value",
         "description": "浏览器服务端口，默认 4300",
+        "parse": "number"
+      },
+      "concurrency": {
+        "kind": "value",
+        "description": "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行",
         "parse": "number"
       },
       "project": {
