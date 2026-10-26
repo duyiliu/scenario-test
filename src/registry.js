@@ -7,12 +7,52 @@ const scenarioRegistry = new Map();
 const adapterRegistry = new Map();
 let currentConfig = null;
 
-function invariant(condition, message) {
-    if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+    if (!condition) {
+        const error = new TypeError(message);
+        // doctor 只对 defineConfig 自身产生的配置校验错误做专项诊断；用结构化 code
+        // 区分配置脚本自己抛出的任意错误，避免按消息子串误报。
+        if (code) error.code = code;
+        throw error;
+    }
 }
 
 function nonEmptyString(value) {
     return typeof value === "string" && Boolean(value.trim());
+}
+
+// 定义期错误里的值展示：字符串带引号（区分 "5000" 与 5000），
+// Infinity/NaN 等 JSON 无法表达的数值走 String
+function describeValue(value) {
+    if (typeof value === "string") return JSON.stringify(value);
+    if (Array.isArray(value)) return "数组";
+    if (isPlainObject(value)) return "对象";
+    return String(value);
+}
+
+// 继承的可枚举属性会被运行期 clone 的 JSON 序列化丢弃（只保留自有属性）。
+// 返回第一个继承键供报错定位；无继承键返回 null。
+function inheritedEnumerableKey(value) {
+    for (const key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+    }
+    return null;
+}
+
+// request.headers 要求「普通对象」：core.isPlainObject 只按 toString 标签判定，
+// 自定义类实例同样返回 [object Object]——这里额外检查原型链，拒绝 Foo 实例。
+// 同时兼容 node:vm 沙箱中创建的对象：跨 realm 的 Object.prototype 原型为 null，
+// 但 constructor 仍是对方 realm 的 Object，且 Object.prototype === prototype。
+function isPlainHeadersObject(value) {
+    if (!isPlainObject(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null) return true;
+    if (Object.getPrototypeOf(prototype) !== null) return false;
+    // constructor 必须是「自己的」Object 构造器：伪装成 proto.constructor = Object
+    // 的自定义原型会因 Object.prototype !== proto 被识别
+    if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+    if (prototype.constructor.prototype !== prototype) return false;
+    return inheritedEnumerableKey(value) === null;
 }
 
 // 场景/步骤顶层键白名单：名单唯一来源是 contract（勿另写副本）。
@@ -40,12 +80,16 @@ function editDistance(a, b) {
     return rows[a.length][b.length];
 }
 
-function looksLikeKeyTypo(key, allowed) {
+function findKeySuggestion(key, allowed) {
     const lower = key.toLowerCase();
-    return allowed.some((candidate) => {
+    return allowed.find((candidate) => {
         const target = candidate.toLowerCase();
         return target === lower || editDistance(lower, target) <= 1;
     });
+}
+
+function looksLikeKeyTypo(key, allowed) {
+    return findKeySuggestion(key, allowed) !== undefined;
 }
 
 // 步骤声明这些字段即视为 HTTP 执行面（或非适配器步骤）：未知键按拼写错误拒绝。
@@ -55,7 +99,54 @@ function looksLikeKeyTypo(key, allowed) {
 const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
 
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-    return `${label} 包含未知键 ${unknownKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${allowed.join("/")}${hint}`;
+    // 拼写相近时直接点名正确字段（assertion → "assertions"），避免只列出整份白名单
+    // 让调用方自己对照；无相近候选时仍保留原有「未知键 + 允许键」口径。
+    const described = unknownKeys.map((key) => {
+        const suggestion = findKeySuggestion(key, allowed);
+        return suggestion ? `"${key}"（是否想写 "${suggestion}"？）` : `"${key}"`;
+    });
+    return `${label} 包含未知键 ${described.join(", ")}，允许的键为 ${allowed.join("/")}${hint}`;
+}
+
+function assertKnownKeys(input, allowed, label, hint = "") {
+    const unknownKeys = describeUnknownKeys(input, allowed);
+    invariant(
+        unknownKeys.length === 0,
+        unknownKeysMessage(label, unknownKeys, allowed, hint),
+        "SCENARIO_CONFIG_UNKNOWN_KEY"
+    );
+}
+
+// baseUrl 允许缺省（运行时回退到顶层 config.baseUrl；浏览器工作台最终还可回退当前页面
+// 地址），但一旦声明就必须是 http(s):// URL——协议缺失/拼错此前直到真正发请求才暴露。
+// 返回值同时做规范化：去首尾空白，纯空白按空串（缺省）处理，避免 truthy 空白串遮蔽回退。
+function normalizeBaseUrl(value, label) {
+    if (value === undefined || value === null) return value;
+    invariant(
+        typeof value === "string",
+        `${label} 必须是 http(s):// URL 字符串（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
+    );
+    const trimmed = value.trim();
+    // 空串/纯空白等同未声明：保持 `environment.baseUrl || config.baseUrl` 回退语义
+    if (!trimmed) return "";
+    invariant(
+        /^https?:\/\//i.test(trimmed),
+        `${label} 必须以 http:// 或 https:// 开头（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
+    );
+    let parsed;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        invariant(false, `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`, "SCENARIO_CONFIG_BASE_URL");
+    }
+    invariant(
+        (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+        `${label} 不是合法的 http(s) URL（当前 ${JSON.stringify(value)}）`,
+        "SCENARIO_CONFIG_BASE_URL"
+    );
+    return trimmed;
 }
 
 function assertUnique(items, field, label) {
@@ -147,14 +238,19 @@ export function defineScenario(input) {
         unknownScenarioKeys.length === 0,
         unknownKeysMessage(`场景 ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "（场景顶层只接受契约声明的字段）")
     );
-    // 保留变量 runId/runNo 由运行时自动生成，定义期拒绝场景 vars 声明
+    // 保留变量 runId/runNo 与原型链安全键由运行时自动生成/占位，定义期拒绝场景 vars/envVars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
+    assertNoReservedVars(input.envVars, `场景 ${input.name} 的 envVars`);
     assertTemplatePathsOnly(input, `场景 ${input.name}`);
-    // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）；
-    // 保留变量与字段完整性仍由运行时（engine）校验，保持 0.4.0 报错时机不变
+    // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）与保留变量名；
+    // 字段完整性仍由运行时（engine）校验
+    let generatedVarIndex = 0;
     for (const definition of input.generatedVars || []) {
-        invariant(isPlainObject(definition), `场景 ${input.name} 的 generatedVars 项必须是对象`);
-        invariant(nonEmptyString(definition.name), `场景 ${input.name} 的 generatedVars 项缺少 name`);
+        generatedVarIndex += 1;
+        const label = `场景 ${input.name} 的 generatedVars 第 ${generatedVarIndex} 项`;
+        invariant(isPlainObject(definition), `${label} 必须是对象`);
+        invariant(nonEmptyString(definition.name), `${label} 缺少 name`);
+        assertNotReservedVar(definition.name, `${label} name`);
         invariant(
             contract.generatedVars.types.includes(definition.type),
             `场景 ${input.name} 的 generatedVars 类型不支持: ${definition.type}（支持 ${contract.generatedVars.types.join("/")}）`
@@ -163,6 +259,7 @@ export function defineScenario(input) {
     input.steps.forEach((step, index) => {
         invariant(isPlainObject(step), `场景 ${input.name} 第 ${index + 1} 步必须是对象`);
         invariant(nonEmptyString(step.name), `场景 ${input.name} 第 ${index + 1} 步缺少 name`);
+        const stepLabel = `场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`;
         // B3：request/params 非对象会在运行期被静默忽略（headers/body/method 或整个 query
         // 丢弃），请求照发并可能 PASS——定义期直接拒绝，并禁止 step.params 与 request.params
         // 双写（运行期只取 step.params，另一份静默失效）。
@@ -170,6 +267,13 @@ export function defineScenario(input) {
             invariant(
                 isPlainObject(step.request),
                 `步骤 ${step.name} 的 request 必须是对象（当前 ${JSON.stringify(step.request)}，非对象会在运行期被静默忽略）`
+            );
+            // request 会被 clone(JSON) 深拷贝：继承字段不会进入运行期，
+            // 例如 Object.create({ headers }) 会在定义期看似合法、运行时静默丢头
+            const inheritedRequestKey = inheritedEnumerableKey(step.request);
+            invariant(
+                inheritedRequestKey === null,
+                `${stepLabel} 的 request 包含继承的可枚举字段 "${inheritedRequestKey}"（运行期 clone 只保留自有字段，会静默丢失；请改为对象自有字段）`
             );
             if (step.request.params !== undefined) {
                 invariant(
@@ -243,6 +347,14 @@ export function defineScenario(input) {
                 step.retryUntil.assertions === undefined,
                 `步骤 ${step.name} 的 retryUntil 不支持 assertions 字段（重试判定使用步骤顶层 assertions），请把断言移到步骤的 assertions`
             );
+            // 未知键即拒：retryOnn/interval 等拼写错误此前被静默忽略，
+            // 引擎回落默认 assertion 策略，网络错误重试完全不生效。
+            const unknownRetryKeys = Object.keys(step.retryUntil)
+                .filter((key) => !contract.retryUntil.keys.includes(key));
+            invariant(
+                unknownRetryKeys.length === 0,
+                `步骤 ${step.name} 的 retryUntil 包含未知键 ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}，允许的键为 ${contract.retryUntil.keys.join("/")}`
+            );
             const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
             const intervalMs = Number(step.retryUntil.intervalMs ?? 2000);
             const maxElapsedMs = Number(step.retryUntil.maxElapsedMs ?? 300000);
@@ -251,6 +363,20 @@ export function defineScenario(input) {
             // 运行期在 engine.js 统一钳制下限 100ms（未声明/非法值按默认 2000ms）
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
+            // retryOn：声明哪些失败类型参与重试；默认 ["assertion"] 保持历史语义。
+            // 非数组/未知值定义期即拒，避免拼写错误使 error/timeout 重试静默失效。
+            if (step.retryUntil.retryOn !== undefined) {
+                invariant(
+                    Array.isArray(step.retryUntil.retryOn),
+                    `步骤 ${step.name} 的 retryOn 必须是数组（支持 ${contract.retryUntil.retryOn.join("/")}）`
+                );
+                for (const retryType of step.retryUntil.retryOn) {
+                    invariant(
+                        contract.retryUntil.retryOn.includes(retryType),
+                        `步骤 ${step.name} 的 retryOn 项只支持 ${contract.retryUntil.retryOn.join("/")}（当前 ${JSON.stringify(retryType)}）`
+                    );
+                }
+            }
         }
         // extract 项定义期校验：此前 extract 完全无校验——非对象项/缺 name 运行期
         // 静默跳过（连 warning 都没有），name 撞保留变量、required+default 互斥、
@@ -352,8 +478,8 @@ export function defineScenario(input) {
                 );
             }
         }
-        // 未知键校验放在最后：既保留既有校验的报错优先级（如 adapter/match 豁免提示、
-        // GET 带体、method 模板等），又让纯拼写错误在这里明确失败。
+        // 未知键校验先于步骤字段类型校验：先保留既有校验的报错优先级（如 adapter/match
+        // 豁免提示、GET 带体、method 模板等），纯拼写错误也在这里明确失败。
         // HTTP 步骤严格拒绝所有未知键；适配器步骤（显式 adapter 或未声明 HTTP 字段的
         // matches 自动分发步骤）允许私有配置键（如 `{ name, prepareLocal: true }`），
         // 但拼写/大小写疑似 DSL 字段的键仍然拒绝，避免假绿。
@@ -366,6 +492,61 @@ export function defineScenario(input) {
             rejectedKeys.length === 0,
             unknownKeysMessage(`场景 ${input.name} 第 ${index + 1} 步（步骤 ${step.name}）`, rejectedKeys, contract.scenario.stepKeys)
         );
+        // timeoutMs/saveResponseAs/path/request.path/request.timeoutMs/request.headers 的定义期
+        // 类型校验统一放在既有校验（request/params/adapter/method/GET 带体/assertions/
+        // retryUntil/extract/when/未知键）之后，保持既有报错优先级不回归。
+        // timeoutMs 不做 {{ }} 解析（executeHttp/executeAdapter 直接用原始值），
+        // 非数字/0/负数/字符串会在运行期被静默钳制为 30000ms，超时配置实际失效。
+        // 显式 0 不做「使用默认值」语义：省略字段即默认值，写 0 属死写法，定义期拒绝。
+        if (step.timeoutMs !== undefined) {
+            invariant(
+                typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
+                `${stepLabel} 的 timeoutMs 必须是正数（毫秒，且不支持 {{ }} 模板；当前 ${describeValue(step.timeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
+            );
+        }
+        // request.timeoutMs 与 step.timeoutMs 共用运行期超时链（step 优先），区别是 request 对象
+        // 会整体 resolve：支持整串 {{ }} 模板（CHANGELOG「request.timeoutMs 支持模板变量」）。
+        // 其余值（非数字/0/负数/非模板字符串）同样会被 Number()+钳制静默降级为 30000ms，定义期拒绝。
+        if (requestDef.timeoutMs !== undefined) {
+            const requestTimeoutMs = requestDef.timeoutMs;
+            const isWholeTemplate = typeof requestTimeoutMs === "string"
+                && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(requestTimeoutMs);
+            invariant(
+                isWholeTemplate || (typeof requestTimeoutMs === "number" && Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0),
+                `${stepLabel} 的 request.timeoutMs 必须是正数或整串 {{ }} 模板（当前 ${describeValue(requestTimeoutMs)}——非法值会被运行期静默钳制为 30000ms）`
+            );
+        }
+        // saveResponseAs 空串会被 readResponse 的 truthiness 判断静默跳过保存，
+        // 非字符串要等响应体读完才在 io.saveResponse/validatePath 抛错；允许 {{ }} 模板
+        if (step.saveResponseAs !== undefined) {
+            invariant(
+                nonEmptyString(step.saveResponseAs),
+                `${stepLabel} 的 saveResponseAs 必须是非空字符串（允许 {{ }} 模板；当前 ${describeValue(step.saveResponseAs)}——空串会静默不保存）`
+            );
+        }
+        // path/request.path 非字符串：带 params 时 buildUrl 的 rawPath.includes("?") 抛
+        // TypeError，不带 params 时被 joinUrl 隐式 String()，行为不一致。
+        // 空串表示根路径，允许；模板允许。
+        if (step.path !== undefined) {
+            invariant(
+                typeof step.path === "string",
+                `${stepLabel} 的 path 必须是字符串（允许 {{ }} 模板；当前 ${describeValue(step.path)}）`
+            );
+        }
+        if (requestDef.path !== undefined) {
+            invariant(
+                typeof requestDef.path === "string",
+                `${stepLabel} 的 request.path 必须是字符串（允许 {{ }} 模板；当前 ${describeValue(requestDef.path)}）`
+            );
+        }
+        // request.headers 非对象会被 { ...(request.headers || {}) } 展开成字符串下标键，
+        // 产生无效请求头（如 headers: "X-A: 1" → {0:"X",1:":",...}）
+        if (requestDef.headers !== undefined) {
+            invariant(
+                isPlainHeadersObject(requestDef.headers),
+                `${stepLabel} 的 request.headers 必须是普通对象（当前 ${describeValue(requestDef.headers)}——非对象会被展开成字符串下标键，产生无效请求头）`
+            );
+        }
     });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");
@@ -374,14 +555,21 @@ export function defineScenario(input) {
 
 export function defineConfig(input) {
     invariant(isPlainObject(input), "配置必须是对象");
+    assertKnownKeys(input, contract.config.configKeys, "配置", "（配置顶层只接受契约声明的字段）");
     assertTemplatePathsOnly(input, "配置");
+    const baseUrl = normalizeBaseUrl(input.baseUrl, "配置顶层 baseUrl");
     const globals = normalizeGlobals(input.globals, "全局");
-    const envs = Array.isArray(input.envs) ? input.envs.map((env) => ({
-        ...env,
-        globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`)
-    })) : [];
+    const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+        invariant(isPlainObject(env), `第 ${index + 1} 个环境定义无效`);
+        assertKnownKeys(env, contract.config.environmentKeys, `第 ${index + 1} 个环境`, "（环境只接受契约声明的字段）");
+        return {
+            ...env,
+            globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`)
+        };
+    }) : [];
     for (const env of envs) {
         invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "每个环境必须包含非空 key 和 name");
+        env.baseUrl = normalizeBaseUrl(env.baseUrl, `环境 ${env.key} 的 baseUrl`);
     }
     assertUnique(envs, "key", "环境 key");
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -403,7 +591,10 @@ export function defineConfig(input) {
     const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
         invariant(isPlainObject(item), `第 ${index + 1} 个变量定义无效`);
         invariant(nonEmptyString(item.name), `第 ${index + 1} 个变量缺少 name`);
+        assertKnownKeys(item, contract.config.variableKeys, `变量 ${item.name}`, "（变量只接受契约声明的字段）");
+        if (item.label !== undefined) invariant(typeof item.label === "string", `变量 ${item.name} 的 label 必须是字符串`);
         if (item.env !== undefined) invariant(nonEmptyString(item.env), `变量 ${item.name} 的 env 无效`);
+        if (item.required !== undefined) invariant(typeof item.required === "boolean", `变量 ${item.name} 的 required 必须是布尔值`);
         return { ...item };
     }) : [];
     assertUnique(variables, "name", "变量 name");
@@ -413,6 +604,7 @@ export function defineConfig(input) {
     invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs 必须是正数");
     return {
         ...input,
+        baseUrl,
         globals,
         envs,
         scenarios,

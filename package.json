@@ -30,8 +30,8 @@
     "test:browser": "node tests/browser.test.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
     "check:eol": "node scripts/check-eol.mjs",
-    "check": "npm run build && npm test",
-    "check:all": "npm run check && npm run test:browser"
+    "check": "npm run build && npm test && npm run test:browser",
+    "check:all": "npm run check"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0"
