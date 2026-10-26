@@ -24,14 +24,14 @@ test("test:all 汇总单元与浏览器用例，check/check:all 都验证覆盖�
     assert.equal(scripts["test:all"], "npm run test:unit && npm run test:browser && npm run test:ui-style");
     assert.equal(scripts["check:coverage"], "node scripts/check-coverage.mjs");
     assert.match(scripts.check, /npm run build/);
-    assert.match(scripts.check, /npm run test:unit/);
+    assert.match(scripts.check, /npm run test:all/);
     assert.match(scripts.check, /npm run check:coverage/);
-    assert.doesNotMatch(scripts.check, /test:browser|test:ui-style|test:all/);
-    assert.equal(scripts["check:all"], "npm run check && npm run test:browser && npm run test:ui-style");
+    assert.equal(scripts["check:all"], "npm run check");
 });
 
 test("test:coverage 仅统计 src/，并启用 line 90 / branch 80 阈值", () => {
     assert.match(scripts["test:coverage"], /--experimental-test-coverage/);
+    assert.match(scripts["test:coverage"], /--test-reporter=tap/, "覆盖率命令需固定 TAP 输出以便稳定解析阈值与范围");
     assert.match(scripts["test:coverage"], /--test-coverage-include="src\/\*\*\/\*\.js"/);
     assert.doesNotMatch(scripts["test:coverage"], /--test-coverage-include="(?:dist|tests|scripts)\//);
     assert.match(scripts["test:coverage"], /--test-coverage-lines=90/);
@@ -57,6 +57,7 @@ test("test:coverage 实际只报告 src/，并因阈值不足以非零状态退�
     // “报告不包含 dist/tests/scripts”与“阈值不足必须失败”两个验收行为。
     const result = spawnSync(process.execPath, [
         "--test",
+        "--test-reporter=tap",
         "--experimental-test-coverage",
         `--test-coverage-include=${include[1]}`,
         `--test-coverage-lines=${lines[1]}`,
@@ -75,7 +76,7 @@ test("test:coverage 实际只报告 src/，并因阈值不足以非零状态退�
     assert.doesNotMatch(report, /^# (?:dist|tests|scripts)(?:\s|$)/m, "覆盖率报告不得混入 dist/tests/scripts");
 });
 
-test("CI 执行全量验证命令而不是仅跑 check", () => {
+test("CI 执行 check:all（完整门禁）", () => {
     const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
     assert.match(workflow, /npm ci/);
     assert.match(workflow, /npm run check:all/);

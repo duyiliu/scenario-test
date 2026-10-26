@@ -22,12 +22,12 @@ npm run test:ui-style  # Playwright 样式测试（tests/ui-style.test.mjs）
 npm run test:all       # 单元 + 浏览器 + 样式全量
 npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 阈值；当前按预期失败
 npm run check:coverage # 实际执行 test:coverage，确认仅报告 src/ 且因阈值不足失败
-npm run check          # npm run build && test:unit && check:coverage（快速门禁）
-npm run check:all      # npm run check && test:browser && test:ui-style（完整门禁，CI 使用）
+npm run check          # npm run build && test:all && check:coverage（完整门禁）
+npm run check:all      # 与 check 相同的兼容别名（CI 使用）
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 
-`npm test` / `npm run check` 只跑 Node 单元测试，**不会**执行 `.mjs` 浏览器用例；完整验证必须用 `npm run check:all`（CI 已按此执行）。新增可独立运行的 Node `.mjs` 单测请命名为 `*.unit.test.mjs`，浏览器用例继续走 `test:browser` / `test:ui-style`。
+`npm test` / `npm run test:unit` 只跑 Node 单元测试，**不会**执行 `.mjs` 浏览器用例；`npm run test:all` 汇总单元、浏览器与样式测试，`npm run check` / `npm run check:all` 再叠加构建与覆盖率验证（CI 使用 `check:all`）。新增可独立运行的 Node `.mjs` 单测请命名为 `*.unit.test.mjs`，浏览器用例继续走 `test:browser` / `test:ui-style`。
 `test:coverage` 仅统计 `src/`，当前会因 `cli.js`（#33）与浏览器 UI（由 Playwright 覆盖）低于 line 阈值而失败，属已知缺口，不等同于全量测试失败；`check` / `check:all` 会通过 `check:coverage` 再跑一次完整覆盖率命令，确认报告范围与预期失败原因。
 
 行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制；
@@ -79,4 +79,4 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check:all`，打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check:all`（与 `check` 等价的完整门禁），打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。

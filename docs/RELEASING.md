@@ -13,7 +13,7 @@
 2. 本地运行：
 
    ```powershell
-   npm run check:all
+   npm run check:all   # 完整门禁：build + 单元/浏览器/样式测试 + 覆盖率验证（与 check 等价）
    npm audit   # 期望 0 vulnerabilities；运行时依赖链上不允许遗留，devDependencies 链上遗留需在 issue 中登记
    ```
 

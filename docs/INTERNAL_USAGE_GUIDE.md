@@ -41,6 +41,9 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 # 命令行运行
 npx @yc_yzkj/scenario-test --config scenario-test/scenario.config.js --env local --all
 
+# 多场景并发（默认 1 串行；场景内步骤仍串行）
+npx @yc_yzkj/scenario-test --config scenario-test/scenario.config.js --env local --all --concurrency 4
+
 # 浏览器运行
 npx @yc_yzkj/scenario-test serve --config scenario-test/scenario.config.js
 ```
@@ -105,7 +108,9 @@ assertions: [
     path: "/api/tasks/{{vars.taskId}}",
     retryUntil: {
         maxAttempts: 10,
-        intervalMs: 2000
+        intervalMs: 2000,
+        // 可选：assertion（默认）/ error / timeout；服务刚启动时让连接失败与单次超时也参与轮询
+        retryOn: ["assertion", "error", "timeout"]
     },
     assertions: [
         { path: "status", equals: "completed" }

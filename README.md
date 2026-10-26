@@ -124,6 +124,10 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --scenario <场景ID>
 
+# 多场景并发（默认 1 串行；并发只发生在场景之间，场景内步骤仍串行）
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+  --config .\scenario-test\scenario.config.js --env local --all --concurrency 4
+
 # 临时覆盖变量 / 请求超时（无需修改配置）
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
   --config .\scenario-test\scenario.config.js --env local --all `
@@ -187,12 +191,14 @@ scenario-test/
 ## 核心能力
 
 - 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
+- `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`：服务刚启动时的 ECONNREFUSED、ENOTFOUND 等网络错误和单次请求超时也能继续轮询，`onAttempt` 回调透出 `errorType`/`errorMessage`；不配置时行为与旧版完全一致。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
 - `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 - `manual: true` 场景默认不参与 `--all`。
+- `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
 - 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
 
@@ -261,12 +267,12 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 
 ```powershell
 npm install
-npm run check:all      # npm run check + Playwright 浏览器/样式测试（完整门禁）
+npm run check:all      # 完整门禁：build + 单元/浏览器/样式测试 + 覆盖率验证（check 的别名）
 npm run test:unit      # 仅 Node 单元/集成测试（.test.js 与 .unit.test.mjs）
 npm run test:coverage  # 仅统计 src/，line 90% / branch 80% 门禁（当前按预期失败）
 npm run check:coverage # 实际执行 test:coverage，确认仅报告 src/ 且因阈值不足失败
 ```
 
-`test:coverage` 当前会因 `cli.js` 与浏览器 UI 未纳入 Node 单测覆盖而低于 line 阈值并返回非零；这两块分别由 #33 与 `test:browser` 跟踪。`check` / `check:all` 会通过 `check:coverage` 实际执行一次完整覆盖率命令，确认报告范围与预期失败原因后，日常验证以 `check:all` 为准。
+`test:coverage` 当前会因 `cli.js` 与浏览器 UI 未纳入 Node 单测覆盖而低于 line 阈值并返回非零；这两块分别由 #33 与 `test:browser` 跟踪。`check` / `check:all` 会通过 `check:coverage` 实际执行一次完整覆盖率命令，并先运行 `test:all`（单元 + 浏览器 + 样式），确认报告范围与预期失败原因；日常验证与 CI 均以 `check:all` 为准。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
