@@ -327,7 +327,17 @@ const workbenchView = (function () {
                     </div>
                     <label class="block"><span class="text-xs font-bold text-slate-600">请求头 JSON</span><textarea id="adhocHeadersInput" class="mt-1 h-28 w-full rounded-lg border border-slate-200 p-3 font-mono text-xs outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" spellcheck="false"></textarea></label>
                     <label class="block"><span class="text-xs font-bold text-slate-600">请求体 JSON</span><textarea id="adhocBodyInput" class="mt-1 h-40 w-full rounded-lg border border-slate-200 p-3 font-mono text-xs outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" spellcheck="false"></textarea></label>
-                    <div class="flex justify-end gap-2"><button id="adhocCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">取消</button><button id="adhocExecuteBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">执行一次</button></div>
+                    <div class="flex justify-end gap-2"><button id="adhocDraftBtn" type="button" disabled class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 transition-all active:scale-[0.98]">转为步骤</button><button id="adhocCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">取消</button><button id="adhocExecuteBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">执行一次</button></div>
+                    <div id="adhocDraft" class="hidden rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <div class="text-xs font-bold text-emerald-800">步骤草稿</div>
+                                <div id="adhocDraftHint" class="mt-1 text-[11px] text-emerald-700">生成后可复制到 scenarios/*.js 的 steps 数组。</div>
+                            </div>
+                            <button id="adhocDraftCopyBtn" type="button" class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 transition-all active:scale-[0.98]">复制草稿</button>
+                        </div>
+                        <pre id="adhocDraftCode" class="mt-3 max-h-72 overflow-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-200"></pre>
+                    </div>
                     <div id="adhocResult" class="hidden rounded-lg border border-slate-200 bg-slate-50 p-4"></div>
                 </div>
             </div>

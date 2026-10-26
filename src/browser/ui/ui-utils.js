@@ -40,6 +40,15 @@ export function sanitizeSensitive(value) {
     return value;
 }
 
+// ===== 凭据类名称识别 =====
+// 工作台变量掩码与 adhoc「转为步骤」共用同一份名单：Authorization / X-Auth-Token /
+// apiKey 等请求头或变量名命中后按占位符输出，避免把凭据写成明文。
+export const SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+
+export function isSecretName(name) {
+    return SECRET_VAR_PATTERN.test(String(name == null ? '' : name));
+}
+
 // ===== 剪贴板复制（可靠回退）=====
 // Clipboard API 仅在安全上下文（HTTPS/localhost）可用且需要权限；
 // 失败或不可用时回退 textarea + execCommand，保证工作台复制始终可用。
