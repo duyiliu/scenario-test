@@ -481,7 +481,7 @@ function mergeGlobals(...lists) {
   }
   return [...merged.values()];
 }
-function clone2(value) {
+function clone(value) {
   return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 }
 function isPlainObject(value) {
@@ -607,7 +607,7 @@ function resolve(value, runtime) {
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
   const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone2(value), runtime) : fast;
+  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
 }
 function resolveCloneFast(value, runtime, ancestors) {
   if (typeof value === "string") return resolveString(value, runtime);
@@ -5334,7 +5334,7 @@ var workbenchAdhoc = function() {
       lastResponse: null,
       lastResponseBody: null
     };
-    var request = resolveAdhocValue(clone2(step.request || {}), runtime) || {};
+    var request = resolveAdhocValue(clone(step.request || {}), runtime) || {};
     var resolvedPath = resolveAdhocValue(step.path || request.path || "", runtime);
     var parsed = parseQueryParamsFromUrl(resolvedPath);
     var rawParams = step.params || request.params;
@@ -5493,13 +5493,13 @@ var workbenchAdhoc = function() {
       var environment = getEnvFn ? getEnvFn() : null;
       var runtimeVars = getVarsFn ? getVarsFn() : {};
       var runtime = {
-        vars: clone2(runtimeVars),
+        vars: clone(runtimeVars),
         lastResponse: null,
         lastResponseBody: null,
         baseUrl: getBaseUrlFn ? getBaseUrlFn() : "",
         authorization: getAuthFn ? getAuthFn() : "",
         globals: getGlobalsFn ? getGlobalsFn() : [],
-        environment: environment ? clone2(environment) : null,
+        environment: environment ? clone(environment) : null,
         startedAt: Date.now(),
         abortController: new AbortController(),
         cancelled: false
@@ -5645,7 +5645,7 @@ function createWorkbenchRuntime(options) {
   var uiStyle = ui_style_default;
   var uiView = ui_view_default;
   var uiAdhoc = ui_adhoc_default;
-  var clone3 = clone2;
+  var clone2 = clone;
   var isPlainObject2 = isPlainObject;
   var assertNotReservedVar2 = assertNotReservedVar;
   var assertNoReservedVars2 = assertNoReservedVars;
@@ -6133,7 +6133,7 @@ function createWorkbenchRuntime(options) {
       baseUrl: getRequestBaseUrl(),
       authorization: getEffectiveAuthorization(),
       globals: getEffectiveGlobals(),
-      environment: environment ? clone3(environment) : null,
+      environment: environment ? clone2(environment) : null,
       startedAt: Date.now(),
       abortController: new AbortController(),
       cancelled: false
@@ -6858,7 +6858,7 @@ function createWorkbenchRuntime(options) {
   function generateStepCurl(step) {
     if (!step) return "";
     var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
-    var resolvedVars = clone3(rawVars);
+    var resolvedVars = clone2(rawVars);
     if (state.activeRuntime && state.activeRuntime.vars) {
       Object.assign(resolvedVars, state.activeRuntime.vars);
     } else if (state.stepRuntime && state.stepRuntime.vars) {
@@ -7058,7 +7058,7 @@ function createWorkbenchRuntime(options) {
           rejectLoad(new Error("\u573A\u666F\u6587\u4EF6\u5FC5\u987B\u901A\u8FC7 ScenarioTest.registerScenario \u6CE8\u518C: " + file));
           return;
         }
-        state.scenario = clone3(scenario);
+        state.scenario = clone2(scenario);
         state.steps = [];
         state.stepRuntime = null;
         state.stepCheckpoints = [];
@@ -7333,7 +7333,7 @@ export {
   buildUsccCode,
   clearAdapters,
   clearScenarios,
-  clone2 as clone,
+  clone,
   contract,
   createApp,
   createEngine,

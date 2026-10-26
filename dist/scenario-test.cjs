@@ -268,7 +268,7 @@ __export(node_exports, {
   buildUsccCode: () => buildUsccCode,
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
-  clone: () => clone2,
+  clone: () => clone,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -582,7 +582,7 @@ function mergeGlobals(...lists) {
   }
   return [...merged.values()];
 }
-function clone2(value) {
+function clone(value) {
   return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
 }
 function isPlainObject(value) {
@@ -708,7 +708,7 @@ function resolve(value, runtime) {
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
   const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone2(value), runtime) : fast;
+  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
 }
 function resolveCloneFast(value, runtime, ancestors) {
   if (typeof value === "string") return resolveString(value, runtime);
