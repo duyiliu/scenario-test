@@ -145,6 +145,22 @@ test("doctor：未知操作符场景 FAIL，且不中断其余检查（汇总）
     }
 });
 
+test("doctor：非法 retryUntil 退避参数由 scenario-register FAIL 暴露", () => {
+    const { project, dir } = initProject();
+    try {
+        fs.writeFileSync(path.join(dir, "scenarios/health.js"), `ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({
+            name: "Health",
+            steps: [{ name: "poll", path: "health", retryUntil: { maxAttempts: 2, intervalMs: 100, intervalFactor: 0.5 }, assertions: [{ path: "ok", equals: true }] }]
+        }));`, "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[FAIL\] scenario-register/);
+        assert.match(result.stdout, /intervalFactor 必须是 ≥1 的有限数字/);
+    } finally {
+        cleanup(project);
+    }
+});
+
 test("doctor：多文件错误汇总（文件缺失 + 未知操作符同时报告）", () => {
     const { project, dir } = initProject();
     try {

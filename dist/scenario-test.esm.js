@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 14;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -393,11 +393,11 @@ var contract = Object.freeze({
     })
   }),
   retryUntil: Object.freeze({
-    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
     // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
     retryOn: Object.freeze(["assertion", "error", "timeout"]),
     defaultRetryOn: Object.freeze(["assertion"]),
-    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage\u3002intervalFactor \u53EF\u9009\uFF08\u9ED8\u8BA4 1\uFF0C\u56FA\u5B9A\u95F4\u9694\uFF09\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF1BmaxIntervalMs \u53EF\u9009\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u957F\u7EA6\u675F'
   }),
   scenario: Object.freeze({
     keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
@@ -1678,6 +1678,20 @@ function defineScenario(input) {
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.intervalFactor !== void 0) {
+        const intervalFactor = Number(step.retryUntil.intervalFactor);
+        invariant(
+          Number.isFinite(intervalFactor) && intervalFactor >= 1,
+          `\u6B65\u9AA4 ${step.name} \u7684 intervalFactor \u5FC5\u987B\u662F \u22651 \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.intervalFactor)}\uFF09`
+        );
+      }
+      if (step.retryUntil.maxIntervalMs !== void 0) {
+        const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
+        invariant(
+          Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+          `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs \u5FC5\u987B\u662F \u2265 intervalMs \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.maxIntervalMs)}\uFF0CintervalMs=${intervalMs}\uFF09`
+        );
+      }
       if (step.retryUntil.retryOn !== void 0) {
         invariant(
           Array.isArray(step.retryUntil.retryOn),
@@ -1966,6 +1980,20 @@ function describeError(error) {
   const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
   const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
   return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
+function retryBackoffIntervalMs(retry, attempt, maxElapsedMs) {
+  const rawIntervalMs = Number(retry?.intervalMs);
+  const baseIntervalMs = Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3;
+  const rawFactor = Number(retry?.intervalFactor);
+  const intervalFactor = Number.isFinite(rawFactor) && rawFactor >= 1 ? rawFactor : 1;
+  const rawMaxIntervalMs = Number(retry?.maxIntervalMs);
+  const maxIntervalMs = Number.isFinite(rawMaxIntervalMs) && rawMaxIntervalMs >= 0 ? rawMaxIntervalMs : Infinity;
+  let computed = baseIntervalMs * Math.pow(intervalFactor, Math.max(0, attempt - 1));
+  if (!Number.isFinite(computed)) {
+    computed = Number.isFinite(maxIntervalMs) ? maxIntervalMs : maxElapsedMs;
+  }
+  computed = Math.min(computed, maxIntervalMs);
+  return Math.max(100, computed);
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
@@ -2554,12 +2582,11 @@ function createEngine(engineOptions = {}) {
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
-        const rawIntervalMs = Number(retry.intervalMs);
-        const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
+        const intervalMs = retryBackoffIntervalMs(retry, attempt, maxElapsedMs);
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const remainingForWait = Math.max(0, maxElapsedMs - (now() - retryStartTime));
         const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
         const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
         if (attemptCallback) {
@@ -2596,7 +2623,7 @@ function createEngine(engineOptions = {}) {
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const waitMs = Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)));
         await delay(waitMs, options.signal);
       }
       const failed = assertions.find((item) => !item.passed);

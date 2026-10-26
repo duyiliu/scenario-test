@@ -53,6 +53,30 @@ function describeError(error) {
         : message;
 }
 
+// retryUntil 退避：第 n 次重试等待 = intervalMs * intervalFactor^(n-1)，封顶 maxIntervalMs，
+// 最后应用 100ms 下限（下限优先于封顶，maxIntervalMs < 100 时仍防高频轮询）。
+// 定义期已校验 factor >= 1 / maxIntervalMs >= intervalMs；直接 runStep 绕过定义期时
+// 按安全默认处理（非法 factor 视为 1、未声明上限不封顶），保持旧固定间隔兼容。
+function retryBackoffIntervalMs(retry, attempt, maxElapsedMs) {
+    // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，不应被 falsy 吞回默认 2000ms
+    const rawIntervalMs = Number(retry?.intervalMs);
+    const baseIntervalMs = Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000;
+    const rawFactor = Number(retry?.intervalFactor);
+    const intervalFactor = Number.isFinite(rawFactor) && rawFactor >= 1 ? rawFactor : 1;
+    const rawMaxIntervalMs = Number(retry?.maxIntervalMs);
+    const maxIntervalMs = Number.isFinite(rawMaxIntervalMs) && rawMaxIntervalMs >= 0
+        ? rawMaxIntervalMs
+        : Infinity;
+    let computed = baseIntervalMs * Math.pow(intervalFactor, Math.max(0, attempt - 1));
+    // 指数增长溢出为 Infinity 时不能直接交给 setTimeout（会被截断成 1ms 导致高频轮询）；
+    // 未声明上限时用总时限作安全上界。
+    if (!Number.isFinite(computed)) {
+        computed = Number.isFinite(maxIntervalMs) ? maxIntervalMs : maxElapsedMs;
+    }
+    computed = Math.min(computed, maxIntervalMs);
+    return Math.max(100, computed);
+}
+
 function delay(milliseconds, signal) {
     if (!milliseconds) return Promise.resolve();
     // 与 createRequestSignal 对齐：signal 已中止时立即拒绝，否则 addEventListener 不会触发，
@@ -819,19 +843,16 @@ export function createEngine(engineOptions = {}) {
                         || attempt === totalAttempts
                         || !retryOn.has("assertion"))) break;
 
-                // ✅ 确保最小重试间隔：显式小值（含 0）钳到下限 100ms 防高频轮询。
-                // 用 isFinite 判定而非 ||——显式 0 表示「按最小间隔执行」，
-                // 不应被 falsy 静默吞回默认 2000ms（定义期口径：≥0 合法）
-                const rawIntervalMs = Number(retry.intervalMs);
-                const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2000);
+                // 按当前尝试序号计算退避间隔（第 1 次重试 = intervalMs），并保留下限/封顶/总时限约束。
+                const intervalMs = retryBackoffIntervalMs(retry, attempt, maxElapsedMs);
                 // 总时限已到（仅新重试路径）：不再回调/等待，直接按 TO 结束。
                 if (enforceAttemptDeadline && (now() - retryStartTime) >= maxElapsedMs) {
                     throw retryTimeoutError(attempt);
                 }
                 // 回调前估算实际等待，仅用于进度提示；回调结束后会重新按剩余额度计算。
-                const remainingForWait = enforceAttemptDeadline
-                    ? Math.max(0, maxElapsedMs - (now() - retryStartTime))
-                    : Infinity;
+                // 所有 retryUntil 路径都按剩余总时限截断等待：退避可能指数增长，
+                // 不能再等完整 interval 后才在下一轮发现已超过 maxElapsedMs。
+                const remainingForWait = Math.max(0, maxElapsedMs - (now() - retryStartTime));
                 const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
                 const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
                 if (attemptCallback) {
@@ -874,10 +895,8 @@ export function createEngine(engineOptions = {}) {
                 }
                 // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
                 // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
-                // 截断后下一轮顶部按 >= 判定并返回 TIMEOUT，实际耗时贴近配置总时限。
-                const waitMs = enforceAttemptDeadline
-                    ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)))
-                    : intervalMs;
+                // 截断后下一轮顶部按各自路径的到时判定并返回 TIMEOUT，实际耗时贴近配置总时限。
+                const waitMs = Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)));
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
                 await delay(waitMs, options.signal);
             }

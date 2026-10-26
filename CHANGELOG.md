@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎与断言
 
+- `retryUntil` 指数退避（contract v13 → v14，issue #8）：新增可选 `intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`，未声明不封顶）。第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶后仍应用 100ms 下限，并按 `maxElapsedMs` 剩余额度截断；所有 retryUntil 等待现在都受剩余总时限约束（此前仅显式 `error`/`timeout` 路径截断），不会在总时限后继续睡完整退避间隔。`onAttempt.intervalMs` 报告实际等待时长。定义期拒绝 `intervalFactor < 1`、`maxIntervalMs < intervalMs` 及非有限值；capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库、README 与内部指南同步投射。
 - `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误；显式启用 `error`/`timeout` 时，重试等待间隔、单次在途执行与异步 `onAttempt` 均受剩余总时限约束（总时限后迟到的 HTTP 响应不再触发 `saveResponseAs` 落盘，也不让慢请求 PASS）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度；`retryUntil` 未知键定义期拒绝，避免拼错 `retryOn` 被静默忽略。未声明 `retryOn`（默认 assertion）时仅在尝试之间检查总时限，行为与旧版完全一致（耗时恰好等于 `maxElapsedMs` 仍发起下一次尝试，超过后返回的成功响应仍可通过）。
 
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。

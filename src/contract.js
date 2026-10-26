@@ -10,7 +10,7 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 13;
+export const CONTRACT_VERSION = 14;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -167,11 +167,12 @@ export const contract = Object.freeze({
     }),
 
     retryUntil: Object.freeze({
-        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
         // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
         retryOn: Object.freeze(["assertion", "error", "timeout"]),
         defaultRetryOn: Object.freeze(["assertion"]),
         note: "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
+            + "。intervalFactor 可选（默认 1，固定间隔），第 n 次重试等待 = intervalMs × intervalFactor^(n-1)；maxIntervalMs 可选封顶，最终仍受 100ms 下限与 maxElapsedMs 总时长约束"
     }),
 
     scenario: Object.freeze({
