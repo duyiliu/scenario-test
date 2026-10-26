@@ -43,13 +43,21 @@ export function loadConfigFile(filePath, api) {
     return api.defineConfig(config);
 }
 
+// 已加载场景的来源文件路径：此前只按 id 命中注册表即返回——同一进程加载同名 id
+// 的另一个文件（跨配置/长驻进程复用）会静默拿到第一个文件的陈旧场景。改为
+// 「同 id 且同文件路径」才走缓存；同 id 不同路径继续执行文件，由 registerScenario
+// 的后注册覆盖语义接管，避免错配。
+const loadedScenarioPaths = new Map();
+
 export function loadScenarioFile(filePath, id, api) {
+    const absolutePath = path.resolve(filePath);
     const existing = getScenario(id);
-    if (existing) return existing;
-    const loaded = executeDefinitionFile(filePath, api);
+    if (existing && loadedScenarioPaths.get(id) === absolutePath) return existing;
+    const loaded = executeDefinitionFile(absolutePath, api);
     let scenario = getScenario(id);
     const exported = loaded.exports?.default || loaded.exports;
     if (!scenario && exported && Array.isArray(exported.steps)) scenario = registerScenario(id, exported);
     if (!scenario) throw new Error(`场景文件未注册 ${id}: ${filePath}`);
+    loadedScenarioPaths.set(id, absolutePath);
     return scenario;
 }

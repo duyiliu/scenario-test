@@ -1,4 +1,5 @@
 import { esc, fmt, safeJson } from './ui-utils.js';
+import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
 const workbenchView = (function () {
     'use strict';
@@ -565,8 +566,8 @@ const workbenchView = (function () {
             queryPart.split('&').forEach(function (pair) {
                 if (!pair) return;
                 var parts = pair.split('=');
-                var key = decodeURIComponent(parts[0] || '');
-                var val = decodeURIComponent(parts.slice(1).join('=') || '');
+                var key = safeDecodeComponent(parts[0] || '');
+                var val = safeDecodeComponent(parts.slice(1).join('=') || '');
                 params.push({ name: key, value: val });
             });
         }
@@ -1199,7 +1200,6 @@ const workbenchView = (function () {
 
     function renderReportPanel(steps, scenario, scenarioFile, executionMode, environment) {
         steps = steps || [];
-        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
         var node = document.getElementById('reportPanel');
         var reportTab = document.getElementById('reportTab');
         var reportTabBadge = document.getElementById('reportTabBadge');
@@ -1211,7 +1211,13 @@ const workbenchView = (function () {
             // 0 失败时不渲染徽标，避免未执行/全通过状态下出现无意义的「0」
             reportTabBadge.style.display = failedCount > 0 ? '' : 'none';
         }
-        if (!node) return report;
+        if (!node) return null;
+        // 报告面板隐藏（统计页签激活）时只更新徽标/禁用态，跳过 buildOverallReport 与
+        // innerHTML 重建——执行循环每步都调本函数，全量重建会让报告构建退化成 O(n²)；
+        // 页签切回报告时由 setSidePanelTab 补一次全量渲染。返回 null 表示未缓存报告，
+        // 复制按钮经 state.lastReport 缺失时回退现场重建，不受影响。
+        if (node.classList.contains('hidden')) return null;
+        var report = buildOverallReport(steps, scenario, scenarioFile, executionMode, environment);
         if (!steps.length) {
             node.innerHTML = '<div class="report-empty"><div class="report-empty__title">执行后生成报告</div><div class="report-empty__hint">结果摘要与失败诊断将在这里展示</div></div>';
             return report;

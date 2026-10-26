@@ -4,6 +4,7 @@ import { esc, safeJson, copyText } from "./ui-utils.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
+import { buildStepCurl } from './curl.js';
 
 export function createWorkbenchRuntime(options) {
     'use strict';
@@ -482,7 +483,7 @@ export function createWorkbenchRuntime(options) {
         state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
 
-    function setSidePanelTab(tabName) {
+    function setSidePanelTab(tabName, options) {
         var showReport = tabName === 'report';
         var statsTab = document.getElementById('statsTab');
         var reportTab = document.getElementById('reportTab');
@@ -499,6 +500,10 @@ export function createWorkbenchRuntime(options) {
             reportTab.classList.toggle('is-active', showReport);
             reportTab.setAttribute('aria-selected', showReport ? 'true' : 'false');
         }
+        // 报告面板由隐藏转可见时补一次全量渲染：面板隐藏期间 renderReportPanel 只更新
+        // 徽标不重建 DOM（见 ui-view 同名函数注释），切回时需用最新 steps 重新填充；
+        // preservePanel 用于调用方已自行写入面板内容的场景（showDiagnosticError），跳过重建
+        if (showReport && !(options && options.preservePanel)) renderReportPanel();
     }
 
     function bindSidePanelTabs() {
@@ -507,16 +512,6 @@ export function createWorkbenchRuntime(options) {
         if (statsTab) statsTab.addEventListener('click', function () { setSidePanelTab('stats'); });
         if (reportTab) reportTab.addEventListener('click', function () { setSidePanelTab('report'); });
         setSidePanelTab('stats');
-    }
-
-    function expandStepDetails(stepIndex) {
-        var items = document.querySelectorAll('#stepsList li');
-        var item = items[stepIndex];
-        if (!item) return;
-        var panel = item.querySelector('.details-panel');
-        var chevron = item.querySelector('.chevron');
-        if (panel) panel.classList.add('open');
-        if (chevron) chevron.classList.add('rotate-180');
     }
 
     // ===== 执行调度引擎 =====
@@ -535,10 +530,13 @@ export function createWorkbenchRuntime(options) {
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
             onAttempt: function (info) {
-                var detail = 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
+                var label = info.errorType === 'timeout' ? '超时' : (info.errorType ? '连接失败' : '未通过');
+                var detail = info.errorType
+                    ? (info.errorMessage || '')
+                    : 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
                 uiView.setRunState('running',
                     '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
-                    + ' 次未通过（' + detail + '），' + info.intervalMs + 'ms 后重试');
+                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试');
             }
         });
     }
@@ -725,7 +723,8 @@ export function createWorkbenchRuntime(options) {
                     '</div>' +
                 '</div>';
         }
-        setSidePanelTab('report');
+        // 面板内容已按诊断形态手工写入：切页签时跳过常规重建，否则诊断被覆盖
+        setSidePanelTab('report', { preservePanel: true });
     }
 
     function showExecutionConfigError(error) {
@@ -1349,16 +1348,8 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
-    // POSIX shell 单引号转义：单引号内不做 $VAR/$(...)/反引号展开，值中的 ' 用 '\'' 收尾再续开。
-    // 复制出的命令与工作台实际发送值一致，也避免变量值借复制粘贴注入命令。
-    function shellSingleQuote(value) {
-        return "'" + String(value).replace(/'/g, "'\\''") + "'";
-    }
-
-    function generateStepCurl(step, stepIndex) {
+    function generateStepCurl(step) {
         if (!step) return '';
-        var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
-        var baseUrl = getRequestBaseUrl();
         var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
         var resolvedVars = clone(rawVars);
         if (state.activeRuntime && state.activeRuntime.vars) {
@@ -1366,72 +1357,11 @@ export function createWorkbenchRuntime(options) {
         } else if (state.stepRuntime && state.stepRuntime.vars) {
             Object.assign(resolvedVars, state.stepRuntime.vars);
         }
-        var runtime = { vars: resolvedVars };
-        var stepPath = step.path || (step.request && step.request.path) || '';
-        var stepParams = step.params || (step.request && step.request.params);
-        var requestPath = core.buildUrl(stepPath, stepParams, runtime);
-
-        var globals = getEffectiveGlobals();
-        var headers = {};
-
-        // 拼接 globals 的 query
-        var queryIndex = requestPath.indexOf('?');
-        var existingKeys = new Set();
-        if (queryIndex >= 0) {
-            requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
-                var key = pair.split('=')[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
-            });
-        }
-        var queryParts = [];
-        globals.forEach(function (global) {
-            if (global.type !== 'query' || existingKeys.has(global.name)) return;
-            queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
+        return buildStepCurl(step, {
+            baseUrl: getRequestBaseUrl(),
+            vars: resolvedVars,
+            globals: getEffectiveGlobals()
         });
-        if (queryParts.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
-        }
-
-        // 拼接 globals 的 cookie
-        var cookieParts = globals
-            .filter(function (global) { return global.type === 'cookie'; })
-            .map(function (global) { return global.name + '=' + core.resolveString(global.value, runtime); });
-
-        // headers
-        globals.forEach(function (g) {
-            if (g.type === 'header' && g.name) {
-                headers[g.name] = core.resolveString(g.value || '', runtime);
-            }
-        });
-        if (step.request && step.request.headers) {
-            var reqHeaders = step.request.headers;
-            if (typeof reqHeaders === 'object' && reqHeaders !== null) {
-                Object.keys(reqHeaders).forEach(function (k) {
-                    headers[k] = core.resolveString(String(reqHeaders[k]), runtime);
-                });
-            }
-        }
-        if (cookieParts.length) {
-            var cookieKey = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'cookie'; });
-            var mergedCookie = cookieKey ? (headers[cookieKey] + '; ' + cookieParts.join('; ')) : cookieParts.join('; ');
-            if (cookieKey) headers[cookieKey] = mergedCookie;
-            else headers.Cookie = mergedCookie;
-        }
-
-        var fullUrl = core.joinUrl(baseUrl, requestPath);
-        var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
-
-        Object.keys(headers).forEach(function (key) {
-            parts.push('-H ' + shellSingleQuote(key + ': ' + String(headers[key])));
-        });
-
-        if (step.request && step.request.body != null) {
-            var bodyVal = step.request.body;
-            var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
-            bodyStr = core.resolveString(bodyStr, runtime);
-            parts.push('-d ' + shellSingleQuote(bodyStr));
-        }
-        return parts.join(' \\\n  ');
     }
 
     function bindStepCurlActions() {

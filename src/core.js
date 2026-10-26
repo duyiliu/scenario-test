@@ -1,5 +1,6 @@
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
+import { safeDecodeComponent } from "./utils/safe-decode.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
 
@@ -38,6 +39,14 @@ export function isPlainObject(value) {
 // CLI 据此区分「真实保存信息」与业务响应恰好含 savedTo/size 字段的对象——
 // JSON 序列化不可表达 Symbol，服务端/适配器业务数据无法伪造
 export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+
+// 字节上限归一化：仅有限正数生效（向下取整），其余（0/负数/NaN/Infinity/空值）
+// 统一视为“不限制”以保持既有行为。config 与 run options 共用同一口径
+// （engine 的 maxResponseBytes/maxUploadBytes、node io 的 maxUploadBytes）。
+export function normalizeByteLimit(value) {
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 
 // 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
 // \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
@@ -188,6 +197,79 @@ export function resolve(value, runtime) {
     return resolveString(value, runtime);
 }
 
+// resolve(clone(value)) 的单遍历等价实现（引擎热路径：步骤 request/step 每次尝试都要复制+解析）。
+// 容器（对象/数组）全新、叶子共享——字符串不可变，整串模板解析出的对象仍与旧实现一样按引用返回。
+// 语义必须与 clone 完全一致：undefined 键剥离、数组空位/undefined 补 null、非有限数字转 null、
+// -0 归零、__proto__ 按自有数据键保留（不污染原型）、循环引用抛 TypeError。
+// 非纯 JSON 数据（Date/Map/Set/BigInt/带 toJSON 的对象等）与循环引用一律回退到
+// resolve(clone(value))：这些少见形态的标准化与报错行为（Date → ISO 串、原生
+// "Converting circular structure to JSON"）逐字不变，无需在此重复实现 JSON.stringify 的细节。
+const RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
+
+export function resolveClone(value, runtime) {
+    const fast = resolveCloneFast(value, runtime, new Set());
+    return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+}
+
+// ancestors 只记录当前递归路径（进入时入栈、退出时出栈）：兄弟节点重复引用不是循环，
+// 与 JSON.stringify 的 circular 判定口径一致。遇到需要回退的形态立即整体回退，
+// 保证回退后的 clone 能看到完整输入、报错/标准化与旧实现完全相同。
+function resolveCloneFast(value, runtime, ancestors) {
+    if (typeof value === "string") return resolveString(value, runtime);
+    if (value === null) return null;
+    if (typeof value === "number") {
+        // JSON.stringify 把 NaN/Infinity 写成 null，-0 写成 0
+        if (!Number.isFinite(value)) return null;
+        return value === 0 ? 0 : value;
+    }
+    if (typeof value === "boolean") return value;
+    if (value === undefined) return undefined;
+    // function / symbol / bigint：交由 clone 处理（对象键被丢弃、数组元素变 null、BigInt 抛 TypeError）
+    if (typeof value !== "object") return RESOLVE_CLONE_FALLBACK;
+    if (ancestors.has(value)) return RESOLVE_CLONE_FALLBACK;
+    if (Array.isArray(value)) {
+        // 数组自带 toJSON 时 JSON.stringify 会调用它，交回旧实现
+        if (typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+        ancestors.add(value);
+        try {
+            const result = new Array(value.length);
+            for (let index = 0; index < value.length; index += 1) {
+                const item = resolveCloneFast(value[index], runtime, ancestors);
+                if (item === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+                // 稀疏数组空位与 undefined 在 JSON 中都序列化为 null
+                result[index] = item === undefined ? null : item;
+            }
+            return result;
+        } finally {
+            ancestors.delete(value);
+        }
+    }
+    // 非普通对象（Date/Map/Set/类数组宿主对象等）或带 toJSON 的对象：交回旧实现
+    if (!isPlainObject(value) || typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+    ancestors.add(value);
+    try {
+        const result = {};
+        for (const key of Object.keys(value)) {
+            const item = value[key];
+            // 自有 undefined 值键被 JSON.stringify 丢弃
+            if (item === undefined) continue;
+            const resolved = resolveCloneFast(item, runtime, ancestors);
+            if (resolved === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
+            // function / symbol 值同样被丢弃
+            if (resolved === undefined) continue;
+            if (key === "__proto__") {
+                // 直接赋值会改写结果对象的原型（原型链污染），按数据键定义
+                Object.defineProperty(result, key, { value: resolved, enumerable: true, writable: true, configurable: true });
+            } else {
+                result[key] = resolved;
+            }
+        }
+        return result;
+    } finally {
+        ancestors.delete(value);
+    }
+}
+
 function headerKey(headers, name) {
     const target = String(name || "").toLowerCase();
     return Object.keys(headers || {}).find((item) => item.toLowerCase() === target);
@@ -252,13 +334,57 @@ export function queryPairs(key, value) {
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 
+// 按 fragment（#）拆分 URL。查询参数必须拼在 fragment 之前：浏览器 fetch 不会发送
+// fragment 之后的内容，拼到 # 之后会让参数静默丢失。
+export function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0
+        ? { path: text, fragment: "" }
+        : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+
+// 读取 URL 已有 query 的 key 集合（只看 fragment 之前的部分）。
+// 单个畸形百分号编码（bad%zz、字面 %）不应抛 URIError 中断整个请求：失败时保留原串。
+export function queryKeys(url) {
+    const keys = new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+        const key = pair.split("=")[0];
+        if (key) keys.add(safeDecodeComponent(key));
+    }
+    return keys;
+}
+
+// 把已序列化的 query 对拼到 URL 上：保留原 fragment，参数总是追加在 fragment 之前。
+export function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+
+// 注入环境 globals query（跳过 URL 中已存在的 key）。引擎执行与浏览器 cURL 预览共用，
+// 保证两边拼接位置（含 fragment 处理）始终一致。
+export function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+        if (global.type !== "query" || existingKeys.has(global.name)) continue;
+        // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
+        pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+}
+
 export function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
 }
 
 export function parseBody(text, contentType) {
@@ -396,6 +522,10 @@ function assertionActual(definition, response, runtime) {
 // 值语义与 JSON 对齐：对象里值为 undefined 的键与 JSON.stringify 一样忽略（{a:undefined} ≡ {}）。
 function stableStringify(value) {
     if (value === undefined) return "undefined";
+    // BigInt 等 JSON 不可表示值此前经 JSON.stringify 抛 TypeError，把 equals/notEquals
+    // 的「断言失败」升级为步骤 ERROR——与 includes/oneOf 已修的口径不一致。bigint:
+    // 前缀与字符串 "1"、数字 1 区分开（1n ≠ 1 ≠ "1"），适配器返回的 BigInt 字段可正常比较
+    if (typeof value === "bigint") return `bigint:${value.toString()}`;
     if (value === null || typeof value !== "object") return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
     // 单趟组装：此前 filter+map 各序列化一次同一子树——每层 2× 冗余，
@@ -415,9 +545,39 @@ const INCLUDES_OBJECT_ACTUAL_REASON =
     "includes 不支持对象类型的实际值（String(actual) 恒为 \"[object Object]\"，断言必然失败）：" +
     "对象深比较请改用 equals，或对具体字段用 path 断言（如 path: \"data.id\"）";
 
+// 断言定义执行期校验去重：retryUntil 轮询里同一定义对象每次尝试都会重新进
+// evaluateAssertion——同一对象的校验结果不变（插件 transform 在 runScenario 前完成，
+// 步内定义不会被改写），WeakSet 记忆已校验对象，把 N 次尝试 × M 条断言降为 M 次。
+// each 子断言是每次 resolve() 新建的独立对象，天然不命中缓存，仍由 each 分支逐次校验。
+const validatedAssertions = new WeakSet();
+
+// matches 正则编译缓存：retryUntil 轮询与同值静态正则（如隐式 ^2\d\d$）此前
+// 每条断言每次尝试都重新 new RegExp。按解析后的期望值字符串缓存编译结果；
+// new RegExp 不携带 /g /y flag，.test() 无 lastIndex 状态，共享安全。
+// 有界 FIFO 防模板期望值无限增长占内存（与 tokenizePath 缓存同思路）。
+const MATCHES_PATTERN_CACHE_LIMIT = 128;
+const matchesPatternCache = new Map();
+
+function compiledMatchesPattern(expected) {
+    const key = String(expected);
+    let compiled = matchesPatternCache.get(key);
+    if (!compiled) {
+        compiled = new RegExp(key);
+        if (matchesPatternCache.size >= MATCHES_PATTERN_CACHE_LIMIT) {
+            matchesPatternCache.delete(matchesPatternCache.keys().next().value);
+        }
+        matchesPatternCache.set(key, compiled);
+    }
+    return compiled;
+}
+
 export function evaluateAssertion(definition, response, runtime, context) {
     // 执行期也校验：防止插件 transform 之后产生非法断言定义
-    validateAssertion(definition, context);
+    if (!validatedAssertions.has(definition)) {
+        validateAssertion(definition, context);
+        // 走到这里定义必是 plain object（否则上一行已抛），WeakSet 只收对象
+        validatedAssertions.add(definition);
+    }
     return evaluateValidatedAssertion(definition, response, runtime, context);
 }
 
@@ -495,7 +655,7 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         // 隐式默认断言（无显式 status/assertions 时追加的 HTTP 2xx 检查）仅对数字
         // HTTP 状态码生效；本地适配器（返回 status: "LOCAL"）不参与匹配
         if (!(definition.implicit === true && typeof actual !== "number")) {
-            try { passed = passed && new RegExp(String(expected)).test(String(actual == null ? "" : actual)); }
+            try { passed = passed && compiledMatchesPattern(expected).test(String(actual == null ? "" : actual)); }
             catch { passed = false; }
         }
     }
@@ -617,6 +777,21 @@ export function assertNoReservedVars(source, label) {
     }
 }
 
+/**
+ * 安全写入运行时 vars：普通赋值遇到 "__proto__" 会走 Object.prototype 的原型 setter——
+ * 对象值改写 vars 原型、原始值被静默丢弃。defineProperty 始终生成普通自有可写键，
+ * 作为定义期保留名拦截之外的运行期兜底（直接调用 runStep/applyGeneratedVar 时同样生效）。
+ */
+export function setRuntimeVar(vars, name, value) {
+    Object.defineProperty(vars, name, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+    });
+    return value;
+}
+
 export function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
@@ -645,7 +820,7 @@ export function applyExtract(step, response, runtime) {
             if (hasDefault) {
                 // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
                 // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
-                runtime.vars[definition.name] = resolve(definition.default, runtime);
+                setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
                 continue;
             }
             if (definition.required === true) {
@@ -659,7 +834,7 @@ export function applyExtract(step, response, runtime) {
                 warnings.push(`提取变量 ${definition.name}：路径 ${definition.path || "(整个响应)"} 不存在，变量值为 undefined（required 未开启，不影响执行）`);
             }
         }
-        runtime.vars[definition.name] = value;
+        setRuntimeVar(runtime.vars, definition.name, value);
     }
     return { warnings, failures };
 }
@@ -934,25 +1109,25 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
                 throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
             }
-            vars[name] = formatTimestamp(base, definition.format);
+            setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
         } else if (definition.unit != null && definition.unit !== "ms") {
             if (definition.unit !== "s") {
                 throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
             }
-            vars[name] = Math.floor(base / 1000);
+            setRuntimeVar(vars, name, Math.floor(base / 1000));
         } else {
-            vars[name] = base;
+            setRuntimeVar(vars, name, base);
         }
         return;
     }
     if (definition.type === "uuid") {
         // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
         if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-        vars[name] = globalThis.crypto.randomUUID();
+        setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
         return;
     }
     if (definition.type === "uuidHex") {
-        vars[name] = uuidHex();
+        setRuntimeVar(vars, name, uuidHex());
         return;
     }
     if (definition.type === "idcard") {
@@ -973,11 +1148,11 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
         }
         const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-        vars[name] = buildChinaIdNumber({
+        setRuntimeVar(vars, name, buildChinaIdNumber({
             regionCode,
             birthDate: definition.birthDate,
             sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-        });
+        }));
         return;
     }
     if (definition.type === "luhn") {
@@ -996,7 +1171,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
         const first = `${prefix}${body}`;
-        vars[name] = `${first}${luhnCheckDigit(first)}`;
+        setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
         return;
     }
     if (definition.type === "phone") {
@@ -1012,7 +1187,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 8; i += 1) {
             tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
-        vars[name] = `${prefix}${tail}`;
+        setRuntimeVar(vars, name, `${prefix}${tail}`);
         return;
     }
     if (definition.type === "uscc") {
@@ -1027,12 +1202,12 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 9; i += 1) {
             orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
         }
-        vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+        setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
         return;
     }
     if (definition.type === "md5") {
         const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-        vars[name] = md5(source);
+        setRuntimeVar(vars, name, md5(source));
         return;
     }
     if (definition.type === "signature") {
@@ -1043,14 +1218,14 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         if (!secret) {
             throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
         }
-        vars[name] = generateSignature(params, secret);
+        setRuntimeVar(vars, name, generateSignature(params, secret));
         return;
     }
     if (definition.type === "enum") {
         // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
         // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
         const { values, weights } = normalizeEnumDefinition(definition);
-        vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+        setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
         return;
     }
     throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);

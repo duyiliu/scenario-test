@@ -6,7 +6,7 @@
 import { contract, CONTRACT_VERSION } from "./contract.js";
 
 export function buildCapabilities(inputContract = contract) {
-    const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+    const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
     return {
         schema: "scenario-test-capabilities",
         version: inputContract.runtimeVersion,
@@ -43,10 +43,21 @@ export function buildCapabilities(inputContract = contract) {
             note: globals.note
         },
         config: {
+            configKeys: [...config.configKeys],
             scenarioItemKeys: [...config.scenarioItemKeys],
             environmentKeys: [...config.environmentKeys],
             variableKeys: [...config.variableKeys],
+            baseUrl: {
+                protocol: config.baseUrl.protocol,
+                note: config.baseUrl.note
+            },
             manual: { ...config.manual }
+        },
+        retryUntil: {
+            keys: [...retryUntil.keys],
+            retryOn: [...retryUntil.retryOn],
+            defaultRetryOn: [...retryUntil.defaultRetryOn],
+            note: retryUntil.note
         },
         scenario: {
             keys: [...scenario.keys],
@@ -58,7 +69,13 @@ export function buildCapabilities(inputContract = contract) {
             options: Object.fromEntries(
                 Object.entries(cli.options).map(([name, spec]) => [
                     name,
-                    { kind: spec.kind, description: spec.description, ...(spec.aliases ? { aliases: [...spec.aliases] } : {}) }
+                    {
+                        kind: spec.kind,
+                        description: spec.description,
+                        ...(spec.parse ? { parse: spec.parse } : {}),
+                        ...(spec.repeatable ? { repeatable: true } : {}),
+                        ...(spec.aliases ? { aliases: [...spec.aliases] } : {})
+                    }
                 ])
             )
         }
@@ -107,11 +124,17 @@ export function renderCapabilitiesText(capabilities) {
     lines.push("");
     lines.push(`globals 类型: ${capabilities.globals.types.join(" / ")}`);
     lines.push("");
+    lines.push(`config 顶层字段: ${capabilities.config.configKeys.join(" / ")}`);
     lines.push(`config.scenarios 项字段: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+    lines.push(`  baseUrl（${capabilities.config.baseUrl.protocol}）: ${capabilities.config.baseUrl.note}`);
     lines.push(`  manual（${capabilities.config.manual.type}）: ${capabilities.config.manual.note}`);
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
+    if (capabilities.retryUntil) {
+        lines.push(`retryUntil 字段: ${capabilities.retryUntil.keys.join(" / ")}；retryOn: ${capabilities.retryUntil.retryOn.join(" / ")}（默认 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}）`);
+        lines.push(`  ${capabilities.retryUntil.note}`);
+    }
     lines.push("");
     lines.push("CLI 命令:");
     for (const command of capabilities.cli.commands) {
