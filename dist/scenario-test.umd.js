@@ -2491,7 +2491,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
   async function executeAdapter(adapter, adapterName, step, runtime, options) {
     if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
     let output;
-    const request = isPlainObject(step.request) ? resolve(clone(step.request), runtime) : {};
+    const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
     const timeoutMs = resolveTimeoutMs(step, request, options);
     const requestSignal = createRequestSignal(options.signal, timeoutMs);
     const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };

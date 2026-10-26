@@ -1476,6 +1476,10 @@ function formatDuration(milliseconds) {
 // src/utils/failure-diff.js
 var SHORT_VALUE_LIMIT = 80;
 var MAX_LINES = 20;
+var HUNK_CONTEXT = 2;
+var MAX_DIFF_CELLS = 4e6;
+var MAX_DIFF_TOTAL_LINES = 2e5;
+var HUNK_SKIPPED_MARK = "\u2026\uFF08\u4E2D\u95F4\u76F8\u540C\u884C\u5DF2\u7701\u7565\uFF09";
 var CONTEXT_RADIUS = 40;
 var MAX_LINE_WIDTH = 240;
 var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
@@ -1502,19 +1506,25 @@ function formatFailureValue(value) {
   if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
   return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
 }
+function escapeStringLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)));
+}
+function escapeJsonLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(line));
+}
 function splitStringLines(text, prefix) {
   const raw = String(text).split(/\r\n|\n|\r/);
   const width = String(raw.length).length;
-  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)))}`);
+  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${escapeStringLineContent(line)}`);
 }
 function prettyLines(value) {
   let text;
   try {
-    text = defuseCiCommandMarkers(escapeC1(JSON.stringify(value, null, 2) ?? String(value)));
+    text = JSON.stringify(value, null, 2) ?? String(value);
   } catch {
-    text = defuseCiCommandMarkers(String(value));
+    text = String(value);
   }
-  const lines = text.split("\n");
+  const lines = text.split("\n").map(escapeJsonLineContent);
   if (lines.length > MAX_LINES) {
     return [
       ...lines.slice(0, MAX_LINES),
@@ -1547,19 +1557,135 @@ function firstDifferenceLines(expected, actual, prefix) {
 function failureDiffLines(expected, actual, prefix = "") {
   if (isShortValue(expected) && isShortValue(actual)) return [];
   const lines = [];
-  if (!isShortValue(expected)) {
-    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
-    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
-  }
-  if (!isShortValue(actual)) {
-    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
-    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+  const bothLong = !isShortValue(expected) && !isShortValue(actual);
+  const aligned = bothLong ? alignedDiffLines(expected, actual, prefix) : null;
+  if (aligned) {
+    lines.push(...aligned);
+  } else {
+    if (!isShortValue(expected)) {
+      lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
+      lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
+    }
+    if (!isShortValue(actual)) {
+      lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
+      lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+    }
   }
   lines.push(...firstDifferenceLines(
     typeof expected === "string" ? expected : void 0,
     typeof actual === "string" ? actual : void 0,
     `${prefix}  `
   ));
+  return lines;
+}
+function valueToRawLines(value, isStringValue) {
+  if (isStringValue) return String(value).split(/\r\n|\n|\r/);
+  let text;
+  try {
+    text = JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.split("\n");
+}
+function diffLineOps(expectedLines, actualLines) {
+  if (expectedLines.length + actualLines.length > MAX_DIFF_TOTAL_LINES) return null;
+  let start = 0;
+  const minLines = Math.min(expectedLines.length, actualLines.length);
+  while (start < minLines && expectedLines[start] === actualLines[start]) start += 1;
+  let endA = expectedLines.length;
+  let endB = actualLines.length;
+  while (endA > start && endB > start && expectedLines[endA - 1] === actualLines[endB - 1]) {
+    endA -= 1;
+    endB -= 1;
+  }
+  const midA = endA - start;
+  const midB = endB - start;
+  if ((midA + 1) * (midB + 1) > MAX_DIFF_CELLS) return null;
+  const ops = [];
+  for (let i2 = 0; i2 < start; i2 += 1) ops.push({ t: "=", e: i2, a: i2 });
+  const stride = midB + 1;
+  const lcs = new Int32Array((midA + 1) * stride);
+  for (let i2 = midA - 1; i2 >= 0; i2 -= 1) {
+    for (let j2 = midB - 1; j2 >= 0; j2 -= 1) {
+      lcs[i2 * stride + j2] = expectedLines[start + i2] === actualLines[start + j2] ? lcs[(i2 + 1) * stride + (j2 + 1)] + 1 : Math.max(lcs[(i2 + 1) * stride + j2], lcs[i2 * stride + (j2 + 1)]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < midA && j < midB) {
+    if (expectedLines[start + i] === actualLines[start + j]) {
+      ops.push({ t: "=", e: start + i, a: start + j });
+      i += 1;
+      j += 1;
+    } else if (lcs[(i + 1) * stride + j] >= lcs[i * stride + (j + 1)]) {
+      ops.push({ t: "-", e: start + i });
+      i += 1;
+    } else {
+      ops.push({ t: "+", a: start + j });
+      j += 1;
+    }
+  }
+  while (i < midA) {
+    ops.push({ t: "-", e: start + i });
+    i += 1;
+  }
+  while (j < midB) {
+    ops.push({ t: "+", a: start + j });
+    j += 1;
+  }
+  for (let k = 0; k < expectedLines.length - endA; k += 1) ops.push({ t: "=", e: endA + k, a: endB + k });
+  return ops;
+}
+function alignedDiffLines(expected, actual, prefix) {
+  const bothStrings = typeof expected === "string" && typeof actual === "string";
+  if (!bothStrings && !(typeof expected !== "string" && typeof actual !== "string")) return null;
+  const expectedLines = valueToRawLines(expected, bothStrings);
+  const actualLines = valueToRawLines(actual, bothStrings);
+  const ops = diffLineOps(expectedLines, actualLines);
+  if (!ops) return null;
+  const groups = [];
+  let previousChange = -1;
+  for (let index = 0; index < ops.length; index += 1) {
+    if (ops[index].t === "=") continue;
+    if (groups.length === 0 || index - previousChange - 1 > HUNK_CONTEXT * 2) {
+      groups.push({ from: index, to: index });
+    } else {
+      groups[groups.length - 1].to = index;
+    }
+    previousChange = index;
+  }
+  if (groups.length === 0) return null;
+  const rendered = [];
+  groups.forEach((group, groupIndex) => {
+    if (groupIndex > 0) rendered.push(null);
+    const from = Math.max(0, group.from - HUNK_CONTEXT);
+    const to = Math.min(ops.length - 1, group.to + HUNK_CONTEXT);
+    for (let index = from; index <= to; index += 1) rendered.push(ops[index]);
+  });
+  let expectedWidth = 1;
+  let actualWidth = 1;
+  for (const op of rendered) {
+    if (!op) continue;
+    if (op.e !== void 0) expectedWidth = Math.max(expectedWidth, String(op.e + 1).length);
+    if (op.a !== void 0) actualWidth = Math.max(actualWidth, String(op.a + 1).length);
+  }
+  const escapeContent = bothStrings ? escapeStringLineContent : escapeJsonLineContent;
+  const lines = [`${prefix}  \u884C\u7EA7\u5DEE\u5F02\uFF08\u4EC5\u5C55\u5F00\u5DEE\u5F02\u884C \xB1${HUNK_CONTEXT} \u884C\u4E0A\u4E0B\u6587\uFF0C- \u671F\u671B\u884C / + \u5B9E\u9645\u884C\uFF09:`];
+  for (const op of rendered) {
+    if (!op) {
+      lines.push(`${prefix}    ${HUNK_SKIPPED_MARK}`);
+      continue;
+    }
+    const expectedCell = op.e === void 0 ? " ".repeat(expectedWidth) : String(op.e + 1).padStart(expectedWidth);
+    const actualCell = op.a === void 0 ? " ".repeat(actualWidth) : String(op.a + 1).padStart(actualWidth);
+    const content = op.t === "+" ? escapeContent(actualLines[op.a]) : escapeContent(expectedLines[op.e]);
+    lines.push(capContentLine(`${prefix}    ${op.t === "=" ? " " : op.t} ${expectedCell} ${actualCell} | ${content}`, prefix.length));
+  }
+  if (lines.length > MAX_LINES) {
+    const total = lines.length;
+    return [...lines.slice(0, MAX_LINES), `${prefix}    \u2026\uFF08\u5171 ${total} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`];
+  }
   return lines;
 }
 function expandValueLines(value, prefix, baseLength) {
@@ -2598,7 +2724,7 @@ function raceWithSignal(promise, signal) {
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
   let output;
-  const request = isPlainObject(step.request) ? resolve(clone(step.request), runtime) : {};
+  const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
   const timeoutMs = resolveTimeoutMs(step, request, options);
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
