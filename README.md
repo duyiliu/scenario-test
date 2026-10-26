@@ -138,6 +138,31 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
 
+### 导入真实流量
+
+把浏览器 Network 面板导出的 HAR 或后端给出的 curl 示例转成可编辑的场景草稿：
+
+```powershell
+# HAR：过滤静态资源/OPTIONS，每个 API 请求生成一个 step
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har
+
+# 单条 curl：生成单步骤草稿，并在终端打印可直接粘贴的 step 片段
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --curl "curl -X POST 'https://api.example.com/orders' -H 'Content-Type: application/json' -d '{\"sku\":\"A1\"}'"
+
+# 只要指定主机、最多导入 10 条，或自定义输出文件
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har --host api.example.com --max-entries 10 --output scenarios/imported-orders.js
+```
+
+默认写入 `scenarios/imported-<时间戳>.js`，场景 id 与文件名一致（可用 `--output`/`--out` 改名）。草稿中的 `status`、动态字段和业务断言需要人工确认；`Authorization`、`Cookie`、API Key 等敏感头及敏感 query 参数不会落明文，而是替换为 `{{vars.*}}` 占位，请在 `scenario.config.js` 的 `vars` 或 `run --vars` 中提供真实值。二进制/multipart 请求体会以注释说明省略，需要时手工改用 `fileUpload` 或原始 body。
+
+生成后把文件加入配置清单即可执行：
+
+```js
+scenarios: [
+    { id: "imported-20261026081500", name: "导入流量草稿", url: "scenarios/imported-20261026081500.js" }
+]
+```
+
 ### 体检
 
 ```powershell
@@ -197,6 +222,7 @@ scenario-test/
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
+- `import --har` / `import --curl` 把真实流量或后端 curl 示例转成标准场景草稿；静态资源与预检会被过滤，Authorization/Cookie 等敏感头替换为 `{{vars.*}}` 占位，二进制请求体降级为注释。
 - `manual: true` 场景默认不参与 `--all`。
 - `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
 - 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。

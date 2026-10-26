@@ -185,7 +185,7 @@ export const contract = Object.freeze({
     }),
 
     cli: Object.freeze({
-        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
         options: Object.freeze({
             config: { kind: "value", prop: "config", description: "场景配置文件" },
             env: { kind: "value", prop: "env", description: "配置中的环境 key" },
@@ -214,6 +214,17 @@ export const contract = Object.freeze({
                 kind: "value", prop: "authorization",
                 aliases: ["authorization"],
                 description: "（已弃用）命令行传递授权令牌；推荐 SCENARIO_AUTH 环境变量"
+            },
+            har: { kind: "value", prop: "har", description: "import：HAR 文件路径（- 表示从 stdin 读取）" },
+            curl: { kind: "value", prop: "curl", description: "import：curl 命令文本；单请求生成单步骤草稿" },
+            output: {
+                kind: "value", prop: "output", aliases: ["out"],
+                description: "import：输出场景文件（默认 scenarios/imported-<ts>.js）"
+            },
+            host: { kind: "value", prop: "host", description: "import：仅导入指定主机（可逗号分隔多个）" },
+            "max-entries": {
+                kind: "value", prop: "maxEntries", parse: "number",
+                description: "import：最多导入请求数，默认 50（防超大 HAR 生成失控场景）"
             }
         })
     })

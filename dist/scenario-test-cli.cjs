@@ -240,10 +240,10 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
@@ -526,7 +526,7 @@ var contract = Object.freeze({
     failurePolicies: Object.freeze(["stop", "continue"])
   }),
   cli: Object.freeze({
-    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
     options: Object.freeze({
       config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
@@ -556,6 +556,21 @@ var contract = Object.freeze({
         prop: "authorization",
         aliases: ["authorization"],
         description: "\uFF08\u5DF2\u5F03\u7528\uFF09\u547D\u4EE4\u884C\u4F20\u9012\u6388\u6743\u4EE4\u724C\uFF1B\u63A8\u8350 SCENARIO_AUTH \u73AF\u5883\u53D8\u91CF"
+      },
+      har: { kind: "value", prop: "har", description: "import\uFF1AHAR \u6587\u4EF6\u8DEF\u5F84\uFF08- \u8868\u793A\u4ECE stdin \u8BFB\u53D6\uFF09" },
+      curl: { kind: "value", prop: "curl", description: "import\uFF1Acurl \u547D\u4EE4\u6587\u672C\uFF1B\u5355\u8BF7\u6C42\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F" },
+      output: {
+        kind: "value",
+        prop: "output",
+        aliases: ["out"],
+        description: "import\uFF1A\u8F93\u51FA\u573A\u666F\u6587\u4EF6\uFF08\u9ED8\u8BA4 scenarios/imported-<ts>.js\uFF09"
+      },
+      host: { kind: "value", prop: "host", description: "import\uFF1A\u4EC5\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\uFF08\u53EF\u9017\u53F7\u5206\u9694\u591A\u4E2A\uFF09" },
+      "max-entries": {
+        kind: "value",
+        prop: "maxEntries",
+        parse: "number",
+        description: "import\uFF1A\u6700\u591A\u5BFC\u5165\u8BF7\u6C42\u6570\uFF0C\u9ED8\u8BA4 50\uFF08\u9632\u8D85\u5927 HAR \u751F\u6210\u5931\u63A7\u573A\u666F\uFF09"
       }
     })
   })
@@ -852,10 +867,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path7 } = splitUrlFragment(url);
-  const queryIndex = path7.indexOf("?");
+  const { path: path8 } = splitUrlFragment(url);
+  const queryIndex = path8.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path7.slice(queryIndex + 1).split("&")) {
+  for (const pair of path8.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -864,8 +879,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path7, fragment } = splitUrlFragment(text);
-  return `${path7}${path7.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path8, fragment } = splitUrlFragment(text);
+  return `${path8}${path8.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -2985,14 +3000,14 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path7 = context && context.path || resolveString(step.path || "", runtime);
+      const path8 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path7,
+        path: path8,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -4369,6 +4384,733 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/import.js
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
+var DEFAULT_MAX_IMPORT_ENTRIES = 50;
+var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".css",
+  ".map",
+  ".html",
+  ".htm",
+  ".xhtml",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".ico",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".br"
+]);
+var IGNORED_REQUEST_HEADERS = /* @__PURE__ */ new Set([
+  "host",
+  "content-length",
+  "connection",
+  "proxy-connection",
+  "accept-encoding",
+  "transfer-encoding",
+  "upgrade",
+  "te",
+  "trailer",
+  "priority"
+]);
+var SENSITIVE_HEADER_NAMES = /* @__PURE__ */ new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "api-key",
+  "apikey",
+  "x-apikey",
+  "x-auth-token",
+  "x-access-token",
+  "x-token",
+  "x-client-secret",
+  "x-secret"
+]);
+var SENSITIVE_QUERY_NAMES = /* @__PURE__ */ new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "api_key",
+  "apikey",
+  "key",
+  "secret",
+  "client_secret",
+  "password",
+  "passwd",
+  "pwd",
+  "signature",
+  "sign",
+  "sig",
+  "authorization",
+  "auth",
+  "session",
+  "sessionid",
+  "cookie"
+]);
+var BINARY_MIME_PATTERN = /^(?:image\/|audio\/|video\/|font\/)|application\/(?:octet-stream|pdf|zip|gzip)$/i;
+var MULTIPART_MIME_PATTERN = /^multipart\//i;
+var ImportError = class extends Error {
+  constructor(message, hint) {
+    super(message);
+    this.name = "ImportError";
+    this.hint = hint || "";
+  }
+};
+function isEmpty(value) {
+  return value === void 0 || value === null || value === "";
+}
+function safeText(value) {
+  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+}
+function normalizeHeaders(headers) {
+  const pairs = [];
+  if (Array.isArray(headers)) {
+    for (const item of headers) {
+      if (!item) continue;
+      if (Array.isArray(item) && item.length >= 2) {
+        pairs.push([String(item[0]), String(item[1])]);
+        continue;
+      }
+      if (typeof item !== "object" || item.name === void 0 || item.value === void 0) continue;
+      pairs.push([String(item.name), String(item.value)]);
+    }
+  } else if (headers && typeof headers === "object") {
+    for (const [name, value] of Object.entries(headers)) {
+      if (value === void 0 || value === null) continue;
+      pairs.push([String(name), Array.isArray(value) ? value.join(", ") : String(value)]);
+    }
+  }
+  const result = [];
+  const seen = /* @__PURE__ */ new Map();
+  for (const [rawName, rawValue] of pairs) {
+    const name = rawName.trim();
+    if (!name || name.startsWith(":") || IGNORED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
+    const lower = name.toLowerCase();
+    const value = rawValue.trim();
+    if (seen.has(lower)) {
+      const existing = seen.get(lower);
+      existing.value = `${existing.value}${lower === "cookie" ? "; " : ", "}${value}`;
+      continue;
+    }
+    const entry = { name, value };
+    seen.set(lower, entry);
+    result.push(entry);
+  }
+  return result;
+}
+function headerVariableName(name) {
+  const normalized = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "secret";
+}
+function maskSensitiveHeaders(headers) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const result = {};
+  for (const { name, value } of headers) {
+    const lower = name.toLowerCase();
+    const sensitive = SENSITIVE_HEADER_NAMES.has(lower) || lower.endsWith("-token") || lower.endsWith("_token") || lower.includes("token") || lower.endsWith("-secret") || lower.endsWith("_secret") || lower.includes("secret") || lower.endsWith("-key") || lower.endsWith("_key") || lower.includes("apikey") || lower.includes("auth");
+    if (!sensitive || value.includes("{{")) {
+      result[name] = value;
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    result[name] = `{{vars.${variableName}}}`;
+    vars[variableName] = "";
+    notices.push(`${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { headers: result, vars, notices };
+}
+function isSensitiveQueryName(name) {
+  const lower = String(name).toLowerCase();
+  return SENSITIVE_QUERY_NAMES.has(lower) || lower.endsWith("_token") || lower.endsWith("-token") || lower.endsWith("_key") || lower.endsWith("-key") || lower.endsWith("_secret") || lower.endsWith("-secret");
+}
+function maskQueryParams(value) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const entries = [];
+  for (const [name, raw] of value) {
+    if (!isSensitiveQueryName(name) || String(raw).includes("{{")) {
+      entries.push([name, raw]);
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    entries.push([name, `{{vars.${variableName}}}`]);
+    vars[variableName] = "";
+    notices.push(`\u67E5\u8BE2\u53C2\u6570 ${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { params: Object.fromEntries(entries), vars, notices };
+}
+function parseHttpUrl(raw, label) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    throw new ImportError(`${label}\u4E0D\u662F\u5408\u6CD5\u7684 URL: ${safeText(raw)}`);
+  }
+  if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname) {
+    throw new ImportError(`${label}\u53EA\u652F\u6301 http(s) URL: ${safeText(raw)}`);
+  }
+  return parsed;
+}
+function redactUrlForComment(raw) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    return safeText(raw);
+  }
+  parsed.username = "";
+  parsed.password = "";
+  for (const key of Array.from(parsed.searchParams.keys())) {
+    if (isSensitiveQueryName(key)) parsed.searchParams.set(key, "<redacted>");
+  }
+  return parsed.toString();
+}
+function urlToStepPath(parsed) {
+  return parsed.pathname || "/";
+}
+function queryFromUrl(parsed) {
+  const values = /* @__PURE__ */ new Map();
+  for (const [name, value] of parsed.searchParams) {
+    if (!values.has(name)) values.set(name, value);
+    else if (Array.isArray(values.get(name))) values.get(name).push(value);
+    else values.set(name, [values.get(name), value]);
+  }
+  return Array.from(values);
+}
+function isStaticOrPreflight(entry) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  if (method === "OPTIONS") return true;
+  const headers = Array.isArray(request.headers) ? request.headers : [];
+  if (headers.some((header) => String(header?.name || "").toLowerCase() === "access-control-request-method")) return true;
+  let parsed;
+  try {
+    parsed = new URL(String(request.url || ""));
+  } catch {
+    return true;
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) return true;
+  const extension = import_node_path6.default.extname(parsed.pathname).toLowerCase();
+  if (STATIC_EXTENSIONS.has(extension)) return true;
+  const mimeType = String(entry?.response?.content?.mimeType || "");
+  if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
+  return /^(?:image\/|audio\/|video\/|font\/|text\/css$|application\/(?:javascript|pdf|zip|gzip)$)/i.test(mimeType);
+}
+function bodyFromHar(request, notes, headers) {
+  const postData = request?.postData;
+  if (!postData || isEmpty(postData.text) && !Array.isArray(postData.params)) return { body: void 0 };
+  const mimeType = String(postData.mimeType || "");
+  let text = postData.text;
+  if (postData.encoding === "base64") {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A base64 \u7F16\u7801\u7684\u4E8C\u8FDB\u5236\u5185\u5BB9\uFF0C\u5DF2\u7701\u7565\uFF08\u539F MIME: ${mimeType || "unknown"}\uFF09`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (isEmpty(text) && Array.isArray(postData.params) && postData.params.length) {
+    if (MULTIPART_MIME_PATTERN.test(mimeType)) {
+      notes.push(`\u8BF7\u6C42\u4F53\u4E3A multipart/form-data\uFF0C\u5DF2\u7701\u7565\uFF08\u542B\u6587\u4EF6/\u4E8C\u8FDB\u5236\u5B57\u6BB5\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload\uFF09`);
+      removeContentType(headers);
+      return { body: void 0 };
+    }
+    if (/x-www-form-urlencoded/i.test(mimeType)) {
+      text = postData.params.map((item) => `${encodeURIComponent(String(item.name ?? ""))}=${encodeURIComponent(String(item.value ?? ""))}`).join("&");
+    }
+  }
+  if (isEmpty(text)) return { body: void 0 };
+  const bodyText = String(text);
+  if (BINARY_MIME_PATTERN.test(mimeType) || MULTIPART_MIME_PATTERN.test(mimeType) || bodyText.includes("\0") || bodyText.includes("\uFFFD")) {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A\u4E8C\u8FDB\u5236\u6216\u4E0D\u652F\u6301\u7684\u683C\u5F0F\uFF08MIME: ${mimeType || "unknown"}\uFF09\uFF0C\u5DF2\u7701\u7565\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload/\u539F\u59CB body`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (/json/i.test(mimeType) || /^[\[{]/.test(bodyText.trim())) {
+    try {
+      return { body: JSON.parse(bodyText) };
+    } catch {
+      return { body: bodyText };
+    }
+  }
+  return { body: bodyText };
+}
+function removeContentType(headers) {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === "content-type") delete headers[key];
+  }
+}
+function harEntryToStep(entry, index) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  const parsed = parseHttpUrl(request.url, `HAR \u7B2C ${index + 1} \u6761\u8BF7\u6C42`);
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(request.headers));
+  const notes = [];
+  const body = bodyFromHar(request, notes, maskedHeaders.headers);
+  const responseStatus = Number(entry?.response?.status);
+  const validResponseStatus = Number.isInteger(responseStatus) && responseStatus >= 100 && responseStatus <= 599;
+  const status = validResponseStatus ? responseStatus : 200;
+  if (!validResponseStatus) {
+    notes.push("HAR \u672A\u63D0\u4F9B\u6709\u6548\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4");
+  }
+  let requestBody = body.body;
+  if (requestBody !== void 0 && ["GET", "HEAD"].includes(method)) {
+    notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+    removeContentType(maskedHeaders.headers);
+    requestBody = void 0;
+  }
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (requestBody !== void 0) requestDefinition.body = requestBody;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = status;
+  return {
+    step,
+    notes: [
+      `\u6E90\u8BF7\u6C42: ${method} ${redactUrlForComment(request.url)}`,
+      `status: ${status} \u6765\u81EA HAR \u89C2\u6D4B\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4\u65AD\u8A00\u662F\u5426\u9002\u5E94\u5176\u4ED6\u73AF\u5883`,
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ],
+    vars: { ...maskedHeaders.vars, ...maskedQuery.vars },
+    binaryBody: notes.some((note) => note.includes("\u4E8C\u8FDB\u5236") || note.includes("multipart"))
+  };
+}
+function normalizeHar(input) {
+  let har = input;
+  if (typeof har === "string") {
+    try {
+      har = JSON.parse(har);
+    } catch (error) {
+      throw new ImportError(`HAR \u4E0D\u662F\u5408\u6CD5 JSON: ${error.message}`, "\u8BF7\u786E\u8BA4\u5BFC\u51FA\u7684\u662F\u6D4F\u89C8\u5668/\u4EE3\u7406\u751F\u6210\u7684\u5B8C\u6574 HAR \u6587\u4EF6\u3002");
+    }
+  }
+  if (!har || typeof har !== "object" || !har.log || !Array.isArray(har.log.entries)) {
+    throw new ImportError("HAR \u7F3A\u5C11 log.entries \u6570\u7EC4", "\u8BF7\u786E\u8BA4\u6587\u4EF6\u6765\u81EA\u6D4F\u89C8\u5668 Network \u9762\u677F\u6216\u6293\u5305\u5DE5\u5177\u7684 HAR \u5BFC\u51FA\u3002");
+  }
+  return har;
+}
+function parseHostFilter(value) {
+  return String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+function createHarDraft(input, options = {}) {
+  const har = normalizeHar(input);
+  const maxEntries = Number.isFinite(Number(options.maxEntries)) && Number(options.maxEntries) > 0 ? Math.floor(Number(options.maxEntries)) : DEFAULT_MAX_IMPORT_ENTRIES;
+  const hostList = Array.isArray(options.hosts) ? options.hosts : options.hosts ? [options.hosts] : [];
+  const hosts = new Set(hostList.map((host) => String(host).toLowerCase()));
+  const stats = {
+    total: har.log.entries.length,
+    imported: 0,
+    filteredStatic: 0,
+    filteredHost: 0,
+    filteredInvalid: 0,
+    omittedByLimit: 0,
+    binaryBodies: 0,
+    maskedFields: 0
+  };
+  const records = [];
+  const vars = {};
+  for (let entryIndex = 0; entryIndex < har.log.entries.length; entryIndex += 1) {
+    const entry = har.log.entries[entryIndex];
+    const request = entry?.request;
+    if (!request || isEmpty(request.url)) {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    if (isStaticOrPreflight(entry)) {
+      stats.filteredStatic += 1;
+      continue;
+    }
+    let host;
+    try {
+      host = new URL(String(request.url)).host.toLowerCase();
+    } catch {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    let hostname = "";
+    try {
+      hostname = new URL(String(request.url)).hostname.toLowerCase();
+    } catch {
+    }
+    if (hosts.size && !hosts.has(host) && !hosts.has(hostname)) {
+      stats.filteredHost += 1;
+      continue;
+    }
+    if (records.length >= maxEntries) {
+      stats.omittedByLimit += 1;
+      continue;
+    }
+    let record;
+    try {
+      record = harEntryToStep(entry, entryIndex);
+    } catch (error) {
+      if (error instanceof ImportError) {
+        stats.filteredInvalid += 1;
+        continue;
+      }
+      throw error;
+    }
+    records.push(record);
+    Object.assign(vars, record.vars);
+    stats.imported += 1;
+    stats.binaryBodies += record.binaryBody ? 1 : 0;
+    stats.maskedFields += record.notes.filter((note) => note.includes("\u5DF2\u66FF\u6362\u4E3A {{vars.")).length;
+  }
+  return {
+    scenario: {
+      name: "\u5BFC\u5165\u6D41\u91CF\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: records.map((record) => record.step)
+    },
+    stepNotes: records.map((record) => record.notes),
+    stats,
+    source: options.source || "HAR"
+  };
+}
+function tokenizeCurl(command) {
+  const text = String(command || "");
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  let hasToken = false;
+  const push = () => {
+    if (!hasToken) return;
+    tokens.push(current);
+    current = "";
+    hasToken = false;
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quote === "'") {
+      if (char === "'") quote = "";
+      else current += char;
+      hasToken = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') {
+        quote = "";
+      } else if (char === "\\" && ['"', "\\", "$", "`"].includes(next)) {
+        current += next;
+        index += 1;
+      } else {
+        current += char;
+      }
+      hasToken = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+      continue;
+    }
+    if (char === "\\") {
+      if (next === "\n") {
+        index += 1;
+        continue;
+      }
+      if (next === "\r" && text[index + 2] === "\n") {
+        index += 2;
+        continue;
+      }
+      if (next !== void 0) {
+        current += next;
+        index += 1;
+        hasToken = true;
+      }
+      continue;
+    }
+    if ((char === "`" || char === "^") && (next === "\n" || next === "\r" && text[index + 2] === "\n")) {
+      index += next === "\r" ? 2 : 1;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      push();
+      continue;
+    }
+    current += char;
+    hasToken = true;
+  }
+  if (quote) throw new ImportError("curl \u547D\u4EE4\u4E2D\u7684\u5F15\u53F7\u672A\u95ED\u5408", "\u8BF7\u68C0\u67E5\u5355\u5F15\u53F7/\u53CC\u5F15\u53F7\u662F\u5426\u6210\u5BF9\u540E\u518D\u91CD\u8BD5\u3002");
+  push();
+  if (tokens[0] === "$" || tokens[0] === ">" || /^PS[^>]*>$/i.test(tokens[0] || "")) tokens.shift();
+  if (tokens.length && /(?:^|[\\/])curl(?:\.exe)?$/i.test(tokens[0])) tokens.shift();
+  return tokens;
+}
+var CURL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set([
+  "--max-time",
+  "--connect-timeout",
+  "--retry",
+  "--retry-delay",
+  "--proxy",
+  "-x",
+  "--cacert",
+  "--cert",
+  "--key",
+  "--output",
+  "-o",
+  "--output-dir",
+  "--write-out",
+  "-w"
+]);
+function curlHeaderValue(value) {
+  const separator = String(value).indexOf(":");
+  if (separator <= 0) return null;
+  return [String(value).slice(0, separator).trim(), String(value).slice(separator + 1).trim()];
+}
+function createCurlDraft(command, options = {}) {
+  const tokens = tokenizeCurl(command);
+  if (!tokens.length) throw new ImportError("curl \u547D\u4EE4\u4E3A\u7A7A", '\u793A\u4F8B\uFF1Ascenario-test import --curl "curl -X GET https://api.example.com/health"');
+  let method = "";
+  let methodExplicit = false;
+  let url = "";
+  let hasData = false;
+  let isGet = false;
+  let isHead = false;
+  const headerPairs = [];
+  const dataParts = [];
+  const formParts = [];
+  const notes = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const takeValue = (option) => {
+      const value = tokens[index + 1];
+      if (value === void 0) throw new ImportError(`curl \u9009\u9879 ${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
+      index += 1;
+      return value;
+    };
+    if (token === "-X" || token === "--request") {
+      method = takeValue(token).toUpperCase();
+      methodExplicit = true;
+    } else if (token === "-H" || token === "--header") {
+      const pair = curlHeaderValue(takeValue(token));
+      if (pair) headerPairs.push(pair);
+    } else if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
+      dataParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "--json") {
+      dataParts.push(takeValue(token));
+      hasData = true;
+      headerPairs.push(["Content-Type", "application/json"]);
+      headerPairs.push(["Accept", "application/json"]);
+    } else if (token === "-F" || token === "--form") {
+      formParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "-b" || token === "--cookie") {
+      headerPairs.push(["Cookie", takeValue(token)]);
+    } else if (token === "-u" || token === "--user") {
+      const credentials = takeValue(token);
+      headerPairs.push(["Authorization", `Basic ${Buffer.from(credentials).toString("base64")}`]);
+    } else if (token === "-A" || token === "--user-agent") {
+      headerPairs.push(["User-Agent", takeValue(token)]);
+    } else if (token === "-e" || token === "--referer") {
+      headerPairs.push(["Referer", takeValue(token)]);
+    } else if (token === "--url") {
+      url = takeValue(token);
+    } else if (token === "-G" || token === "--get") {
+      isGet = true;
+    } else if (token === "-I" || token === "--head") {
+      isHead = true;
+    } else if (token === "-L" || token === "--location" || token === "-k" || token === "--insecure" || token === "-s" || token === "--silent" || token === "-S" || token === "--show-error" || token === "--compressed" || token === "-i" || token === "--include" || token === "-v" || token === "--verbose") {
+    } else if (CURL_OPTIONS_WITH_VALUE.has(token)) {
+      takeValue(token);
+    } else if (token.startsWith("--") && token.includes("=")) {
+    } else if (token.startsWith("-")) {
+    } else if (!url) {
+      url = token;
+    }
+  }
+  if (!url) throw new ImportError("\u65E0\u6CD5\u4ECE curl \u547D\u4EE4\u4E2D\u8BC6\u522B URL", "\u8BF7\u786E\u8BA4\u547D\u4EE4\u5305\u542B\u5B8C\u6574 URL\uFF0C\u6216\u4F7F\u7528 --url \u660E\u786E\u6307\u5B9A\u3002");
+  if (!method) method = isHead ? "HEAD" : hasData ? "POST" : "GET";
+  if (isGet && !methodExplicit) method = "GET";
+  if (isHead) method = "HEAD";
+  if (isGet && method === "GET") hasData = true;
+  let parsed = parseHttpUrl(url, "curl \u547D\u4EE4\u4E2D\u7684 URL");
+  if (parsed.username || parsed.password) {
+    notes.push("URL \u4E2D\u7684\u7528\u6237\u540D/\u5BC6\u7801\u5DF2\u79FB\u9664\uFF1B\u5982\u9700\u8BA4\u8BC1\u8BF7\u901A\u8FC7 vars \u63D0\u4F9B Authorization");
+    parsed = new URL(parsed.toString());
+    parsed.username = "";
+    parsed.password = "";
+  }
+  const formData = formParts.length > 0;
+  if (formData) notes.push("curl -F/--form \u4E3A multipart/form-data\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u8865\u5145\u8868\u5355\u5B57\u6BB5");
+  let body;
+  if (!formData && dataParts.length) {
+    const rawBody = dataParts.join("&");
+    if (rawBody.startsWith("@")) {
+      notes.push("curl \u8BF7\u6C42\u4F53\u5F15\u7528 @\u6587\u4EF6\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u539F\u59CB body");
+    } else if (["GET", "HEAD"].includes(method) || isGet) {
+      if (isGet || method === "GET") {
+        const extra = new URLSearchParams(rawBody);
+        for (const [name, value] of extra) parsed.searchParams.append(name, value);
+        notes.push("curl -G/GET \u7684 -d \u6570\u636E\u5DF2\u8F6C\u4E3A query \u53C2\u6570");
+      } else {
+        notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+      }
+    } else {
+      const contentType2 = headerPairs.find(([name]) => name.toLowerCase() === "content-type")?.[1] || "";
+      if (/json/i.test(contentType2) || /^[\[{]/.test(rawBody.trim())) {
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          body = rawBody;
+        }
+      } else {
+        body = rawBody;
+      }
+    }
+  }
+  if (body !== void 0 && typeof body === "string" && !/^[\[{]/.test(body.trim()) && !headerPairs.some(([name]) => name.toLowerCase() === "content-type")) {
+    headerPairs.push(["Content-Type", "application/x-www-form-urlencoded"]);
+  }
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(headerPairs));
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (body !== void 0) requestDefinition.body = body;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = 200;
+  const vars = { ...maskedHeaders.vars, ...maskedQuery.vars };
+  return {
+    scenario: {
+      name: "\u5BFC\u5165 curl \u8BF7\u6C42\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: [step]
+    },
+    stepNotes: [[
+      `\u6765\u6E90: curl \u5BFC\u5165\uFF08\u654F\u611F\u5934\u5DF2\u8131\u654F\uFF09`,
+      "curl \u672A\u63D0\u4F9B\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u6309\u5B9E\u9645\u63A5\u53E3\u8C03\u6574",
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ]],
+    stats: {
+      total: 1,
+      imported: 1,
+      filteredStatic: 0,
+      filteredHost: 0,
+      filteredInvalid: 0,
+      omittedByLimit: 0,
+      binaryBodies: notes.some((note) => note.includes("\u7701\u7565")) ? 1 : 0,
+      maskedFields: maskedHeaders.notices.length + maskedQuery.notices.length
+    },
+    source: options.source || "curl \u547D\u4EE4"
+  };
+}
+function indent(text, prefix) {
+  return String(text).split("\n").map((line) => `${prefix}${line}`).join("\n");
+}
+function indentAfterFirst(text, prefix) {
+  const lines = String(text).split("\n");
+  return `${lines[0]}${lines.slice(1).map((line) => `
+${prefix}${line}`).join("")}`;
+}
+function comment(text, prefix) {
+  return `${prefix}// ${safeText(text)}`;
+}
+function renderStep(step, notes, indentText) {
+  const lines = [];
+  for (const note of notes || []) lines.push(comment(note, indentText));
+  const literal = JSON.stringify(step, null, 4);
+  lines.push(indent(literal, indentText) + ",");
+  return lines.join("\n");
+}
+function renderDraftFile(draft, meta = {}) {
+  const id = String(meta.id || "imported-scenario");
+  const generatedAt = meta.generatedAt || (/* @__PURE__ */ new Date()).toISOString();
+  const stats = draft.stats || {};
+  const scenario = draft.scenario || {};
+  const lines = [];
+  lines.push(`// \u7531 scenario-test import \u751F\u6210\uFF08${safeText(draft.source || "unknown")}\uFF09`);
+  lines.push(`// \u751F\u6210\u65F6\u95F4\uFF1A${safeText(generatedAt)}`);
+  lines.push("// \u26A0\uFE0F \u8349\u7A3F\u6587\u4EF6\uFF1Astatus \u6765\u81EA\u6D41\u91CF\u89C2\u6D4B\u6216\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u6838\u5BF9\u6B65\u9AA4\u3001\u8BA4\u8BC1\u3001\u52A8\u6001\u5B57\u6BB5\u4E0E\u65AD\u8A00\u540E\u518D\u7EB3\u5165\u56DE\u5F52\u3002");
+  if (stats.total !== void 0) {
+    const filtered = (stats.filteredStatic || 0) + (stats.filteredInvalid || 0);
+    lines.push(`// \u626B\u63CF ${stats.total} \u6761\u8BF7\u6C42\uFF0C\u5BFC\u5165 ${stats.imported || 0} \u6761\uFF1B\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90/\u9884\u68C0/\u65E0\u6548\u8BF7\u6C42 ${filtered} \u6761\uFF0C\u4E3B\u673A\u8FC7\u6EE4 ${stats.filteredHost || 0} \u6761\uFF0C\u8D85\u51FA\u4E0A\u9650 ${stats.omittedByLimit || 0} \u6761\u3002`);
+  }
+  if ((stats.maskedFields || 0) > 0) {
+    lines.push("// \u654F\u611F\u8BF7\u6C42\u5934/\u67E5\u8BE2\u53C2\u6570\u5DF2\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D\uFF1B\u8BF7\u5728 scenario.config.js \u7684 vars \u6216 --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u5207\u52FF\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  if ((stats.binaryBodies || 0) > 0) {
+    lines.push("// \u4E8C\u8FDB\u5236/\u4E0D\u652F\u6301\u683C\u5F0F\u7684\u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF0C\u5BF9\u5E94\u6B65\u9AA4\u4E0A\u65B9\u6709\u8BF4\u660E\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload \u6216\u539F\u59CB body\u3002");
+  }
+  lines.push(`ScenarioTest.registerScenario(${JSON.stringify(id)}, ScenarioTest.defineScenario({`);
+  lines.push(`    name: ${JSON.stringify(scenario.name || "\u5BFC\u5165\u573A\u666F\u8349\u7A3F")},`);
+  if (scenario.vars && Object.keys(scenario.vars).length) {
+    const varsLiteral = JSON.stringify(scenario.vars, null, 4);
+    lines.push(`    vars: ${indentAfterFirst(varsLiteral, "    ")},`);
+  }
+  lines.push("    steps: [");
+  (scenario.steps || []).forEach((step, index) => {
+    lines.push(renderStep(step, draft.stepNotes?.[index], "        "));
+  });
+  lines.push("    ]");
+  lines.push("}));");
+  lines.push("");
+  return lines.join("\n");
+}
+function readHarFile(filePath) {
+  try {
+    return import_node_fs6.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+  } catch (error) {
+    throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
+  }
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -4440,7 +5182,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4569,6 +5311,14 @@ ${optionHelp}
   doctor                \u9879\u76EE\u9759\u6001\u4F53\u68C0\uFF1ANode \u7248\u672C\u3001\u914D\u7F6E/\u573A\u666F\u52A0\u8F7D\u3001DSL \u6821\u9A8C
                         \u4E0E AI \u89C4\u5219\u5C31\u7EEA\u68C0\u67E5\uFF1B\u6709 FAIL \u65F6\u9000\u51FA\u7801 1
 
+\u5BFC\u5165\u547D\u4EE4:
+  import --har <file>   \u89E3\u6790\u6D4F\u89C8\u5668/\u6293\u5305 HAR\uFF0C\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90\u4E0E OPTIONS \u9884\u68C0\uFF0C
+                        \u4E3A\u6BCF\u4E2A API \u8BF7\u6C42\u751F\u6210\u53EF\u91CD\u653E\u7684\u573A\u666F\u6B65\u9AA4\u8349\u7A3F
+  import --curl "<cmd>" \u89E3\u6790\u5355\u6761 curl\uFF0C\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F\uFF1BAuthorization/Cookie
+                        \u7B49\u654F\u611F\u5934\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D
+  --output <file>       \u81EA\u5B9A\u4E49\u8F93\u51FA\u6587\u4EF6\uFF1B\u9ED8\u8BA4 scenarios/imported-<ts>.js
+  --host <host,...>     \u53EA\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\u7684\u8BF7\u6C42\uFF1B--max-entries \u9650\u5236\u5BFC\u5165\u6761\u6570\uFF08\u9ED8\u8BA4 50\uFF09
+
 \u8BA4\u8BC1\u9009\u9879:
   \u73AF\u5883\u53D8\u91CF SCENARIO_AUTH       \u63A8\u8350\u65B9\u5F0F\uFF0C\u8BBE\u7F6E\u6388\u6743\u4EE4\u724C\uFF1B\u907F\u514D\u4EE4\u724C\u8FDB\u5165\u8FDB\u7A0B\u53C2\u6570\u3002
 
@@ -4589,17 +5339,17 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path6.default.resolve(projectRoot, relativePath);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, content, "utf8");
+  const target = import_node_path7.default.resolve(projectRoot, relativePath);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path6.default.resolve(projectRoot, directory);
-  const relative = import_node_path6.default.relative(projectRoot, target);
-  if (!directory || import_node_path6.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) {
+  const target = import_node_path7.default.resolve(projectRoot, directory);
+  const relative = import_node_path7.default.relative(projectRoot, target);
+  if (!directory || import_node_path7.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
   }
   return directory;
@@ -4624,30 +5374,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs6.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs7.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), fileName),
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), fileName),
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = import_node_path6.default.resolve(process.argv[1]);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = import_node_path7.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.copyFileSync(source, target);
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs6.default.existsSync(candidate));
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs7.default.existsSync(candidate));
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs6.default.copyFileSync(source, target);
+    import_node_fs7.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -4656,7 +5406,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs6.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs7.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -4669,7 +5419,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs6.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs7.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -4682,20 +5432,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs6.default.existsSync(lockPath)) return true;
+  if (!import_node_fs7.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs6.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs7.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -4711,14 +5461,14 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path7.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path6.default.basename(projectRoot).trim() || "project";
+  const projectName = import_node_path7.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs6.default.existsSync(import_node_path6.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs7.default.existsSync(import_node_path7.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -4750,7 +5500,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -4762,12 +5512,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path7.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs6.default.existsSync(candidate)) {
+  const candidate = import_node_path7.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs7.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -4787,7 +5537,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path6.default.isAbsolute(pluginPath) ? pluginPath : import_node_path6.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path7.default.isAbsolute(pluginPath) ? pluginPath : import_node_path7.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -4844,7 +5594,7 @@ function configVariables(config, overrides = {}) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path6.default.dirname(configPath);
+  const configDir = import_node_path7.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -4920,7 +5670,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path7.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -5088,9 +5838,9 @@ function printFailedStepBody(result, print = console.log) {
   for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
 function safeFile(root, relativePath) {
-  const candidate = import_node_path6.default.resolve(root, relativePath);
-  const relative = import_node_path6.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) return null;
+  const candidate = import_node_path7.default.resolve(root, relativePath);
+  const relative = import_node_path7.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) return null;
   return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 function contentType(filePath) {
@@ -5101,12 +5851,12 @@ function contentType(filePath) {
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
     ".txt": "text/plain; charset=utf-8"
-  }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+  }[import_node_path7.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 function serveStaticFile(response, filePath) {
   const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path6.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs6.default.createReadStream(filePath);
+  if (import_node_path7.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs7.default.createReadStream(filePath);
     stream.on("error", () => {
       if (response.headersSent) {
         response.destroy();
@@ -5121,7 +5871,7 @@ function serveStaticFile(response, filePath) {
     });
     return;
   }
-  import_node_fs6.default.readFile(filePath, "utf8", function(error, html) {
+  import_node_fs7.default.readFile(filePath, "utf8", function(error, html) {
     if (error) {
       response.writeHead(500);
       response.end("Internal Server Error");
@@ -5242,8 +5992,8 @@ function isAllowedServeHost(hostHeader, port) {
 }
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path6.default.dirname(configPath);
-  const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
+  const workspace = import_node_path7.default.dirname(configPath);
+  const libraryDist = import_node_path7.default.dirname(import_node_path7.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
   const server = import_node_http.default.createServer((request, response) => {
@@ -5255,11 +6005,11 @@ async function serveCommand(args) {
       }
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
       let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
         filePath = safeFile(workspace, relativePath);
@@ -5269,7 +6019,7 @@ async function serveCommand(args) {
         response.end("Forbidden");
         return;
       }
-      import_node_fs6.default.stat(filePath, (error, stat) => {
+      import_node_fs7.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
           if (proxyTarget) {
             proxyRequest(request, response, proxyTarget);
@@ -5303,6 +6053,80 @@ async function serveCommand(args) {
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }
+function importTimestamp(date = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+function scenarioIdFromOutput(output, timestamp) {
+  const stem = import_node_path7.default.basename(output, import_node_path7.default.extname(output)).trim();
+  const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
+  return normalized || `imported-${timestamp}`;
+}
+function defaultImportOutput(timestamp) {
+  let candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let suffix = 2;
+  while (import_node_fs7.default.existsSync(candidate)) {
+    candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+    suffix += 1;
+  }
+  return candidate;
+}
+function importCommand(args) {
+  if (args.har && args.curl) {
+    throw new CliUsageError("--har \u4E0E --curl \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u4E00\u6B21\u5BFC\u5165\u53EA\u9009\u62E9\u4E00\u79CD\u6765\u6E90\uFF1AHAR \u6587\u4EF6\u6216\u5355\u6761 curl \u547D\u4EE4\u3002");
+  }
+  if (!args.har && !args.curl) {
+    throw new CliUsageError(
+      "import \u9700\u8981 --har \u6216 --curl",
+      '\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs import --har session.har\uFF1B\u6216 import --curl "curl -X GET https://api.example.com/health"\u3002'
+    );
+  }
+  const maxEntries = Number(args.maxEntries);
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
+  }
+  const timestamp = importTimestamp();
+  const output = args.output ? import_node_path7.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const id = scenarioIdFromOutput(output, timestamp);
+  let draft;
+  try {
+    draft = args.har ? createHarDraft(readHarFile(args.har), {
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path7.default.basename(args.har),
+      maxEntries,
+      hosts: parseHostFilter(args.host)
+    }) : createCurlDraft(args.curl);
+  } catch (error) {
+    if (error instanceof ImportError) throw new CliUsageError(error.message, error.hint || void 0);
+    throw error;
+  }
+  if (!draft.scenario.steps.length) {
+    throw new CliUsageError(
+      `\u672A\u4ECE ${args.har ? "HAR " : "curl \u547D\u4EE4"}\u4E2D\u89E3\u6790\u51FA\u53EF\u5BFC\u5165\u7684 API \u8BF7\u6C42`,
+      "HAR \u53EF\u80FD\u53EA\u5305\u542B\u9759\u6001\u8D44\u6E90\u3001\u9884\u68C0\u8BF7\u6C42\u6216\u88AB --host/--max-entries \u8FC7\u6EE4\uFF1B\u8BF7\u68C0\u67E5\u8F93\u5165\u4E0E\u8FC7\u6EE4\u6761\u4EF6\u3002"
+    );
+  }
+  const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(output), { recursive: true });
+  import_node_fs7.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path7.default.relative(process.cwd(), output).split(import_node_path7.default.sep).join("/") || output;
+  console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
+  console.log(`\u573A\u666F id: ${id}`);
+  console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
+  if (draft.stats) {
+    const filtered = (draft.stats.filteredStatic || 0) + (draft.stats.filteredInvalid || 0);
+    console.log(`\u626B\u63CF\u8BF7\u6C42: ${draft.stats.total}\uFF1B\u8FC7\u6EE4\u9759\u6001/\u9884\u68C0/\u65E0\u6548 ${filtered}\uFF1B\u4E3B\u673A\u8FC7\u6EE4 ${draft.stats.filteredHost || 0}\uFF1B\u8D85\u51FA\u4E0A\u9650 ${draft.stats.omittedByLimit || 0}`);
+  }
+  const variables = Object.keys(draft.scenario.vars || {});
+  if (variables.length) {
+    console.log(`\u654F\u611F\u5934/\u67E5\u8BE2\u53C2\u6570\u5360\u4F4D\u53D8\u91CF: ${variables.join(", ")}`);
+    console.log("\u63D0\u793A: \u8BF7\u5728 scenario.config.js \u7684 vars \u6216 run --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u4E0D\u8981\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  console.log(`\u63D0\u793A: \u5728 scenario.config.js \u7684 scenarios \u4E2D\u6DFB\u52A0 { id: ${JSON.stringify(id)}, url: ${JSON.stringify(relativeOutput)} } \u540E\u5373\u53EF run\u3002`);
+  if (args.curl) {
+    console.log("\n\u5355\u6B65\u9AA4\u7247\u6BB5\uFF08\u53EF\u76F4\u63A5\u7C98\u8D34\u5230 steps \u6570\u7EC4\uFF09\uFF1A");
+    console.log(JSON.stringify(draft.scenario.steps[0], null, 2));
+  }
+}
 function capabilitiesCommand(args) {
   const capabilities = buildCapabilities(contract);
   if (args.json) {
@@ -5317,10 +6141,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path6.default.dirname(configPath);
+    configDir = import_node_path7.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path6.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path6.default.dirname(configPath);
+    configPath = import_node_path7.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path7.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
@@ -5341,6 +6165,7 @@ async function main() {
   else if (args.command === "serve") await serveCommand(args);
   else if (args.command === "capabilities") capabilitiesCommand(args);
   else if (args.command === "doctor") doctorCommand(args);
+  else if (args.command === "import") importCommand(args);
   else await runCommand(args);
 }
 main().catch((error) => {

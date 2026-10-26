@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 
+- 新增 `import` 子命令（contract v13 → v14，issue #89）：`--har <file>` 解析浏览器/抓包 HAR，过滤静态资源（JS/CSS/图片/字体等）与 OPTIONS 预检，为每个 API 请求生成标准场景步骤草稿；`--curl "<命令>"` 解析单条 curl（支持 `-X/-H/-d/--json/-G/-u/-b`、引号与续行），生成单步骤草稿。默认写入 `scenarios/imported-<ts>.js`，可用 `--output`/`--out` 指定；`--host` 过滤主机，`--max-entries` 限制导入条数（默认 50）。Authorization/Cookie 等敏感头及敏感 query 参数替换为 `{{vars.*}}` 占位并在场景 `vars` 中留空，二进制/multipart 请求体降级为注释，草稿可直接由 `run` 加载重放（status 占位需人工确认）。命令与选项同步投射 capabilities JSON/文本、`--help` 与 `dist/scenario-test.d.ts`。
+
 - 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
   默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
   场景结束时整块输出，避免 `[PASS]`/`[FAIL]`/`[RETRY]` 交错；`--json` 报告按配置清单顺序收集
