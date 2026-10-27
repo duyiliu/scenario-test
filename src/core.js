@@ -246,6 +246,56 @@ export function resolve(value, runtime) {
     return resolveString(value, runtime);
 }
 
+// ===== 未定义模板变量诊断（#66）=====
+// 模板里引用 vars.X 或裸变量，而 runtime.vars 没有自有键 X 时记录根变量名。
+// 只记录顶层缺失：vars.user.name 在 user 存在时不告警（子路径缺失属业务值缺失），
+// lastResponse* 不参与（无上一步响应是合法状态）。行为仍保持「解析为空串」不变。
+export function templateExpressionRoot(expression) {
+    const text = String(expression || "").trim();
+    if (!text || text === "vars") return null;
+    // 响应级来源不是变量缺失
+    if (text.startsWith("lastResponse")) return null;
+    let pathText;
+    if (text.startsWith("vars.")) pathText = text.slice(5);
+    else if (text.startsWith("vars[")) pathText = text.slice(4);
+    else pathText = text;
+    if (!pathText || pathText.startsWith(".")) return null;
+    const tokens = tokenizePath(pathText);
+    if (!tokens || !tokens.length) return null;
+    const token = tokens[0];
+    if (token.startsWith("[")) {
+        const inner = token.slice(1, -1).replace(/^['"]|['"]$/g, "");
+        return inner || null;
+    }
+    return token;
+}
+
+export function collectMissingTemplateVars(value, vars, missing = new Set(), seen = new WeakSet()) {
+    if (typeof value === "string") {
+        if (!value.includes("{{")) return missing;
+        for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+            const root = templateExpressionRoot(match[1]);
+            if (root && !Object.prototype.hasOwnProperty.call(vars || {}, root)) missing.add(root);
+        }
+        return missing;
+    }
+    if (value === null || typeof value !== "object" || seen.has(value)) return missing;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        for (const item of value) collectMissingTemplateVars(item, vars, missing, seen);
+        return missing;
+    }
+    if (isPlainObject(value)) {
+        for (const item of Object.values(value)) collectMissingTemplateVars(item, vars, missing, seen);
+    }
+    return missing;
+}
+
+export function missingTemplateVarWarnings(missing) {
+    return [...missing].map((name) =>
+        `模板变量 vars.${name} 未定义，已按空串解析（检查变量名拼写，或补充 config/scenario vars、extract 与 --vars）`);
+}
+
 // resolve(clone(value)) 的单遍历等价实现（引擎热路径：步骤 request/step 每次尝试都要复制+解析）。
 // 容器（对象/数组）全新、叶子共享——字符串不可变，整串模板解析出的对象仍与旧实现一样按引用返回。
 // 语义必须与 clone 完全一致：undefined 键剥离、数组空位/undefined 补 null、非有限数字转 null、
@@ -465,6 +515,105 @@ export function formatAssertionContext(context) {
     return parts.join(" ");
 }
 
+// ===== shape 断言（jsonSchema-lite，无第三方依赖）=====
+const SHAPE_KEYS = new Set(contract.assertions.shape.keys);
+const SHAPE_TYPES = new Set(contract.assertions.shape.types);
+
+export function validateShapeSchema(schema, trail = "shape") {
+    if (!isPlainObject(schema)) throw new TypeError(`${trail} 必须是对象（jsonSchema-lite 子集）`);
+    const unknown = Object.keys(schema).filter((key) => !SHAPE_KEYS.has(key));
+    if (unknown.length) {
+        throw new TypeError(`${trail} 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，允许的键为 ${[...SHAPE_KEYS].join("/")}`);
+    }
+    if (schema.type !== undefined && !SHAPE_TYPES.has(schema.type)) {
+        throw new TypeError(`${trail}.type 只支持 ${[...SHAPE_TYPES].join("/")}（当前 ${JSON.stringify(schema.type)}）`);
+    }
+    if (schema.required !== undefined) {
+        if (!Array.isArray(schema.required) || schema.required.some((name) => typeof name !== "string" || !name)) {
+            throw new TypeError(`${trail}.required 必须是非空字符串数组`);
+        }
+    }
+    if (schema.properties !== undefined) {
+        if (!isPlainObject(schema.properties)) throw new TypeError(`${trail}.properties 必须是对象`);
+        for (const [key, sub] of Object.entries(schema.properties)) {
+            validateShapeSchema(sub, `${trail}.properties.${key}`);
+        }
+    }
+    if (schema.items !== undefined) validateShapeSchema(schema.items, `${trail}.items`);
+    if (schema.enum !== undefined && !Array.isArray(schema.enum)) {
+        throw new TypeError(`${trail}.enum 必须是数组`);
+    }
+    if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== "boolean") {
+        throw new TypeError(`${trail}.additionalProperties 必须是布尔值`);
+    }
+    // 仅声明空对象是无意义断言（永远通过），定义期拒绝避免假绿
+    if (schema.type === undefined && schema.required === undefined && schema.properties === undefined
+        && schema.items === undefined && schema.enum === undefined && schema.additionalProperties === undefined) {
+        throw new TypeError(`${trail} 至少需要声明 type/required/properties/items/enum/additionalProperties 之一`);
+    }
+    return schema;
+}
+
+function shapeActualType(value) {
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+    return typeof value;
+}
+
+function shapeTypeMatches(type, value) {
+    if (type === "null") return value === null;
+    if (type === "array") return Array.isArray(value);
+    if (type === "object") return isPlainObject(value);
+    if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+    if (type === "number") return typeof value === "number" && Number.isFinite(value);
+    return typeof value === type;
+}
+
+function shapeErrors(schema, value, path, errors) {
+    const type = schema.type
+        || (schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined
+            ? "object"
+            : (schema.items !== undefined ? "array" : undefined));
+    if (type && !shapeTypeMatches(type, value)) {
+        errors.push({ path: path || "(根)", expected: `type: ${type}`, actual: shapeActualType(value), value });
+        // 类型不符时后续 required/properties/items 无意义，避免级联噪声
+        return errors;
+    }
+    if (schema.enum !== undefined && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
+        errors.push({ path: path || "(根)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+    }
+    if (isPlainObject(value)) {
+        for (const name of schema.required || []) {
+            if (!Object.prototype.hasOwnProperty.call(value, name)) {
+                errors.push({ path: path ? `${path}.${name}` : name, expected: "必填字段存在", actual: "缺失", value: undefined });
+            }
+        }
+        const properties = schema.properties || {};
+        for (const [name, subSchema] of Object.entries(properties)) {
+            if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
+            shapeErrors(subSchema, value[name], path ? `${path}.${name}` : name, errors);
+        }
+        if (schema.additionalProperties === false) {
+            for (const name of Object.keys(value)) {
+                if (!Object.prototype.hasOwnProperty.call(properties, name)) {
+                    errors.push({ path: path ? `${path}.${name}` : name, expected: "不允许的额外字段", actual: value[name], value: value[name] });
+                }
+            }
+        }
+    }
+    if (Array.isArray(value) && schema.items !== undefined) {
+        value.forEach((item, index) => {
+            shapeErrors(schema.items, item, `${path || ""}[${index}]`, errors);
+        });
+    }
+    return errors;
+}
+
+export function evaluateShape(schema, actual) {
+    return shapeErrors(schema, actual, "", []);
+}
+
 export function validateAssertion(definition, context, options = {}) {
     const where = formatAssertionContext(context);
     const prefix = where ? `${where}断言无效` : "断言无效";
@@ -535,10 +684,13 @@ export function validateAssertion(definition, context, options = {}) {
             throw new TypeError(`${prefix}: matches 期望值不是合法正则表达式（${definition.matches}）: ${error.message}`);
         }
     }
+    // shape：结构定义在定义期完整校验（未知键/类型名/嵌套递归），避免运行期静默忽略拼错
+    if (definition.shape !== undefined) {
+        validateShapeSchema(definition.shape, `${prefix}: shape`);
+    }
     // each：期望值为子断言定义对象或其数组，递归复用同一 schema 校验，
     // 让非法子断言（缺操作符/未知键/非对象项）在定义期 fail-fast 并定位到具体项
-    if (definition.each !== undefined) {
-        const eachLabel = `${prefix}: each 的期望值必须是子断言对象或其数组`;
+    if (definition.each !== undefined) {        const eachLabel = `${prefix}: each 的期望值必须是子断言对象或其数组`;
         if (Array.isArray(definition.each)) {
             definition.each.forEach((sub, subIndex) => {
                 if (!isPlainObject(sub)) throw new TypeError(`${eachLabel}（第 ${subIndex + 1} 项不是对象）`);
@@ -639,6 +791,8 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     let reason = "";
     // each 失败元素明细：[{ index, actual, assertions }]，仅在存在失败元素时挂到结果上
     let eachFailures = null;
+    // shape 失败明细：[{ path, expected, actual }]，仅失败时挂到 detail
+    let shapeFailures = null;
     if (definition.exists !== undefined) {
         expected = Boolean(definition.exists);
         const exists = actual !== undefined && actual !== null && actual !== "";
@@ -677,6 +831,17 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     // 以 { body: 元素 } 合成响应复用同一求值管线（子断言 path 相对元素自身）。
     // every 语义：任一元素任一子断言失败则整体失败，空数组恒通过；
     // 非数组实际值 / 期望值形状非法直接失败（与 oneOf 非数组口径一致：FAIL 而非抛异常）
+    if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
+        expected = resolve(definition.shape, runtime);
+        if (isPlainObject(expected)) {
+            shapeFailures = evaluateShape(expected, actual);
+            if (shapeFailures.length) passed = false;
+        } else {
+            // 模板解析后的结构定义非法：按失败处理并给出可定位原因，而非抛异常中断步骤
+            passed = false;
+            shapeFailures = [{ path: "(根)", expected: "shape 定义对象", actual: shapeActualType(expected), value: expected }];
+        }
+    }
     if (Object.prototype.hasOwnProperty.call(definition, "each")) {
         expected = resolve(definition.each, runtime);
         const subDefinitions = Array.isArray(expected) ? expected : isPlainObject(expected) ? [expected] : null;
@@ -761,8 +926,9 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         expected,
         // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
         ...(reason ? { reason } : {}),
-        // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
-        ...(eachFailures ? { detail: eachFailures } : {})
+        // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
+        ...(eachFailures ? { detail: eachFailures } : {}),
+        ...(shapeFailures ? { detail: shapeFailures } : {})
     };
 }
 
@@ -844,6 +1010,14 @@ export function setRuntimeVar(vars, name, value) {
 export function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
+    // 共享作用域写入点：scope:"suite" 的提取值同时进入 run 级共享 vars（#69）
+    const store = (name, value, suiteScope) => {
+        setRuntimeVar(runtime.vars, name, value);
+        if (suiteScope) {
+            if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
+            setRuntimeVar(runtime.suiteVars, name, value);
+        }
+    };
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
         assertNotReservedVar(definition.name, "extract 变量");
@@ -869,7 +1043,7 @@ export function applyExtract(step, response, runtime) {
             if (hasDefault) {
                 // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
                 // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
-                setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
+                store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
                 continue;
             }
             if (definition.required === true) {
@@ -883,7 +1057,7 @@ export function applyExtract(step, response, runtime) {
                 warnings.push(`提取变量 ${definition.name}：路径 ${definition.path || "(整个响应)"} 不存在，变量值为 undefined（required 未开启，不影响执行）`);
             }
         }
-        setRuntimeVar(runtime.vars, definition.name, value);
+        store(definition.name, value, definition.scope === "suite");
     }
     return { warnings, failures };
 }
@@ -1147,10 +1321,12 @@ function defaultUuidHex() {
 export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     const name = definition.name;
     const uuidHex = deps.uuidHex || defaultUuidHex;
+    // 可注入时间源（#12）：测试用固定时钟精确断言 offset/format，生产不传时仍用 Date.now()
+    const now = typeof deps.now === "function" ? deps.now : Date.now;
     if (definition.type === "timestamp") {
         // 时间戳造数：offset 相对当前时间偏移（如 "-7d"/"+8d"）；unit 决定数值粒度
         // （ms 默认向后兼容 / s 秒级）；format（本地时间 token）输出字符串，与 unit 互斥。
-        const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+        const base = now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
         if (definition.format != null) {
             if (definition.unit != null) {
                 throw new Error(`generatedVars timestamp 的 format 与 unit 互斥，只能声明其一: ${name}`);
@@ -1280,10 +1456,74 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
 }
 
+// ===== 敏感值脱敏（#90）=====
+// 变量名启发式名单：CLI 输出层与浏览器工作台共用同一口径（勿在 UI 另写副本）
+export const SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key|cookie)/i;
+
+export function isSecretVarName(name) {
+    return SECRET_VAR_PATTERN.test(String(name || ""));
+}
+
 export function maskSecret(value) {
     if (value === undefined || value === null || value === "") return "";
     const text = String(value);
     return text.length > 12 ? `${text.slice(0, 4)}...${text.slice(-4)}` : "***";
+}
+
+// 收集需要从输出中抹掉的原始值：命中敏感变量名的 vars + 调用方补充的授权/全局参数值。
+// 仅字符串化标量（对象整体脱敏交给 redactSecrets 的键名分支）
+export function collectSecretValues(vars, extra = []) {
+    const secrets = new Set();
+    for (const [name, value] of Object.entries(vars || {})) {
+        if (!isSecretVarName(name)) continue;
+        if (value === undefined || value === null || value === "") continue;
+        if (typeof value === "object") continue;
+        secrets.add(String(value));
+    }
+    for (const value of extra || []) {
+        if (value === undefined || value === null || value === "") continue;
+        secrets.add(String(value));
+    }
+    return [...secrets];
+}
+
+// 深度脱敏：字符串按已知敏感值替换；对象键命中敏感名时整体替换为 maskSecret。
+// 只替换长度 ≥4 的已知值（避免把 1-2 字符密钥当作子串把整段文本打碎），
+// 但整串恰好等于短密钥时仍脱敏。
+export function redactSecrets(value, secrets, seen = new WeakMap()) {
+    if (typeof value === "string") {
+        let text = value;
+        for (const secret of secrets || []) {
+            if (!secret) continue;
+            if (text === secret) return maskSecret(secret);
+            if (secret.length >= 4 && text.includes(secret)) {
+                text = text.split(secret).join(maskSecret(secret));
+            }
+        }
+        return text;
+    }
+    if (value === null || typeof value !== "object") return value;
+    // 共享引用/循环引用：返回同一个已脱敏副本，避免第二次遇到时直接返回原始未脱敏对象
+    if (seen.has(value)) return seen.get(value);
+    if (Array.isArray(value)) {
+        const result = [];
+        seen.set(value, result);
+        for (const item of value) result.push(redactSecrets(item, secrets, seen));
+        return result;
+    }
+    if (!isPlainObject(value)) return value;
+    const result = {};
+    seen.set(value, result);
+    for (const [key, item] of Object.entries(value)) {
+        if (isSecretVarName(key) && item !== undefined && item !== null && item !== "") {
+            if (Array.isArray(item)) result[key] = item.map((entry) => (entry !== null && typeof entry === "object" ? "***" : maskSecret(entry)));
+            else if (typeof item === "object") result[key] = "***";
+            else result[key] = maskSecret(item);
+        } else {
+            result[key] = redactSecrets(item, secrets, seen);
+        }
+    }
+    return result;
 }
 
 export function sanitizeSensitive(value, key = "", sensitiveNames = []) {

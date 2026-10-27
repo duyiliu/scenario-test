@@ -1,6 +1,4 @@
 import fs from "node:fs";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createInterface } from "node:readline/promises";
@@ -11,10 +9,18 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
-import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { mergeGlobals, normalizeGlobalParam, SAVED_RESPONSE } from "./core.js";
+import { validatePath } from "./utils/path-validator.js";
+import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveString, SAVED_RESPONSE } from "./core.js";
+import { loadDataset } from "./utils/data-file.js";
+import { writeJUnitReport } from "./utils/junit.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import {
+    DEFAULT_PROXY_TIMEOUT_MS,
+    MAX_PROXY_TIMEOUT_MS,
+    createServeServer,
+    resolveStartupProxyTarget
+} from "./cli/serve-server.js";
 import { createCurlDraft, createHarDraft, DEFAULT_MAX_IMPORT_ENTRIES, ImportError, parseHostFilter, readHarFile, renderDraftFile } from "./import.js";
 
 class CliUsageError extends Error {
@@ -98,7 +104,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -111,13 +117,18 @@ function parseArgs(argv) {
             const raw = argumentValue(argv, index++, item);
             const parsed = parseOptionValue(raw, valueOption.spec, item);
             if (valueOption.spec.repeatable) {
-                // 可重复选项按出现顺序叠加；同 key 后者覆盖前者。
-                // 用 Object.fromEntries 而非直接赋值：--vars __proto__=x 必须成为
-                // 自有键并由引擎 assertNoReservedVars 拒绝，不能改写对象原型。
-                args[valueOption.prop] = Object.fromEntries([
-                    ...Object.entries(args[valueOption.prop] || {}),
-                    parsed
-                ]);
+                if (valueOption.spec.parse === "keyValue") {
+                    // 可重复选项按出现顺序叠加；同 key 后者覆盖前者。
+                    // 用 Object.fromEntries 而非直接赋值：--vars __proto__=x 必须成为
+                    // 自有键并由引擎 assertNoReservedVars 拒绝，不能改写对象原型。
+                    args[valueOption.prop] = Object.fromEntries([
+                        ...Object.entries(args[valueOption.prop] || {}),
+                        parsed
+                    ]);
+                } else {
+                    // --tag 等字符串可重复选项：按出现顺序追加为数组
+                    args[valueOption.prop] = [...(Array.isArray(args[valueOption.prop]) ? args[valueOption.prop] : []), raw];
+                }
             } else {
                 args[valueOption.prop] = parsed;
             }
@@ -159,11 +170,11 @@ function parseArgs(argv) {
             "示例：--timeout 5000；该值会覆盖配置中的 requestTimeoutMs。"
         );
     }
-    // 代理空闲超时：定义期拒绝非正整数与超上限值，避免运行期静默回退到默认值
-    if (args.proxyTimeout !== undefined && !isValidProxyTimeout(args.proxyTimeout)) {
+    if (args.proxyTimeout !== undefined
+        && (!Number.isInteger(args.proxyTimeout) || args.proxyTimeout < 1 || args.proxyTimeout > MAX_PROXY_TIMEOUT_MS)) {
         throw new CliUsageError(
-            `--proxy-timeout 必须是 1-${MAX_PROXY_TIMEOUT_MS} 之间的整数毫秒数`,
-            "示例：--proxy-timeout 120000 表示上游空闲超过 120 秒才判定超时；缺省为 30000（30 秒），仅对 serve 生效。"
+            `--proxy-timeout 必须是 1-${MAX_PROXY_TIMEOUT_MS} 的整数毫秒数（当前 ${args.proxyTimeout}）`,
+            "示例：--proxy-timeout 120000；缺省为 30000。"
         );
     }
 
@@ -545,8 +556,9 @@ function selectEnvironment(config, key) {
     return environment;
 }
 
-function configVariables(config, overrides = {}) {
-    const values = { ...(config.vars || {}) };
+function configVariables(config, overrides = {}, environment = null) {
+    // 优先级：config.vars < 选中环境 env.vars < variables[].env 系统变量 < --vars
+    const values = { ...(config.vars || {}), ...(environment?.vars || {}) };
     const provided = overrides && typeof overrides === "object" ? overrides : {};
     for (const definition of config.variables || []) {
         const environmentName = definition.env;
@@ -597,11 +609,25 @@ async function runCommand(args) {
             : "配置中没有可选场景，请检查 scenarios 列表。";
         throw new CliUsageError(`未找到场景: ${missing.join(", ")}`, list);
     }
-    const entries = args.all
-        ? config.scenarios.filter((item) => !item.manual)
-        : requested.length
-            ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key)))
+    const entries = requested.length
+        ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key)))
+        : (args.all || (args.tags || []).length)
+            ? config.scenarios.filter((item) => !item.manual)
             : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+    // --tag：#68 重复参数为 OR，单个参数内逗号分隔为 AND；manual:true 仍需 --scenario 显式选择
+    const tagGroups = (args.tags || [])
+        .map((raw) => String(raw).split(",").map((tag) => tag.trim()).filter(Boolean))
+        .filter((group) => group.length);
+    const filteredEntries = !tagGroups.length ? entries : entries.filter((entry) =>
+        tagGroups.some((group) => group.every((tag) => (entry.tags || []).includes(tag))));
+    if (tagGroups.length && !filteredEntries.length) {
+        const available = [...new Set(config.scenarios.flatMap((entry) => entry.tags || []))].sort();
+        throw new CliUsageError(
+            `没有场景匹配标签: ${tagGroups.map((group) => group.join(",")).join(" 或 ")}`,
+            available.length ? `可用标签: ${available.join(", ")}` : "配置中的场景均未声明 tags。"
+        );
+    }
+    entries.splice(0, entries.length, ...filteredEntries);
     if (!entries.length) {
         if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
             throw new CliUsageError(
@@ -617,16 +643,21 @@ async function runCommand(args) {
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = {};
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
+    const baseVars = configVariables(config, args.vars, environment);
     const baseOptions = {
         config,
         baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
         authorization: args.authorization || environment.authorization || config.authorization || "",
         globals: mergeGlobals(config.globals, environment.globals, envGlobals),
         requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
-        vars: configVariables(config, args.vars),
+        vars: baseVars,
         environmentVariables: process.env,
         io: ScenarioTest.createNodeIo(configDir),
-        adapters
+        adapters,
+        // #65：仅 run --cookie-jar 开启；Jar 在场景 runtime 内维护，不跨场景/不落盘
+        cookieJar: Boolean(args.cookieJar),
+        // #69：本次 run 的共享变量容器，跨场景/跨数据行复用
+        suiteVars: {}
     };
     if (!baseOptions.baseUrl) {
         throw new CliUsageError(
@@ -643,7 +674,28 @@ async function runCommand(args) {
     // --json：stdout 只承载最终 JSON 文档，所有人类可读进度/结论改走 stderr；
     // 与 capabilities/doctor 的 stdout 纯净口径一致，CI 可直接 JSON.parse
     const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-    const reports = new Array(entries.length);
+    // ===== 数据驱动初始化（#70）=====
+    const dataset = (() => {
+        if (!args.dataFile) return null;
+        try {
+            return loadDataset(args.dataFile);
+        } catch (error) {
+            throw new CliUsageError(`数据集加载失败: ${error.message}`, "支持 JSON 数组、JSONL（每行一个对象）或 CSV（首行表头）；每行必须是对象。");
+        }
+    })();
+    const dataRows = dataset ? dataset.rows : [null];
+    const rowResults = [];
+    const notRun = [];
+    let bailTriggered = false;
+    // 输出层脱敏（#90）：所有已知敏感值在运行时逐步积累，文本与 --json 共用
+    const allSecrets = new Set(collectSecretValues(baseVars, [
+        baseOptions.authorization,
+        ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => item.value)
+    ]));
+    const rememberSecrets = (vars, extra = []) => {
+        for (const secret of collectSecretValues(vars, [baseOptions.authorization, ...extra])) allSecrets.add(secret);
+    };
+    const reports = [];
     const accumulateReport = (report) => {
         total += report.planned;
         passedTotal += report.passedSteps;
@@ -691,24 +743,38 @@ async function runCommand(args) {
                     : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
                 entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次${label}${detail ? `（${detail}）` : ""}，${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
-            async onStep(result) {
+            async onStep(result, _stepIndex, runtime) {
+                const runtimeForResolve = runtime || { vars: {} };
+                const stepSecrets = collectSecretValues(runtimeForResolve.vars, [
+                    baseOptions.authorization,
+                    ...baseOptions.globals.filter((item) => isSecretVarName(item.name))
+                        .map((item) => resolveString(item.value, runtimeForResolve))
+                ]);
+                for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
+                const redact = (value) => redactSecrets(value, stepSecrets);
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
-                entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${ScenarioTest.formatDuration(result.duration)})`);
+                entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
-                    entryPrint(`  [WARN] ${escapeInlineText(warning)}`);
+                    entryPrint(`  [WARN] ${escapeInlineText(redact(warning))}`);
                 }
-                // each 失败明细：失败断言下逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
-                // 嵌套 each 递归展开，路径用「 › 」串联定位「第几项的第几项」（JSON 报告同口径已透出）
+                // each/shape 失败明细：each 按失败元素（序号 1 基）展开，shape 按字段路径展开；
+                // 嵌套 each 递归展开，路径用「 › 」串联定位
                 const printEachDetail = (detail, prefix) => {
                     for (const item of detail || []) {
+                        if (!item) continue;
+                        if (!Array.isArray(item.assertions) || item.index === undefined) {
+                            // shape 失败明细：{ path, expected, actual }
+                            print(`      ↳ ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+                            continue;
+                        }
                         const label = `${prefix}第 ${item.index + 1} 项`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            entryPrint(`      ↳ ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
+                            entryPrint(`      ↳ ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
                             // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
-                            if (sub.reason) entryPrint(`        原因: ${escapeInlineText(sub.reason)}`);
+                            if (sub.reason) entryPrint(`        原因: ${escapeInlineText(redact(sub.reason))}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
-                            for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
+                            for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
                                 entryPrint(line);
                             }
                             printEachDetail(sub.detail, `${label} › `);
@@ -716,14 +782,14 @@ async function runCommand(args) {
                     }
                 };
                 for (const assertion of result.assertions.filter((item) => !item.passed)) {
-                    entryPrint(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
+                    entryPrint(`  - ${escapeInlineText(redact(assertion.name))}: expected=${formatFailureValue(redact(assertion.expected))} actual=${formatFailureValue(redact(assertion.actual))}`);
                     // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言；
                     // 静态文案同样过 escapeInlineText，防插件注入换行/CI 命令标记
-                    if (assertion.reason) entryPrint(`      原因: ${escapeInlineText(assertion.reason)}`);
+                    if (assertion.reason) entryPrint(`      原因: ${escapeInlineText(redact(assertion.reason))}`);
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口
-                    for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
+                    for (const line of failureDiffLines(redact(assertion.expected), redact(assertion.actual), "    ")) {
                         entryPrint(line);
                     }
                     printEachDetail(assertion.detail, "");
@@ -733,67 +799,109 @@ async function runCommand(args) {
                 // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志；
                 // 响应体可能回显 token（登录步骤断言失败时），日志合规敏感的团队可设
                 // SCENARIO_NO_BODY_PRINT=1 关闭本输出
-                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
+                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => stepSecrets);
             }
         });
         for (const plugin of plugins) {
             await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
         }
+        rememberSecrets(report.vars, report.results.flatMap((step) =>
+            Object.entries(step.request?.headers || {})
+                .filter(([name]) => isSecretVarName(name))
+                .map(([, value]) => value)
+                .filter((value) => typeof value === "string")));
+        report.scenarioId = entry.id;
+        report.tags = entry.tags || [];
         return report;
     };
 
-    if (args.concurrency <= 1) {
-        // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
-        for (let index = 0; index < entries.length; index += 1) {
-            const report = await runEntry(entries[index], print);
-            // JSON 输出按配置清单顺序收集，而非完成顺序
-            reports[index] = report;
-            accumulateReport(report);
-            print(reportSummary(report));
+    // 数据行外层（--data），行内按 --concurrency 串行或并发调度
+    for (const [rowIndex, row] of dataRows.entries()) {
+        if (bailTriggered) {
+            for (const entry of entries) notRun.push({ id: entry.id, name: entry.name, url: entry.url, row: rowIndex + 1, reason: "bail" });
+            continue;
         }
-    } else {
-        // 并发：每个场景先写入私有缓冲，场景结束一次性输出；reports 按 entries 下标回填，
-        // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
-        let nextIndex = 0;
-        let firstError = null;
-        // 单独用布尔标记而不是靠 firstError 的真值判断：执行链可能以假值拒绝
-        // （插件 transformScenario/afterScenario 抛 null/undefined/空串），
-        // 那也必须与串行一致地中断并让退出码为 1，否则并发路径会静默产出带空洞的报告。
-        let hasError = false;
-        const workerCount = Math.min(args.concurrency, entries.length);
-        const worker = async () => {
-            while (true) {
-                if (hasError) return;
-                const index = nextIndex;
-                nextIndex += 1;
-                if (index >= entries.length) return;
-                const bufferedLines = [];
-                const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
-                try {
-                    const report = await runEntry(entries[index], bufferedPrint);
-                    reports[index] = report;
-                    accumulateReport(report);
-                    bufferedPrint(reportSummary(report));
-                } catch (error) {
-                    // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
-                    // 不再调度新场景，已在飞行的场景跑完后统一失败。
-                    if (!hasError) {
-                        hasError = true;
-                        firstError = error;
-                    }
-                } finally {
-                    for (const line of bufferedLines) print(line);
+        const rowVars = row || {};
+        // 数据行变量优先级介于配置 vars 与 --vars 之间：--vars 是本次 run 的临时覆盖
+        baseOptions.vars = { ...baseVars, ...rowVars, ...(args.vars || {}) };
+        const rowReports = new Array(entries.length);
+        if (dataset) print(`\n## 数据行 ${rowIndex + 1}/${dataRows.length}${Object.keys(rowVars).length ? ` (${Object.keys(rowVars).join(", ")})` : ""}`);
+        if (args.concurrency <= 1) {
+            // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
+            for (let index = 0; index < entries.length; index += 1) {
+                if (bailTriggered) {
+                    notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
+                    continue;
                 }
+                const report = await runEntry(entries[index], print);
+                // JSON 输出按配置清单顺序收集，而非完成顺序
+                rowReports[index] = report;
+                reports.push(report);
+                accumulateReport(report);
+                print(reportSummary(report));
+                // #71：失败后不再启动后续场景；已执行的场景完整跑完（含 always 清理）
+                if (!report.passed && args.bail) bailTriggered = true;
             }
-        };
-        await Promise.all(Array.from({ length: workerCount }, () => worker()));
-        if (hasError) throw firstError;
+        } else {
+            // 并发：每个场景先写入私有缓冲，场景结束一次性输出；rowReports 按 entries 下标回填，
+            // 保证 --json 与串行一致按配置清单顺序输出（完成顺序不影响报告顺序）。
+            let nextIndex = 0;
+            let firstError = null;
+            // 单独用布尔标记而不是靠 firstError 的真值判断：执行链可能以假值拒绝
+            // （插件 transformScenario/afterScenario 抛 null/undefined/空串），
+            // 那也必须与串行一致地中断并让退出码为 1，否则并发路径会静默产出带空洞的报告。
+            let hasError = false;
+            const workerCount = Math.min(args.concurrency, entries.length);
+            const worker = async () => {
+                while (true) {
+                    if (hasError || bailTriggered) return;
+                    const index = nextIndex;
+                    nextIndex += 1;
+                    if (index >= entries.length) return;
+                    const bufferedLines = [];
+                    const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+                    try {
+                        const report = await runEntry(entries[index], bufferedPrint);
+                        rowReports[index] = report;
+                        accumulateReport(report);
+                        bufferedPrint(reportSummary(report));
+                        if (!report.passed && args.bail) bailTriggered = true;
+                    } catch (error) {
+                        // 失败场景可能已有部分进度：仍按块输出便于定位；首个错误最终抛出，
+                        // 不再调度新场景，已在飞行的场景跑完后统一失败。
+                        if (!hasError) {
+                            hasError = true;
+                            firstError = error;
+                        }
+                    } finally {
+                        for (const line of bufferedLines) print(line);
+                    }
+                }
+            };
+            await Promise.all(Array.from({ length: workerCount }, () => worker()));
+            if (hasError) throw firstError;
+            for (let index = 0; index < entries.length; index += 1) {
+                const report = rowReports[index];
+                if (report) reports.push(report);
+                else notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
+            }
+        }
+        if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: rowReports.filter(Boolean) });
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
+    if (bailTriggered) print(`\n--bail 已开启：${notRun.length} 个后续场景未执行，退出码保持非零。`);
     if (failedTotal) process.exitCode = 1;
     if (args.failOnSkip && skippedTotal > 0) {
         print(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
         process.exitCode = 1;
+    }
+
+    // #57 JUnit：与 stdout 人类输出/退出码正交；报告先脱敏再落盘（#90）
+    const secretList = [...allSecrets];
+    const safeReports = reports.map((report) => redactSecrets(report, secretList));
+    if (args.junit) {
+        const target = writeJUnitReport(args.junit, safeReports);
+        print(`\nJUnit 报告: ${target}`);
     }
 
     const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
@@ -810,8 +918,20 @@ async function runCommand(args) {
     if (args.json) {
         // 直接序列化 runScenario report（编程接口的稳定形状，不另造易漂移子集）；
         // 单场景输出 report 本身，多场景顶层包 { scenarios: [...] }。
-        // 退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
-        const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+        // 数据驱动时按行聚合；退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
+        const payload = dataset
+            ? {
+                data: { file: dataset.file, format: dataset.format, rows: dataset.rows.length },
+                results: rowResults.map((row) => ({
+                    index: row.index,
+                    vars: redactSecrets(row.vars, secretList),
+                    scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
+                })),
+                ...(notRun.length ? { notRun } : {})
+            }
+            : (safeReports.length === 1 && !notRun.length
+                ? safeReports[0]
+                : { scenarios: safeReports, ...(notRun.length ? { notRun } : {}) });
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     }
 }
@@ -843,7 +963,8 @@ function escapeErrorText(error) {
     return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
 
-function printFailedStepBody(result, print = console.log) {
+function printFailedStepBody(result, print = console.log, secretsOf = []) {
+    const redact = (value) => redactSecrets(value, typeof secretsOf === "function" ? secretsOf() : secretsOf);
     const response = result?.response;
     if (!response || typeof response !== "object") return;
     const body = response.body;
@@ -853,7 +974,7 @@ function printFailedStepBody(result, print = console.log) {
     // 适配器结构化 body（bodyText 缺省归一化为 null）恰好含 savedTo+size 字段时不吞原文；
     // savedTo 可能经模板混入服务端可控字节（extract 提取值进路径），同样转义
     if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
-        print(`  响应体已保存至 ${escapeBodyLine(body.savedTo)}`);
+        print(`  响应体已保存至 ${escapeBodyLine(redact(body.savedTo))}`);
         return;
     }
     let raw = bodyText ?? "";
@@ -864,7 +985,7 @@ function printFailedStepBody(result, print = console.log) {
             try { raw = JSON.stringify(body) ?? String(body); } catch { raw = String(body); }
         }
     }
-    const text = raw.replace(/\r\n/g, "\n").trimEnd();
+    const text = String(redact(raw)).replace(/\r\n/g, "\n").trimEnd();
     if (text === "") return;
     const truncated = text.length > FAILURE_BODY_LIMIT;
     const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
@@ -872,234 +993,29 @@ function printFailedStepBody(result, print = console.log) {
     print(`  响应体${note}:`);
     for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
-
-function safeFile(root, relativePath) {
-    const candidate = path.resolve(root, relativePath);
-    const relative = path.relative(root, candidate);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
-    // serve 真实读文件：junction/符号链接在词法层不可见，按真实位置再判一次
-    return isRealPathWithinRoot(root, candidate) ? candidate : null;
-}
-
-function contentType(filePath) {
-    return ({
-        ".html": "text/html; charset=utf-8",
-        ".js": "application/javascript; charset=utf-8",
-        ".json": "application/json; charset=utf-8",
-        ".css": "text/css; charset=utf-8",
-        ".svg": "image/svg+xml",
-        ".txt": "text/plain; charset=utf-8"
-    })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
-}
-
-function serveStaticFile(response, filePath) {
-    const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-    if (path.extname(filePath).toLowerCase() !== ".html") {
-        const stream = fs.createReadStream(filePath);
-        stream.on("error", () => {
-            if (response.headersSent) { response.destroy(); return; }
-            response.writeHead(500);
-            response.end("Internal Server Error");
-        });
-        stream.on("open", () => {
-            response.writeHead(200, headers);
-            stream.pipe(response);
-        });
-        return;
-    }
-    fs.readFile(filePath, "utf8", function (error, html) {
-        if (error) {
-            response.writeHead(500);
-            response.end("Internal Server Error");
-            return;
-        }
-        const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
-        const headPattern = /<head(?:\s[^>]*)?>/i;
-        const content = headPattern.test(html)
-            ? html.replace(headPattern, function (head) { return head + marker; })
-            : marker + html;
-        response.writeHead(200, headers);
-        response.end(content);
-    });
-}
-
-function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
-    // serve 保留环境 baseUrl 作为上游目标，并在返回的 HTML 中注入代理模式标记让浏览器强制使用当前同源地址
-    if (config.envs?.length) {
-        // 与 run 的 selectEnvironment 一致：环境不存在时报错退出。
-        // 静默回退 envs[0] 会把请求代理到错误后端（可能是生产），且日志仍显示用户输入的环境名
-        const environment = selectEnvironment(config, envKey);
-        // --base-url 临时覆盖代理目标（与 run 模式一致）；未覆盖时与 run/doctor 同口径：
-        // 环境未声明 baseUrl 则回退顶层 config.baseUrl，而不是得到空代理目标。
-        const overridden = Boolean(baseUrlOverride);
-        const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
-        return {
-            key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
-            target: String(target).replace(/\/+$/, "")
-        };
-    }
-    return {
-        key: config.defaultEnvKey || "default",
-        target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
-    };
-}
-
-// 转发时剔除 hop-by-hop 头（RFC 7230 §6.1），避免把客户端连接语义泄漏给上游；
-// Node 会按 targetUrl 重建 host/connection，显式删除可防止冲突。
-const HOP_BY_HOP_HEADERS = new Set([
-    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailer", "transfer-encoding", "upgrade", "host"
-]);
-
-// 上游空闲超时：响应头尚未发出时返回 502；传输中途超时/断连则无法再写响应头，
-// 只能销毁下游连接。默认 30 秒，可由 serve 的 --proxy-timeout <ms> 覆盖（契约 cli.options）。
-const DEFAULT_PROXY_TIMEOUT_MS = 30000;
-// 上限 10 分钟：再长会让“假挂起”的联调请求长时间占住连接，且浏览器侧通常先超时
-const MAX_PROXY_TIMEOUT_MS = 600000;
-
-function isValidProxyTimeout(value) {
-    return Number.isInteger(value) && value > 0 && value <= MAX_PROXY_TIMEOUT_MS;
-}
-
-function abortProxyResponse(response) {
-    if (response.destroyed || response.writableEnded) return;
-    response.destroy();
-}
-
-function respondProxyError(response, message) {
-    // 响应已开始（writeHead + pipe 进行中）时二次 writeHead 会抛 ERR_HTTP_HEADERS_SENT，
-    // 从事件回调冒泡成 uncaughtException 直接杀死 serve 进程；此时只能断开连接
-    if (response.headersSent) { abortProxyResponse(response); return; }
-    response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-    response.end(message);
-}
-
-// 按代理目标协议选择转发模块；无法识别（缺 http(s):// 前缀或非法 URL）时返回 null，
-// 由调用方降级为 502 提示——代理目标错误属于配置问题，不应让 serve 进程退出。
-function proxyTransport(targetUrl) {
-    try {
-        const protocol = new URL(targetUrl).protocol;
-        if (protocol === "https:") return https;
-        if (protocol === "http:") return http;
-    } catch {
-        return null;
-    }
-    return null;
-}
-
-// RFC 7230 §6.1：Connection 头点名的字段同样是逐跳的，需随静态名单一并剔除
-function connectionNamedHeaders(connectionValue) {
-    return String(connectionValue || "")
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean);
-}
-
-function proxyRequest(request, response, targetUrl, proxyTimeoutMs) {
-    const transport = proxyTransport(targetUrl);
-    if (!transport) {
-        respondProxyError(
-            response,
-            `Bad Gateway: 接口代理目标无效: ${targetUrl}\n` +
-            "请检查环境 baseUrl，必须带协议前缀（http:// 或 https://）"
-        );
-        return;
-    }
-    const headers = {};
-    const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
-    for (const [name, value] of Object.entries(request.headers)) {
-        const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
-    }
-    let upstream;
-    try {
-        // 保持原拼接语义：targetUrl 已去尾部斜杠，若带路径前缀则原样保留
-        upstream = transport.request(targetUrl + request.url, {
-            method: request.method,
-            headers,
-            // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-            // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-            ...(transport === https ? { rejectUnauthorized: false } : {})
-        }, (upstreamResponse) => {
-            // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器；
-            // Connection 点名的自定义字段同样剔除
-            const responseHeaders = {};
-            const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
-            for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-                const lower = String(name).toLowerCase();
-                if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
-            }
-            response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-            // 响应已开始后上游传输中途断连/重置：不能再写 502（二次 writeHead 会抛
-            // ERR_HTTP_HEADERS_SENT），直接销毁下游连接，让浏览器立即失败而不是无限等待
-            upstreamResponse.on("error", () => abortProxyResponse(response));
-            upstreamResponse.on("aborted", () => abortProxyResponse(response));
-            upstreamResponse.pipe(response);
-        });
-    } catch (error) {
-        // 请求构造阶段（非法 URL 等）可能同步抛错，此处兜底为 502
-        respondProxyError(response, `Bad Gateway: 接口代理请求构造失败: ${error.message}`);
-        return;
-    }
-    upstream.setTimeout(proxyTimeoutMs, () => {
-        upstream.destroy(new Error("接口代理超时"));
-    });
-    upstream.on("error", () => {
-        respondProxyError(response, "Bad Gateway: 无法连接接口代理目标或代理超时");
-    });
-    request.pipe(upstream);
-}
-
-// Host 白名单：serve 绑定 127.0.0.1 仅供本机回环访问。校验 Host 头可阻断 DNS rebinding 等
-// 跨源读取（攻击域名解析到 127.0.0.1 后，浏览器请求仍会携带攻击者的 Host），
-// 与 vite/webpack-dev-server 的 host 校验同类加固
-function isAllowedServeHost(hostHeader, port) {
-    const host = String(hostHeader || "").trim().toLowerCase();
-    return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
-}
-
 async function serveCommand(args) {
     const configPath = resolveConfigPath(args.config);
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
-    const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+    const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
+    if (startup.error) {
+        throw new CliUsageError(
+            startup.error,
+            "请将 --env 设置为上面列出的环境 key 后重试。"
+        );
+    }
+    // 启动日志打印实际生效值（默认/命令行来源），便于确认 --proxy-timeout 是否被识别
     const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
-    const server = http.createServer((request, response) => {
-        try {
-            if (!isAllowedServeHost(request.headers.host, args.port)) {
-                response.writeHead(403);
-                response.end("Forbidden");
-                return;
-            }
-            const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-            let filePath;
-            if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
-            else if (pathname === "/dist/scenario-test.umd.js") {
-                // 仓库内示例的 index.html 引用 ../../dist/scenario-test.umd.js（浏览器规范化为 /dist/...）
-                filePath = path.join(libraryDist, "scenario-test.umd.js");
-            }
-            else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-                // 兼容 npm 包路径引用；运行时副本优先由项目 .scenario-test/ 提供
-                filePath = path.join(libraryDist, "scenario-test.umd.js");
-            }
-            else {
-                const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-                filePath = safeFile(workspace, relativePath);
-            }
-            if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
-            fs.stat(filePath, (error, stat) => {
-                if (error || !stat.isFile()) {
-                    // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
-                    if (proxyTarget) { proxyRequest(request, response, proxyTarget, proxyTimeoutMs); return; }
-                    response.writeHead(404); response.end("Not Found"); return;
-                }
-                serveStaticFile(response, filePath);
-            });
-        } catch {
-            response.writeHead(400);
-            response.end("Bad Request");
-        }
+    const server = createServeServer({
+        workspace,
+        libraryDist,
+        port: args.port,
+        config,
+        defaultTarget: startup,
+        // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
+        overrideBaseUrl: args.baseUrl || "",
+        proxyTimeoutMs: args.proxyTimeout ?? undefined
     });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
@@ -1114,9 +1030,8 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
-        if (proxyTarget) {
-            console.log(`接口代理: ${proxyEnvKey} -> ${proxyTarget}`);
-            // 打印实际生效的空闲超时：便于确认 --proxy-timeout 是否被识别（缺省时标注来源）
+        if (startup.target) {
+            console.log(`接口代理: ${startup.key} -> ${startup.target}`);
             console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
         }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");

@@ -240,10 +240,8 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs7 = __toESM(require("node:fs"), 1);
-var import_node_http = __toESM(require("node:http"), 1);
-var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path7 = __toESM(require("node:path"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
@@ -259,6 +257,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SECRET_VAR_PATTERN: () => SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -277,6 +276,8 @@ __export(node_exports, {
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
   clone: () => clone,
+  collectMissingTemplateVars: () => collectMissingTemplateVars,
+  collectSecretValues: () => collectSecretValues,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -286,6 +287,7 @@ __export(node_exports, {
   defineScenario: () => defineScenario,
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
+  evaluateShape: () => evaluateShape,
   evaluateWhen: () => evaluateWhen,
   executeDefinitionFile: () => executeDefinitionFile,
   formatAssertionContext: () => formatAssertionContext,
@@ -303,6 +305,7 @@ __export(node_exports, {
   headersToObject: () => headersToObject,
   isGlobalParam: () => isGlobalParam,
   isPlainObject: () => isPlainObject,
+  isSecretVarName: () => isSecretVarName,
   joinUrl: () => joinUrl,
   listAdapters: () => listAdapters,
   loadConfigFile: () => loadConfigFile,
@@ -311,6 +314,7 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  missingTemplateVarWarnings: () => missingTemplateVarWarnings,
   normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
@@ -320,6 +324,7 @@ __export(node_exports, {
   pickWeightedIndex: () => pickWeightedIndex,
   queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
+  redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
   registerScenario: () => registerScenario,
@@ -333,12 +338,14 @@ __export(node_exports, {
   seedToUnit: () => seedToUnit,
   setRuntimeVar: () => setRuntimeVar,
   splitUrlFragment: () => splitUrlFragment,
+  templateExpressionRoot: () => templateExpressionRoot,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
   validateAdapter: () => validateAdapter,
   validateAdapterResponse: () => validateAdapterResponse,
-  validateAssertion: () => validateAssertion
+  validateAssertion: () => validateAssertion,
+  validateShapeSchema: () => validateShapeSchema
 });
 
 // src/core.js
@@ -348,7 +355,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 15;
+var CONTRACT_VERSION = 16;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -388,6 +395,10 @@ var contract = Object.freeze({
         description: "\u6570\u7EC4\u9010\u9879\u65AD\u8A00\uFF1A\u5B9E\u9645\u503C\u5FC5\u987B\u662F\u6570\u7EC4\uFF0Cexpected \u4E3A\u5B50\u65AD\u8A00\u5B9A\u4E49\u5BF9\u8C61\u6216\u5176\u6570\u7EC4\uFF0C\u5BF9\u6BCF\u4E2A\u5143\u7D20\u5957\u7528\u5B50\u65AD\u8A00\uFF08\u5B50\u65AD\u8A00 path \u76F8\u5BF9\u5143\u7D20\u81EA\u8EAB\uFF0C\u671F\u671B\u503C\u652F\u6301\u6A21\u677F\u53D8\u91CF\uFF09\uFF1B\u4EFB\u4E00\u5143\u7D20\u4EFB\u4E00\u5B50\u65AD\u8A00\u5931\u8D25\u5219\u6574\u4F53\u5931\u8D25\uFF0C\u7A7A\u6570\u7EC4\u6052\u901A\u8FC7\uFF0C\u975E\u6570\u7EC4\u5B9E\u9645\u503C\u76F4\u63A5\u5931\u8D25",
         valueType: "assertion"
       }),
+      shape: Object.freeze({
+        description: "\u7ED3\u6784\u7EA7\u6821\u9A8C\uFF08jsonSchema-lite\uFF09\uFF1A\u6309 type/required/properties/items/enum/additionalProperties \u6821\u9A8C\u54CD\u5E94\u7ED3\u6784\uFF0C\u5931\u8D25\u660E\u7EC6\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\u4E0E\u671F\u671B/\u5B9E\u9645\u7C7B\u578B",
+        valueType: "any"
+      }),
       matches: Object.freeze({
         description: "\u6B63\u5219\u8868\u8FBE\u5F0F\u5339\u914D\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C",
         valueType: "string"
@@ -426,7 +437,12 @@ var contract = Object.freeze({
       })
     }),
     // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
-    numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+    numericOperators: Object.freeze(["gt", "gte", "lt", "lte"]),
+    // shape 断言支持的结构键与类型名（jsonSchema-lite，不引入依赖）
+    shape: Object.freeze({
+      keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
+      types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"])
+    })
   }),
   when: Object.freeze({
     // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
@@ -438,7 +454,9 @@ var contract = Object.freeze({
   extract: Object.freeze({
     // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
     // 防止 heder/fromm 等拼错静默落到默认 body 来源）
-    metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default"]),
+    metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default", "scope"]),
+    // 提取作用域：step（默认，仅当前场景可见）/ suite（写入本次 run 的共享变量，后续场景可引用）
+    scopes: Object.freeze(["step", "suite"]),
     // extract 支持的来源（默认 body）
     // from:"headers" 配 path 时首段头名按大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；
     // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
@@ -449,7 +467,7 @@ var contract = Object.freeze({
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
+    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\uFF1Bscope: "suite" \u65F6\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF0C\u540E\u7EED\u573A\u666F\u53EF\u76F4\u63A5\u7528 {{vars.<name>}} \u5F15\u7528\uFF08\u9ED8\u8BA4 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -487,8 +505,8 @@ var contract = Object.freeze({
       "envVars"
     ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
+    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
+    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     baseUrl: Object.freeze({
       protocol: "http(s)",
@@ -497,17 +515,21 @@ var contract = Object.freeze({
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
+    }),
+    tags: Object.freeze({
+      type: "string[]",
+      note: "\u914D\u7F6E\u6E05\u5355\u9879\u58F0\u660E tags \u7528\u4E8E run --tag \u7B5B\u9009\uFF08\u91CD\u590D\u53C2\u6570\u4E4B\u95F4\u4E3A OR\uFF0C\u5355\u4E2A\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C manual:true \u573A\u666F\uFF09\uFF1B\u573A\u666F\u9876\u5C42 tags \u4E3A\u573A\u666F\u5143\u6570\u636E"
     })
   }),
   retryUntil: Object.freeze({
-    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
     // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
     retryOn: Object.freeze(["assertion", "error", "timeout"]),
     defaultRetryOn: Object.freeze(["assertion"]),
-    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage\u3002intervalFactor \u53EF\u9009\uFF08\u9ED8\u8BA4 1\uFF0C\u56FA\u5B9A\u95F4\u9694\uFF09\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF1BmaxIntervalMs \u53EF\u9009\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u957F\u7EA6\u675F'
   }),
   scenario: Object.freeze({
-    keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
+    keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy", "tags"]),
     stepKeys: Object.freeze([
       "name",
       "method",
@@ -521,9 +543,13 @@ var contract = Object.freeze({
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ]),
-    failurePolicies: Object.freeze(["stop", "continue"])
+    failurePolicies: Object.freeze(["stop", "continue"]),
+    // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
+    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
     commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
@@ -540,14 +566,19 @@ var contract = Object.freeze({
         description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
+      "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
+      data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
+      junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
+      tag: {
+        kind: "value",
+        prop: "tags",
+        repeatable: true,
+        description: "\u6309\u6807\u7B7E\u7B5B\u9009\u573A\u666F\uFF08\u53EF\u91CD\u590D\uFF1B\u91CD\u590D\u53C2\u6570\u4E4B\u95F4\u4E3A OR\uFF0C\u5355\u4E2A\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF09"
+      },
+      bail: { kind: "flag", prop: "bail", description: "\u4EFB\u4E00\u573A\u666F\u5931\u8D25\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u573A\u666F\uFF08\u5DF2\u6267\u884C\u573A\u666F\u8DD1\u5B8C\uFF09" },
+      "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run \u4E3A\u6BCF\u4E2A\u573A\u666F\u542F\u7528\u5185\u5B58 Cookie Jar\uFF08\u81EA\u52A8\u643A\u5E26 Set-Cookie\uFF0C\u9ED8\u8BA4\u5173\u95ED\uFF09" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
-      "proxy-timeout": {
-        kind: "value",
-        prop: "proxyTimeout",
-        parse: "number",
-        description: "serve \u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C1-600000 \u6574\u6570\uFF09\uFF0C\u9ED8\u8BA4 30000"
-      },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -768,6 +799,47 @@ function resolve(value, runtime) {
   }
   return resolveString(value, runtime);
 }
+function templateExpressionRoot(expression) {
+  const text = String(expression || "").trim();
+  if (!text || text === "vars") return null;
+  if (text.startsWith("lastResponse")) return null;
+  let pathText;
+  if (text.startsWith("vars.")) pathText = text.slice(5);
+  else if (text.startsWith("vars[")) pathText = text.slice(4);
+  else pathText = text;
+  if (!pathText || pathText.startsWith(".")) return null;
+  const tokens = tokenizePath(pathText);
+  if (!tokens || !tokens.length) return null;
+  const token = tokens[0];
+  if (token.startsWith("[")) {
+    const inner = token.slice(1, -1).replace(/^['"]|['"]$/g, "");
+    return inner || null;
+  }
+  return token;
+}
+function collectMissingTemplateVars(value, vars, missing = /* @__PURE__ */ new Set(), seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value === "string") {
+    if (!value.includes("{{")) return missing;
+    for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+      const root = templateExpressionRoot(match[1]);
+      if (root && !Object.prototype.hasOwnProperty.call(vars || {}, root)) missing.add(root);
+    }
+    return missing;
+  }
+  if (value === null || typeof value !== "object" || seen.has(value)) return missing;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectMissingTemplateVars(item, vars, missing, seen);
+    return missing;
+  }
+  if (isPlainObject(value)) {
+    for (const item of Object.values(value)) collectMissingTemplateVars(item, vars, missing, seen);
+  }
+  return missing;
+}
+function missingTemplateVarWarnings(missing) {
+  return [...missing].map((name) => `\u6A21\u677F\u53D8\u91CF vars.${name} \u672A\u5B9A\u4E49\uFF0C\u5DF2\u6309\u7A7A\u4E32\u89E3\u6790\uFF08\u68C0\u67E5\u53D8\u91CF\u540D\u62FC\u5199\uFF0C\u6216\u8865\u5145 config/scenario vars\u3001extract \u4E0E --vars\uFF09`);
+}
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
   const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
@@ -873,10 +945,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path8 } = splitUrlFragment(url);
-  const queryIndex = path8.indexOf("?");
+  const { path: path11 } = splitUrlFragment(url);
+  const queryIndex = path11.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path8.slice(queryIndex + 1).split("&")) {
+  for (const pair of path11.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -885,8 +957,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path8, fragment } = splitUrlFragment(text);
-  return `${path8}${path8.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path11, fragment } = splitUrlFragment(text);
+  return `${path11}${path11.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -930,6 +1002,92 @@ function formatAssertionContext(context) {
   if (context.stepName) parts.push(`\u6B65\u9AA4 ${context.stepName}`);
   if (context.assertionNo !== void 0) parts.push(`\u7B2C ${context.assertionNo} \u6761`);
   return parts.join(" ");
+}
+var SHAPE_KEYS = new Set(contract.assertions.shape.keys);
+var SHAPE_TYPES = new Set(contract.assertions.shape.types);
+function validateShapeSchema(schema, trail = "shape") {
+  if (!isPlainObject(schema)) throw new TypeError(`${trail} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08jsonSchema-lite \u5B50\u96C6\uFF09`);
+  const unknown = Object.keys(schema).filter((key) => !SHAPE_KEYS.has(key));
+  if (unknown.length) {
+    throw new TypeError(`${trail} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${[...SHAPE_KEYS].join("/")}`);
+  }
+  if (schema.type !== void 0 && !SHAPE_TYPES.has(schema.type)) {
+    throw new TypeError(`${trail}.type \u53EA\u652F\u6301 ${[...SHAPE_TYPES].join("/")}\uFF08\u5F53\u524D ${JSON.stringify(schema.type)}\uFF09`);
+  }
+  if (schema.required !== void 0) {
+    if (!Array.isArray(schema.required) || schema.required.some((name) => typeof name !== "string" || !name)) {
+      throw new TypeError(`${trail}.required \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\u6570\u7EC4`);
+    }
+  }
+  if (schema.properties !== void 0) {
+    if (!isPlainObject(schema.properties)) throw new TypeError(`${trail}.properties \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    for (const [key, sub] of Object.entries(schema.properties)) {
+      validateShapeSchema(sub, `${trail}.properties.${key}`);
+    }
+  }
+  if (schema.items !== void 0) validateShapeSchema(schema.items, `${trail}.items`);
+  if (schema.enum !== void 0 && !Array.isArray(schema.enum)) {
+    throw new TypeError(`${trail}.enum \u5FC5\u987B\u662F\u6570\u7EC4`);
+  }
+  if (schema.additionalProperties !== void 0 && typeof schema.additionalProperties !== "boolean") {
+    throw new TypeError(`${trail}.additionalProperties \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
+  }
+  if (schema.type === void 0 && schema.required === void 0 && schema.properties === void 0 && schema.items === void 0 && schema.enum === void 0 && schema.additionalProperties === void 0) {
+    throw new TypeError(`${trail} \u81F3\u5C11\u9700\u8981\u58F0\u660E type/required/properties/items/enum/additionalProperties \u4E4B\u4E00`);
+  }
+  return schema;
+}
+function shapeActualType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
+}
+function shapeTypeMatches(type, value) {
+  if (type === "null") return value === null;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object") return isPlainObject(value);
+  if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+}
+function shapeErrors(schema, value, path11, errors) {
+  const type = schema.type || (schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0);
+  if (type && !shapeTypeMatches(type, value)) {
+    errors.push({ path: path11 || "(\u6839)", expected: `type: ${type}`, actual: shapeActualType(value), value });
+    return errors;
+  }
+  if (schema.enum !== void 0 && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
+    errors.push({ path: path11 || "(\u6839)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+  }
+  if (isPlainObject(value)) {
+    for (const name of schema.required || []) {
+      if (!Object.prototype.hasOwnProperty.call(value, name)) {
+        errors.push({ path: path11 ? `${path11}.${name}` : name, expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: "\u7F3A\u5931", value: void 0 });
+      }
+    }
+    const properties = schema.properties || {};
+    for (const [name, subSchema] of Object.entries(properties)) {
+      if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
+      shapeErrors(subSchema, value[name], path11 ? `${path11}.${name}` : name, errors);
+    }
+    if (schema.additionalProperties === false) {
+      for (const name of Object.keys(value)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, name)) {
+          errors.push({ path: path11 ? `${path11}.${name}` : name, expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5", actual: value[name], value: value[name] });
+        }
+      }
+    }
+  }
+  if (Array.isArray(value) && schema.items !== void 0) {
+    value.forEach((item, index) => {
+      shapeErrors(schema.items, item, `${path11 || ""}[${index}]`, errors);
+    });
+  }
+  return errors;
+}
+function evaluateShape(schema, actual) {
+  return shapeErrors(schema, actual, "", []);
 }
 function validateAssertion(definition, context, options = {}) {
   const where = formatAssertionContext(context);
@@ -982,6 +1140,9 @@ function validateAssertion(definition, context, options = {}) {
     } catch (error) {
       throw new TypeError(`${prefix}: matches \u671F\u671B\u503C\u4E0D\u662F\u5408\u6CD5\u6B63\u5219\u8868\u8FBE\u5F0F\uFF08${definition.matches}\uFF09: ${error.message}`);
     }
+  }
+  if (definition.shape !== void 0) {
+    validateShapeSchema(definition.shape, `${prefix}: shape`);
   }
   if (definition.each !== void 0) {
     const eachLabel = `${prefix}: each \u7684\u671F\u671B\u503C\u5FC5\u987B\u662F\u5B50\u65AD\u8A00\u5BF9\u8C61\u6216\u5176\u6570\u7EC4`;
@@ -1048,6 +1209,7 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
   let passed = true;
   let reason = "";
   let eachFailures = null;
+  let shapeFailures = null;
   if (definition.exists !== void 0) {
     expected = Boolean(definition.exists);
     const exists = actual !== void 0 && actual !== null && actual !== "";
@@ -1074,6 +1236,16 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
       }
     } else {
       passed = passed && String(actual == null ? "" : actual).includes(String(expected));
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
+    expected = resolve(definition.shape, runtime);
+    if (isPlainObject(expected)) {
+      shapeFailures = evaluateShape(expected, actual);
+      if (shapeFailures.length) passed = false;
+    } else {
+      passed = false;
+      shapeFailures = [{ path: "(\u6839)", expected: "shape \u5B9A\u4E49\u5BF9\u8C61", actual: shapeActualType(expected), value: expected }];
     }
   }
   if (Object.prototype.hasOwnProperty.call(definition, "each")) {
@@ -1146,8 +1318,9 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     expected,
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
-    // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
-    ...eachFailures ? { detail: eachFailures } : {}
+    // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
+    ...eachFailures ? { detail: eachFailures } : {},
+    ...shapeFailures ? { detail: shapeFailures } : {}
   };
 }
 function normalizeWhenDefinition(definition) {
@@ -1205,6 +1378,13 @@ function setRuntimeVar(vars, name, value) {
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
+  const store = (name, value, suiteScope) => {
+    setRuntimeVar(runtime.vars, name, value);
+    if (suiteScope) {
+      if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
+      setRuntimeVar(runtime.suiteVars, name, value);
+    }
+  };
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
     assertNotReservedVar(definition.name, "extract \u53D8\u91CF");
@@ -1221,7 +1401,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        setRuntimeVar(runtime.vars, definition.name, resolve(definition.default, runtime));
+        store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
         continue;
       }
       if (definition.required === true) {
@@ -1235,7 +1415,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    setRuntimeVar(runtime.vars, definition.name, value);
+    store(definition.name, value, definition.scope === "suite");
   }
   return { warnings, failures };
 }
@@ -1403,8 +1583,9 @@ function defaultUuidHex() {
 function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
   const name = definition.name;
   const uuidHex = deps.uuidHex || defaultUuidHex;
+  const now2 = typeof deps.now === "function" ? deps.now : Date.now;
   if (definition.type === "timestamp") {
-    const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+    const base = now2() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
     if (definition.format != null) {
       if (definition.unit != null) {
         throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${name}`);
@@ -1511,10 +1692,62 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
 }
+var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key|cookie)/i;
+function isSecretVarName(name) {
+  return SECRET_VAR_PATTERN.test(String(name || ""));
+}
 function maskSecret(value) {
   if (value === void 0 || value === null || value === "") return "";
   const text = String(value);
   return text.length > 12 ? `${text.slice(0, 4)}...${text.slice(-4)}` : "***";
+}
+function collectSecretValues(vars, extra = []) {
+  const secrets = /* @__PURE__ */ new Set();
+  for (const [name, value] of Object.entries(vars || {})) {
+    if (!isSecretVarName(name)) continue;
+    if (value === void 0 || value === null || value === "") continue;
+    if (typeof value === "object") continue;
+    secrets.add(String(value));
+  }
+  for (const value of extra || []) {
+    if (value === void 0 || value === null || value === "") continue;
+    secrets.add(String(value));
+  }
+  return [...secrets];
+}
+function redactSecrets(value, secrets, seen = /* @__PURE__ */ new WeakMap()) {
+  if (typeof value === "string") {
+    let text = value;
+    for (const secret of secrets || []) {
+      if (!secret) continue;
+      if (text === secret) return maskSecret(secret);
+      if (secret.length >= 4 && text.includes(secret)) {
+        text = text.split(secret).join(maskSecret(secret));
+      }
+    }
+    return text;
+  }
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const result2 = [];
+    seen.set(value, result2);
+    for (const item of value) result2.push(redactSecrets(item, secrets, seen));
+    return result2;
+  }
+  if (!isPlainObject(value)) return value;
+  const result = {};
+  seen.set(value, result);
+  for (const [key, item] of Object.entries(value)) {
+    if (isSecretVarName(key) && item !== void 0 && item !== null && item !== "") {
+      if (Array.isArray(item)) result[key] = item.map((entry) => entry !== null && typeof entry === "object" ? "***" : maskSecret(entry));
+      else if (typeof item === "object") result[key] = "***";
+      else result[key] = maskSecret(item);
+    } else {
+      result[key] = redactSecrets(item, secrets, seen);
+    }
+  }
+  return result;
 }
 function sanitizeSensitive(value, key = "", sensitiveNames = []) {
   return value;
@@ -1855,7 +2088,16 @@ function findKeySuggestion(key, allowed) {
 function looksLikeKeyTypo(key, allowed) {
   return findKeySuggestion(key, allowed) !== void 0;
 }
-var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
+function normalizeTags(tags, label) {
+  if (tags === void 0) return [];
+  invariant(Array.isArray(tags), `${label}\u7684 tags \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6570\u7EC4`);
+  const normalized = tags.map((tag, index) => {
+    invariant(nonEmptyString(tag), `${label}\u7684 tags \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32`);
+    return tag.trim();
+  });
+  return [...new Set(normalized)];
+}
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
   const described = unknownKeys.map((key) => {
     const suggestion = findKeySuggestion(key, allowed);
@@ -1971,6 +2213,7 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  const scenarioTags = normalizeTags(input.tags, `\u573A\u666F ${input.name}`);
   assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
   let generatedVarIndex = 0;
@@ -2063,6 +2306,20 @@ function defineScenario(input) {
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.intervalFactor !== void 0) {
+        const intervalFactor = Number(step.retryUntil.intervalFactor);
+        invariant(
+          Number.isFinite(intervalFactor) && intervalFactor >= 1,
+          `\u6B65\u9AA4 ${step.name} \u7684 intervalFactor \u5FC5\u987B\u662F \u22651 \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.intervalFactor)}\uFF09`
+        );
+      }
+      if (step.retryUntil.maxIntervalMs !== void 0) {
+        const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
+        invariant(
+          Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+          `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs \u5FC5\u987B\u662F \u2265 intervalMs \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.maxIntervalMs)}\uFF0CintervalMs=${intervalMs}\uFF09`
+        );
+      }
       if (step.retryUntil.retryOn !== void 0) {
         invariant(
           Array.isArray(step.retryUntil.retryOn),
@@ -2075,6 +2332,9 @@ function defineScenario(input) {
           );
         }
       }
+    }
+    if (step.always !== void 0) {
+      invariant(typeof step.always === "boolean", `\u6B65\u9AA4 ${step.name} \u7684 always \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
     if (step.extract !== void 0) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -2116,6 +2376,12 @@ function defineScenario(input) {
           invariant(
             contract.extract.from.includes(item.from),
             `${label} \u7684 from \u53EA\u652F\u6301 ${contract.extract.from.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.from)}\uFF0C\u7F3A\u7701\u6309 body \u53D6\u503C\uFF09`
+          );
+        }
+        if (item.scope !== void 0) {
+          invariant(
+            contract.extract.scopes.includes(item.scope),
+            `${label} \u7684 scope \u53EA\u652F\u6301 ${contract.extract.scopes.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.scope)}\uFF1B\u7F3A\u7701 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09`
           );
         }
         if (item.path !== void 0) {
@@ -2208,7 +2474,7 @@ function defineScenario(input) {
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
-  return { ...input, failurePolicy, steps: [...input.steps] };
+  return { ...input, failurePolicy, tags: scenarioTags, steps: [...input.steps] };
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
@@ -2219,9 +2485,14 @@ function defineConfig(input) {
   const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
     invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
     assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (env.vars !== void 0) {
+      invariant(isPlainObject(env.vars), `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      assertNoReservedVars(env.vars, `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars`);
+    }
     return {
       ...env,
-      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`),
+      vars: env.vars ? { ...env.vars } : {}
     };
   }) : [];
   for (const env of envs) {
@@ -2242,7 +2513,7 @@ function defineConfig(input) {
     if (entry.manual !== void 0) {
       invariant(typeof entry.manual === "boolean", `\u573A\u666F ${id} \u7684 manual \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
-    return { ...entry, id, name: entry.name || id, url };
+    return { ...entry, id, name: entry.name || id, url, tags: normalizeTags(entry.tags, `\u573A\u666F ${id}`) };
   });
   assertUnique(scenarios, "id", "\u573A\u666F id");
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
@@ -2351,6 +2622,20 @@ function describeError(error) {
   const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
   const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
   return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
+function retryBackoffIntervalMs(retry, attempt, maxElapsedMs) {
+  const rawIntervalMs = Number(retry?.intervalMs);
+  const baseIntervalMs = Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3;
+  const rawFactor = Number(retry?.intervalFactor);
+  const intervalFactor = Number.isFinite(rawFactor) && rawFactor >= 1 ? rawFactor : 1;
+  const rawMaxIntervalMs = Number(retry?.maxIntervalMs);
+  const maxIntervalMs = Number.isFinite(rawMaxIntervalMs) && rawMaxIntervalMs >= 0 ? rawMaxIntervalMs : Infinity;
+  let computed = baseIntervalMs * Math.pow(intervalFactor, Math.max(0, attempt - 1));
+  if (!Number.isFinite(computed)) {
+    computed = Number.isFinite(maxIntervalMs) ? maxIntervalMs : maxElapsedMs;
+  }
+  computed = Math.min(computed, maxIntervalMs);
+  return Math.max(100, computed);
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
@@ -2476,21 +2761,37 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     if (!contract.generatedVars.types.includes(definition.type)) {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
-    applyGeneratedVar(definition, vars, identifiers);
+    applyGeneratedVar(definition, vars, identifiers, { now: options.now });
   }
   return vars;
 }
 function createRuntime(scenario, options = {}) {
   const config = options.config || {};
-  return {
+  const suiteVars = isPlainObject(options.suiteVars) ? options.suiteVars : {};
+  const runtime = {
     vars: buildGeneratedVars(
       scenario,
-      { ...config.vars || {}, ...options.vars || {} },
-      options.environmentVariables || {}
+      { ...suiteVars, ...config.vars || {}, ...options.vars || {} },
+      options.environmentVariables || {},
+      { now: options.now }
     ),
+    suiteVars,
     lastResponse: null,
-    lastResponseBody: null
+    lastResponseBody: null,
+    // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
+    cookieJar: []
   };
+  return runtime;
+}
+function collectStepMissingVars(step, runtime, missing) {
+  collectMissingTemplateVars(step.path, runtime.vars, missing);
+  collectMissingTemplateVars(step.params, runtime.vars, missing);
+  collectMissingTemplateVars(step.request, runtime.vars, missing);
+  collectMissingTemplateVars(step.when, runtime.vars, missing);
+  collectMissingTemplateVars(step.assertions, runtime.vars, missing);
+  collectMissingTemplateVars(step.extract, runtime.vars, missing);
+  collectMissingTemplateVars(step.saveResponseAs, runtime.vars, missing);
+  return missing;
 }
 function chooseAdapter(step, adapters) {
   if (step.adapter !== void 0) {
@@ -2628,10 +2929,79 @@ function decoderForContentType(contentType2) {
     return new TextDecoder();
   }
 }
+var SET_COOKIES = Symbol("scenario-test.setCookies");
+function defaultCookiePath(pathname) {
+  const index = String(pathname || "/").lastIndexOf("/");
+  if (index <= 0) return "/";
+  return String(pathname).slice(0, index) || "/";
+}
+function parseSetCookie(line, requestUrl) {
+  const text = String(line || "").trim();
+  if (!text) return null;
+  const parts = text.split(";");
+  const pair = parts.shift() || "";
+  const separator = pair.indexOf("=");
+  if (separator <= 0) return null;
+  const cookie = {
+    name: pair.slice(0, separator).trim(),
+    value: pair.slice(separator + 1).trim(),
+    domain: requestUrl.hostname.toLowerCase(),
+    path: defaultCookiePath(requestUrl.pathname),
+    expiresAt: Infinity,
+    secure: false
+  };
+  for (const attribute of parts) {
+    const eq = attribute.indexOf("=");
+    const key = (eq >= 0 ? attribute.slice(0, eq) : attribute).trim().toLowerCase();
+    const value = eq >= 0 ? attribute.slice(eq + 1).trim() : "";
+    if (key === "domain" && value) cookie.domain = value.replace(/^\./, "").toLowerCase();
+    else if (key === "path" && value.startsWith("/")) cookie.path = value;
+    else if (key === "max-age") {
+      const seconds2 = Number(value);
+      if (Number.isFinite(seconds2)) cookie.expiresAt = Date.now() + seconds2 * 1e3;
+    } else if (key === "expires") {
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) cookie.expiresAt = timestamp;
+    } else if (key === "secure") cookie.secure = true;
+  }
+  return cookie;
+}
+function hostMatchesCookie(hostname, domain) {
+  const host = String(hostname || "").toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`);
+}
+function pathMatchesCookie(pathname, cookiePath) {
+  if (pathname === cookiePath) return true;
+  const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
+  return pathname.startsWith(prefix);
+}
+function activeJarCookies(jar, url) {
+  return (jar || []).filter((cookie) => cookie.expiresAt > Date.now() && hostMatchesCookie(url.hostname, cookie.domain) && pathMatchesCookie(url.pathname || "/", cookie.path) && (!cookie.secure || url.protocol === "https:"));
+}
+function storeSetCookies(runtime, lines, requestUrl) {
+  if (!lines || !lines.length) return;
+  if (!Array.isArray(runtime.cookieJar)) runtime.cookieJar = [];
+  for (const line of lines) {
+    const cookie = parseSetCookie(line, requestUrl);
+    if (!cookie) continue;
+    runtime.cookieJar = runtime.cookieJar.filter((item) => !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
+    if (cookie.expiresAt > Date.now()) runtime.cookieJar.push(cookie);
+  }
+}
+function applyCookieJar(headers, runtime, url) {
+  const explicitKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
+  const explicitText = explicitKey ? String(headers[explicitKey] || "") : "";
+  const explicitNames = new Set(explicitText.split(";").map((pair) => pair.split("=")[0].trim().toLowerCase()).filter(Boolean));
+  const jarText = activeJarCookies(runtime.cookieJar, url).filter((cookie) => !explicitNames.has(cookie.name.toLowerCase())).map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+  if (!jarText) return;
+  if (explicitKey) headers[explicitKey] = `${jarText}; ${explicitText}`;
+  else headers.Cookie = jarText;
+}
 async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
   const maxResponseBytes = resolveMaxResponseBytes(options);
+  const setCookies = typeof response.headers?.getSetCookie === "function" ? response.headers.getSetCookie() : headers["set-cookie"] ? [headers["set-cookie"]] : [];
   if (step.saveResponseAs) {
     const relativePath = resolveString(step.saveResponseAs, runtime);
     const metadata = { contentType: contentType2, headers, maxResponseBytes };
@@ -2641,7 +3011,9 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
         createSaveBodyStream(response.body, signal, maxResponseBytes),
         metadata
       );
-      return { status: response.status, headers, body: saved, bodyText: null };
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
     }
     if (io?.saveResponse) {
       const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
@@ -2655,13 +3027,17 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
         }
       }
       const saved = await io.saveResponse(relativePath, data, metadata);
-      return { status: response.status, headers, body: saved, bodyText: null };
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
     }
   }
   const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType2);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
-  return { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
+  const responseData = { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
+  if (setCookies.length) responseData[SET_COOKIES] = setCookies;
+  return responseData;
 }
 async function executeHttp(step, runtime, options) {
   const request = resolveClone(step.request || {}, runtime) || {};
@@ -2687,6 +3063,16 @@ async function executeHttp(step, runtime, options) {
   }
   if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
     headers.Authorization = options.authorization;
+  }
+  const requestUrl = joinUrl(options.baseUrl, requestPath);
+  let parsedRequestUrl = null;
+  if (options.cookieJar) {
+    try {
+      parsedRequestUrl = new URL(requestUrl);
+    } catch {
+      parsedRequestUrl = null;
+    }
+    if (parsedRequestUrl) applyCookieJar(headers, runtime, parsedRequestUrl);
   }
   const fetchOptions = { method, headers };
   if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
@@ -2717,8 +3103,11 @@ async function executeHttp(step, runtime, options) {
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;
   try {
-    const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
+    const response = await options.fetch(requestUrl, fetchOptions);
     const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
+    if (options.cookieJar && parsedRequestUrl) {
+      storeSetCookies(runtime, responseData[SET_COOKIES], parsedRequestUrl);
+    }
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2851,6 +3240,7 @@ function createEngine(engineOptions = {}) {
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
+        const missing = collectMissingTemplateVars(step.when, runtime.vars, /* @__PURE__ */ new Set());
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
           method: "SKIP",
@@ -2859,8 +3249,9 @@ function createEngine(engineOptions = {}) {
           duration: now() - startedAt,
           passed: true,
           skipped: true,
+          always: step.always === true,
           error: "",
-          warnings: [],
+          warnings: missingTemplateVarWarnings(missing),
           assertions: [],
           request: null,
           response: null
@@ -2870,6 +3261,7 @@ function createEngine(engineOptions = {}) {
     let lastExecution;
     let assertions = [];
     let stepWarnings = [];
+    const missingVars = /* @__PURE__ */ new Set();
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
     const retryOn = new Set(
@@ -2905,6 +3297,7 @@ function createEngine(engineOptions = {}) {
         let attemptError = null;
         let attemptErrorType = "";
         try {
+          collectStepMissingVars(step, runtime, missingVars);
           const selection = chooseAdapter(step, adapters);
           const attemptStartedAt = now();
           const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
@@ -2916,7 +3309,7 @@ function createEngine(engineOptions = {}) {
           runtime.lastResponse = lastExecution.response;
           runtime.lastResponseBody = lastExecution.response.body;
           const extractResult = applyExtract(step, lastExecution.response, runtime);
-          stepWarnings = extractResult.warnings;
+          stepWarnings = [...missingTemplateVarWarnings(missingVars), ...extractResult.warnings];
           assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
@@ -2939,12 +3332,11 @@ function createEngine(engineOptions = {}) {
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
-        const rawIntervalMs = Number(retry.intervalMs);
-        const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
+        const intervalMs = retryBackoffIntervalMs(retry, attempt, maxElapsedMs);
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const remainingForWait = Math.max(0, maxElapsedMs - (now() - retryStartTime));
         const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
         const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
         if (attemptCallback) {
@@ -2981,8 +3373,11 @@ function createEngine(engineOptions = {}) {
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const remainingBeforeWait = maxElapsedMs - (now() - retryStartTime);
+        const waitMs = Math.max(0, Math.min(intervalMs, remainingBeforeWait));
+        const waitConsumesDeadline = enforceAttemptDeadline && intervalMs >= remainingBeforeWait;
         await delay(waitMs, options.signal);
+        if (waitConsumesDeadline) throw retryTimeoutError(attempt);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -2992,6 +3387,7 @@ function createEngine(engineOptions = {}) {
         status: lastExecution.response.status,
         duration: now() - startedAt,
         passed: !failed,
+        always: step.always === true,
         error: failed?.name || "",
         warnings: stepWarnings,
         assertions,
@@ -3006,17 +3402,18 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path8 = context && context.path || resolveString(step.path || "", runtime);
+      const path11 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path8,
+        path: path11,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
+        always: step.always === true,
         cancelled,
         timedOut,
         errorCode,
@@ -3036,11 +3433,43 @@ function createEngine(engineOptions = {}) {
     const runtime = createRuntime(scenario, {
       config,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
-      environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
+      environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+      suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
+      now: runOptions.now || engineOptions.now
     });
     const results = [];
+    let halted = false;
     for (let index = 0; index < scenario.steps.length; index += 1) {
-      const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
+      const step = scenario.steps[index];
+      if (halted && step.always !== true) {
+        if (runOptions.signal?.aborted) break;
+        const skipped2 = {
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: "SKIP",
+          path: "",
+          status: "SKIPPED",
+          duration: 0,
+          passed: true,
+          skipped: true,
+          error: "",
+          warnings: ["\u524D\u7F6E\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\uFF0C\u975E always \u6B65\u9AA4\u672A\u6267\u884C"],
+          assertions: [],
+          request: null,
+          response: null,
+          stepNo: index + 1
+        };
+        results.push(skipped2);
+        try {
+          await (runOptions.onStep ?? engineOptions.onStep)?.(skipped2, index, runtime);
+        } catch (hookError) {
+          skipped2.passed = false;
+          skipped2.skipped = false;
+          skipped2.status = "ERROR";
+          skipped2.error = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        }
+        continue;
+      }
+      const result = await runStep(step, runtime, { ...runOptions, config });
       result.stepNo = index + 1;
       results.push(result);
       try {
@@ -3053,7 +3482,7 @@ function createEngine(engineOptions = {}) {
         result.error = message;
         result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
       }
-      if (!result.passed && scenario.failurePolicy !== "continue") break;
+      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
       if (runOptions.signal?.aborted) break;
     }
     const skipped = results.filter((item) => item.skipped).length;
@@ -3072,7 +3501,10 @@ function createEngine(engineOptions = {}) {
       failed,
       skipped,
       results,
-      vars: runtime.vars
+      // 取消导致未进入循环的剩余步骤（供 JUnit/报告标注）
+      unexecuted: scenario.steps.slice(results.length).map((step) => step.name || "\u672A\u547D\u540D\u6B65\u9AA4"),
+      vars: runtime.vars,
+      suiteVars: { ...runtime.suiteVars || {} }
     };
   }
   return { runStep, runScenario: runScenario2, createRuntime };
@@ -3096,7 +3528,8 @@ function buildCapabilities(inputContract = contract) {
       targets: [...assertions.targets || []],
       from: [...assertions.from || []],
       note: assertions.note,
-      numericOperators: [...assertions.numericOperators]
+      numericOperators: [...assertions.numericOperators],
+      ...assertions.shape ? { shape: { keys: [...assertions.shape.keys], types: [...assertions.shape.types] } } : {}
     },
     when: {
       sources: [...when.sources],
@@ -3106,6 +3539,7 @@ function buildCapabilities(inputContract = contract) {
     extract: {
       metaKeys: [...extract.metaKeys || []],
       from: [...extract.from],
+      scopes: [...extract.scopes || []],
       targets: [...extract.targets || []],
       required: extract.required,
       default: extract.default,
@@ -3128,7 +3562,8 @@ function buildCapabilities(inputContract = contract) {
         protocol: config.baseUrl.protocol,
         note: config.baseUrl.note
       },
-      manual: { ...config.manual }
+      manual: { ...config.manual },
+      tags: { ...config.tags || {} }
     },
     retryUntil: {
       keys: [...retryUntil.keys],
@@ -3139,7 +3574,9 @@ function buildCapabilities(inputContract = contract) {
     scenario: {
       keys: [...scenario.keys],
       stepKeys: [...scenario.stepKeys],
-      failurePolicies: [...scenario.failurePolicies]
+      failurePolicies: [...scenario.failurePolicies],
+      retryUntilKeys: [...scenario.retryUntilKeys || []],
+      ...scenario.note ? { note: scenario.note } : {}
     },
     cli: {
       commands: [...cli.commands],
@@ -3188,6 +3625,9 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`  ${capabilities.when.note}`);
   lines.push("");
   lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
+  if (capabilities.extract.scopes?.length) {
+    lines.push(`  \u63D0\u53D6\u4F5C\u7528\u57DF scope: ${capabilities.extract.scopes.join(" / ")}\uFF08suite \u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF09`);
+  }
   if (capabilities.extract.targets?.length) {
     lines.push(`  \u63D0\u53D6\u76EE\u6807 target: ${capabilities.extract.targets.join(" / ")}\uFF1B\u5141\u8BB8\u5B57\u6BB5: ${capabilities.extract.metaKeys.join(" / ")}`);
   }
@@ -3210,6 +3650,7 @@ function renderCapabilitiesText(capabilities) {
     lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
     lines.push(`  ${capabilities.retryUntil.note}`);
   }
+  if (capabilities.scenario.note) lines.push(`  ${capabilities.scenario.note}`);
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {
@@ -3493,10 +3934,10 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 2. \u4E1A\u52A1\u529F\u80FD\u662F\u8BBE\u8BA1\u8FB9\u754C\uFF0C\u573A\u666F\u662F\u8BE5\u529F\u80FD\u4E0B\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84\u3002\u6309\u8BC1\u636E\u8986\u76D6\u6210\u529F\u8DEF\u5F84\u3001\u4E1A\u52A1\u89C4\u5219/\u53C2\u6570\u6821\u9A8C\u3001\u6743\u9650\u3001\u8FB9\u754C\u503C\u3001\u91CD\u590D\u64CD\u4F5C\u6216\u5E42\u7B49\u3001\u5408\u6CD5\u4E0E\u975E\u6CD5\u72B6\u6001\u6D41\u8F6C\uFF1B\u6CA1\u6709\u8BC1\u636E\u7684\u7C7B\u522B\u4E0D\u751F\u6210\u3002\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u5305\u542B\u51C6\u5907\u3001\u6267\u884C\u3001\u67E5\u8BE2\u9A8C\u8BC1\u548C\u7CBE\u786E\u6E05\u7406\u7B49\u591A\u4E2A HTTP \u6B65\u9AA4\uFF0C\u4F46\u8FD9\u4E9B\u6B65\u9AA4\u53EA\u670D\u52A1\u4E8E\u76EE\u6807\u529F\u80FD\uFF0C\u4E0D\u628A\u591A\u4E2A\u4E1A\u52A1\u529F\u80FD\u4E32\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002\u8BA4\u8BC1\u7B49\u516C\u5171\u524D\u7F6E\u53EA\u4F5C\u4E3A\u51C6\u5907\u6B65\u9AA4\uFF0C\u4E0D\u6539\u53D8\u573A\u666F\u5F52\u5C5E\u3002
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u6B65\u9AA4\u7EC4\u5408\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
-5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
-6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
+5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`scope: "suite"\` \u7684\u63D0\u53D6\u503C\u4F1A\u5728\u672C\u6B21 run \u7684\u540E\u7EED\u573A\u666F\u53EF\u89C1\uFF08\u767B\u5F55 token \u590D\u7528\uFF09\u3002\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 \`shape: { type: "object", required: [...], properties: {...} }\`\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF0C\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
+6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BCLI \u9700\u8981\u81EA\u52A8\u7EF4\u6301\u4F1A\u8BDD\u65F6\u53EF\u52A0 \`run --cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF0C\u4E0D\u843D\u76D8\uFF09\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
-8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002
+8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u5199\u6570\u636E\u573A\u666F\u7684\u6E05\u7406\u6B65\u9AA4\u53EF\u58F0\u660E \`always: true\`\uFF1A\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\u540E\u4ECD\u4F1A\u6267\u884C\uFF08\u7528\u6237\u53D6\u6D88\u65F6\u4E0D\u6267\u884C\uFF09\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u6309\u8BC1\u636E\u58F0\u660E \`retryUntil.intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E\u53EF\u9009 \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u9650\u7EA6\u675F\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
 10. \u4E0D\u4FEE\u6539\u4E1A\u52A1\u4EE3\u7801\u3001\u6784\u5EFA\u914D\u7F6E\u6216\u516C\u5171\u8FD0\u884C\u65F6\uFF1B\u4E0D\u5199\u5165\u751F\u4EA7\u5730\u5740\u3001\u4E2A\u4EBA\u6570\u636E\u3001\u56FA\u5B9A Token \u6216\u975E\u6D4B\u8BD5\u51ED\u636E\u3002
 11. \u843D\u76D8\u540E\u9010\u6587\u4EF6\u81EA\u68C0\uFF1A\u4E0D\u5F97\u51FA\u73B0\u65E0\u8BC1\u636E\u7684 SUCCESS\u3001PDF\u3001pdf\u3001\u9519\u8BEF\u5B57\u6BB5\u65AD\u8A00\u6216 \`retryUntil + exists\`\uFF1B\u6240\u6709\u5916\u90E8\u8F93\u5165\u53D8\u91CF\u5FC5\u987B\u5728\u914D\u7F6E\u4E2D\u58F0\u660E\uFF0C\u573A\u666F vars \u53EA\u4FDD\u5B58\u6D4B\u8BD5\u6807\u8BB0\u3001\u63D0\u53D6\u7ED3\u679C\u6216\u5185\u90E8\u72B6\u6001\u3002\u53D1\u73B0\u8FDD\u89C4\u5FC5\u987B\u5148\u4FEE\u6B63\u518D\u62A5\u544A\u3002
@@ -3518,7 +3959,7 @@ var SCENARIO_PATTERNS = [
   "7. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\uFF1Bfrom: 'headers' \u7684 path \u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF0C\u4E0D\u5199 request.params\uFF1BGET/HEAD \u4E0D\u5199\u8BF7\u6C42\u4F53\uFF08request.body\u3001request.fileUpload \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u53C2\u6570\u4E00\u5F8B\u653E params\u3002",
   "8. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars\u3001variables\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002 \u9700\u8981\u552F\u4E00\u53F7\u7801/\u8BC1\u53F7\u7684\u6D4B\u8BD5\u6570\u636E\u5728 generatedVars \u58F0\u660E\uFF1A\u8EAB\u4EFD\u8BC1 { name, type: 'idcard', birthDate, gender }\u3001\u94F6\u884C\u5361 { name, type: 'luhn', length, prefix }\u3001\u624B\u673A\u53F7 { name, type: 'phone', prefix }\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801 { name, type: 'uscc', regionCode }\uFF0C\u5F15\u64CE\u6309\u8F6E\u6B21\u751F\u6210\u6821\u9A8C\u4F4D\u5408\u6CD5\u4E14\u8DE8\u8F6E\u552F\u4E00\u7684\u503C\uFF0C\u7528 {{vars.<name>}} \u5F15\u7528\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\u7528 timestamp \u7C7B\u578B\uFF1A{ name, type: 'timestamp', offset: '-7d', unit: 's' } \u6216 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }\uFF08offset \u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF1Bformat \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u65F6\u95F4\u6233\u6216\u65E5\u671F\u5B57\u7B26\u4E32\u3002\u4E1A\u52A1\u4E3B\u952E UUID \u7528 { name, type: 'uuid' }\uFF08\u5E26\u8FDE\u5B57\u7B26\uFF09\uFF0C32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u7528 uuidHex\u3002\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 enum\uFF1A{ name, type: 'enum', values: [<\u5019\u9009>], weights: [<\u975E\u8D1F\u6743\u91CD\uFF0C\u53EF\u9009>] }\uFF0C\u7F3A\u7701\u7B49\u6743\u3001\u6743\u91CD 0 \u7684\u5019\u9009\u6C38\u4E0D\u9009\u4E2D\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF1B\u5019\u9009\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u3002",
   "9. \u65E0\u6CD5\u786E\u8BA4\u7684\u5FC5\u586B\u8BF7\u6C42\u503C\u653E\u5165\u914D\u7F6E vars \u7559\u7A7A\uFF0C\u5E76\u5728 variables \u58F0\u660E required: true\uFF1B\u4E0D\u5F97\u7528 PDF\u3001pdf\u3001SUCCESS \u6216 scenario-{{vars.runNo}} \u5145\u5F53\u672A\u77E5\u679A\u4E3E\u3002",
-  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bpath \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF08items[*].id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 []\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\uFF09\u4E14\u7ED3\u679C\u53EF\u76F4\u63A5\u7528 length/includes/each \u65AD\u8A00\uFF1Bfrom: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
+  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 shape: { type: 'object', required: [...], properties: {...} }\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bpath \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF08items[*].id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 []\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\uFF09\u4E14\u7ED3\u679C\u53EF\u76F4\u63A5\u7528 length/includes/each \u65AD\u8A00\uFF1Bscope: 'suite' \u7684\u63D0\u53D6\u503C\u4F9B\u672C\u6B21 run \u540E\u7EED\u573A\u666F\u590D\u7528\uFF08\u5982\u767B\u5F55 token\uFF09\u3002from: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
   "",
   "\u4EE5\u4E0B\u6A21\u5F0F\u662F\u529F\u80FD\u573A\u666F\u5185\u90E8\u7684\u6B65\u9AA4\u7EC4\u5408\u3002\u6309\u76EE\u6807\u529F\u80FD\u6240\u9700\u9009\u7528\uFF0C\u4E0D\u8981\u6C42\u5168\u90E8\u4F7F\u7528\uFF0C\u4E5F\u4E0D\u8981\u628A\u6240\u6709\u6A21\u5F0F\u62FC\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002",
   "",
@@ -3538,7 +3979,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  '\u8BA4\u8BC1\u4F4D\u4E8E Query\u3001Header \u6216 Body \u65F6\uFF0C\u76F4\u63A5\u5728 params\u3001request.headers \u6216 request.body \u5F15\u7528\u53D8\u91CF\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u4EE3\u7801\u4F9D\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials: "include"\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002\u6CA1\u6709\u53EF\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\uFF0C\u53EA\u5728 vars \u548C variables \u4E2D\u58F0\u660E\u5DF2\u6709\u51ED\u636E\uFF0C\u4E0D\u80FD\u865A\u6784\u767B\u5F55\u6D41\u7A0B\u3002',
+  '\u8BA4\u8BC1\u4F4D\u4E8E Query\u3001Header \u6216 Body \u65F6\uFF0C\u76F4\u63A5\u5728 params\u3001request.headers \u6216 request.body \u5F15\u7528\u53D8\u91CF\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u4EE3\u7801\u4F9D\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials: "include"\uFF1BCLI \u9700\u8981\u81EA\u52A8\u767B\u5F55\u4F1A\u8BDD\u65F6\u53EF\u7528 run --cookie-jar\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF09\u3002\u6CA1\u6709\u53EF\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\uFF0C\u53EA\u5728 vars \u548C variables \u4E2D\u58F0\u660E\u5DF2\u6709\u51ED\u636E\uFF0C\u4E0D\u80FD\u865A\u6784\u767B\u5F55\u6D41\u7A0B\u3002',
   "",
   "## \u6A21\u5F0F\u4E8C\uFF1A\u53EA\u8BFB\u5217\u8868\u3001\u63D0\u53D6 ID\u3001\u8BE6\u60C5\u6821\u9A8C",
   "",
@@ -3587,7 +4028,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  '\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD ECONNREFUSED \u65F6\uFF0C\u53EF\u52A0 retryOn: ["assertion", "error", "timeout"] \u8BA9\u8FDE\u63A5\u5931\u8D25\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF1B\u9ED8\u8BA4 ["assertion"] \u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5148\u786E\u8BA4\u5B89\u5168\u3002',
+  '\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD ECONNREFUSED \u65F6\uFF0C\u53EF\u52A0 retryOn: ["assertion", "error", "timeout"] \u8BA9\u8FDE\u63A5\u5931\u8D25\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF1B\u9ED8\u8BA4 ["assertion"] \u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u53EF\u6309\u8BC1\u636E\u52A0 intervalFactor: 2 \u4E0E maxIntervalMs: 10000\uFF08\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u7EA6\u675F\uFF09\u3002',
   "",
   "## \u6A21\u5F0F\u4E94\uFF1A\u4E3A\u6821\u9A8C\u5931\u8D25\u4E0E\u6743\u9650\u62D2\u7EDD\u5206\u522B\u5EFA\u573A\u666F",
   "",
@@ -3714,11 +4155,11 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \`scenario.config.js\` \u53EA\u6709\u4E94\u4E2A\u6838\u5FC3\u6982\u5FF5\uFF1A
 
-- \`envs\`\uFF1A\u73AF\u5883\u540D\u79F0\u548C\u63A5\u53E3\u57FA\u7840\u5730\u5740\u3002\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u6709\u552F\u4E00\u7684 \`key\`\u3002
+- \`envs\`\uFF1A\u73AF\u5883\u540D\u79F0\u548C\u63A5\u53E3\u57FA\u7840\u5730\u5740\u3002\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u6709\u552F\u4E00\u7684 \`key\`\uFF1B\u53EF\u58F0\u660E\u73AF\u5883\u7EA7 \`vars\`\uFF0C\u540C\u4E00\u4EFD\u914D\u7F6E\u5207\u6362\u73AF\u5883\u5373\u53EF\u6362\u79DF\u6237/\u8D26\u53F7\u3002
 - \`globals\`\uFF1A\u5168\u5C40\u53C2\u6570\uFF0C\u8FFD\u52A0\u5230\u6BCF\u4E2A\u8BF7\u6C42\u3002\u652F\u6301 ${GLOBALS_TYPES_BACKTICK} \u4E09\u79CD\u7C7B\u578B\uFF0C\u53EF\u914D\u7F6E\u5728\u9876\u5C42\uFF08\u6240\u6709\u73AF\u5883\u751F\u6548\uFF09\u6216\u5355\u4E2A\u73AF\u5883\u5185\u3002\u503C\u652F\u6301 \`{{vars.xxx}}\` \u6A21\u677F\uFF1B\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u7684\u540C\u540D\u53C2\u6570\u4F18\u5148\u4E8E\u5168\u5C40\u53C2\u6570\u3002CLI \u53EF\u7528 \`SCENARIO_GLOBALS\` \u73AF\u5883\u53D8\u91CF\uFF08JSON \u6570\u7EC4\uFF09\u8986\u76D6\uFF0C\u5982 \`[{"type":"header","name":"Authorization","value":"Bearer x"}]\`\u3002
 - \`vars\`\uFF1A\u672C\u9879\u76EE\u542F\u52A8\u65F6\u4F7F\u7528\u7684\u9ED8\u8BA4\u53D8\u91CF\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728\u8FD9\u91CC\u4FDD\u5B58\u56E2\u961F\u8054\u8C03 Key\u3001Secret\u3001Token\u3001\u6D4B\u8BD5\u8D26\u53F7\u7B49\u3002
 - \`variables\`\uFF1A\u9875\u9762\u4E0A\u9700\u8981\u5C55\u793A\u6216\u5141\u8BB8\u8986\u76D6\u7684\u53D8\u91CF\u5143\u6570\u636E\uFF0C\u5305\u62EC\u6807\u7B7E\u3001\u662F\u5426\u5FC5\u586B\uFF0C\u4EE5\u53CA\u53EF\u9009\u7684 CLI \u73AF\u5883\u53D8\u91CF\u540D\u3002\u5B9E\u9645\u9ED8\u8BA4\u503C\u4F18\u5148\u5199\u5728 \`vars\`\uFF0C\u4E0D\u8981\u91CD\u590D\u7EF4\u62A4\u3002
-- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002\u9700\u8981\u4EBA\u5DE5\u524D\u7F6E\u6761\u4EF6\u6216\u5199\u6570\u636E\u7684\u573A\u666F\u53EF\u52A0 \`manual: true\`\uFF1A\`--all\` \u9ED8\u8BA4\u6392\u9664\uFF0C\`--scenario <id>\` \u53EF\u663E\u5F0F\u6267\u884C\u3002
+- \`scenarios\`\uFF1A\u573A\u666F id\u3001\u540D\u79F0\u548C\u5BF9\u5E94 JS \u6587\u4EF6\u5730\u5740\u3002\u9700\u8981\u4EBA\u5DE5\u524D\u7F6E\u6761\u4EF6\u6216\u5199\u6570\u636E\u7684\u573A\u666F\u53EF\u52A0 \`manual: true\`\uFF1A\`--all\` \u9ED8\u8BA4\u6392\u9664\uFF0C\`--scenario <id>\` \u53EF\u663E\u5F0F\u6267\u884C\u3002\u53EF\u52A0 \`tags: ["smoke"]\`\uFF0C\u7528 \`run --tag smoke\` \u7B5B\u9009\u6267\u884C\uFF08\u91CD\u590D\u53C2\u6570 OR\uFF0C\u9017\u53F7\u5206\u9694 AND\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C manual \u573A\u666F\uFF09\u3002
 
 \u6700\u5C0F\u914D\u7F6E\u793A\u4F8B\uFF1A
 
@@ -3750,7 +4191,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \u53D8\u91CF\u4F18\u5148\u7EA7\u56FA\u5B9A\u5982\u4E0B\uFF1A
 
-\`CLI \u73AF\u5883\u53D8\u91CF / \u6D4F\u89C8\u5668\u9875\u9762\u8986\u76D6 > scenario.config.js \u7684 vars > \u573A\u666F vars > variables[].defaultValue\`
+\`CLI \u73AF\u5883\u53D8\u91CF / \u6D4F\u89C8\u5668\u9875\u9762\u8986\u76D6 > --vars > \u9009\u4E2D\u73AF\u5883 envs[].vars > scenario.config.js \u7684 vars > \u573A\u666F vars > variables[].defaultValue\`
 
 \u6D4F\u89C8\u5668\u4E2D\u4FDD\u5B58\u7684\u53D8\u91CF\u4F1A\u6309\u9879\u76EE \`storagePrefix\` \u548C\u73AF\u5883\u4FDD\u5B58\u5230 LocalStorage\uFF1B\u70B9\u51FB\u6E05\u9664\u5F53\u524D\u73AF\u5883\u8986\u76D6\u540E\uFF0C\u7ACB\u5373\u56DE\u9000\u5230 \`vars\`\u3002CLI \u53EA\u8BFB\u53D6\u7CFB\u7EDF\u73AF\u5883\u53D8\u91CF\u548C\u914D\u7F6E\u6587\u4EF6\uFF0C\u4E0D\u8BFB\u53D6\u6D4F\u89C8\u5668 LocalStorage\u3002 \`init\` \u4F1A\u6839\u636E\u9879\u76EE\u76EE\u5F55\u540D\u751F\u6210\u9694\u79BB\u524D\u7F00\u3002
 
@@ -3798,10 +4239,10 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - \u7528 \`{{vars.name}}\` \u5728 path\u3001Query\u3001Header\u3001Body \u4E2D\u5F15\u7528\u53D8\u91CF\u3002
 - \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\uFF1B\u53EF\u9009\u5B57\u6BB5\u53EF\u58F0\u660E \`default\` \u515C\u5E95\u503C\uFF08\u4E0E required \u4E92\u65A5\uFF09\u3002\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\`records[-1]\` \u4E3A\u672B\u9879\uFF09\u3002\u8DEF\u5F84\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF08\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u4E3A\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\uFF09\u3002\`from: "headers"\` \u914D \`path\` \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 \`from: "headers"\`\u3001\`header\` \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002
 - \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\u7528 \`gte: 5\`\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF0C\u975E\u8D1F\u6574\u6570\u7B49\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF09\u3002
-- \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
+- \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CCLI \u9700\u8981\u81EA\u52A8\u7EF4\u6301\u4F1A\u8BDD\u65F6\u53EF\u52A0 \`run --cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF0C\u4E0D\u843D\u76D8\u3001\u4E0D\u8DE8\u573A\u666F\uFF09\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
 - \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
-- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
+- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\u7528 \`intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF0C\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E \`maxElapsedMs\` \u7EA6\u675F\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
 - \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\uFF0C\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
 - SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
@@ -3854,6 +4295,8 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 \`\`\`
 
 \`--vars key=value\` \u53EF\u91CD\u590D\uFF0C\u6309\u51FA\u73B0\u987A\u5E8F\u53E0\u52A0\uFF08\u540C\u540D\u540E\u8005\u8986\u76D6\uFF09\uFF0C\u4F18\u5148\u7EA7\u9AD8\u4E8E\u914D\u7F6E \`vars\` \u4E0E\u73AF\u5883\u53D8\u91CF\uFF0C\u503C\u4E2D\u7684 \`{{ }}\` \u6A21\u677F\u7167\u5E38\u89E3\u6790\uFF1B\`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\u3002\`runId\` / \`runNo\` \u662F\u4FDD\u7559\u53D8\u91CF\uFF0C\u4E0D\u80FD\u7528 \`--vars\` \u8986\u76D6\u3002
+
+\u5E38\u7528\u6279\u91CF\u4E0E CI \u9009\u9879\uFF1A\`--tag smoke\`\uFF08\u6309\u6807\u7B7E\u7B5B\u9009\uFF09\u3001\`--bail\`\uFF08\u9996\u4E2A\u5931\u8D25\u573A\u666F\u540E\u505C\u6B62\uFF09\u3001\`--data <json|jsonl|csv>\`\uFF08\u6309\u884C\u53D8\u91CF\u96C6\u6267\u884C\uFF09\u3001\`--junit <file>\`\uFF08JUnit XML \u62A5\u544A\uFF09\u3001\`--cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Cookie \u4F1A\u8BDD\uFF09\u3002\`serve --proxy-timeout <ms>\` \u53EF\u8C03\u5927\u540C\u6E90\u4EE3\u7406\u7684\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u9ED8\u8BA4 30 \u79D2\uFF0C\u4E0A\u9650 10 \u5206\u949F\uFF09\u3002
 
 ## \u5E38\u89C1\u95EE\u9898
 
@@ -4390,9 +4833,502 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
-// src/import.js
+// src/utils/data-file.js
 var import_node_fs6 = __toESM(require("node:fs"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
+function isPlainObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const source = String(text).replace(/^\uFEFF/, "");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"') {
+        if (source[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+    if (char === '"') {
+      quoted = true;
+      continue;
+    }
+    if (char === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell);
+  rows.push(row);
+  while (rows.length && rows[rows.length - 1].every((value) => value === "")) rows.pop();
+  return rows;
+}
+function normalizeRows(rows, source) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(`\u6570\u636E\u96C6\u4E3A\u7A7A\u6216\u4E0D\u662F\u6570\u7EC4: ${source}`);
+  }
+  rows.forEach((row, index) => {
+    if (!isPlainObject2(row) || Array.isArray(row)) {
+      throw new Error(`\u6570\u636E\u96C6\u7B2C ${index + 1} \u884C\u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(row)}\uFF09: ${source}`);
+    }
+  });
+  return rows;
+}
+function parseJson(text, source) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`\u6570\u636E\u96C6 JSON \u89E3\u6790\u5931\u8D25\uFF08${source}\uFF09: ${error.message}`);
+  }
+  if (isPlainObject2(parsed) && Array.isArray(parsed.rows)) return normalizeRows(parsed.rows, source);
+  return normalizeRows(parsed, source);
+}
+function parseJsonl(text, source) {
+  const rows = [];
+  String(text).split(/\r?\n/).forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      rows.push(JSON.parse(trimmed));
+    } catch (error) {
+      throw new Error(`\u6570\u636E\u96C6 JSONL \u7B2C ${index + 1} \u884C\u89E3\u6790\u5931\u8D25\uFF08${source}\uFF09: ${error.message}`);
+    }
+  });
+  return normalizeRows(rows, source);
+}
+function parseDatasetText(text, format, source = "<dataset>") {
+  if (format === "csv") {
+    const table = parseCsv(text);
+    if (!table.length) throw new Error(`\u6570\u636E\u96C6\u4E3A\u7A7A: ${source}`);
+    const headers = table.shift().map((header) => String(header).trim());
+    if (!headers.length || headers.some((header) => !header)) {
+      throw new Error(`CSV \u8868\u5934\u4E0D\u80FD\u4E3A\u7A7A: ${source}`);
+    }
+    if (new Set(headers).size !== headers.length) {
+      throw new Error(`CSV \u8868\u5934\u5B58\u5728\u91CD\u590D\u5217: ${source}`);
+    }
+    return table.map((cells, index) => {
+      if (cells.length !== headers.length) {
+        throw new Error(`CSV \u7B2C ${index + 2} \u884C\u5217\u6570\uFF08${cells.length}\uFF09\u4E0E\u8868\u5934\uFF08${headers.length}\uFF09\u4E0D\u4E00\u81F4: ${source}`);
+      }
+      return Object.fromEntries(headers.map((header, column) => [header, cells[column]]));
+    });
+  }
+  return format === "jsonl" ? parseJsonl(text, source) : parseJson(text, source);
+}
+function loadDataset(filePath) {
+  const source = import_node_path6.default.resolve(filePath);
+  if (!import_node_fs6.default.existsSync(source)) throw new Error(`\u6570\u636E\u96C6\u6587\u4EF6\u4E0D\u5B58\u5728: ${source}`);
+  const text = import_node_fs6.default.readFileSync(source, "utf8");
+  const extension = import_node_path6.default.extname(source).toLowerCase();
+  const format = extension === ".csv" ? "csv" : extension === ".jsonl" || extension === ".ndjson" ? "jsonl" : "json";
+  const rows = parseDatasetText(text, format, source);
+  return { rows, format, file: source };
+}
+
+// src/utils/junit.js
+var import_node_fs7 = __toESM(require("node:fs"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
+var INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+function escapeXml(value) {
+  return String(value == null ? "" : value).replace(INVALID_XML_CHARS, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function seconds(milliseconds) {
+  const value = Number(milliseconds);
+  return Number.isFinite(value) ? (value / 1e3).toFixed(3) : "0.000";
+}
+function failureMessage(step) {
+  const failedAssertions = (step.assertions || []).filter((item) => !item.passed);
+  const names = failedAssertions.map((item) => item.name).filter(Boolean);
+  if (step.error) return String(step.error);
+  if (names.length) return names.join("; ");
+  return "\u6B65\u9AA4\u5931\u8D25";
+}
+function failureDetail(step) {
+  const lines = [];
+  for (const assertion of (step.assertions || []).filter((item) => !item.passed)) {
+    lines.push(`${assertion.name}: expected=${safeJson(assertion.expected)} actual=${safeJson(assertion.actual)}`);
+    if (assertion.reason) lines.push(`\u539F\u56E0: ${assertion.reason}`);
+    for (const detail of assertion.detail || []) {
+      if (Array.isArray(detail.assertions)) {
+        for (const sub of detail.assertions.filter((item) => !item.passed)) {
+          lines.push(`  \u7B2C ${detail.index + 1} \u9879 ${sub.name}: expected=${safeJson(sub.expected)} actual=${safeJson(sub.actual)}`);
+        }
+      } else if (detail.path) {
+        lines.push(`  ${detail.path}: expected=${safeJson(detail.expected)} actual=${safeJson(detail.actual)}`);
+      }
+    }
+  }
+  return lines.join("\n");
+}
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+function stepCase(step, scenarioId) {
+  const name = escapeXml(step.name || "\u672A\u547D\u540D\u6B65\u9AA4");
+  const classname = escapeXml(scenarioId || "scenario");
+  const time = seconds(step.duration);
+  if (step.skipped) {
+    const message = (step.warnings || []).join("\uFF1B") || "\u6761\u4EF6\u8DF3\u8FC7";
+    return `    <testcase name="${name}" classname="${classname}" time="${time}"><skipped message="${escapeXml(message)}"/></testcase>`;
+  }
+  if (!step.passed) {
+    const message = failureMessage(step);
+    const detail = failureDetail(step);
+    return `    <testcase name="${name}" classname="${classname}" time="${time}"><failure message="${escapeXml(message)}">${escapeXml(detail)}</failure></testcase>`;
+  }
+  return `    <testcase name="${name}" classname="${classname}" time="${time}"/>`;
+}
+function buildJUnitXml(reports, options = {}) {
+  const suites = [];
+  let totalTests = 0;
+  let totalFailures = 0;
+  let totalSkipped = 0;
+  let totalTime = 0;
+  for (const report of reports || []) {
+    const results = report.results || [];
+    const unexecuted = report.unexecuted || [];
+    const failures = results.filter((step) => !step.skipped && !step.passed).length;
+    const skipped = results.filter((step) => step.skipped).length + unexecuted.length;
+    const suiteTime = results.reduce((sum, step) => sum + (Number(step.duration) || 0), 0);
+    const tests = results.length + unexecuted.length;
+    totalTests += tests;
+    totalFailures += failures;
+    totalSkipped += skipped;
+    totalTime += suiteTime;
+    const scenarioId = report.scenarioId || report.scenarioName || "scenario";
+    const cases = results.map((step) => stepCase(step, scenarioId));
+    for (const stepName of unexecuted) {
+      cases.push(`    <testcase name="${escapeXml(stepName)}" classname="${escapeXml(scenarioId)}" time="0.000"><skipped message="failurePolicy: stop \u672A\u6267\u884C"/></testcase>`);
+    }
+    suites.push(
+      `  <testsuite name="${escapeXml(scenarioId)}" tests="${tests}" failures="${failures}" skipped="${skipped}" time="${seconds(suiteTime)}">
+${cases.join("\n")}${cases.length ? "\n" : ""}  </testsuite>`
+    );
+  }
+  const name = options.name || "scenario-test";
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="${escapeXml(name)}" tests="${totalTests}" failures="${totalFailures}" skipped="${totalSkipped}" time="${seconds(totalTime)}">
+${suites.join("\n")}${suites.length ? "\n" : ""}</testsuites>
+`;
+}
+function writeJUnitReport(filePath, reports, options = {}) {
+  const target = import_node_path7.default.resolve(filePath);
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, buildJUnitXml(reports, options), "utf8");
+  return target;
+}
+
+// src/cli/serve-server.js
+var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_http = __toESM(require("node:http"), 1);
+var import_node_https = __toESM(require("node:https"), 1);
+var import_node_path8 = __toESM(require("node:path"), 1);
+var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host"
+]);
+var PROXY_ENV_HEADER = "x-scenario-test-env";
+var DEFAULT_PROXY_TIMEOUT_MS = 3e4;
+var MAX_PROXY_TIMEOUT_MS = 6e5;
+function contentType(filePath) {
+  return {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8"
+  }[import_node_path8.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+function safeFile(root, relativePath) {
+  const candidate = import_node_path8.default.resolve(root, relativePath);
+  const relative = import_node_path8.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path8.default.isAbsolute(relative)) return null;
+  return isRealPathWithinRoot(root, candidate) ? candidate : null;
+}
+function serveStaticFile(response, filePath) {
+  const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
+  if (import_node_path8.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs8.default.createReadStream(filePath);
+    stream.on("error", () => {
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      response.writeHead(500);
+      response.end("Internal Server Error");
+    });
+    stream.on("open", () => {
+      response.writeHead(200, headers);
+      stream.pipe(response);
+    });
+    return;
+  }
+  import_node_fs8.default.readFile(filePath, "utf8", function(error, html) {
+    if (error) {
+      response.writeHead(500);
+      response.end("Internal Server Error");
+      return;
+    }
+    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+    const headPattern = /<head(?:\s[^>]*)?>/i;
+    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
+      return head + marker;
+    }) : marker + html;
+    response.writeHead(200, headers);
+    response.end(content);
+  });
+}
+function isAllowedServeHost(hostHeader, port) {
+  const host = String(hostHeader || "").trim().toLowerCase();
+  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
+}
+function connectionNamedHeaders(connectionValue) {
+  return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+function trimUrl(url) {
+  return String(url || "").replace(/\/+$/, "");
+}
+function resolveStartupProxyTarget(config, envKey, baseUrlOverride) {
+  if (config.envs?.length) {
+    const selectedKey = envKey || config.defaultEnvKey;
+    const environment = config.envs.find((item) => item.key === selectedKey);
+    if (!environment) {
+      const keys = config.envs.map((item) => item.key);
+      return { error: `\u672A\u627E\u5230\u73AF\u5883 ${selectedKey}\uFF0C\u53EF\u7528\u503C: ${keys.join(", ")}` };
+    }
+    const overridden = Boolean(baseUrlOverride);
+    return {
+      key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
+      envKey: environment.key,
+      // 环境缺省（或纯空白）baseUrl 时回退顶层 baseUrl，与 doctor/run 同口径（#61）
+      target: trimUrl(overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "")
+    };
+  }
+  return {
+    key: config.defaultEnvKey || "default",
+    envKey: config.defaultEnvKey || "default",
+    target: trimUrl(baseUrlOverride || config.baseUrl || "")
+  };
+}
+function resolveRequestProxyTarget(options) {
+  const { config, defaultTarget, defaultEnvKey, overrideBaseUrl, envKey } = options;
+  if (overrideBaseUrl) return defaultTarget;
+  if (config.envs?.length) {
+    const selectedKey = String(envKey || defaultEnvKey || config.defaultEnvKey || "").trim();
+    const environment = config.envs.find((item) => item.key === selectedKey);
+    if (!environment) {
+      const keys = config.envs.map((item) => item.key);
+      throw new Error(`\u672A\u77E5\u73AF\u5883 ${selectedKey || "(\u7A7A)"}\uFF0C\u53EF\u7528\u503C: ${keys.join(", ")}`);
+    }
+    const target = trimUrl(environment.baseUrl || config.baseUrl || "");
+    if (!target) throw new Error(`\u73AF\u5883 ${environment.key} \u672A\u914D\u7F6E baseUrl`);
+    return { key: environment.key, envKey: environment.key, target };
+  }
+  if (envKey && envKey !== defaultEnvKey) {
+    throw new Error(`\u914D\u7F6E\u672A\u58F0\u660E\u73AF\u5883 ${envKey}\uFF0C\u65E0\u6CD5\u5207\u6362\u4EE3\u7406\u76EE\u6807`);
+  }
+  return defaultTarget;
+}
+function rewriteProxyOriginHeaders(headers, localHost, targetUrl) {
+  let targetOrigin;
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+  } catch {
+    return headers;
+  }
+  const local = String(localHost || "").trim().toLowerCase();
+  for (const name of Object.keys(headers)) {
+    const lower = name.toLowerCase();
+    if (lower !== "origin" && lower !== "referer") continue;
+    let parsed;
+    try {
+      parsed = new URL(String(headers[name]));
+    } catch {
+      continue;
+    }
+    if (parsed.host.toLowerCase() !== local) continue;
+    headers[name] = lower === "origin" ? targetOrigin : `${targetOrigin}${parsed.pathname}${parsed.search}`;
+  }
+  return headers;
+}
+function proxyTransport(targetUrl) {
+  try {
+    const protocol = new URL(targetUrl).protocol;
+    if (protocol === "https:") return import_node_https.default;
+    if (protocol === "http:") return import_node_http.default;
+  } catch {
+    return null;
+  }
+  return null;
+}
+function abortProxyResponse(response) {
+  if (response.destroyed || response.writableEnded) return;
+  response.destroy();
+}
+function respondProxyError(response, message) {
+  if (response.headersSent) {
+    abortProxyResponse(response);
+    return;
+  }
+  response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(message);
+}
+function buildProxyRequestHeaders(request, targetUrl) {
+  const headers = {};
+  const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
+  for (const [name, value] of Object.entries(request.headers)) {
+    const lower = String(name).toLowerCase();
+    if (lower === PROXY_ENV_HEADER) continue;
+    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
+  }
+  rewriteProxyOriginHeaders(headers, request.headers.host, targetUrl);
+  return headers;
+}
+function proxyRequest(request, response, targetUrl, options = {}) {
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_PROXY_TIMEOUT_MS;
+  const transport = proxyTransport(targetUrl);
+  if (!transport) {
+    respondProxyError(
+      response,
+      `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u65E0\u6548: ${targetUrl}
+\u8BF7\u68C0\u67E5\u73AF\u5883 baseUrl\uFF0C\u5FC5\u987B\u5E26\u534F\u8BAE\u524D\u7F00\uFF08http:// \u6216 https://\uFF09`
+    );
+    return;
+  }
+  const headers = buildProxyRequestHeaders(request, targetUrl);
+  let upstream;
+  try {
+    upstream = transport.request(targetUrl + request.url, {
+      method: request.method,
+      headers,
+      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
+      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
+      ...transport === import_node_https.default ? { rejectUnauthorized: false } : {}
+    }, (upstreamResponse) => {
+      const responseHeaders = {};
+      const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
+      for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+        const lower = String(name).toLowerCase();
+        if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
+      }
+      response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+      upstreamResponse.on("error", () => abortProxyResponse(response));
+      upstreamResponse.on("aborted", () => abortProxyResponse(response));
+      upstreamResponse.pipe(response);
+    });
+  } catch (error) {
+    respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
+    return;
+  }
+  upstream.setTimeout(timeoutMs, () => {
+    upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
+  });
+  upstream.on("error", () => {
+    respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
+  });
+  request.pipe(upstream);
+}
+function createServeServer(options) {
+  const {
+    workspace,
+    libraryDist,
+    port,
+    config,
+    defaultTarget,
+    overrideBaseUrl = "",
+    proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS
+  } = options;
+  return import_node_http.default.createServer((request, response) => {
+    try {
+      if (!isAllowedServeHost(request.headers.host, port)) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
+      let filePath;
+      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+      else if (pathname === "/dist/scenario-test.umd.js") {
+        filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+      } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
+        filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+      } else {
+        const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+        filePath = safeFile(workspace, relativePath);
+      }
+      if (!filePath) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      import_node_fs8.default.stat(filePath, (error, stat) => {
+        if (error || !stat.isFile()) {
+          if (!defaultTarget?.target) {
+            response.writeHead(404);
+            response.end("Not Found");
+            return;
+          }
+          let target;
+          try {
+            target = resolveRequestProxyTarget({
+              config,
+              defaultTarget,
+              defaultEnvKey: defaultTarget.envKey,
+              overrideBaseUrl,
+              envKey: request.headers[PROXY_ENV_HEADER]
+            });
+          } catch (targetError) {
+            respondProxyError(response, `Bad Gateway: ${targetError.message}`);
+            return;
+          }
+          proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs });
+          return;
+        }
+        serveStaticFile(response, filePath);
+      });
+    } catch {
+      response.writeHead(400);
+      response.end("Bad Request");
+    }
+  });
+}
+
+// src/import.js
+var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
 var DEFAULT_MAX_IMPORT_ENTRIES = 50;
 var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
   ".js",
@@ -4635,7 +5571,7 @@ function isStaticOrPreflight(entry) {
     return true;
   }
   if (!/^https?:$/i.test(parsed.protocol)) return true;
-  const extension = import_node_path6.default.extname(parsed.pathname).toLowerCase();
+  const extension = import_node_path9.default.extname(parsed.pathname).toLowerCase();
   if (STATIC_EXTENSIONS.has(extension)) return true;
   const mimeType = String(entry?.response?.content?.mimeType || "");
   if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
@@ -5111,7 +6047,7 @@ function renderDraftFile(draft, meta = {}) {
 }
 function readHarFile(filePath) {
   try {
-    return import_node_fs6.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+    return import_node_fs9.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
   } catch (error) {
     throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
   }
@@ -5188,7 +6124,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -5206,10 +6142,14 @@ function parseArgs(argv) {
       const raw = argumentValue(argv, index++, item);
       const parsed = parseOptionValue(raw, valueOption.spec, item);
       if (valueOption.spec.repeatable) {
-        args[valueOption.prop] = Object.fromEntries([
-          ...Object.entries(args[valueOption.prop] || {}),
-          parsed
-        ]);
+        if (valueOption.spec.parse === "keyValue") {
+          args[valueOption.prop] = Object.fromEntries([
+            ...Object.entries(args[valueOption.prop] || {}),
+            parsed
+          ]);
+        } else {
+          args[valueOption.prop] = [...Array.isArray(args[valueOption.prop]) ? args[valueOption.prop] : [], raw];
+        }
       } else {
         args[valueOption.prop] = parsed;
       }
@@ -5248,10 +6188,10 @@ function parseArgs(argv) {
       "\u793A\u4F8B\uFF1A--timeout 5000\uFF1B\u8BE5\u503C\u4F1A\u8986\u76D6\u914D\u7F6E\u4E2D\u7684 requestTimeoutMs\u3002"
     );
   }
-  if (args.proxyTimeout !== void 0 && !isValidProxyTimeout(args.proxyTimeout)) {
+  if (args.proxyTimeout !== void 0 && (!Number.isInteger(args.proxyTimeout) || args.proxyTimeout < 1 || args.proxyTimeout > MAX_PROXY_TIMEOUT_MS)) {
     throw new CliUsageError(
-      `--proxy-timeout \u5FC5\u987B\u662F 1-${MAX_PROXY_TIMEOUT_MS} \u4E4B\u95F4\u7684\u6574\u6570\u6BEB\u79D2\u6570`,
-      "\u793A\u4F8B\uFF1A--proxy-timeout 120000 \u8868\u793A\u4E0A\u6E38\u7A7A\u95F2\u8D85\u8FC7 120 \u79D2\u624D\u5224\u5B9A\u8D85\u65F6\uFF1B\u7F3A\u7701\u4E3A 30000\uFF0830 \u79D2\uFF09\uFF0C\u4EC5\u5BF9 serve \u751F\u6548\u3002"
+      `--proxy-timeout \u5FC5\u987B\u662F 1-${MAX_PROXY_TIMEOUT_MS} \u7684\u6574\u6570\u6BEB\u79D2\u6570\uFF08\u5F53\u524D ${args.proxyTimeout}\uFF09`,
+      "\u793A\u4F8B\uFF1A--proxy-timeout 120000\uFF1B\u7F3A\u7701\u4E3A 30000\u3002"
     );
   }
   if (process.env.SCENARIO_AUTH) {
@@ -5351,17 +6291,17 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path7.default.resolve(projectRoot, relativePath);
-  if (import_node_fs7.default.existsSync(target) && !force) return false;
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
-  import_node_fs7.default.writeFileSync(target, content, "utf8");
+  const target = import_node_path10.default.resolve(projectRoot, relativePath);
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path7.default.resolve(projectRoot, directory);
-  const relative = import_node_path7.default.relative(projectRoot, target);
-  if (!directory || import_node_path7.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) {
+  const target = import_node_path10.default.resolve(projectRoot, directory);
+  const relative = import_node_path10.default.relative(projectRoot, target);
+  if (!directory || import_node_path10.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
   }
   return directory;
@@ -5386,30 +6326,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs7.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs10.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), fileName),
-    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), fileName),
+    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs7.default.existsSync(target) && !force) return false;
-  const source = import_node_path7.default.resolve(process.argv[1]);
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  const source = import_node_path10.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
-  import_node_fs7.default.copyFileSync(source, target);
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs7.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs7.default.existsSync(candidate));
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs10.default.existsSync(candidate));
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs7.default.copyFileSync(source, target);
+    import_node_fs10.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -5418,7 +6358,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs7.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs10.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -5431,7 +6371,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs7.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs10.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -5444,20 +6384,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
-  import_node_fs7.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs7.default.existsSync(lockPath)) return true;
+  if (!import_node_fs10.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs7.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs10.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -5473,14 +6413,14 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path7.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path10.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path7.default.basename(projectRoot).trim() || "project";
+  const projectName = import_node_path10.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs7.default.existsSync(import_node_path7.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs10.default.existsSync(import_node_path10.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -5512,7 +6452,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -5524,12 +6464,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path7.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path10.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path7.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs7.default.existsSync(candidate)) {
+  const candidate = import_node_path10.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs10.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -5549,7 +6489,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path7.default.isAbsolute(pluginPath) ? pluginPath : import_node_path7.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path10.default.isAbsolute(pluginPath) ? pluginPath : import_node_path10.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -5586,8 +6526,8 @@ function selectEnvironment(config, key) {
   }
   return environment;
 }
-function configVariables(config, overrides = {}) {
-  const values = { ...config.vars || {} };
+function configVariables(config, overrides = {}, environment = null) {
+  const values = { ...config.vars || {}, ...environment?.vars || {} };
   const provided = overrides && typeof overrides === "object" ? overrides : {};
   for (const definition of config.variables || []) {
     const environmentName = definition.env;
@@ -5606,7 +6546,7 @@ function configVariables(config, overrides = {}) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path7.default.dirname(configPath);
+  const configDir = import_node_path10.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -5628,7 +6568,17 @@ ${choices.join("\n")}${remaining > 0 ? `
   \u2026 \u5176\u4F59 ${remaining} \u9879\u672A\u663E\u793A\u3002` : ""}${hasManualScenarios ? "\nmanual:true \u573A\u666F\u9700\u901A\u8FC7 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002" : ""}` : "\u914D\u7F6E\u4E2D\u6CA1\u6709\u53EF\u9009\u573A\u666F\uFF0C\u8BF7\u68C0\u67E5 scenarios \u5217\u8868\u3002";
     throw new CliUsageError(`\u672A\u627E\u5230\u573A\u666F: ${missing.join(", ")}`, list);
   }
-  const entries = args.all ? config.scenarios.filter((item) => !item.manual) : requested.length ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key))) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+  const entries = requested.length ? config.scenarios.filter((item) => [item.id, item.name, item.url].some((key) => requested.includes(key))) : args.all || (args.tags || []).length ? config.scenarios.filter((item) => !item.manual) : config.scenarios.filter((item) => [item.id, item.name, item.url].includes(config.scenarios[0]?.id));
+  const tagGroups = (args.tags || []).map((raw) => String(raw).split(",").map((tag) => tag.trim()).filter(Boolean)).filter((group) => group.length);
+  const filteredEntries = !tagGroups.length ? entries : entries.filter((entry) => tagGroups.some((group) => group.every((tag) => (entry.tags || []).includes(tag))));
+  if (tagGroups.length && !filteredEntries.length) {
+    const available = [...new Set(config.scenarios.flatMap((entry) => entry.tags || []))].sort();
+    throw new CliUsageError(
+      `\u6CA1\u6709\u573A\u666F\u5339\u914D\u6807\u7B7E: ${tagGroups.map((group) => group.join(",")).join(" \u6216 ")}`,
+      available.length ? `\u53EF\u7528\u6807\u7B7E: ${available.join(", ")}` : "\u914D\u7F6E\u4E2D\u7684\u573A\u666F\u5747\u672A\u58F0\u660E tags\u3002"
+    );
+  }
+  entries.splice(0, entries.length, ...filteredEntries);
   if (!entries.length) {
     if (args.all && config.scenarios.length > 0 && config.scenarios.every((item) => item.manual)) {
       throw new CliUsageError(
@@ -5644,16 +6594,21 @@ ${choices.join("\n")}${remaining > 0 ? `
   const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
   const adapters = {};
   for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
+  const baseVars = configVariables(config, args.vars, environment);
   const baseOptions = {
     config,
     baseUrl: String(args.baseUrl || environment.baseUrl || config.baseUrl || "").replace(/\/+$/, ""),
     authorization: args.authorization || environment.authorization || config.authorization || "",
     globals: mergeGlobals(config.globals, environment.globals, envGlobals),
     requestTimeoutMs: args.timeout ?? config.requestTimeoutMs,
-    vars: configVariables(config, args.vars),
+    vars: baseVars,
     environmentVariables: process.env,
     io: createNodeIo(configDir),
-    adapters
+    adapters,
+    // #65：仅 run --cookie-jar 开启；Jar 在场景 runtime 内维护，不跨场景/不落盘
+    cookieJar: Boolean(args.cookieJar),
+    // #69：本次 run 的共享变量容器，跨场景/跨数据行复用
+    suiteVars: {}
   };
   if (!baseOptions.baseUrl) {
     throw new CliUsageError(
@@ -5668,7 +6623,26 @@ ${choices.join("\n")}${remaining > 0 ? `
   let skippedTotal = 0;
   let stoppedUnexecutedTotal = 0;
   const print = args.json ? (...values) => console.error(...values) : (...values) => console.log(...values);
-  const reports = new Array(entries.length);
+  const dataset = (() => {
+    if (!args.dataFile) return null;
+    try {
+      return loadDataset(args.dataFile);
+    } catch (error) {
+      throw new CliUsageError(`\u6570\u636E\u96C6\u52A0\u8F7D\u5931\u8D25: ${error.message}`, "\u652F\u6301 JSON \u6570\u7EC4\u3001JSONL\uFF08\u6BCF\u884C\u4E00\u4E2A\u5BF9\u8C61\uFF09\u6216 CSV\uFF08\u9996\u884C\u8868\u5934\uFF09\uFF1B\u6BCF\u884C\u5FC5\u987B\u662F\u5BF9\u8C61\u3002");
+    }
+  })();
+  const dataRows = dataset ? dataset.rows : [null];
+  const rowResults = [];
+  const notRun = [];
+  let bailTriggered = false;
+  const allSecrets = new Set(collectSecretValues(baseVars, [
+    baseOptions.authorization,
+    ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => item.value)
+  ]));
+  const rememberSecrets = (vars, extra = []) => {
+    for (const secret of collectSecretValues(vars, [baseOptions.authorization, ...extra])) allSecrets.add(secret);
+  };
+  const reports = [];
   const accumulateReport = (report) => {
     total += report.planned;
     passedTotal += report.passedSteps;
@@ -5682,7 +6656,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path7.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path10.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -5707,20 +6681,32 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
         const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
         entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
-      async onStep(result) {
+      async onStep(result, _stepIndex, runtime) {
+        const runtimeForResolve = runtime || { vars: {} };
+        const stepSecrets = collectSecretValues(runtimeForResolve.vars, [
+          baseOptions.authorization,
+          ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => resolveString(item.value, runtimeForResolve))
+        ]);
+        for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
+        const redact = (value) => redactSecrets(value, stepSecrets);
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-        entryPrint(`[${mark}] ${escapeInlineText(result.name)} ${escapeInlineText(result.method)} ${escapeInlineText(result.path)} -> ${escapeInlineText(result.status)} (${formatDuration(result.duration)})`);
+        entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
-          entryPrint(`  [WARN] ${escapeInlineText(warning)}`);
+          entryPrint(`  [WARN] ${escapeInlineText(redact(warning))}`);
         }
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
+            if (!item) continue;
+            if (!Array.isArray(item.assertions) || item.index === void 0) {
+              print(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+              continue;
+            }
             const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              entryPrint(`      \u21B3 ${label} ${escapeInlineText(sub.name)}: expected=${formatFailureValue(sub.expected)} actual=${formatFailureValue(sub.actual)}`);
-              if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(sub.reason)}`);
-              for (const line of failureDiffLines(sub.expected, sub.actual, "        ")) {
+              entryPrint(`      \u21B3 ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
+              if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(redact(sub.reason))}`);
+              for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
                 entryPrint(line);
               }
               printEachDetail(sub.detail, `${label} \u203A `);
@@ -5728,66 +6714,102 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           }
         };
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
-          entryPrint(`  - ${escapeInlineText(assertion.name)}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`);
-          if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(assertion.reason)}`);
-          for (const line of failureDiffLines(assertion.expected, assertion.actual, "    ")) {
+          entryPrint(`  - ${escapeInlineText(redact(assertion.name))}: expected=${formatFailureValue(redact(assertion.expected))} actual=${formatFailureValue(redact(assertion.actual))}`);
+          if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(redact(assertion.reason))}`);
+          for (const line of failureDiffLines(redact(assertion.expected), redact(assertion.actual), "    ")) {
             entryPrint(line);
           }
           printEachDetail(assertion.detail, "");
         }
-        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint);
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => stepSecrets);
       }
     });
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
+    rememberSecrets(report.vars, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value]) => value).filter((value) => typeof value === "string")));
+    report.scenarioId = entry.id;
+    report.tags = entry.tags || [];
     return report;
   };
-  if (args.concurrency <= 1) {
-    for (let index = 0; index < entries.length; index += 1) {
-      const report = await runEntry(entries[index], print);
-      reports[index] = report;
-      accumulateReport(report);
-      print(reportSummary(report));
+  for (const [rowIndex, row] of dataRows.entries()) {
+    if (bailTriggered) {
+      for (const entry of entries) notRun.push({ id: entry.id, name: entry.name, url: entry.url, row: rowIndex + 1, reason: "bail" });
+      continue;
     }
-  } else {
-    let nextIndex = 0;
-    let firstError = null;
-    let hasError = false;
-    const workerCount = Math.min(args.concurrency, entries.length);
-    const worker = async () => {
-      while (true) {
-        if (hasError) return;
-        const index = nextIndex;
-        nextIndex += 1;
-        if (index >= entries.length) return;
-        const bufferedLines = [];
-        const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
-        try {
-          const report = await runEntry(entries[index], bufferedPrint);
-          reports[index] = report;
-          accumulateReport(report);
-          bufferedPrint(reportSummary(report));
-        } catch (error) {
-          if (!hasError) {
-            hasError = true;
-            firstError = error;
-          }
-        } finally {
-          for (const line of bufferedLines) print(line);
+    const rowVars = row || {};
+    baseOptions.vars = { ...baseVars, ...rowVars, ...args.vars || {} };
+    const rowReports = new Array(entries.length);
+    if (dataset) print(`
+## \u6570\u636E\u884C ${rowIndex + 1}/${dataRows.length}${Object.keys(rowVars).length ? ` (${Object.keys(rowVars).join(", ")})` : ""}`);
+    if (args.concurrency <= 1) {
+      for (let index = 0; index < entries.length; index += 1) {
+        if (bailTriggered) {
+          notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
+          continue;
         }
+        const report = await runEntry(entries[index], print);
+        rowReports[index] = report;
+        reports.push(report);
+        accumulateReport(report);
+        print(reportSummary(report));
+        if (!report.passed && args.bail) bailTriggered = true;
       }
-    };
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    if (hasError) throw firstError;
+    } else {
+      let nextIndex = 0;
+      let firstError = null;
+      let hasError = false;
+      const workerCount = Math.min(args.concurrency, entries.length);
+      const worker = async () => {
+        while (true) {
+          if (hasError || bailTriggered) return;
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= entries.length) return;
+          const bufferedLines = [];
+          const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+          try {
+            const report = await runEntry(entries[index], bufferedPrint);
+            rowReports[index] = report;
+            accumulateReport(report);
+            bufferedPrint(reportSummary(report));
+            if (!report.passed && args.bail) bailTriggered = true;
+          } catch (error) {
+            if (!hasError) {
+              hasError = true;
+              firstError = error;
+            }
+          } finally {
+            for (const line of bufferedLines) print(line);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      if (hasError) throw firstError;
+      for (let index = 0; index < entries.length; index += 1) {
+        const report = rowReports[index];
+        if (report) reports.push(report);
+        else notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
+      }
+    }
+    if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: rowReports.filter(Boolean) });
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
+  if (bailTriggered) print(`
+--bail \u5DF2\u5F00\u542F\uFF1A${notRun.length} \u4E2A\u540E\u7EED\u573A\u666F\u672A\u6267\u884C\uFF0C\u9000\u51FA\u7801\u4FDD\u6301\u975E\u96F6\u3002`);
   if (failedTotal) process.exitCode = 1;
   if (args.failOnSkip && skippedTotal > 0) {
     print(`
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
     process.exitCode = 1;
+  }
+  const secretList = [...allSecrets];
+  const safeReports = reports.map((report) => redactSecrets(report, secretList));
+  if (args.junit) {
+    const target = writeJUnitReport(args.junit, safeReports);
+    print(`
+JUnit \u62A5\u544A: ${target}`);
   }
   const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65`;
   if (actualFailedTotal > 0) {
@@ -5805,7 +6827,15 @@ Overall: ${passedTotal}/${total} passed`);
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5B8C\u6210\u3002${countSummary}${skippedTotal > 0 ? "\uFF1B\u6761\u4EF6\u8DF3\u8FC7\u7684\u6B65\u9AA4\u672A\u53D1\u8D77\u8BF7\u6C42" : ""}\u3002`);
   }
   if (args.json) {
-    const payload = reports.length === 1 ? reports[0] : { scenarios: reports };
+    const payload = dataset ? {
+      data: { file: dataset.file, format: dataset.format, rows: dataset.rows.length },
+      results: rowResults.map((row) => ({
+        index: row.index,
+        vars: redactSecrets(row.vars, secretList),
+        scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
+      })),
+      ...notRun.length ? { notRun } : {}
+    } : safeReports.length === 1 && !notRun.length ? safeReports[0] : { scenarios: safeReports, ...notRun.length ? { notRun } : {} };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
   }
@@ -5821,13 +6851,14 @@ function escapeBodyLine(line) {
 function escapeErrorText(error) {
   return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
-function printFailedStepBody(result, print = console.log) {
+function printFailedStepBody(result, print = console.log, secretsOf = []) {
+  const redact = (value) => redactSecrets(value, typeof secretsOf === "function" ? secretsOf() : secretsOf);
   const response = result?.response;
   if (!response || typeof response !== "object") return;
   const body = response.body;
   const bodyText = typeof response.bodyText === "string" ? response.bodyText : null;
   if (bodyText === null && body && typeof body === "object" && body[SAVED_RESPONSE] === true) {
-    print(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${escapeBodyLine(body.savedTo)}`);
+    print(`  \u54CD\u5E94\u4F53\u5DF2\u4FDD\u5B58\u81F3 ${escapeBodyLine(redact(body.savedTo))}`);
     return;
   }
   let raw = bodyText ?? "";
@@ -5841,7 +6872,7 @@ function printFailedStepBody(result, print = console.log) {
       }
     }
   }
-  const text = raw.replace(/\r\n/g, "\n").trimEnd();
+  const text = String(redact(raw)).replace(/\r\n/g, "\n").trimEnd();
   if (text === "") return;
   const truncated = text.length > FAILURE_BODY_LIMIT;
   const shown = truncated ? text.slice(0, FAILURE_BODY_LIMIT) : text;
@@ -5849,209 +6880,28 @@ function printFailedStepBody(result, print = console.log) {
   print(`  \u54CD\u5E94\u4F53${note}:`);
   for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
-function safeFile(root, relativePath) {
-  const candidate = import_node_path7.default.resolve(root, relativePath);
-  const relative = import_node_path7.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) return null;
-  return isRealPathWithinRoot(root, candidate) ? candidate : null;
-}
-function contentType(filePath) {
-  return {
-    ".html": "text/html; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".txt": "text/plain; charset=utf-8"
-  }[import_node_path7.default.extname(filePath).toLowerCase()] || "application/octet-stream";
-}
-function serveStaticFile(response, filePath) {
-  const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path7.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs7.default.createReadStream(filePath);
-    stream.on("error", () => {
-      if (response.headersSent) {
-        response.destroy();
-        return;
-      }
-      response.writeHead(500);
-      response.end("Internal Server Error");
-    });
-    stream.on("open", () => {
-      response.writeHead(200, headers);
-      stream.pipe(response);
-    });
-    return;
-  }
-  import_node_fs7.default.readFile(filePath, "utf8", function(error, html) {
-    if (error) {
-      response.writeHead(500);
-      response.end("Internal Server Error");
-      return;
-    }
-    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
-    const headPattern = /<head(?:\s[^>]*)?>/i;
-    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
-      return head + marker;
-    }) : marker + html;
-    response.writeHead(200, headers);
-    response.end(content);
-  });
-}
-function resolveServeProxyTarget(config, envKey, baseUrlOverride) {
-  if (config.envs?.length) {
-    const environment = selectEnvironment(config, envKey);
-    const overridden = Boolean(baseUrlOverride);
-    const target = overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "";
-    return {
-      key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
-      target: String(target).replace(/\/+$/, "")
-    };
-  }
-  return {
-    key: config.defaultEnvKey || "default",
-    target: String(baseUrlOverride || config.baseUrl || "").replace(/\/+$/, "")
-  };
-}
-var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "host"
-]);
-var DEFAULT_PROXY_TIMEOUT_MS = 3e4;
-var MAX_PROXY_TIMEOUT_MS = 6e5;
-function isValidProxyTimeout(value) {
-  return Number.isInteger(value) && value > 0 && value <= MAX_PROXY_TIMEOUT_MS;
-}
-function abortProxyResponse(response) {
-  if (response.destroyed || response.writableEnded) return;
-  response.destroy();
-}
-function respondProxyError(response, message) {
-  if (response.headersSent) {
-    abortProxyResponse(response);
-    return;
-  }
-  response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-  response.end(message);
-}
-function proxyTransport(targetUrl) {
-  try {
-    const protocol = new URL(targetUrl).protocol;
-    if (protocol === "https:") return import_node_https.default;
-    if (protocol === "http:") return import_node_http.default;
-  } catch {
-    return null;
-  }
-  return null;
-}
-function connectionNamedHeaders(connectionValue) {
-  return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-}
-function proxyRequest(request, response, targetUrl, proxyTimeoutMs) {
-  const transport = proxyTransport(targetUrl);
-  if (!transport) {
-    respondProxyError(
-      response,
-      `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u65E0\u6548: ${targetUrl}
-\u8BF7\u68C0\u67E5\u73AF\u5883 baseUrl\uFF0C\u5FC5\u987B\u5E26\u534F\u8BAE\u524D\u7F00\uFF08http:// \u6216 https://\uFF09`
-    );
-    return;
-  }
-  const headers = {};
-  const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
-  for (const [name, value] of Object.entries(request.headers)) {
-    const lower = String(name).toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
-  }
-  let upstream;
-  try {
-    upstream = transport.request(targetUrl + request.url, {
-      method: request.method,
-      headers,
-      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-      ...transport === import_node_https.default ? { rejectUnauthorized: false } : {}
-    }, (upstreamResponse) => {
-      const responseHeaders = {};
-      const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
-      for (const [name, value] of Object.entries(upstreamResponse.headers)) {
-        const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
-      }
-      response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
-      upstreamResponse.on("error", () => abortProxyResponse(response));
-      upstreamResponse.on("aborted", () => abortProxyResponse(response));
-      upstreamResponse.pipe(response);
-    });
-  } catch (error) {
-    respondProxyError(response, `Bad Gateway: \u63A5\u53E3\u4EE3\u7406\u8BF7\u6C42\u6784\u9020\u5931\u8D25: ${error.message}`);
-    return;
-  }
-  upstream.setTimeout(proxyTimeoutMs, () => {
-    upstream.destroy(new Error("\u63A5\u53E3\u4EE3\u7406\u8D85\u65F6"));
-  });
-  upstream.on("error", () => {
-    respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
-  });
-  request.pipe(upstream);
-}
-function isAllowedServeHost(hostHeader, port) {
-  const host = String(hostHeader || "").trim().toLowerCase();
-  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
-}
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path7.default.dirname(configPath);
-  const libraryDist = import_node_path7.default.dirname(import_node_path7.default.resolve(process.argv[1]));
+  const workspace = import_node_path10.default.dirname(configPath);
+  const libraryDist = import_node_path10.default.dirname(import_node_path10.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
-  const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
+  const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
+  if (startup.error) {
+    throw new CliUsageError(
+      startup.error,
+      "\u8BF7\u5C06 --env \u8BBE\u7F6E\u4E3A\u4E0A\u9762\u5217\u51FA\u7684\u73AF\u5883 key \u540E\u91CD\u8BD5\u3002"
+    );
+  }
   const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
-  const server = import_node_http.default.createServer((request, response) => {
-    try {
-      if (!isAllowedServeHost(request.headers.host, args.port)) {
-        response.writeHead(403);
-        response.end("Forbidden");
-        return;
-      }
-      const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
-      let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
-      else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
-      } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
-      } else {
-        const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-        filePath = safeFile(workspace, relativePath);
-      }
-      if (!filePath) {
-        response.writeHead(403);
-        response.end("Forbidden");
-        return;
-      }
-      import_node_fs7.default.stat(filePath, (error, stat) => {
-        if (error || !stat.isFile()) {
-          if (proxyTarget) {
-            proxyRequest(request, response, proxyTarget, proxyTimeoutMs);
-            return;
-          }
-          response.writeHead(404);
-          response.end("Not Found");
-          return;
-        }
-        serveStaticFile(response, filePath);
-      });
-    } catch {
-      response.writeHead(400);
-      response.end("Bad Request");
-    }
+  const server = createServeServer({
+    workspace,
+    libraryDist,
+    port: args.port,
+    config,
+    defaultTarget: startup,
+    // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
+    overrideBaseUrl: args.baseUrl || "",
+    proxyTimeoutMs: args.proxyTimeout ?? void 0
   });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
@@ -6066,8 +6916,8 @@ async function serveCommand(args) {
   server.listen(args.port, "127.0.0.1", () => {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
-    if (proxyTarget) {
-      console.log(`\u63A5\u53E3\u4EE3\u7406: ${proxyEnvKey} -> ${proxyTarget}`);
+    if (startup.target) {
+      console.log(`\u63A5\u53E3\u4EE3\u7406: ${startup.key} -> ${startup.target}`);
       console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);
     }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
@@ -6078,15 +6928,15 @@ function importTimestamp(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 function scenarioIdFromOutput(output, timestamp) {
-  const stem = import_node_path7.default.basename(output, import_node_path7.default.extname(output)).trim();
+  const stem = import_node_path10.default.basename(output, import_node_path10.default.extname(output)).trim();
   const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
   return normalized || `imported-${timestamp}`;
 }
 function defaultImportOutput(timestamp) {
-  let candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}.js`);
   let suffix = 2;
-  while (import_node_fs7.default.existsSync(candidate)) {
-    candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+  while (import_node_fs10.default.existsSync(candidate)) {
+    candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
     suffix += 1;
   }
   return candidate;
@@ -6106,12 +6956,12 @@ function importCommand(args) {
     throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
   }
   const timestamp = importTimestamp();
-  const output = args.output ? import_node_path7.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const output = args.output ? import_node_path10.default.resolve(args.output) : defaultImportOutput(timestamp);
   const id = scenarioIdFromOutput(output, timestamp);
   let draft;
   try {
     draft = args.har ? createHarDraft(readHarFile(args.har), {
-      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path7.default.basename(args.har),
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path10.default.basename(args.har),
       maxEntries,
       hosts: parseHostFilter(args.host)
     }) : createCurlDraft(args.curl);
@@ -6126,9 +6976,9 @@ function importCommand(args) {
     );
   }
   const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(output), { recursive: true });
-  import_node_fs7.default.writeFileSync(output, content, "utf8");
-  const relativeOutput = import_node_path7.default.relative(process.cwd(), output).split(import_node_path7.default.sep).join("/") || output;
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(output), { recursive: true });
+  import_node_fs10.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path10.default.relative(process.cwd(), output).split(import_node_path10.default.sep).join("/") || output;
   console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
   console.log(`\u573A\u666F id: ${id}`);
   console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
@@ -6161,10 +7011,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path7.default.dirname(configPath);
+    configDir = import_node_path10.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path7.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path7.default.dirname(configPath);
+    configPath = import_node_path10.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path10.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {

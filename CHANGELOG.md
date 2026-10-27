@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 契约 v16
+
+- 断言新增 `shape`（jsonSchema-lite）：`type`/`required`/`properties`/`items`/`enum`/`additionalProperties`，失败明细按字段路径定位，可在 `each` 子断言内嵌套；未知 shape 键定义期拒绝。
+- 步骤新增 `always: true`：前置普通步骤失败（`failurePolicy: stop`）后仍执行清理步骤；用户取消时不执行，未执行的普通步骤在报告中标记 SKIP。
+- `extract` 新增 `scope: "suite"`：提取值写入本次 run 共享变量，后续场景可直接引用（如登录 token）。
+- 配置场景项/场景顶层新增 `tags`，`run --tag` 支持筛选（重复参数 OR、逗号分隔 AND）。
+- 环境新增 `envs[].vars`：优先级 `config.vars < env.vars < --vars`，浏览器切换环境同步生效。
+- CLI 新增 `--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--proxy-timeout`；`serve` 启动日志打印实际生效的代理空闲超时（默认/命令行来源）。
+
+### 修复
+
+- 敏感变量脱敏（#90）：`maskSecret` 接入 CLI 文本 diff、失败响应体、JUnit 与 `--json` 输出；`vars`/`authorization` 等命中变量名的值统一脱敏，浏览器复用同一变量名名单；变量面板仅对标量脱敏，避免对象被转成 `[object Object]`。
+- serve 代理按浏览器当前环境逐请求路由（#60），未知环境返回 502；同源请求的 `Origin`/`Referer` 改写为目标源（#67），外部来源原样转发。
+- 未定义模板变量不再静默：步骤级 `warnings` 提示 `vars.<name>`（#66），同一变量/重试轮次只报一次。
+- `run --cookie-jar`：单场景内存 Cookie Jar，支持 Domain/Path/Expires/Max-Age/Secure，显式 Cookie 同名优先，不落盘、不跨场景（#65）。
+
+### 测试与工程化
+
+- 新增 DSL/CLI/serve 特性测试；serve 拆为 `src/cli/serve-server.js` 以便单测（#33）。
+- `test:coverage` 只统计 `src/`（排除 dist/tests/scripts/browser），阈值 line 90 / branch 80（#48）。
+- 新增 GitHub Actions：Node 20/22 × Ubuntu/Windows 单测与行尾审计、覆盖率、Playwright 浏览器测试（#47）。
+- `generatedVars timestamp` 支持注入时钟（`options.now`），测试改为精确断言（#12）。
+
 ### DSL 与诊断
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
@@ -28,14 +51,13 @@ All notable changes to this project will be documented in this file.
 - `run --vars key=value`（可重复，contract v11 → v12）：临时注入/覆盖配置变量，多组按出现顺序叠加（同名后者覆盖），命令行优先级最高（`scenario.vars < config.vars < options.vars`）。值支持 `{{ }}` 模板；非法 `key=value` 报错并给出示例；保留变量（`runId`/`runNo` 等）复用 `assertNoReservedVars` 拒绝。同步投射 capabilities JSON/文本、`--help`、`dist/scenario-test.d.ts`、AI Prompt 与项目 README 模板。
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
-
-- `serve --proxy-timeout <ms>`（contract v14 → v15）：上游空闲超时从硬编码 30 秒外提为可配置项，取值 1-600000 的整数毫秒，缺省仍为 30000（无迁移成本）。非法值（非正整数、超上限）在参数解析期拒绝，报错信息带参数名 `--proxy-timeout`；启动日志打印实际生效值。语义不变：响应头未发出时返回 502，传输已开始则直接断开连接。同步投射 capabilities JSON/文本、`--help`、`dist/` 产物与 README。
 ### 产物
 
 - `node.js` 入口不再透传 `index.js` 的 `createApp`：改为逐项枚举核心导出 + 浏览器占位函数（`typeof` 仍为 `function`，调用时报「仅在浏览器环境可用」而非 `document is not defined`）。Node/CLI 产物随之不再打进浏览器工作台与 Tailwind 内联样式（此前 `cli.js` 把 `import * as ScenarioTest` 整个命名空间对象传入 loader/插件工厂，esbuild 无法 tree-shake）；`scenario-test.cjs`/`scenario-test-cli.cjs` 显著瘦身。UMD/ESM 浏览器产物的 `createApp` 不变。
 
 ### 引擎与断言
 
+- `retryUntil` 指数退避（contract v14 → v15，issue #8）：新增可选 `intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`，未声明不封顶）。第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶后仍应用 100ms 下限，并按 `maxElapsedMs` 剩余额度截断；所有 retryUntil 等待现在都受剩余总时限约束（此前仅显式 `error`/`timeout` 路径截断），不会在总时限后继续睡完整退避间隔。`onAttempt.intervalMs` 报告实际等待时长。定义期拒绝 `intervalFactor < 1`、`maxIntervalMs < intervalMs` 及非有限值；capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库、README 与内部指南同步投射。
 - `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误；显式启用 `error`/`timeout` 时，重试等待间隔、单次在途执行与异步 `onAttempt` 均受剩余总时限约束（总时限后迟到的 HTTP 响应不再触发 `saveResponseAs` 落盘，也不让慢请求 PASS）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度；`retryUntil` 未知键定义期拒绝，避免拼错 `retryOn` 被静默忽略。未声明 `retryOn`（默认 assertion）时仅在尝试之间检查总时限，行为与旧版完全一致（耗时恰好等于 `maxElapsedMs` 仍发起下一次尝试，超过后返回的成功响应仍可通过）。
 
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
