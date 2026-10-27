@@ -112,6 +112,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
 ```
 
 > 手动指定 `--port` 默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+> 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
 
 ### 执行场景
 
@@ -137,6 +138,31 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 ```
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
+
+### 导入真实流量
+
+把浏览器 Network 面板导出的 HAR 或后端给出的 curl 示例转成可编辑的场景草稿：
+
+```powershell
+# HAR：过滤静态资源/OPTIONS，每个 API 请求生成一个 step
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har
+
+# 单条 curl：生成单步骤草稿，并在终端打印可直接粘贴的 step 片段
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --curl "curl -X POST 'https://api.example.com/orders' -H 'Content-Type: application/json' -d '{\"sku\":\"A1\"}'"
+
+# 只要指定主机、最多导入 10 条，或自定义输出文件
+node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har --host api.example.com --max-entries 10 --output scenarios/imported-orders.js
+```
+
+默认写入 `scenarios/imported-<时间戳>.js`，场景 id 与文件名一致（可用 `--output`/`--out` 改名）。草稿中的 `status`、动态字段和业务断言需要人工确认；`Authorization`、`Cookie`、API Key 等敏感头及敏感 query 参数不会落明文，而是替换为 `{{vars.*}}` 占位，请在 `scenario.config.js` 的 `vars` 或 `run --vars` 中提供真实值。二进制/multipart 请求体会以注释说明省略，需要时手工改用 `fileUpload` 或原始 body。
+
+生成后把文件加入配置清单即可执行：
+
+```js
+scenarios: [
+    { id: "imported-20261026081500", name: "导入流量草稿", url: "scenarios/imported-20261026081500.js" }
+]
+```
 
 ### 体检
 
@@ -192,15 +218,19 @@ scenario-test/
 
 - 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`：服务刚启动时的 ECONNREFUSED、ENOTFOUND 等网络错误和单次请求超时也能继续轮询，`onAttempt` 回调透出 `errorType`/`errorMessage`；不配置时行为与旧版完全一致。
+- `retryUntil.intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`）支持指数退避：第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶 `maxIntervalMs`（未声明不封顶），最终仍受 100ms 下限与 `maxElapsedMs` 总时限约束。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
-- `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
+- `serve` 提供静态服务和同源接口代理：按浏览器当前环境逐请求路由（切换环境立即生效），同源请求的 `Origin`/`Referer` 会改写为目标源；上游空闲超时默认 30 秒，可用 `--proxy-timeout <ms>` 调整（1-600000）。为便于内网联调，https 上游沿用本地开发代理的 `rejectUnauthorized: false`（不校验自签证书），不要将 serve 暴露到本机回环之外。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
 - `capabilities --json` 输出机器可读能力清单。
 - `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
-- `manual: true` 场景默认不参与 `--all`。
+- `import --har` / `import --curl` 把真实流量或后端 curl 示例转成标准场景草稿；静态资源与预检会被过滤，Authorization/Cookie 等敏感头替换为 `{{vars.*}}` 占位，二进制请求体降级为注释。
 - `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、文件上传、响应保存及自定义 Node 插件。
+- `run --bail` 在首个失败场景后停止启动后续场景；`run --data <json|jsonl|csv>` 按行注入变量执行；`run --junit <file>` 输出 JUnit XML；`run --cookie-jar` 启用单场景内存 Cookie Jar。
+- `manual: true` 场景默认不参与 `--all`；场景清单可声明 `tags`，`run --tag smoke` 筛选（重复参数 OR，逗号分隔 AND）。
+- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、环境级 `envs[].vars`、`extract scope: "suite"` 跨场景复用（如登录 token）、`shape` 结构断言、`always` 清理步骤与 `retryUntil` 指数退避、文件上传、响应保存及自定义 Node 插件。
 - `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
+- 路径支持通配段 `[*]`：`extract: [{ name: "ids", path: "items[*].id" }]` 产出 `[1,2,3]`；元素缺失该子路径时跳过、空数组产出 `[]`、非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（`groups[*].members[*].id`）展平为一级数组，结果可直接用于 `length`/`includes`/`each` 断言。
 
 完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
 
@@ -268,8 +298,12 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 ```powershell
 npm install
 npm run build
-npm test
-npm run test:browser
+npm run test:unit        # 单测/集成（tests/*.test.js）
+npm run test:coverage    # 仅 src/ 口径，line 90 / branch 80
+npm run test:browser     # Playwright 浏览器测试
+npm run check:all        # 构建 + unit + browser + ui-style + 行尾审计
 ```
+
+CI 在 GitHub Actions 上覆盖 Node 20/22 × Ubuntu/Windows 单测、覆盖率、浏览器测试与行尾审计，见 `.github/workflows/ci.yml`。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。

@@ -15,10 +15,13 @@
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
-npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
+npm test               # 单元/集成测试（node --test tests/*.test.js，与 test:unit 等价）
+npm run test:coverage  # 仅统计 src/（排除 dist/tests/scripts/browser），line 90 / branch 80 阈值
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
-npm run check          # npm run build && npm test && npm run test:browser
-npm run check:all      # 与 check 相同的兼容别名
+npm run test:ui-style  # 工作台视觉回归（Playwright）
+npm run test:all       # unit + browser + ui-style
+npm run check          # npm run build && test:unit && test:browser
+npm run check:all      # check + ui-style + 行尾审计
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 
@@ -33,7 +36,7 @@ node --test tests/engine.test.js
 node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 ```
 
-公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`。选项见 `--help`。
+公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`、`import`（HAR/curl 导入场景草稿）。选项见 `--help`。
 
 ## 架构
 
@@ -56,7 +59,7 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 - 场景/配置文件是**可执行代码**，运行在 `node:vm` 沙箱（`node/loader.js`）中，全局暴露 `ScenarioTest`。场景文件必须调用 `ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))`；配置文件调用 `ScenarioTest.registerConfig(ScenarioTest.defineConfig({...}))`。配置中场景列表的 `id` **必须等于**该文件注册的 `id`。
 - `node/io.js` 实现 `fileUpload`（FormData）与 `saveResponseAs`，二者均受 `utils/path-validator.js`（路径穿越防护）约束，保证写入不超出配置工作区。
 - `init`（`cli.js` 的 `initCommand` + `init-templates.js`）写出一个自包含项目：模板在 `scenario-test/` 下，运行时副本在 `scenario-test/.scenario-test/` 下（`project-layout.js` 定义 `FRAMEWORK_FILES`）。`init` 记录一个含 SHA256 哈希的 `.scenario-test-version.json` 锁文件；`doctor` 用它检测被篡改或过期的运行时副本。
-- `serve` 是静态服务器 + 同源代理：向 HTML 注入 `window.__SCENARIO_TEST_SERVE_PROXY__`，将未匹配的请求转发到所选环境的 `baseUrl`，并剥离逐跳（hop-by-hop）头，使工作台无需 CORS。
+- `serve` 是静态服务器 + 同源代理：向 HTML 注入 `window.__SCENARIO_TEST_SERVE_PROXY__`，按浏览器当前环境逐请求选择 `baseUrl`（内部头 `X-Scenario-Test-Env` 转发前剔除），将未匹配的请求转发到目标并剥离逐跳（hop-by-hop）头，使工作台无需 CORS。实现位于 `src/cli/serve-server.js`（`createServeServer`），`src/cli.js` 只负责参数与启动。
 
 ## 生成文件——请勿手改
 

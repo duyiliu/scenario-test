@@ -214,9 +214,47 @@ try {
             assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, `${key} 不应清除场景结果`);
             assert.equal(await page.evaluate(() => document.activeElement.id), "adhocHeadersInput", `${key} 不应移走临时请求焦点`);
         }
+        await page.locator("#adhocHeadersInput").fill(JSON.stringify({ "Authorization": "Bearer top-secret-token", "X-Trace": "adhoc" }));
+        await page.evaluate(() => {
+            window.__lastCopiedText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: async (text) => { window.__lastCopiedText = text; } },
+                configurable: true
+            });
+        });
+        assert.equal(await page.locator("#adhocDraftBtn").isDisabled(), true, "未执行请求前不应允许转为步骤");
         await page.locator("#adhocExecuteBtn").click();
         await page.waitForFunction(() => !document.querySelector("#adhocResult").classList.contains("hidden"));
         assert.match(await page.locator("#adhocResult").textContent(), /状态：200/);
+        assert.equal(await page.locator("#adhocDraftBtn").isDisabled(), false, "执行成功后应允许转为步骤");
+        await page.locator("#adhocDraftBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#adhocDraft").classList.contains("hidden"));
+        const draftText = await page.locator("#adhocDraftCode").textContent();
+        assert.match(draftText, /"status": 200/, "草稿应使用实际响应状态码");
+        assert.match(draftText, /"method": "GET"/);
+        assert.match(draftText, /"Authorization": "\{\{vars\.authorization\}\}"/);
+        assert.doesNotMatch(draftText, /top-secret-token/, "敏感请求头不得写成明文");
+        const generatedStep = await page.evaluate((text) => {
+            const step = new Function("return (" + text + ");")();
+            return { name: step.name, method: step.method, path: step.path, status: step.status, headers: step.request && step.request.headers };
+        }, draftText);
+        assert.equal(generatedStep.method, "GET");
+        assert.equal(generatedStep.path, "health");
+        assert.equal(generatedStep.status, 200);
+        assert.equal(generatedStep.headers && generatedStep.headers["X-Trace"], "adhoc");
+        await page.waitForFunction(() => document.querySelector("#adhocDraftHint").textContent.includes("已生成步骤草稿并复制到剪贴板"));
+        assert.equal(await page.evaluate(() => window.__lastCopiedText), draftText, "生成草稿时应自动复制到剪贴板");
+        await page.locator("#adhocDraftCopyBtn").click();
+        await page.waitForFunction(() => document.querySelector("#adhocDraftHint").textContent.includes("已复制到剪贴板。"));
+        assert.equal(await page.evaluate(() => window.__lastCopiedText), draftText, "复制草稿按钮应复制同一片段");
+        // 恢复后续用例依赖的剪贴板失败态（上面仅为验证草稿复制临时替换）
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: () => Promise.reject(new Error("剪贴板权限拒绝")) },
+                configurable: true
+            });
+            Object.defineProperty(document, "execCommand", { value: () => false, configurable: true });
+        });
         await page.locator("#adhocCloseBtn").click();
 
         await page.locator("#resetBtn").click();
