@@ -17,8 +17,16 @@ function removeWorkspace(workspace) {
     fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 }
 
+// Node 20 的 fs.openAsBlob 在 Blob 被 GC 前不释放文件句柄；Windows 无法删除仍被
+// 占用的文件，会让读取过内容的上传用例在 finally 清理时报 ENOTEMPTY。
+// 仅在 Windows + Node <22 上让这两个用例走 readFileSync 回退，其它平台仍覆盖 openAsBlob。
+const disableOpenAsBlobForCleanup = process.platform === "win32"
+    && Number(process.versions.node.split(".")[0]) < 22;
+
 test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 FormData", async () => {
     const workspace = makeWorkspace();
+    const originalOpenAsBlob = fs.openAsBlob;
+    if (disableOpenAsBlobForCleanup) fs.openAsBlob = undefined;
     try {
         const io = createNodeIo(workspace);
         const upload = await io.createUploadBody({
@@ -37,12 +45,15 @@ test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 
         assert.equal(upload.body.get("note"), "hello");
         assert.equal(upload.body.get("count"), "3");
     } finally {
+        fs.openAsBlob = originalOpenAsBlob;
         removeWorkspace(workspace);
     }
 });
 
 test("createUploadBody：字符串定义回退 file 字段与 basename 文件名", async () => {
     const workspace = makeWorkspace();
+    const originalOpenAsBlob = fs.openAsBlob;
+    if (disableOpenAsBlobForCleanup) fs.openAsBlob = undefined;
     try {
         const io = createNodeIo(workspace);
         const upload = await io.createUploadBody("sample.txt");
@@ -51,6 +62,7 @@ test("createUploadBody：字符串定义回退 file 字段与 basename 文件名
         assert.equal(file.name, "sample.txt");
         assert.equal(await file.text(), "upload-payload");
     } finally {
+        fs.openAsBlob = originalOpenAsBlob;
         removeWorkspace(workspace);
     }
 });
