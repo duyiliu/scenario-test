@@ -240,10 +240,10 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
@@ -348,7 +348,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 14;
+var CONTRACT_VERSION = 15;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -364,7 +364,7 @@ var contract = Object.freeze({
     // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
     // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
     // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
-    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D',
+    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002\u88F8 path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1A\u4EC5\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF1B\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF08\u4E0D\u4EA7\u751F undefined \u6D1E\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\uFF08\u5982 groups[*].members[*].id\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002items[*].id \u4EA7\u51FA [1,2,3]\uFF0C\u53EF\u76F4\u63A5\u914D\u5408 each/length/includes \u7B49\u64CD\u4F5C\u7B26\u65AD\u8A00\u3002',
     // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
     // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
     operators: Object.freeze({
@@ -449,7 +449,7 @@ var contract = Object.freeze({
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D'
+    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -526,7 +526,7 @@ var contract = Object.freeze({
     failurePolicies: Object.freeze(["stop", "continue"])
   }),
   cli: Object.freeze({
-    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
     options: Object.freeze({
       config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
@@ -556,6 +556,21 @@ var contract = Object.freeze({
         prop: "authorization",
         aliases: ["authorization"],
         description: "\uFF08\u5DF2\u5F03\u7528\uFF09\u547D\u4EE4\u884C\u4F20\u9012\u6388\u6743\u4EE4\u724C\uFF1B\u63A8\u8350 SCENARIO_AUTH \u73AF\u5883\u53D8\u91CF"
+      },
+      har: { kind: "value", prop: "har", description: "import\uFF1AHAR \u6587\u4EF6\u8DEF\u5F84\uFF08- \u8868\u793A\u4ECE stdin \u8BFB\u53D6\uFF09" },
+      curl: { kind: "value", prop: "curl", description: "import\uFF1Acurl \u547D\u4EE4\u6587\u672C\uFF1B\u5355\u8BF7\u6C42\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F" },
+      output: {
+        kind: "value",
+        prop: "output",
+        aliases: ["out"],
+        description: "import\uFF1A\u8F93\u51FA\u573A\u666F\u6587\u4EF6\uFF08\u9ED8\u8BA4 scenarios/imported-<ts>.js\uFF09"
+      },
+      host: { kind: "value", prop: "host", description: "import\uFF1A\u4EC5\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\uFF08\u53EF\u9017\u53F7\u5206\u9694\u591A\u4E2A\uFF09" },
+      "max-entries": {
+        kind: "value",
+        prop: "maxEntries",
+        parse: "number",
+        description: "import\uFF1A\u6700\u591A\u5BFC\u5165\u8BF7\u6C42\u6570\uFF0C\u9ED8\u8BA4 50\uFF08\u9632\u8D85\u5927 HAR \u751F\u6210\u5931\u63A7\u573A\u666F\uFF09"
       }
     })
   })
@@ -600,7 +615,7 @@ function normalizeByteLimit(value) {
   return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
 }
 var PATH_SEGMENT = /[^.\[\]]+/y;
-var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\*)\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
 var pathTokenCache = /* @__PURE__ */ new Map();
 function tokenizePath(valuePath) {
@@ -641,6 +656,7 @@ function getByPath(source, valuePath) {
   if (!valuePath) return source;
   const tokens = tokenizePath(valuePath);
   if (!tokens) return void 0;
+  if (tokens.includes("[*]")) return getByWildcardPath(source, tokens);
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
@@ -653,6 +669,41 @@ function getByPath(source, valuePath) {
     cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
   }
   return cursor;
+}
+var WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
+function isWildcardExpansion(value) {
+  return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+}
+function navigatePathToken(cursor, token) {
+  const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+  if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+    return cursor[cursor.length + Number(inner)];
+  }
+  const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
+  return Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
+}
+function walkWildcardPath(cursor, tokens, index) {
+  if (index >= tokens.length) return cursor;
+  const token = tokens[index];
+  if (token === "[*]") {
+    if (!Array.isArray(cursor)) return void 0;
+    const values = [];
+    for (let itemIndex = 0; itemIndex < cursor.length; itemIndex += 1) {
+      if (!Object.prototype.hasOwnProperty.call(cursor, itemIndex)) continue;
+      const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
+      if (result === void 0) continue;
+      if (isWildcardExpansion(result)) {
+        for (const value of result.values) values.push(value);
+      } else values.push(result);
+    }
+    return { [WILDCARD_EXPANSION]: true, values };
+  }
+  if (cursor === void 0 || cursor === null) return void 0;
+  return walkWildcardPath(navigatePathToken(cursor, token), tokens, index + 1);
+}
+function getByWildcardPath(source, tokens) {
+  const result = walkWildcardPath(source, tokens, 0);
+  return isWildcardExpansion(result) ? result.values : result;
 }
 function evalExpression(expression, runtime) {
   const text = String(expression || "").trim();
@@ -816,10 +867,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path7 } = splitUrlFragment(url);
-  const queryIndex = path7.indexOf("?");
+  const { path: path8 } = splitUrlFragment(url);
+  const queryIndex = path8.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path7.slice(queryIndex + 1).split("&")) {
+  for (const pair of path8.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -828,8 +879,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path7, fragment } = splitUrlFragment(text);
-  return `${path7}${path7.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path8, fragment } = splitUrlFragment(text);
+  return `${path8}${path8.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -905,7 +956,7 @@ function validateAssertion(definition, context, options = {}) {
       );
     }
     if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
-      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
+      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\u3001items[*].id\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
     }
   }
   if (options.inEach && (definition.header !== void 0 || definition.target !== void 0 || definition.from !== void 0 && definition.from !== "body" && definition.from !== "vars")) {
@@ -1863,7 +1914,7 @@ function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSe
           !TEMPLATE_OPERATOR_CHARS.test(expression),
           `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
         );
-        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
+        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\u3001items[*].id\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
         continue;
       }
       for (const token of tokens) {
@@ -2078,7 +2129,7 @@ function defineScenario(input) {
         if (item.path !== void 0) {
           invariant(
             typeof item.path === "string" && !item.path.includes("{{") && (item.path === "" || tokenizePath(item.path) !== null),
-            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
+            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
           );
         }
       });
@@ -2976,14 +3027,14 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path7 = context && context.path || resolveString(step.path || "", runtime);
+      const path8 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path7,
+        path: path8,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -3463,7 +3514,7 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 2. \u4E1A\u52A1\u529F\u80FD\u662F\u8BBE\u8BA1\u8FB9\u754C\uFF0C\u573A\u666F\u662F\u8BE5\u529F\u80FD\u4E0B\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84\u3002\u6309\u8BC1\u636E\u8986\u76D6\u6210\u529F\u8DEF\u5F84\u3001\u4E1A\u52A1\u89C4\u5219/\u53C2\u6570\u6821\u9A8C\u3001\u6743\u9650\u3001\u8FB9\u754C\u503C\u3001\u91CD\u590D\u64CD\u4F5C\u6216\u5E42\u7B49\u3001\u5408\u6CD5\u4E0E\u975E\u6CD5\u72B6\u6001\u6D41\u8F6C\uFF1B\u6CA1\u6709\u8BC1\u636E\u7684\u7C7B\u522B\u4E0D\u751F\u6210\u3002\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u5305\u542B\u51C6\u5907\u3001\u6267\u884C\u3001\u67E5\u8BE2\u9A8C\u8BC1\u548C\u7CBE\u786E\u6E05\u7406\u7B49\u591A\u4E2A HTTP \u6B65\u9AA4\uFF0C\u4F46\u8FD9\u4E9B\u6B65\u9AA4\u53EA\u670D\u52A1\u4E8E\u76EE\u6807\u529F\u80FD\uFF0C\u4E0D\u628A\u591A\u4E2A\u4E1A\u52A1\u529F\u80FD\u4E32\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002\u8BA4\u8BC1\u7B49\u516C\u5171\u524D\u7F6E\u53EA\u4F5C\u4E3A\u51C6\u5907\u6B65\u9AA4\uFF0C\u4E0D\u6539\u53D8\u573A\u666F\u5F52\u5C5E\u3002
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u6B65\u9AA4\u7EC4\u5408\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
-5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
+5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
 8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u6309\u8BC1\u636E\u58F0\u660E \`retryUntil.intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E\u53EF\u9009 \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u9650\u7EA6\u675F\u3002
@@ -3488,7 +3539,7 @@ var SCENARIO_PATTERNS = [
   "7. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\uFF1Bfrom: 'headers' \u7684 path \u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF0C\u4E0D\u5199 request.params\uFF1BGET/HEAD \u4E0D\u5199\u8BF7\u6C42\u4F53\uFF08request.body\u3001request.fileUpload \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u53C2\u6570\u4E00\u5F8B\u653E params\u3002",
   "8. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars\u3001variables\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002 \u9700\u8981\u552F\u4E00\u53F7\u7801/\u8BC1\u53F7\u7684\u6D4B\u8BD5\u6570\u636E\u5728 generatedVars \u58F0\u660E\uFF1A\u8EAB\u4EFD\u8BC1 { name, type: 'idcard', birthDate, gender }\u3001\u94F6\u884C\u5361 { name, type: 'luhn', length, prefix }\u3001\u624B\u673A\u53F7 { name, type: 'phone', prefix }\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801 { name, type: 'uscc', regionCode }\uFF0C\u5F15\u64CE\u6309\u8F6E\u6B21\u751F\u6210\u6821\u9A8C\u4F4D\u5408\u6CD5\u4E14\u8DE8\u8F6E\u552F\u4E00\u7684\u503C\uFF0C\u7528 {{vars.<name>}} \u5F15\u7528\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\u7528 timestamp \u7C7B\u578B\uFF1A{ name, type: 'timestamp', offset: '-7d', unit: 's' } \u6216 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }\uFF08offset \u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF1Bformat \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u65F6\u95F4\u6233\u6216\u65E5\u671F\u5B57\u7B26\u4E32\u3002\u4E1A\u52A1\u4E3B\u952E UUID \u7528 { name, type: 'uuid' }\uFF08\u5E26\u8FDE\u5B57\u7B26\uFF09\uFF0C32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u7528 uuidHex\u3002\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 enum\uFF1A{ name, type: 'enum', values: [<\u5019\u9009>], weights: [<\u975E\u8D1F\u6743\u91CD\uFF0C\u53EF\u9009>] }\uFF0C\u7F3A\u7701\u7B49\u6743\u3001\u6743\u91CD 0 \u7684\u5019\u9009\u6C38\u4E0D\u9009\u4E2D\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF1B\u5019\u9009\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u3002",
   "9. \u65E0\u6CD5\u786E\u8BA4\u7684\u5FC5\u586B\u8BF7\u6C42\u503C\u653E\u5165\u914D\u7F6E vars \u7559\u7A7A\uFF0C\u5E76\u5728 variables \u58F0\u660E required: true\uFF1B\u4E0D\u5F97\u7528 PDF\u3001pdf\u3001SUCCESS \u6216 scenario-{{vars.runNo}} \u5145\u5F53\u672A\u77E5\u679A\u4E3E\u3002",
-  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bfrom: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
+  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bpath \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF08items[*].id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 []\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\uFF09\u4E14\u7ED3\u679C\u53EF\u76F4\u63A5\u7528 length/includes/each \u65AD\u8A00\uFF1Bfrom: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
   "",
   "\u4EE5\u4E0B\u6A21\u5F0F\u662F\u529F\u80FD\u573A\u666F\u5185\u90E8\u7684\u6B65\u9AA4\u7EC4\u5408\u3002\u6309\u76EE\u6807\u529F\u80FD\u6240\u9700\u9009\u7528\uFF0C\u4E0D\u8981\u6C42\u5168\u90E8\u4F7F\u7528\uFF0C\u4E5F\u4E0D\u8981\u628A\u6240\u6709\u6A21\u5F0F\u62FC\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002",
   "",
@@ -3766,7 +3817,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 \u5E38\u7528\u80FD\u529B\uFF1A
 
 - \u7528 \`{{vars.name}}\` \u5728 path\u3001Query\u3001Header\u3001Body \u4E2D\u5F15\u7528\u53D8\u91CF\u3002
-- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\uFF1B\u53EF\u9009\u5B57\u6BB5\u53EF\u58F0\u660E \`default\` \u515C\u5E95\u503C\uFF08\u4E0E required \u4E92\u65A5\uFF09\u3002\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\`records[-1]\` \u4E3A\u672B\u9879\uFF09\u3002\`from: "headers"\` \u914D \`path\` \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 \`from: "headers"\`\u3001\`header\` \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002
+- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\uFF1B\u53EF\u9009\u5B57\u6BB5\u53EF\u58F0\u660E \`default\` \u515C\u5E95\u503C\uFF08\u4E0E required \u4E92\u65A5\uFF09\u3002\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\`records[-1]\` \u4E3A\u672B\u9879\uFF09\u3002\u8DEF\u5F84\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF08\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u4E3A\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\uFF09\u3002\`from: "headers"\` \u914D \`path\` \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 \`from: "headers"\`\u3001\`header\` \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002
 - \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\u7528 \`gte: 5\`\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF0C\u975E\u8D1F\u6574\u6570\u7B49\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF09\u3002
 - \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CNode CLI \u5F53\u524D\u4E0D\u63D0\u4F9B\u81EA\u52A8 Cookie Jar\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
@@ -4360,6 +4411,733 @@ function renderDoctorText(report) {
   return lines.join("\n");
 }
 
+// src/import.js
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
+var DEFAULT_MAX_IMPORT_ENTRIES = 50;
+var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".css",
+  ".map",
+  ".html",
+  ".htm",
+  ".xhtml",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".ico",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".br"
+]);
+var IGNORED_REQUEST_HEADERS = /* @__PURE__ */ new Set([
+  "host",
+  "content-length",
+  "connection",
+  "proxy-connection",
+  "accept-encoding",
+  "transfer-encoding",
+  "upgrade",
+  "te",
+  "trailer",
+  "priority"
+]);
+var SENSITIVE_HEADER_NAMES = /* @__PURE__ */ new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "api-key",
+  "apikey",
+  "x-apikey",
+  "x-auth-token",
+  "x-access-token",
+  "x-token",
+  "x-client-secret",
+  "x-secret"
+]);
+var SENSITIVE_QUERY_NAMES = /* @__PURE__ */ new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "api_key",
+  "apikey",
+  "key",
+  "secret",
+  "client_secret",
+  "password",
+  "passwd",
+  "pwd",
+  "signature",
+  "sign",
+  "sig",
+  "authorization",
+  "auth",
+  "session",
+  "sessionid",
+  "cookie"
+]);
+var BINARY_MIME_PATTERN = /^(?:image\/|audio\/|video\/|font\/)|application\/(?:octet-stream|pdf|zip|gzip)$/i;
+var MULTIPART_MIME_PATTERN = /^multipart\//i;
+var ImportError = class extends Error {
+  constructor(message, hint) {
+    super(message);
+    this.name = "ImportError";
+    this.hint = hint || "";
+  }
+};
+function isEmpty(value) {
+  return value === void 0 || value === null || value === "";
+}
+function safeText(value) {
+  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+}
+function normalizeHeaders(headers) {
+  const pairs = [];
+  if (Array.isArray(headers)) {
+    for (const item of headers) {
+      if (!item) continue;
+      if (Array.isArray(item) && item.length >= 2) {
+        pairs.push([String(item[0]), String(item[1])]);
+        continue;
+      }
+      if (typeof item !== "object" || item.name === void 0 || item.value === void 0) continue;
+      pairs.push([String(item.name), String(item.value)]);
+    }
+  } else if (headers && typeof headers === "object") {
+    for (const [name, value] of Object.entries(headers)) {
+      if (value === void 0 || value === null) continue;
+      pairs.push([String(name), Array.isArray(value) ? value.join(", ") : String(value)]);
+    }
+  }
+  const result = [];
+  const seen = /* @__PURE__ */ new Map();
+  for (const [rawName, rawValue] of pairs) {
+    const name = rawName.trim();
+    if (!name || name.startsWith(":") || IGNORED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
+    const lower = name.toLowerCase();
+    const value = rawValue.trim();
+    if (seen.has(lower)) {
+      const existing = seen.get(lower);
+      existing.value = `${existing.value}${lower === "cookie" ? "; " : ", "}${value}`;
+      continue;
+    }
+    const entry = { name, value };
+    seen.set(lower, entry);
+    result.push(entry);
+  }
+  return result;
+}
+function headerVariableName(name) {
+  const normalized = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "secret";
+}
+function maskSensitiveHeaders(headers) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const result = {};
+  for (const { name, value } of headers) {
+    const lower = name.toLowerCase();
+    const sensitive = SENSITIVE_HEADER_NAMES.has(lower) || lower.endsWith("-token") || lower.endsWith("_token") || lower.includes("token") || lower.endsWith("-secret") || lower.endsWith("_secret") || lower.includes("secret") || lower.endsWith("-key") || lower.endsWith("_key") || lower.includes("apikey") || lower.includes("auth");
+    if (!sensitive || value.includes("{{")) {
+      result[name] = value;
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    result[name] = `{{vars.${variableName}}}`;
+    vars[variableName] = "";
+    notices.push(`${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { headers: result, vars, notices };
+}
+function isSensitiveQueryName(name) {
+  const lower = String(name).toLowerCase();
+  return SENSITIVE_QUERY_NAMES.has(lower) || lower.endsWith("_token") || lower.endsWith("-token") || lower.endsWith("_key") || lower.endsWith("-key") || lower.endsWith("_secret") || lower.endsWith("-secret");
+}
+function maskQueryParams(value) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const entries = [];
+  for (const [name, raw] of value) {
+    if (!isSensitiveQueryName(name) || String(raw).includes("{{")) {
+      entries.push([name, raw]);
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    entries.push([name, `{{vars.${variableName}}}`]);
+    vars[variableName] = "";
+    notices.push(`\u67E5\u8BE2\u53C2\u6570 ${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { params: Object.fromEntries(entries), vars, notices };
+}
+function parseHttpUrl(raw, label) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    throw new ImportError(`${label}\u4E0D\u662F\u5408\u6CD5\u7684 URL: ${safeText(raw)}`);
+  }
+  if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname) {
+    throw new ImportError(`${label}\u53EA\u652F\u6301 http(s) URL: ${safeText(raw)}`);
+  }
+  return parsed;
+}
+function redactUrlForComment(raw) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    return safeText(raw);
+  }
+  parsed.username = "";
+  parsed.password = "";
+  for (const key of Array.from(parsed.searchParams.keys())) {
+    if (isSensitiveQueryName(key)) parsed.searchParams.set(key, "<redacted>");
+  }
+  return parsed.toString();
+}
+function urlToStepPath(parsed) {
+  return parsed.pathname || "/";
+}
+function queryFromUrl(parsed) {
+  const values = /* @__PURE__ */ new Map();
+  for (const [name, value] of parsed.searchParams) {
+    if (!values.has(name)) values.set(name, value);
+    else if (Array.isArray(values.get(name))) values.get(name).push(value);
+    else values.set(name, [values.get(name), value]);
+  }
+  return Array.from(values);
+}
+function isStaticOrPreflight(entry) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  if (method === "OPTIONS") return true;
+  const headers = Array.isArray(request.headers) ? request.headers : [];
+  if (headers.some((header) => String(header?.name || "").toLowerCase() === "access-control-request-method")) return true;
+  let parsed;
+  try {
+    parsed = new URL(String(request.url || ""));
+  } catch {
+    return true;
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) return true;
+  const extension = import_node_path6.default.extname(parsed.pathname).toLowerCase();
+  if (STATIC_EXTENSIONS.has(extension)) return true;
+  const mimeType = String(entry?.response?.content?.mimeType || "");
+  if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
+  return /^(?:image\/|audio\/|video\/|font\/|text\/css$|application\/(?:javascript|pdf|zip|gzip)$)/i.test(mimeType);
+}
+function bodyFromHar(request, notes, headers) {
+  const postData = request?.postData;
+  if (!postData || isEmpty(postData.text) && !Array.isArray(postData.params)) return { body: void 0 };
+  const mimeType = String(postData.mimeType || "");
+  let text = postData.text;
+  if (postData.encoding === "base64") {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A base64 \u7F16\u7801\u7684\u4E8C\u8FDB\u5236\u5185\u5BB9\uFF0C\u5DF2\u7701\u7565\uFF08\u539F MIME: ${mimeType || "unknown"}\uFF09`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (isEmpty(text) && Array.isArray(postData.params) && postData.params.length) {
+    if (MULTIPART_MIME_PATTERN.test(mimeType)) {
+      notes.push(`\u8BF7\u6C42\u4F53\u4E3A multipart/form-data\uFF0C\u5DF2\u7701\u7565\uFF08\u542B\u6587\u4EF6/\u4E8C\u8FDB\u5236\u5B57\u6BB5\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload\uFF09`);
+      removeContentType(headers);
+      return { body: void 0 };
+    }
+    if (/x-www-form-urlencoded/i.test(mimeType)) {
+      text = postData.params.map((item) => `${encodeURIComponent(String(item.name ?? ""))}=${encodeURIComponent(String(item.value ?? ""))}`).join("&");
+    }
+  }
+  if (isEmpty(text)) return { body: void 0 };
+  const bodyText = String(text);
+  if (BINARY_MIME_PATTERN.test(mimeType) || MULTIPART_MIME_PATTERN.test(mimeType) || bodyText.includes("\0") || bodyText.includes("\uFFFD")) {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A\u4E8C\u8FDB\u5236\u6216\u4E0D\u652F\u6301\u7684\u683C\u5F0F\uFF08MIME: ${mimeType || "unknown"}\uFF09\uFF0C\u5DF2\u7701\u7565\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload/\u539F\u59CB body`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (/json/i.test(mimeType) || /^[\[{]/.test(bodyText.trim())) {
+    try {
+      return { body: JSON.parse(bodyText) };
+    } catch {
+      return { body: bodyText };
+    }
+  }
+  return { body: bodyText };
+}
+function removeContentType(headers) {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === "content-type") delete headers[key];
+  }
+}
+function harEntryToStep(entry, index) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  const parsed = parseHttpUrl(request.url, `HAR \u7B2C ${index + 1} \u6761\u8BF7\u6C42`);
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(request.headers));
+  const notes = [];
+  const body = bodyFromHar(request, notes, maskedHeaders.headers);
+  const responseStatus = Number(entry?.response?.status);
+  const validResponseStatus = Number.isInteger(responseStatus) && responseStatus >= 100 && responseStatus <= 599;
+  const status = validResponseStatus ? responseStatus : 200;
+  if (!validResponseStatus) {
+    notes.push("HAR \u672A\u63D0\u4F9B\u6709\u6548\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4");
+  }
+  let requestBody = body.body;
+  if (requestBody !== void 0 && ["GET", "HEAD"].includes(method)) {
+    notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+    removeContentType(maskedHeaders.headers);
+    requestBody = void 0;
+  }
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (requestBody !== void 0) requestDefinition.body = requestBody;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = status;
+  return {
+    step,
+    notes: [
+      `\u6E90\u8BF7\u6C42: ${method} ${redactUrlForComment(request.url)}`,
+      `status: ${status} \u6765\u81EA HAR \u89C2\u6D4B\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4\u65AD\u8A00\u662F\u5426\u9002\u5E94\u5176\u4ED6\u73AF\u5883`,
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ],
+    vars: { ...maskedHeaders.vars, ...maskedQuery.vars },
+    binaryBody: notes.some((note) => note.includes("\u4E8C\u8FDB\u5236") || note.includes("multipart"))
+  };
+}
+function normalizeHar(input) {
+  let har = input;
+  if (typeof har === "string") {
+    try {
+      har = JSON.parse(har);
+    } catch (error) {
+      throw new ImportError(`HAR \u4E0D\u662F\u5408\u6CD5 JSON: ${error.message}`, "\u8BF7\u786E\u8BA4\u5BFC\u51FA\u7684\u662F\u6D4F\u89C8\u5668/\u4EE3\u7406\u751F\u6210\u7684\u5B8C\u6574 HAR \u6587\u4EF6\u3002");
+    }
+  }
+  if (!har || typeof har !== "object" || !har.log || !Array.isArray(har.log.entries)) {
+    throw new ImportError("HAR \u7F3A\u5C11 log.entries \u6570\u7EC4", "\u8BF7\u786E\u8BA4\u6587\u4EF6\u6765\u81EA\u6D4F\u89C8\u5668 Network \u9762\u677F\u6216\u6293\u5305\u5DE5\u5177\u7684 HAR \u5BFC\u51FA\u3002");
+  }
+  return har;
+}
+function parseHostFilter(value) {
+  return String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+function createHarDraft(input, options = {}) {
+  const har = normalizeHar(input);
+  const maxEntries = Number.isFinite(Number(options.maxEntries)) && Number(options.maxEntries) > 0 ? Math.floor(Number(options.maxEntries)) : DEFAULT_MAX_IMPORT_ENTRIES;
+  const hostList = Array.isArray(options.hosts) ? options.hosts : options.hosts ? [options.hosts] : [];
+  const hosts = new Set(hostList.map((host) => String(host).toLowerCase()));
+  const stats = {
+    total: har.log.entries.length,
+    imported: 0,
+    filteredStatic: 0,
+    filteredHost: 0,
+    filteredInvalid: 0,
+    omittedByLimit: 0,
+    binaryBodies: 0,
+    maskedFields: 0
+  };
+  const records = [];
+  const vars = {};
+  for (let entryIndex = 0; entryIndex < har.log.entries.length; entryIndex += 1) {
+    const entry = har.log.entries[entryIndex];
+    const request = entry?.request;
+    if (!request || isEmpty(request.url)) {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    if (isStaticOrPreflight(entry)) {
+      stats.filteredStatic += 1;
+      continue;
+    }
+    let host;
+    try {
+      host = new URL(String(request.url)).host.toLowerCase();
+    } catch {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    let hostname = "";
+    try {
+      hostname = new URL(String(request.url)).hostname.toLowerCase();
+    } catch {
+    }
+    if (hosts.size && !hosts.has(host) && !hosts.has(hostname)) {
+      stats.filteredHost += 1;
+      continue;
+    }
+    if (records.length >= maxEntries) {
+      stats.omittedByLimit += 1;
+      continue;
+    }
+    let record;
+    try {
+      record = harEntryToStep(entry, entryIndex);
+    } catch (error) {
+      if (error instanceof ImportError) {
+        stats.filteredInvalid += 1;
+        continue;
+      }
+      throw error;
+    }
+    records.push(record);
+    Object.assign(vars, record.vars);
+    stats.imported += 1;
+    stats.binaryBodies += record.binaryBody ? 1 : 0;
+    stats.maskedFields += record.notes.filter((note) => note.includes("\u5DF2\u66FF\u6362\u4E3A {{vars.")).length;
+  }
+  return {
+    scenario: {
+      name: "\u5BFC\u5165\u6D41\u91CF\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: records.map((record) => record.step)
+    },
+    stepNotes: records.map((record) => record.notes),
+    stats,
+    source: options.source || "HAR"
+  };
+}
+function tokenizeCurl(command) {
+  const text = String(command || "");
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  let hasToken = false;
+  const push = () => {
+    if (!hasToken) return;
+    tokens.push(current);
+    current = "";
+    hasToken = false;
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quote === "'") {
+      if (char === "'") quote = "";
+      else current += char;
+      hasToken = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') {
+        quote = "";
+      } else if (char === "\\" && ['"', "\\", "$", "`"].includes(next)) {
+        current += next;
+        index += 1;
+      } else {
+        current += char;
+      }
+      hasToken = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+      continue;
+    }
+    if (char === "\\") {
+      if (next === "\n") {
+        index += 1;
+        continue;
+      }
+      if (next === "\r" && text[index + 2] === "\n") {
+        index += 2;
+        continue;
+      }
+      if (next !== void 0) {
+        current += next;
+        index += 1;
+        hasToken = true;
+      }
+      continue;
+    }
+    if ((char === "`" || char === "^") && (next === "\n" || next === "\r" && text[index + 2] === "\n")) {
+      index += next === "\r" ? 2 : 1;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      push();
+      continue;
+    }
+    current += char;
+    hasToken = true;
+  }
+  if (quote) throw new ImportError("curl \u547D\u4EE4\u4E2D\u7684\u5F15\u53F7\u672A\u95ED\u5408", "\u8BF7\u68C0\u67E5\u5355\u5F15\u53F7/\u53CC\u5F15\u53F7\u662F\u5426\u6210\u5BF9\u540E\u518D\u91CD\u8BD5\u3002");
+  push();
+  if (tokens[0] === "$" || tokens[0] === ">" || /^PS[^>]*>$/i.test(tokens[0] || "")) tokens.shift();
+  if (tokens.length && /(?:^|[\\/])curl(?:\.exe)?$/i.test(tokens[0])) tokens.shift();
+  return tokens;
+}
+var CURL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set([
+  "--max-time",
+  "--connect-timeout",
+  "--retry",
+  "--retry-delay",
+  "--proxy",
+  "-x",
+  "--cacert",
+  "--cert",
+  "--key",
+  "--output",
+  "-o",
+  "--output-dir",
+  "--write-out",
+  "-w"
+]);
+function curlHeaderValue(value) {
+  const separator = String(value).indexOf(":");
+  if (separator <= 0) return null;
+  return [String(value).slice(0, separator).trim(), String(value).slice(separator + 1).trim()];
+}
+function createCurlDraft(command, options = {}) {
+  const tokens = tokenizeCurl(command);
+  if (!tokens.length) throw new ImportError("curl \u547D\u4EE4\u4E3A\u7A7A", '\u793A\u4F8B\uFF1Ascenario-test import --curl "curl -X GET https://api.example.com/health"');
+  let method = "";
+  let methodExplicit = false;
+  let url = "";
+  let hasData = false;
+  let isGet = false;
+  let isHead = false;
+  const headerPairs = [];
+  const dataParts = [];
+  const formParts = [];
+  const notes = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const takeValue = (option) => {
+      const value = tokens[index + 1];
+      if (value === void 0) throw new ImportError(`curl \u9009\u9879 ${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
+      index += 1;
+      return value;
+    };
+    if (token === "-X" || token === "--request") {
+      method = takeValue(token).toUpperCase();
+      methodExplicit = true;
+    } else if (token === "-H" || token === "--header") {
+      const pair = curlHeaderValue(takeValue(token));
+      if (pair) headerPairs.push(pair);
+    } else if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
+      dataParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "--json") {
+      dataParts.push(takeValue(token));
+      hasData = true;
+      headerPairs.push(["Content-Type", "application/json"]);
+      headerPairs.push(["Accept", "application/json"]);
+    } else if (token === "-F" || token === "--form") {
+      formParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "-b" || token === "--cookie") {
+      headerPairs.push(["Cookie", takeValue(token)]);
+    } else if (token === "-u" || token === "--user") {
+      const credentials = takeValue(token);
+      headerPairs.push(["Authorization", `Basic ${Buffer.from(credentials).toString("base64")}`]);
+    } else if (token === "-A" || token === "--user-agent") {
+      headerPairs.push(["User-Agent", takeValue(token)]);
+    } else if (token === "-e" || token === "--referer") {
+      headerPairs.push(["Referer", takeValue(token)]);
+    } else if (token === "--url") {
+      url = takeValue(token);
+    } else if (token === "-G" || token === "--get") {
+      isGet = true;
+    } else if (token === "-I" || token === "--head") {
+      isHead = true;
+    } else if (token === "-L" || token === "--location" || token === "-k" || token === "--insecure" || token === "-s" || token === "--silent" || token === "-S" || token === "--show-error" || token === "--compressed" || token === "-i" || token === "--include" || token === "-v" || token === "--verbose") {
+    } else if (CURL_OPTIONS_WITH_VALUE.has(token)) {
+      takeValue(token);
+    } else if (token.startsWith("--") && token.includes("=")) {
+    } else if (token.startsWith("-")) {
+    } else if (!url) {
+      url = token;
+    }
+  }
+  if (!url) throw new ImportError("\u65E0\u6CD5\u4ECE curl \u547D\u4EE4\u4E2D\u8BC6\u522B URL", "\u8BF7\u786E\u8BA4\u547D\u4EE4\u5305\u542B\u5B8C\u6574 URL\uFF0C\u6216\u4F7F\u7528 --url \u660E\u786E\u6307\u5B9A\u3002");
+  if (!method) method = isHead ? "HEAD" : hasData ? "POST" : "GET";
+  if (isGet && !methodExplicit) method = "GET";
+  if (isHead) method = "HEAD";
+  if (isGet && method === "GET") hasData = true;
+  let parsed = parseHttpUrl(url, "curl \u547D\u4EE4\u4E2D\u7684 URL");
+  if (parsed.username || parsed.password) {
+    notes.push("URL \u4E2D\u7684\u7528\u6237\u540D/\u5BC6\u7801\u5DF2\u79FB\u9664\uFF1B\u5982\u9700\u8BA4\u8BC1\u8BF7\u901A\u8FC7 vars \u63D0\u4F9B Authorization");
+    parsed = new URL(parsed.toString());
+    parsed.username = "";
+    parsed.password = "";
+  }
+  const formData = formParts.length > 0;
+  if (formData) notes.push("curl -F/--form \u4E3A multipart/form-data\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u8865\u5145\u8868\u5355\u5B57\u6BB5");
+  let body;
+  if (!formData && dataParts.length) {
+    const rawBody = dataParts.join("&");
+    if (rawBody.startsWith("@")) {
+      notes.push("curl \u8BF7\u6C42\u4F53\u5F15\u7528 @\u6587\u4EF6\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u539F\u59CB body");
+    } else if (["GET", "HEAD"].includes(method) || isGet) {
+      if (isGet || method === "GET") {
+        const extra = new URLSearchParams(rawBody);
+        for (const [name, value] of extra) parsed.searchParams.append(name, value);
+        notes.push("curl -G/GET \u7684 -d \u6570\u636E\u5DF2\u8F6C\u4E3A query \u53C2\u6570");
+      } else {
+        notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+      }
+    } else {
+      const contentType2 = headerPairs.find(([name]) => name.toLowerCase() === "content-type")?.[1] || "";
+      if (/json/i.test(contentType2) || /^[\[{]/.test(rawBody.trim())) {
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          body = rawBody;
+        }
+      } else {
+        body = rawBody;
+      }
+    }
+  }
+  if (body !== void 0 && typeof body === "string" && !/^[\[{]/.test(body.trim()) && !headerPairs.some(([name]) => name.toLowerCase() === "content-type")) {
+    headerPairs.push(["Content-Type", "application/x-www-form-urlencoded"]);
+  }
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(headerPairs));
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (body !== void 0) requestDefinition.body = body;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = 200;
+  const vars = { ...maskedHeaders.vars, ...maskedQuery.vars };
+  return {
+    scenario: {
+      name: "\u5BFC\u5165 curl \u8BF7\u6C42\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: [step]
+    },
+    stepNotes: [[
+      `\u6765\u6E90: curl \u5BFC\u5165\uFF08\u654F\u611F\u5934\u5DF2\u8131\u654F\uFF09`,
+      "curl \u672A\u63D0\u4F9B\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u6309\u5B9E\u9645\u63A5\u53E3\u8C03\u6574",
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ]],
+    stats: {
+      total: 1,
+      imported: 1,
+      filteredStatic: 0,
+      filteredHost: 0,
+      filteredInvalid: 0,
+      omittedByLimit: 0,
+      binaryBodies: notes.some((note) => note.includes("\u7701\u7565")) ? 1 : 0,
+      maskedFields: maskedHeaders.notices.length + maskedQuery.notices.length
+    },
+    source: options.source || "curl \u547D\u4EE4"
+  };
+}
+function indent(text, prefix) {
+  return String(text).split("\n").map((line) => `${prefix}${line}`).join("\n");
+}
+function indentAfterFirst(text, prefix) {
+  const lines = String(text).split("\n");
+  return `${lines[0]}${lines.slice(1).map((line) => `
+${prefix}${line}`).join("")}`;
+}
+function comment(text, prefix) {
+  return `${prefix}// ${safeText(text)}`;
+}
+function renderStep(step, notes, indentText) {
+  const lines = [];
+  for (const note of notes || []) lines.push(comment(note, indentText));
+  const literal = JSON.stringify(step, null, 4);
+  lines.push(indent(literal, indentText) + ",");
+  return lines.join("\n");
+}
+function renderDraftFile(draft, meta = {}) {
+  const id = String(meta.id || "imported-scenario");
+  const generatedAt = meta.generatedAt || (/* @__PURE__ */ new Date()).toISOString();
+  const stats = draft.stats || {};
+  const scenario = draft.scenario || {};
+  const lines = [];
+  lines.push(`// \u7531 scenario-test import \u751F\u6210\uFF08${safeText(draft.source || "unknown")}\uFF09`);
+  lines.push(`// \u751F\u6210\u65F6\u95F4\uFF1A${safeText(generatedAt)}`);
+  lines.push("// \u26A0\uFE0F \u8349\u7A3F\u6587\u4EF6\uFF1Astatus \u6765\u81EA\u6D41\u91CF\u89C2\u6D4B\u6216\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u6838\u5BF9\u6B65\u9AA4\u3001\u8BA4\u8BC1\u3001\u52A8\u6001\u5B57\u6BB5\u4E0E\u65AD\u8A00\u540E\u518D\u7EB3\u5165\u56DE\u5F52\u3002");
+  if (stats.total !== void 0) {
+    const filtered = (stats.filteredStatic || 0) + (stats.filteredInvalid || 0);
+    lines.push(`// \u626B\u63CF ${stats.total} \u6761\u8BF7\u6C42\uFF0C\u5BFC\u5165 ${stats.imported || 0} \u6761\uFF1B\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90/\u9884\u68C0/\u65E0\u6548\u8BF7\u6C42 ${filtered} \u6761\uFF0C\u4E3B\u673A\u8FC7\u6EE4 ${stats.filteredHost || 0} \u6761\uFF0C\u8D85\u51FA\u4E0A\u9650 ${stats.omittedByLimit || 0} \u6761\u3002`);
+  }
+  if ((stats.maskedFields || 0) > 0) {
+    lines.push("// \u654F\u611F\u8BF7\u6C42\u5934/\u67E5\u8BE2\u53C2\u6570\u5DF2\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D\uFF1B\u8BF7\u5728 scenario.config.js \u7684 vars \u6216 --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u5207\u52FF\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  if ((stats.binaryBodies || 0) > 0) {
+    lines.push("// \u4E8C\u8FDB\u5236/\u4E0D\u652F\u6301\u683C\u5F0F\u7684\u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF0C\u5BF9\u5E94\u6B65\u9AA4\u4E0A\u65B9\u6709\u8BF4\u660E\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload \u6216\u539F\u59CB body\u3002");
+  }
+  lines.push(`ScenarioTest.registerScenario(${JSON.stringify(id)}, ScenarioTest.defineScenario({`);
+  lines.push(`    name: ${JSON.stringify(scenario.name || "\u5BFC\u5165\u573A\u666F\u8349\u7A3F")},`);
+  if (scenario.vars && Object.keys(scenario.vars).length) {
+    const varsLiteral = JSON.stringify(scenario.vars, null, 4);
+    lines.push(`    vars: ${indentAfterFirst(varsLiteral, "    ")},`);
+  }
+  lines.push("    steps: [");
+  (scenario.steps || []).forEach((step, index) => {
+    lines.push(renderStep(step, draft.stepNotes?.[index], "        "));
+  });
+  lines.push("    ]");
+  lines.push("}));");
+  lines.push("");
+  return lines.join("\n");
+}
+function readHarFile(filePath) {
+  try {
+    return import_node_fs6.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+  } catch (error) {
+    throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
+  }
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -4431,7 +5209,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4560,6 +5338,14 @@ ${optionHelp}
   doctor                \u9879\u76EE\u9759\u6001\u4F53\u68C0\uFF1ANode \u7248\u672C\u3001\u914D\u7F6E/\u573A\u666F\u52A0\u8F7D\u3001DSL \u6821\u9A8C
                         \u4E0E AI \u89C4\u5219\u5C31\u7EEA\u68C0\u67E5\uFF1B\u6709 FAIL \u65F6\u9000\u51FA\u7801 1
 
+\u5BFC\u5165\u547D\u4EE4:
+  import --har <file>   \u89E3\u6790\u6D4F\u89C8\u5668/\u6293\u5305 HAR\uFF0C\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90\u4E0E OPTIONS \u9884\u68C0\uFF0C
+                        \u4E3A\u6BCF\u4E2A API \u8BF7\u6C42\u751F\u6210\u53EF\u91CD\u653E\u7684\u573A\u666F\u6B65\u9AA4\u8349\u7A3F
+  import --curl "<cmd>" \u89E3\u6790\u5355\u6761 curl\uFF0C\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F\uFF1BAuthorization/Cookie
+                        \u7B49\u654F\u611F\u5934\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D
+  --output <file>       \u81EA\u5B9A\u4E49\u8F93\u51FA\u6587\u4EF6\uFF1B\u9ED8\u8BA4 scenarios/imported-<ts>.js
+  --host <host,...>     \u53EA\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\u7684\u8BF7\u6C42\uFF1B--max-entries \u9650\u5236\u5BFC\u5165\u6761\u6570\uFF08\u9ED8\u8BA4 50\uFF09
+
 \u8BA4\u8BC1\u9009\u9879:
   \u73AF\u5883\u53D8\u91CF SCENARIO_AUTH       \u63A8\u8350\u65B9\u5F0F\uFF0C\u8BBE\u7F6E\u6388\u6743\u4EE4\u724C\uFF1B\u907F\u514D\u4EE4\u724C\u8FDB\u5165\u8FDB\u7A0B\u53C2\u6570\u3002
 
@@ -4580,17 +5366,17 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path6.default.resolve(projectRoot, relativePath);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, content, "utf8");
+  const target = import_node_path7.default.resolve(projectRoot, relativePath);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path6.default.resolve(projectRoot, directory);
-  const relative = import_node_path6.default.relative(projectRoot, target);
-  if (!directory || import_node_path6.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) {
+  const target = import_node_path7.default.resolve(projectRoot, directory);
+  const relative = import_node_path7.default.relative(projectRoot, target);
+  if (!directory || import_node_path7.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
   }
   return directory;
@@ -4615,30 +5401,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs6.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs7.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), fileName),
-    import_node_path6.default.resolve(import_node_path6.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), fileName),
+    import_node_path7.default.resolve(import_node_path7.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = import_node_path6.default.resolve(process.argv[1]);
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = import_node_path7.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.copyFileSync(source, target);
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs6.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs6.default.existsSync(candidate));
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
+  if (import_node_fs7.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs7.default.existsSync(candidate));
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs6.default.copyFileSync(source, target);
+    import_node_fs7.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -4647,7 +5433,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs6.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs7.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -4660,7 +5446,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs6.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs7.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -4673,20 +5459,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(target), { recursive: true });
-  import_node_fs6.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
+  import_node_fs7.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs6.default.existsSync(lockPath)) return true;
+  if (!import_node_fs7.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs6.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs7.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -4702,14 +5488,14 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path6.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path7.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path6.default.basename(projectRoot).trim() || "project";
+  const projectName = import_node_path7.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs6.default.existsSync(import_node_path6.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs7.default.existsSync(import_node_path7.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -4741,7 +5527,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs6.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs7.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -4753,12 +5539,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path6.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path7.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path6.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs6.default.existsSync(candidate)) {
+  const candidate = import_node_path7.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs7.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -4778,7 +5564,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path6.default.isAbsolute(pluginPath) ? pluginPath : import_node_path6.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path7.default.isAbsolute(pluginPath) ? pluginPath : import_node_path7.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -4835,7 +5621,7 @@ function configVariables(config, overrides = {}) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path6.default.dirname(configPath);
+  const configDir = import_node_path7.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -4911,7 +5697,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path6.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path7.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -5079,9 +5865,9 @@ function printFailedStepBody(result, print = console.log) {
   for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
 function safeFile(root, relativePath) {
-  const candidate = import_node_path6.default.resolve(root, relativePath);
-  const relative = import_node_path6.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path6.default.isAbsolute(relative)) return null;
+  const candidate = import_node_path7.default.resolve(root, relativePath);
+  const relative = import_node_path7.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path7.default.isAbsolute(relative)) return null;
   return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 function contentType(filePath) {
@@ -5092,12 +5878,12 @@ function contentType(filePath) {
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
     ".txt": "text/plain; charset=utf-8"
-  }[import_node_path6.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+  }[import_node_path7.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 function serveStaticFile(response, filePath) {
   const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path6.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs6.default.createReadStream(filePath);
+  if (import_node_path7.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs7.default.createReadStream(filePath);
     stream.on("error", () => {
       if (response.headersSent) {
         response.destroy();
@@ -5112,7 +5898,7 @@ function serveStaticFile(response, filePath) {
     });
     return;
   }
-  import_node_fs6.default.readFile(filePath, "utf8", function(error, html) {
+  import_node_fs7.default.readFile(filePath, "utf8", function(error, html) {
     if (error) {
       response.writeHead(500);
       response.end("Internal Server Error");
@@ -5233,8 +6019,8 @@ function isAllowedServeHost(hostHeader, port) {
 }
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path6.default.dirname(configPath);
-  const libraryDist = import_node_path6.default.dirname(import_node_path6.default.resolve(process.argv[1]));
+  const workspace = import_node_path7.default.dirname(configPath);
+  const libraryDist = import_node_path7.default.dirname(import_node_path7.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const { key: proxyEnvKey, target: proxyTarget } = resolveServeProxyTarget(config, args.env, args.baseUrl);
   const server = import_node_http.default.createServer((request, response) => {
@@ -5246,11 +6032,11 @@ async function serveCommand(args) {
       }
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
       let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path6.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path7.default.join(libraryDist, "scenario-test.umd.js");
       } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
         filePath = safeFile(workspace, relativePath);
@@ -5260,7 +6046,7 @@ async function serveCommand(args) {
         response.end("Forbidden");
         return;
       }
-      import_node_fs6.default.stat(filePath, (error, stat) => {
+      import_node_fs7.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
           if (proxyTarget) {
             proxyRequest(request, response, proxyTarget);
@@ -5294,6 +6080,80 @@ async function serveCommand(args) {
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }
+function importTimestamp(date = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+function scenarioIdFromOutput(output, timestamp) {
+  const stem = import_node_path7.default.basename(output, import_node_path7.default.extname(output)).trim();
+  const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
+  return normalized || `imported-${timestamp}`;
+}
+function defaultImportOutput(timestamp) {
+  let candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let suffix = 2;
+  while (import_node_fs7.default.existsSync(candidate)) {
+    candidate = import_node_path7.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+    suffix += 1;
+  }
+  return candidate;
+}
+function importCommand(args) {
+  if (args.har && args.curl) {
+    throw new CliUsageError("--har \u4E0E --curl \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u4E00\u6B21\u5BFC\u5165\u53EA\u9009\u62E9\u4E00\u79CD\u6765\u6E90\uFF1AHAR \u6587\u4EF6\u6216\u5355\u6761 curl \u547D\u4EE4\u3002");
+  }
+  if (!args.har && !args.curl) {
+    throw new CliUsageError(
+      "import \u9700\u8981 --har \u6216 --curl",
+      '\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs import --har session.har\uFF1B\u6216 import --curl "curl -X GET https://api.example.com/health"\u3002'
+    );
+  }
+  const maxEntries = Number(args.maxEntries);
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
+  }
+  const timestamp = importTimestamp();
+  const output = args.output ? import_node_path7.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const id = scenarioIdFromOutput(output, timestamp);
+  let draft;
+  try {
+    draft = args.har ? createHarDraft(readHarFile(args.har), {
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path7.default.basename(args.har),
+      maxEntries,
+      hosts: parseHostFilter(args.host)
+    }) : createCurlDraft(args.curl);
+  } catch (error) {
+    if (error instanceof ImportError) throw new CliUsageError(error.message, error.hint || void 0);
+    throw error;
+  }
+  if (!draft.scenario.steps.length) {
+    throw new CliUsageError(
+      `\u672A\u4ECE ${args.har ? "HAR " : "curl \u547D\u4EE4"}\u4E2D\u89E3\u6790\u51FA\u53EF\u5BFC\u5165\u7684 API \u8BF7\u6C42`,
+      "HAR \u53EF\u80FD\u53EA\u5305\u542B\u9759\u6001\u8D44\u6E90\u3001\u9884\u68C0\u8BF7\u6C42\u6216\u88AB --host/--max-entries \u8FC7\u6EE4\uFF1B\u8BF7\u68C0\u67E5\u8F93\u5165\u4E0E\u8FC7\u6EE4\u6761\u4EF6\u3002"
+    );
+  }
+  const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(output), { recursive: true });
+  import_node_fs7.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path7.default.relative(process.cwd(), output).split(import_node_path7.default.sep).join("/") || output;
+  console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
+  console.log(`\u573A\u666F id: ${id}`);
+  console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
+  if (draft.stats) {
+    const filtered = (draft.stats.filteredStatic || 0) + (draft.stats.filteredInvalid || 0);
+    console.log(`\u626B\u63CF\u8BF7\u6C42: ${draft.stats.total}\uFF1B\u8FC7\u6EE4\u9759\u6001/\u9884\u68C0/\u65E0\u6548 ${filtered}\uFF1B\u4E3B\u673A\u8FC7\u6EE4 ${draft.stats.filteredHost || 0}\uFF1B\u8D85\u51FA\u4E0A\u9650 ${draft.stats.omittedByLimit || 0}`);
+  }
+  const variables = Object.keys(draft.scenario.vars || {});
+  if (variables.length) {
+    console.log(`\u654F\u611F\u5934/\u67E5\u8BE2\u53C2\u6570\u5360\u4F4D\u53D8\u91CF: ${variables.join(", ")}`);
+    console.log("\u63D0\u793A: \u8BF7\u5728 scenario.config.js \u7684 vars \u6216 run --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u4E0D\u8981\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  console.log(`\u63D0\u793A: \u5728 scenario.config.js \u7684 scenarios \u4E2D\u6DFB\u52A0 { id: ${JSON.stringify(id)}, url: ${JSON.stringify(relativeOutput)} } \u540E\u5373\u53EF run\u3002`);
+  if (args.curl) {
+    console.log("\n\u5355\u6B65\u9AA4\u7247\u6BB5\uFF08\u53EF\u76F4\u63A5\u7C98\u8D34\u5230 steps \u6570\u7EC4\uFF09\uFF1A");
+    console.log(JSON.stringify(draft.scenario.steps[0], null, 2));
+  }
+}
 function capabilitiesCommand(args) {
   const capabilities = buildCapabilities(contract);
   if (args.json) {
@@ -5308,10 +6168,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path6.default.dirname(configPath);
+    configDir = import_node_path7.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path6.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path6.default.dirname(configPath);
+    configPath = import_node_path7.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path7.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
@@ -5332,6 +6192,7 @@ async function main() {
   else if (args.command === "serve") await serveCommand(args);
   else if (args.command === "capabilities") capabilitiesCommand(args);
   else if (args.command === "doctor") doctorCommand(args);
+  else if (args.command === "import") importCommand(args);
   else await runCommand(args);
 }
 main().catch((error) => {

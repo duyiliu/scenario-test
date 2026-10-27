@@ -48,12 +48,12 @@ export function normalizeByteLimit(value) {
     return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
 }
 
-// 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
-// \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
-// getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被静默忽略剩余字符，
-// 空 token 序列甚至返回根对象本身（when 条件意外成立）
+// 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标、引号键或通配 [*]，
+// 引号内支持 \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分
+// 「取不到」与「写错」。getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被
+// 静默忽略剩余字符，空 token 序列甚至返回根对象本身（when 条件意外成立）
 const PATH_SEGMENT = /[^.\[\]]+/y;
-const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\*)\]/y;
 // 分词是 {{vars.*}} 模板、断言/extract 裸路径取值的公共热路径：同一路径串在多步骤
 // 与 retryUntil 轮询间反复出现，按字符串缓存结果（有界 FIFO 防路径爆炸占内存，
 // 非法路径的 null 同样缓存）。缓存内部数组冻结——防止经任何引用改写污染后续取值；
@@ -108,6 +108,8 @@ export function getByPath(source, valuePath) {
     // 畸形路径（vars[]、vars[、a..b、未闭合下标）返回 undefined 而非取到错误值/根对象
     const tokens = tokenizePath(valuePath);
     if (!tokens) return undefined;
+    // 通配段走展开分支；纯标量/下标路径继续走下方原热路径，行为与性能零变化
+    if (tokens.includes("[*]")) return getByWildcardPath(source, tokens);
     let cursor = source;
     for (const token of tokens) {
         if (cursor === undefined || cursor === null) return undefined;
@@ -128,6 +130,53 @@ export function getByPath(source, valuePath) {
         cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : undefined;
     }
     return cursor;
+}
+
+// 通配展开结果必须与「路径本身恰好取到数组」区分：items[*].tags 应产出数组的数组，
+// 而不是把每项 tags 展平。内部包装符号只在本次递归内出现，不会泄漏给调用方。
+const WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
+
+function isWildcardExpansion(value) {
+    return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+}
+
+// 与 getByPath 标量分支同口径的单 token 导航（负下标/引号键/原型链安全）。
+function navigatePathToken(cursor, token) {
+    const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+    if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+        return cursor[cursor.length + Number(inner)];
+    }
+    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
+    return Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : undefined;
+}
+
+function walkWildcardPath(cursor, tokens, index) {
+    if (index >= tokens.length) return cursor;
+    const token = tokens[index];
+    if (token === "[*]") {
+        // 通配段只在真实数组上展开；非数组按路径缺失处理（required/default 语义随之上浮）
+        if (!Array.isArray(cursor)) return undefined;
+        const values = [];
+        for (let itemIndex = 0; itemIndex < cursor.length; itemIndex += 1) {
+            // 与标量路径同口径只读自有下标：稀疏数组空位/原型链上的同号成员不参与展开
+            if (!Object.prototype.hasOwnProperty.call(cursor, itemIndex)) continue;
+            const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
+            // 元素缺失该子路径时跳过，不产出 undefined 洞；嵌套通配结果展平为一级数组
+            if (result === undefined) continue;
+            if (isWildcardExpansion(result)) {
+                // 不用 push(...result.values)：超大嵌套数组会撞实参数量上限
+                for (const value of result.values) values.push(value);
+            } else values.push(result);
+        }
+        return { [WILDCARD_EXPANSION]: true, values };
+    }
+    if (cursor === undefined || cursor === null) return undefined;
+    return walkWildcardPath(navigatePathToken(cursor, token), tokens, index + 1);
+}
+
+function getByWildcardPath(source, tokens) {
+    const result = walkWildcardPath(source, tokens, 0);
+    return isWildcardExpansion(result) ? result.values : result;
 }
 
 export function evalExpression(expression, runtime) {
@@ -457,7 +506,7 @@ export function validateAssertion(definition, context, options = {}) {
             );
         }
         if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
-            throw new TypeError(`${prefix}: path 不是合法路径写法（支持 点段/整数下标/引号键，如 a.b、list[-1]、a["x>y"]；当前 ${JSON.stringify(definition.path)}）`);
+            throw new TypeError(`${prefix}: path 不是合法路径写法（支持 点段/整数下标/引号键/通配段 [*]，如 a.b、list[-1]、a["x>y"]、items[*].id；当前 ${JSON.stringify(definition.path)}）`);
         }
     }
     // each 子断言的作用对象是数组元素：elementResponse 仅 body=元素 与 runtime.vars 有实值，

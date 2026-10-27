@@ -89,6 +89,8 @@ vars: {
 }
 ```
 
+列表型响应可用通配段 `[*]` 一次提取整列：`{ name: "ids", path: "data.items[*].id" }` 产出数组（如 `[1, 2, 3]`）。元素缺失该子路径时跳过，不产生 `undefined` 洞；空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。提取结果可直接用于 `length`/`includes`/`each` 断言。
+
 ### 断言
 
 ```javascript

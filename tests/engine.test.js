@@ -774,6 +774,63 @@ test("extract required:true 路径不存在时步骤失败；默认路径缺失�
     assert.equal(relaxedReport.results[0].passed, true);
 });
 
+test("extract path [*] 通配提取数组列：空数组产 []、非数组按缺失触发 required/default", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (url) => {
+            if (String(url).endsWith("/empty")) return jsonResponse({ items: [] });
+            if (String(url).endsWith("/nonarray")) return jsonResponse({ items: { id: 1 } });
+            return jsonResponse({ items: [{ id: 1 }, { id: 2 }, { name: "缺少 id" }] });
+        }
+    });
+    const passing = await engine.runScenario(defineScenario({
+        name: "通配提取",
+        steps: [
+            {
+                name: "列表",
+                path: "list",
+                status: 200,
+                extract: [{ name: "ids", path: "items[*].id" }],
+                assertions: [{ path: "items[*].id", equals: [1, 2] }]
+            },
+            {
+                name: "空数组",
+                path: "empty",
+                status: 200,
+                extract: [{ name: "emptyIds", path: "items[*].id", required: true }],
+                assertions: [{ path: "items[*].id", length: 0 }]
+            }
+        ]
+    }));
+    assert.equal(passing.passed, true, JSON.stringify(passing.results.map((result) => result.assertions)));
+    assert.deepEqual(passing.vars.ids, [1, 2]);
+    assert.deepEqual(passing.vars.emptyIds, []);
+
+    const required = await engine.runScenario(defineScenario({
+        name: "通配非数组 required",
+        steps: [{
+            name: "非数组",
+            path: "nonarray",
+            status: 200,
+            extract: [{ name: "missing", path: "items[*].id", required: true }]
+        }]
+    }));
+    assert.equal(required.failed, 1);
+    assert.match(required.results[0].error, /提取 missing/);
+
+    const defaulted = await engine.runScenario(defineScenario({
+        name: "通配非数组 default",
+        steps: [{
+            name: "非数组",
+            path: "nonarray",
+            status: 200,
+            extract: [{ name: "fallback", path: "items[*].id", default: [] }]
+        }]
+    }));
+    assert.equal(defaulted.passed, true);
+    assert.deepEqual(defaulted.vars.fallback, []);
+});
+
 test("SKIP 统计：全跳过为 SKIPPED，部分跳过保持 PASSED，SKIP 不计 executed/passedSteps", async () => {
     const engine = createEngine({
         baseUrl: "https://mock.local",
@@ -1845,6 +1902,7 @@ test("断言/extract 的 from、target、裸 path 定义期白名单与分词校
     define([{ from: "headers", path: "x-total", exists: true }]);
     define([{ from: "headers", path: ".X-TOTAL.length", equals: 2 }]);
     define([{ path: "list[-1]", equals: 1 }, { path: 'm["a>b"]', exists: true }]);
+    define([{ path: "items[*].id", length: 3 }]);
     define([{ path: "", exists: true }]);
     // 顶层 path 的 {{ }} 是死写法（path 按字面取键不解析）——定义期即拒，否则 exists:false 恒真假绿
     assert.throws(() => define([{ path: "{{vars.p}}", exists: true }]), /path 不支持 \{\{ \}\} 模板/);
@@ -1891,6 +1949,7 @@ test("extract 定义期校验：形状/name/保留名/required+default 互斥/fr
     assert.throws(() => define([{ name: "x", path: "a", required: "yes" }]), /required 必须是布尔值/);
     // 合法形态不抛
     define([{ name: "x", path: "a.b" }, { name: "y", header: "Content-Type", path: "length" }]);
+    define([{ name: "ids", path: "items[*].id" }]);
     define([{ name: "x", from: "response", path: "body.code" }]);
     define([{ name: "x", target: "status" }]);
     define([{ name: "x", path: "a", default: "{{vars.y}}" }]);

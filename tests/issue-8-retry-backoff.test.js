@@ -36,8 +36,8 @@ function alwaysFailEngine() {
     return { engine, calls: () => calls };
 }
 
-test("contract v14 声明 retryUntil 退避键并投射到 capabilities/AI Prompt", () => {
-    assert.equal(CONTRACT_VERSION, 14);
+test("contract v15 声明 retryUntil 退避键并投射到 capabilities/AI Prompt", () => {
+    assert.equal(CONTRACT_VERSION, 15);
     assert.deepEqual(contract.retryUntil.keys, [
         "maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"
     ]);

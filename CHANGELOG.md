@@ -9,7 +9,11 @@ All notable changes to this project will be documented in this file.
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 
+- `extract` / 断言 / 模板共用的路径支持通配段 `[*]`（contract v13 → v14）：`items[*].id` 逐元素提取并产出数组（如 `[1,2,3]`），元素缺失该子路径时跳过、不产生 `undefined` 洞，空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default`/warning 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。`a[0]`/`a[-1]`/引号键/原型链安全键等既有标量行为不变，纯标量路径仍走原热路径。断言 path 上的通配结果可直接配合 `each`/`length`/`includes` 使用；契约说明、capabilities、d.ts、AI Prompt/模式库/项目 README 模板与根 README 同步投射。
+
 ### CLI
+
+- 新增 `import` 子命令（contract v13 → v14，issue #89）：`--har <file>` 解析浏览器/抓包 HAR，过滤静态资源（JS/CSS/图片/字体等）与 OPTIONS 预检，为每个 API 请求生成标准场景步骤草稿；`--curl "<命令>"` 解析单条 curl（支持 `-X/-H/-d/--json/-G/-u/-b`、引号与续行），生成单步骤草稿。默认写入 `scenarios/imported-<ts>.js`，可用 `--output`/`--out` 指定；`--host` 过滤主机，`--max-entries` 限制导入条数（默认 50）。Authorization/Cookie 等敏感头及敏感 query 参数替换为 `{{vars.*}}` 占位并在场景 `vars` 中留空，二进制/multipart 请求体降级为注释，草稿可直接由 `run` 加载重放（status 占位需人工确认）。命令与选项同步投射 capabilities JSON/文本、`--help` 与 `dist/scenario-test.d.ts`。
 
 - 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
   默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
@@ -30,7 +34,7 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎与断言
 
-- `retryUntil` 指数退避（contract v13 → v14，issue #8）：新增可选 `intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`，未声明不封顶）。第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶后仍应用 100ms 下限，并按 `maxElapsedMs` 剩余额度截断；所有 retryUntil 等待现在都受剩余总时限约束（此前仅显式 `error`/`timeout` 路径截断），不会在总时限后继续睡完整退避间隔。`onAttempt.intervalMs` 报告实际等待时长。定义期拒绝 `intervalFactor < 1`、`maxIntervalMs < intervalMs` 及非有限值；capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库、README 与内部指南同步投射。
+- `retryUntil` 指数退避（contract v14 → v15，issue #8）：新增可选 `intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`，未声明不封顶）。第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶后仍应用 100ms 下限，并按 `maxElapsedMs` 剩余额度截断；所有 retryUntil 等待现在都受剩余总时限约束（此前仅显式 `error`/`timeout` 路径截断），不会在总时限后继续睡完整退避间隔。`onAttempt.intervalMs` 报告实际等待时长。定义期拒绝 `intervalFactor < 1`、`maxIntervalMs < intervalMs` 及非有限值；capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库、README 与内部指南同步投射。
 - `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误；显式启用 `error`/`timeout` 时，重试等待间隔、单次在途执行与异步 `onAttempt` 均受剩余总时限约束（总时限后迟到的 HTTP 响应不再触发 `saveResponseAs` 落盘，也不让慢请求 PASS）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度；`retryUntil` 未知键定义期拒绝，避免拼错 `retryOn` 被静默忽略。未声明 `retryOn`（默认 assertion）时仅在尝试之间检查总时限，行为与旧版完全一致（耗时恰好等于 `maxElapsedMs` 仍发起下一次尝试，超过后返回的成功响应仍可通过）。
 
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
@@ -42,6 +46,8 @@ All notable changes to this project will be documented in this file.
 - `loadScenarioFile` 场景缓存按「id + 文件路径」判定：同进程加载同名 id 的另一个文件不再返回首个文件的陈旧场景，同名不同路径时重新执行文件、由 `registerScenario` 后注册覆盖。
 
 ### 浏览器工作台
+
+- adhoc 临时请求新增「转为步骤」（issue #91）：执行成功后可一键生成可粘贴进 `scenarios/*.js` 的 step 对象草稿，复用当次 method/path/params/headers/body 并将实际响应状态码写成 `status`；Authorization/Token/API Key/Cookie 等敏感请求头按 `SECRET_VAR_PATTERN` 转为 `{{vars.*}}` 占位，草稿同时自动复制到剪贴板并保留草稿区供手动复制。请求失败（ERROR/TIMEOUT 等无有效状态码）时拒绝生成，GET/HEAD 草稿自动省略会被定义期拒绝的请求体。
 
 - 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
 - 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。

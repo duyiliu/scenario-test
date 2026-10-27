@@ -183,7 +183,7 @@ function assertTemplatePathsOnly(value, trail, seen = new WeakSet()) {
                     !TEMPLATE_OPERATOR_CHARS.test(expression),
                     `${trail} 的模板 {{${expression}}} 不允许使用运算符：${TEMPLATE_PATH_HINT}`
                 );
-                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键（vars.a、list[-1]、vars["a>b"]），不允许空下标或未闭合括号`);
+                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键/通配段 [*]（vars.a、list[-1]、vars["a>b"]、items[*].id），不允许空下标或未闭合括号`);
                 continue;
             }
             for (const token of tokens) {
@@ -363,7 +363,7 @@ export function defineScenario(input) {
             // 运行期在 engine.js 统一钳制下限 100ms（未声明/非法值按默认 2000ms）
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
-            // 退避参数（contract v14）：factor 默认 1 保持固定间隔；maxIntervalMs 缺省不封顶。
+            // 退避参数（contract v15）：factor 默认 1 保持固定间隔；maxIntervalMs 缺省不封顶。
             // 定义期即拒绝 <1 的倍率与小于基础间隔的上限，避免运行期静默钳制/降频。
             if (step.retryUntil.intervalFactor !== undefined) {
                 const intervalFactor = Number(step.retryUntil.intervalFactor);
@@ -446,7 +446,7 @@ export function defineScenario(input) {
                     invariant(
                         typeof item.path === "string" && !item.path.includes("{{")
                             && (item.path === "" || tokenizePath(item.path) !== null),
-                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
+                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键/通配段 [*]，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
                     );
                 }
             });
