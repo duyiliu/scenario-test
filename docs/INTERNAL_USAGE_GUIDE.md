@@ -111,6 +111,10 @@ assertions: [
     retryUntil: {
         maxAttempts: 10,
         intervalMs: 2000,
+        // 可选：指数退避（默认 factor 1 = 固定间隔）；第 n 次重试等待 = intervalMs × factor^(n-1)
+        intervalFactor: 2,
+        // 可选：单次等待上限（>= intervalMs，未声明不封顶）；最终仍受 100ms 下限与 maxElapsedMs 约束
+        maxIntervalMs: 10000,
         // 可选：assertion（默认）/ error / timeout；服务刚启动时让连接失败与单次超时也参与轮询
         retryOn: ["assertion", "error", "timeout"]
     },

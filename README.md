@@ -217,6 +217,7 @@ scenario-test/
 
 - 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
 - `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`：服务刚启动时的 ECONNREFUSED、ENOTFOUND 等网络错误和单次请求超时也能继续轮询，`onAttempt` 回调透出 `errorType`/`errorMessage`；不配置时行为与旧版完全一致。
+- `retryUntil.intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`）支持指数退避：第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶 `maxIntervalMs`（未声明不封顶），最终仍受 100ms 下限与 `maxElapsedMs` 总时限约束。
 - 浏览器工作台与 Node.js CLI 使用同一套场景。
 - `serve` 提供静态服务和同源接口代理；上游空闲超过 30 秒视为超时（响应头未发出时返回 502，传输已开始则直接断开连接），大文件/慢接口联调需注意该上限。
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。

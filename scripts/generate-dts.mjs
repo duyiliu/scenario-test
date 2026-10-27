@@ -182,6 +182,10 @@ export interface RetryUntil {
     /** 最大尝试总次数（含首次请求），默认 10；两次尝试之间至少间隔 100ms */
     maxAttempts?: number;
     intervalMs?: number;
+    /** 第 n 次重试的等待倍率，默认 1（固定间隔）；必须 >= 1，第 n 次等待 = intervalMs * intervalFactor^(n-1) */
+    intervalFactor?: number;
+    /** 单次等待间隔上限（毫秒，必须 >= intervalMs）；未声明时不封顶；最终仍受 100ms 下限与 maxElapsedMs 约束 */
+    maxIntervalMs?: number;
     maxElapsedMs?: number;
     /** 参与重试的失败类型，默认 ["assertion"]；包含 error/timeout 时网络错误与单次请求超时也会继续轮询 */
     retryOn?: RetryOn[];

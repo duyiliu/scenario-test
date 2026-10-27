@@ -26,7 +26,7 @@ function retryStep(retryUntil, extra = {}) {
 test("contract 声明 retryOn 取值与默认值", () => {
     assert.deepEqual(contract.retryUntil.retryOn, ["assertion", "error", "timeout"]);
     assert.deepEqual(contract.retryUntil.defaultRetryOn, ["assertion"]);
-    assert.deepEqual(contract.retryUntil.keys, ["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]);
+    assert.deepEqual(contract.retryUntil.keys, ["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 });
 
 test("retryOn: ['error'] 首次 ECONNREFUSED、第二次成功 -> 步骤通过且 onAttempt 透出错误信息", async () => {

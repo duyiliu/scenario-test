@@ -338,7 +338,7 @@ export function defineScenario(input) {
                 validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
             });
         }
-        // retryUntil 真实协议：{ maxAttempts, intervalMs, maxElapsedMs }，本身不含断言。
+        // retryUntil 真实协议：{ maxAttempts, intervalMs, intervalFactor, maxIntervalMs, maxElapsedMs, retryOn }，本身不含断言。
         // 重试判定只用步骤顶层 assertions——放在 retryUntil 内的 assertions 从不执行，
         // 定义期直接拒绝并指引迁移，避免"以为会按它重试、实际一次即停"的静默失效。
         if (step.retryUntil !== undefined) {
@@ -363,6 +363,22 @@ export function defineScenario(input) {
             // 运行期在 engine.js 统一钳制下限 100ms（未声明/非法值按默认 2000ms）
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
+            // 退避参数（contract v15）：factor 默认 1 保持固定间隔；maxIntervalMs 缺省不封顶。
+            // 定义期即拒绝 <1 的倍率与小于基础间隔的上限，避免运行期静默钳制/降频。
+            if (step.retryUntil.intervalFactor !== undefined) {
+                const intervalFactor = Number(step.retryUntil.intervalFactor);
+                invariant(
+                    Number.isFinite(intervalFactor) && intervalFactor >= 1,
+                    `步骤 ${step.name} 的 intervalFactor 必须是 ≥1 的有限数字（当前 ${String(step.retryUntil.intervalFactor)}）`
+                );
+            }
+            if (step.retryUntil.maxIntervalMs !== undefined) {
+                const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
+                invariant(
+                    Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+                    `步骤 ${step.name} 的 maxIntervalMs 必须是 ≥ intervalMs 的有限数字（当前 ${String(step.retryUntil.maxIntervalMs)}，intervalMs=${intervalMs}）`
+                );
+            }
             // retryOn：声明哪些失败类型参与重试；默认 ["assertion"] 保持历史语义。
             // 非数组/未知值定义期即拒，避免拼写错误使 error/timeout 重试静默失效。
             if (step.retryUntil.retryOn !== undefined) {
