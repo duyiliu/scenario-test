@@ -4,7 +4,7 @@
 
 ## 前置检查
 
-1. 使用探测结果确认 `projectRoot` 是本次业务项目根目录；无法确定时说明候选目录，不要跨项目操作。确保 Node.js >=18。
+1. 使用探测结果确认 `projectRoot` 是本次业务项目根目录；无法确定时说明候选目录，不要跨项目操作。仅在需要安装/修复/升级时用 `node -v` 实测 Node.js >=18（不以文档假设代替检查）并确认项目目录可写；`installed` 的日常使用不重复这些检查。
 2. `installed` 时，普通“测试某个功能”请求直接进入 `author.md`，**不得先重跑安装**。
 3. `incomplete` 时展示缺失项；不要删除目录、覆盖配置或场景。修复前备份/确认可能受影响文件。
 4. 用户明确要求升级时，再查看当前版本锁及目标发布版本，并确认安装来源；不要把全局 Skill 版本等同于运行时版本。
@@ -14,10 +14,11 @@
 
 用户请求为某个业务功能生成/补充/执行场景测试，而项目尚未接入时，直接完成初始化，不再要求二次确认：
 
-1. 确认 `projectRoot` 与目标目录（默认 `scenario-test`），用一行说明将执行的安装命令。
-2. 从公共仓库 https://github.com/duyiliu/scenario-test 的 README「快速接入」获取并执行**固定 tag** 的官方安装脚本（Windows PowerShell / macOS·Linux Bash）。不要在 Skill 内手抄版本号，也不要拼接未确认来源。
-3. 重新运行探测脚本确认 `status=installed`，再执行 `doctor`；FAIL 时停止并报告。
-4. 通过后按 `author.md` 继续，不需要用户再次确认接入。
+1. 先做环境检查：`node -v` ≥ 18、项目根目录可写、安装源可达（默认 npm Registry，脚本经 GitHub/jsDelivr 获取）。任一不满足时停止并给出可执行建议（内网用 `-Source` / `SCENARIO_TEST_SOURCE`、本地 dist 初始化、或先安装 Node），不要静默降级或跳过检查。
+2. 确认 `projectRoot` 与目标目录（默认 `scenario-test`），用一行说明将执行的安装命令。
+3. 从公共仓库 https://github.com/duyiliu/scenario-test 的 README「快速接入」获取并执行**固定 tag** 的官方安装脚本（Windows PowerShell / macOS·Linux Bash）。不要在 Skill 内手抄版本号，也不要拼接未确认来源。
+4. 重新运行探测脚本确认 `status=installed`，再执行 `doctor`；FAIL 时停止并报告。
+5. 通过后按 `author.md` 继续，不需要用户再次确认接入。
 
 例外（改为先征询）：用户明确拒绝自动安装、设置 `SCENARIO_TEST_NO_AUTO_INIT=1`、`status=incomplete`（不自动修复），或用户只是询问能力/文档而未提出测试需求。
 

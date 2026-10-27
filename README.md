@@ -8,12 +8,14 @@
 
 可以在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中**按用户安装一次**，之后进入不同业务项目，只需说“为 OrderController 生成 HTTP 场景测试”。Skill 会按当前工作目录自动定位业务项目、检测接入状态，并读取该项目**自身版本**的 AI 规则和能力清单。无需每个项目复制 Skill；未接入时会在确认项目根目录后自动执行官方固定版本安装脚本完成初始化（设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时改为先征询）。
 
+装一次 Skill 后，业务项目侧**不需要再安装任何东西**：首次生成/执行场景时，Skill 会自动在项目内初始化 `scenario-test/`（免 npm、不改业务项目 `package.json`），运行时自包含，后续日常使用不再需要网络。前提是 Node.js ≥ 18，且首次初始化能访问安装源（内网可用 `-Source` / `SCENARIO_TEST_SOURCE` 指向内网目录）。
+
 ```bash
 # 用户级全局安装；按提示选择你使用的 Agent
 npx skills add duyiliu/scenario-test --skill scenario-test -g
 ```
 
-> 上述 `npx skills` 只负责一次性安装 **Agent Skill**，不代表在业务项目执行 npm 安装。业务项目仍默认使用下文的免 npm 安装脚本。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
+> 上述 `npx skills` 只负责一次性安装 **Agent Skill**，不代表在业务项目执行 npm 安装。业务项目首次使用时会由 Skill 自动执行下文的免 npm 安装脚本，也可按需手动执行。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
 Skill 入口在 [`skills/scenario-test/SKILL.md`](skills/scenario-test/SKILL.md)，只读项目探测脚本在 [`skills/scenario-test/scripts/detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。手动检查当前项目：
 
@@ -24,6 +26,8 @@ node /path/to/scenario-test-skill/scripts/detect-project.mjs --cwd /path/to/busi
 探测只检查文件存在性；正式运行前仍以每个项目的 `doctor` 结果为准。生成场景不会自动执行 HTTP 请求；自动初始化只针对未接入项目，不会升级已接入项目的运行时，全局 Skill 升级也**不会**自动升级各业务项目运行时。
 
 ## 快速接入
+
+已安装全局 Skill 时可跳过本节——直接对 Agent 说“为 <业务功能> 生成场景测试”，Skill 会自动完成接入。以下适用于未使用 Skill 的一次性接入，或需要手动控制安装过程的场景。
 
 要求：Node.js 18+。
 

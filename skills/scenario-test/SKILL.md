@@ -9,7 +9,7 @@ description: 为当前业务项目接入、设计、维护、诊断或执行 sce
 
 ## 路由（先判断意图，再动作）
 
-1. 从当前工作目录执行只读探测（Node.js 18+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。
+1. 先执行只读探测（需要 Node.js 18+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。环境检查（`node -v`、目录可写、安装源可达）只在需要初始化时按 [init.md](references/init.md) 执行；`status=installed` 时不要重复检查或重新初始化。
 2. `status=installed`：只证明文件存在，**不代表 doctor PASS**。使用脚本返回的 `projectRoot`、`scenarioDir`、`config` 等路径。不同项目不可混用规则/配置/CLI；不要自动执行 `init` 或升级。
 3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录执行官方固定 tag 安装脚本（见 https://github.com/duyiliu/scenario-test 的 README「快速接入」，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。
