@@ -52,6 +52,9 @@ test("when 来源含 vars/lastResponse/status；extract 来源与 required 语�
 });
 
 test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabilities/doctor/fail-on-skip", () => {
+    assert.ok(contract.config.configKeys.includes("requestTimeoutMs"));
+    assert.ok(contract.config.configKeys.includes("baseUrl"));
+    assert.ok(contract.config.configKeys.includes("envs"));
     assert.ok(contract.config.scenarioItemKeys.includes("id"));
     assert.ok(contract.config.scenarioItemKeys.includes("url"));
     assert.ok(contract.config.scenarioItemKeys.includes("manual"));
@@ -61,9 +64,14 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
     assert.ok(contract.scenario.stepKeys.includes("when"));
     assert.ok(contract.scenario.stepKeys.includes("retryUntil"));
     assert.deepEqual(contract.scenario.failurePolicies, ["stop", "continue"]);
-    for (const command of ["run", "serve", "init", "capabilities", "doctor"]) {
+    for (const command of ["run", "serve", "init", "capabilities", "doctor", "import"]) {
         assert.ok(contract.cli.commands.includes(command), `CLI 命令缺少 ${command}`);
     }
+    for (const option of ["har", "curl", "output", "host", "max-entries"]) {
+        assert.equal(contract.cli.options[option].kind, "value", `import 选项缺少 --${option}`);
+    }
+    assert.equal(contract.cli.options.output.aliases[0], "out");
+    assert.equal(contract.cli.options["max-entries"].parse, "number");
     assert.equal(contract.cli.options["fail-on-skip"].kind, "flag");
     assert.equal(contract.cli.options.json.kind, "flag");
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);

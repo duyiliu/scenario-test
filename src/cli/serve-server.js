@@ -104,7 +104,8 @@ export function resolveStartupProxyTarget(config, envKey, baseUrlOverride) {
         return {
             key: overridden ? `${environment.key}（--base-url 覆盖）` : environment.key,
             envKey: environment.key,
-            target: trimUrl(overridden ? baseUrlOverride : environment.baseUrl || "")
+            // 环境缺省（或纯空白）baseUrl 时回退顶层 baseUrl，与 doctor/run 同口径（#61）
+            target: trimUrl(overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "")
         };
     }
     return {
@@ -126,8 +127,9 @@ export function resolveRequestProxyTarget(options) {
             const keys = config.envs.map((item) => item.key);
             throw new Error(`未知环境 ${selectedKey || "(空)"}，可用值: ${keys.join(", ")}`);
         }
-        if (!environment.baseUrl) throw new Error(`环境 ${environment.key} 未配置 baseUrl`);
-        return { key: environment.key, envKey: environment.key, target: trimUrl(environment.baseUrl) };
+        const target = trimUrl(environment.baseUrl || config.baseUrl || "");
+        if (!target) throw new Error(`环境 ${environment.key} 未配置 baseUrl`);
+        return { key: environment.key, envKey: environment.key, target };
     }
     if (envKey && envKey !== defaultEnvKey) {
         throw new Error(`配置未声明环境 ${envKey}，无法切换代理目标`);

@@ -240,10 +240,10 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs9 = __toESM(require("node:fs"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_promises = require("node:readline/promises");
+var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
 
 // src/node.js
@@ -262,6 +262,8 @@ __export(node_exports, {
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
   VERSION: () => VERSION,
+  appendGlobalQuery: () => appendGlobalQuery,
+  appendQueryPairs: () => appendQueryPairs,
   applyExtract: () => applyExtract,
   applyGeneratedVar: () => applyGeneratedVar,
   assertNoReservedVars: () => assertNoReservedVars,
@@ -313,12 +315,14 @@ __export(node_exports, {
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
   missingTemplateVarWarnings: () => missingTemplateVarWarnings,
+  normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
   normalizeWhenDefinition: () => normalizeWhenDefinition,
   parseBody: () => parseBody,
   parseTimestampOffset: () => parseTimestampOffset,
   pickWeightedIndex: () => pickWeightedIndex,
+  queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
   redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
@@ -332,6 +336,8 @@ __export(node_exports, {
   sanitizeSensitive: () => sanitizeSensitive,
   seedToIndex: () => seedToIndex,
   seedToUnit: () => seedToUnit,
+  setRuntimeVar: () => setRuntimeVar,
+  splitUrlFragment: () => splitUrlFragment,
   templateExpressionRoot: () => templateExpressionRoot,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
@@ -349,7 +355,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 13;
+var CONTRACT_VERSION = 16;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -365,7 +371,7 @@ var contract = Object.freeze({
     // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
     // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
     // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
-    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D',
+    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002\u88F8 path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1A\u4EC5\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF1B\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF08\u4E0D\u4EA7\u751F undefined \u6D1E\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\uFF08\u5982 groups[*].members[*].id\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002items[*].id \u4EA7\u51FA [1,2,3]\uFF0C\u53EF\u76F4\u63A5\u914D\u5408 each/length/includes \u7B49\u64CD\u4F5C\u7B26\u65AD\u8A00\u3002',
     // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
     // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
     operators: Object.freeze({
@@ -461,7 +467,7 @@ var contract = Object.freeze({
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\uFF1Bscope: "suite" \u65F6\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF0C\u540E\u7EED\u573A\u666F\u53EF\u76F4\u63A5\u7528 {{vars.<name>}} \u5F15\u7528\uFF08\u9ED8\u8BA4 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09'
+    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\uFF1Bscope: "suite" \u65F6\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF0C\u540E\u7EED\u573A\u666F\u53EF\u76F4\u63A5\u7528 {{vars.<name>}} \u5F15\u7528\uFF08\u9ED8\u8BA4 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -477,10 +483,35 @@ var contract = Object.freeze({
     note: "\u5168\u5C40\u53C2\u6570\u652F\u6301 header / cookie / query \u4E09\u79CD\u7C7B\u578B\uFF0C\u6B65\u9AA4\u663E\u5F0F\u58F0\u660E\u6216 URL \u5DF2\u6709\u540C\u540D\u53C2\u6570\u4F18\u5148"
   }),
   config: Object.freeze({
+    // 配置对象顶层允许的键：defineConfig 按此名单拒绝拼写错误（requestTimeoutsMs/
+    // baseUrll 等），勿在运行时另写第二份名单。envVars 仅保留历史配置兼容，
+    // 运行时实际消费的是场景级 envVars。
+    configKeys: Object.freeze([
+      "envs",
+      "defaultEnvKey",
+      "globals",
+      "vars",
+      "scenarioVars",
+      "variables",
+      "scenarios",
+      "requestTimeoutMs",
+      "maxResponseBytes",
+      "maxUploadBytes",
+      "storagePrefix",
+      "storageKeys",
+      "baseUrl",
+      "authorization",
+      "nodePlugins",
+      "envVars"
+    ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
     scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
     environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
+    baseUrl: Object.freeze({
+      protocol: "http(s)",
+      note: "\u73AF\u5883 baseUrl \u58F0\u660E\u65F6\u5FC5\u987B\u662F http(s):// URL\uFF1B\u672A\u58F0\u660E\uFF08\u6216\u4E3A\u7A7A\uFF09\u65F6\u56DE\u9000\u9876\u5C42 baseUrl\uFF0C\u4E24\u8005\u90FD\u4E3A\u7A7A\u65F6\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4F7F\u7528\u5F53\u524D\u9875\u9762\u5730\u5740\uFF0CCLI run \u4ECD\u9700 --base-url \u6216\u914D\u7F6E baseUrl"
+    }),
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
@@ -489,6 +520,13 @@ var contract = Object.freeze({
       type: "string[]",
       note: "\u914D\u7F6E\u6E05\u5355\u9879\u58F0\u660E tags \u7528\u4E8E run --tag \u7B5B\u9009\uFF08\u91CD\u590D\u53C2\u6570\u4E4B\u95F4\u4E3A OR\uFF0C\u5355\u4E2A\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C manual:true \u573A\u666F\uFF09\uFF1B\u573A\u666F\u9876\u5C42 tags \u4E3A\u573A\u666F\u5143\u6570\u636E"
     })
+  }),
+  retryUntil: Object.freeze({
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
+    retryOn: Object.freeze(["assertion", "error", "timeout"]),
+    defaultRetryOn: Object.freeze(["assertion"]),
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage\u3002intervalFactor \u53EF\u9009\uFF08\u9ED8\u8BA4 1\uFF0C\u56FA\u5B9A\u95F4\u9694\uFF09\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF1BmaxIntervalMs \u53EF\u9009\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u957F\u7EA6\u675F'
   }),
   scenario: Object.freeze({
     keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy", "tags"]),
@@ -510,11 +548,11 @@ var contract = Object.freeze({
     ]),
     failurePolicies: Object.freeze(["stop", "continue"]),
     // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
-    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "intervalFactor", "maxIntervalMs"]),
+    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
     note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
-    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
     options: Object.freeze({
       config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
@@ -540,6 +578,7 @@ var contract = Object.freeze({
       bail: { kind: "flag", prop: "bail", description: "\u4EFB\u4E00\u573A\u666F\u5931\u8D25\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u573A\u666F\uFF08\u5DF2\u6267\u884C\u573A\u666F\u8DD1\u5B8C\uFF09" },
       "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run \u4E3A\u6BCF\u4E2A\u573A\u666F\u542F\u7528\u5185\u5B58 Cookie Jar\uFF08\u81EA\u52A8\u643A\u5E26 Set-Cookie\uFF0C\u9ED8\u8BA4\u5173\u95ED\uFF09" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -554,10 +593,34 @@ var contract = Object.freeze({
         prop: "authorization",
         aliases: ["authorization"],
         description: "\uFF08\u5DF2\u5F03\u7528\uFF09\u547D\u4EE4\u884C\u4F20\u9012\u6388\u6743\u4EE4\u724C\uFF1B\u63A8\u8350 SCENARIO_AUTH \u73AF\u5883\u53D8\u91CF"
+      },
+      har: { kind: "value", prop: "har", description: "import\uFF1AHAR \u6587\u4EF6\u8DEF\u5F84\uFF08- \u8868\u793A\u4ECE stdin \u8BFB\u53D6\uFF09" },
+      curl: { kind: "value", prop: "curl", description: "import\uFF1Acurl \u547D\u4EE4\u6587\u672C\uFF1B\u5355\u8BF7\u6C42\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F" },
+      output: {
+        kind: "value",
+        prop: "output",
+        aliases: ["out"],
+        description: "import\uFF1A\u8F93\u51FA\u573A\u666F\u6587\u4EF6\uFF08\u9ED8\u8BA4 scenarios/imported-<ts>.js\uFF09"
+      },
+      host: { kind: "value", prop: "host", description: "import\uFF1A\u4EC5\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\uFF08\u53EF\u9017\u53F7\u5206\u9694\u591A\u4E2A\uFF09" },
+      "max-entries": {
+        kind: "value",
+        prop: "maxEntries",
+        parse: "number",
+        description: "import\uFF1A\u6700\u591A\u5BFC\u5165\u8BF7\u6C42\u6570\uFF0C\u9ED8\u8BA4 50\uFF08\u9632\u8D85\u5927 HAR \u751F\u6210\u5931\u63A7\u573A\u666F\uFF09"
       }
     })
   })
 });
+
+// src/utils/safe-decode.js
+function safeDecodeComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 // src/core.js
 var GLOBAL_TYPES = [...contract.globals.types];
@@ -584,8 +647,12 @@ function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
+function normalizeByteLimit(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
 var PATH_SEGMENT = /[^.\[\]]+/y;
-var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\*)\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
 var pathTokenCache = /* @__PURE__ */ new Map();
 function tokenizePath(valuePath) {
@@ -626,6 +693,7 @@ function getByPath(source, valuePath) {
   if (!valuePath) return source;
   const tokens = tokenizePath(valuePath);
   if (!tokens) return void 0;
+  if (tokens.includes("[*]")) return getByWildcardPath(source, tokens);
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
@@ -638,6 +706,41 @@ function getByPath(source, valuePath) {
     cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
   }
   return cursor;
+}
+var WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
+function isWildcardExpansion(value) {
+  return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+}
+function navigatePathToken(cursor, token) {
+  const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+  if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+    return cursor[cursor.length + Number(inner)];
+  }
+  const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
+  return Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
+}
+function walkWildcardPath(cursor, tokens, index) {
+  if (index >= tokens.length) return cursor;
+  const token = tokens[index];
+  if (token === "[*]") {
+    if (!Array.isArray(cursor)) return void 0;
+    const values = [];
+    for (let itemIndex = 0; itemIndex < cursor.length; itemIndex += 1) {
+      if (!Object.prototype.hasOwnProperty.call(cursor, itemIndex)) continue;
+      const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
+      if (result === void 0) continue;
+      if (isWildcardExpansion(result)) {
+        for (const value of result.values) values.push(value);
+      } else values.push(result);
+    }
+    return { [WILDCARD_EXPANSION]: true, values };
+  }
+  if (cursor === void 0 || cursor === null) return void 0;
+  return walkWildcardPath(navigatePathToken(cursor, token), tokens, index + 1);
+}
+function getByWildcardPath(source, tokens) {
+  const result = walkWildcardPath(source, tokens, 0);
+  return isWildcardExpansion(result) ? result.values : result;
 }
 function evalExpression(expression, runtime) {
   const text = String(expression || "").trim();
@@ -835,13 +938,43 @@ function queryPairs(key, value) {
   if (value === void 0 || value === null) return [];
   return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
+function splitUrlFragment(url) {
+  const text = String(url || "");
+  const fragmentIndex = text.indexOf("#");
+  return fragmentIndex < 0 ? { path: text, fragment: "" } : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+function queryKeys(url) {
+  const keys = /* @__PURE__ */ new Set();
+  const { path: path11 } = splitUrlFragment(url);
+  const queryIndex = path11.indexOf("?");
+  if (queryIndex < 0) return keys;
+  for (const pair of path11.slice(queryIndex + 1).split("&")) {
+    const key = pair.split("=")[0];
+    if (key) keys.add(safeDecodeComponent(key));
+  }
+  return keys;
+}
+function appendQueryPairs(url, pairs) {
+  const text = String(url || "");
+  if (!pairs || !pairs.length) return text;
+  const { path: path11, fragment } = splitUrlFragment(text);
+  return `${path11}${path11.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+function appendGlobalQuery(url, globals, runtime) {
+  const existingKeys = queryKeys(url);
+  const pairs = [];
+  for (const global of globals || []) {
+    if (global.type !== "query" || existingKeys.has(global.name)) continue;
+    pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+  }
+  return appendQueryPairs(url, pairs);
+}
 function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
   const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-  if (!pairs.length) return rawPath;
-  return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+  return appendQueryPairs(rawPath, pairs);
 }
 function parseBody(text, contentType2) {
   if (!text) return null;
@@ -918,37 +1051,37 @@ function shapeTypeMatches(type, value) {
   if (type === "number") return typeof value === "number" && Number.isFinite(value);
   return typeof value === type;
 }
-function shapeErrors(schema, value, path10, errors) {
+function shapeErrors(schema, value, path11, errors) {
   const type = schema.type || (schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0);
   if (type && !shapeTypeMatches(type, value)) {
-    errors.push({ path: path10 || "(\u6839)", expected: `type: ${type}`, actual: shapeActualType(value), value });
+    errors.push({ path: path11 || "(\u6839)", expected: `type: ${type}`, actual: shapeActualType(value), value });
     return errors;
   }
   if (schema.enum !== void 0 && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
-    errors.push({ path: path10 || "(\u6839)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+    errors.push({ path: path11 || "(\u6839)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
   }
   if (isPlainObject(value)) {
     for (const name of schema.required || []) {
       if (!Object.prototype.hasOwnProperty.call(value, name)) {
-        errors.push({ path: path10 ? `${path10}.${name}` : name, expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: "\u7F3A\u5931", value: void 0 });
+        errors.push({ path: path11 ? `${path11}.${name}` : name, expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: "\u7F3A\u5931", value: void 0 });
       }
     }
     const properties = schema.properties || {};
     for (const [name, subSchema] of Object.entries(properties)) {
       if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
-      shapeErrors(subSchema, value[name], path10 ? `${path10}.${name}` : name, errors);
+      shapeErrors(subSchema, value[name], path11 ? `${path11}.${name}` : name, errors);
     }
     if (schema.additionalProperties === false) {
       for (const name of Object.keys(value)) {
         if (!Object.prototype.hasOwnProperty.call(properties, name)) {
-          errors.push({ path: path10 ? `${path10}.${name}` : name, expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5", actual: value[name], value: value[name] });
+          errors.push({ path: path11 ? `${path11}.${name}` : name, expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5", actual: value[name], value: value[name] });
         }
       }
     }
   }
   if (Array.isArray(value) && schema.items !== void 0) {
     value.forEach((item, index) => {
-      shapeErrors(schema.items, item, `${path10 || ""}[${index}]`, errors);
+      shapeErrors(schema.items, item, `${path11 || ""}[${index}]`, errors);
     });
   }
   return errors;
@@ -987,7 +1120,7 @@ function validateAssertion(definition, context, options = {}) {
       );
     }
     if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
-      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
+      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\u3001items[*].id\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
     }
   }
   if (options.inEach && (definition.header !== void 0 || definition.target !== void 0 || definition.from !== void 0 && definition.from !== "body" && definition.from !== "vars")) {
@@ -1233,14 +1366,23 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
+function setRuntimeVar(vars, name, value) {
+  Object.defineProperty(vars, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return value;
+}
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
   const store = (name, value, suiteScope) => {
-    runtime.vars[name] = value;
+    setRuntimeVar(runtime.vars, name, value);
     if (suiteScope) {
       if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
-      runtime.suiteVars[name] = value;
+      setRuntimeVar(runtime.suiteVars, name, value);
     }
   };
   for (const definition of step.extract || []) {
@@ -1451,24 +1593,24 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
         throw new Error(`generatedVars timestamp \u7684 format \u4EC5\u652F\u6301 YYYY/MM/DD/HH/mm/ss \u7684\u672C\u5730\u65F6\u95F4\u7EC4\u5408\uFF08\u5982 YYYY-MM-DD HH:mm:ss\uFF09: ${definition.format}`);
       }
-      vars[name] = formatTimestamp(base, definition.format);
+      setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
     } else if (definition.unit != null && definition.unit !== "ms") {
       if (definition.unit !== "s") {
         throw new Error(`generatedVars timestamp \u7684 unit \u53EA\u652F\u6301 ms\uFF08\u9ED8\u8BA4\uFF09/s: ${definition.unit}`);
       }
-      vars[name] = Math.floor(base / 1e3);
+      setRuntimeVar(vars, name, Math.floor(base / 1e3));
     } else {
-      vars[name] = base;
+      setRuntimeVar(vars, name, base);
     }
     return;
   }
   if (definition.type === "uuid") {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    vars[name] = globalThis.crypto.randomUUID();
+    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
     return;
   }
   if (definition.type === "uuidHex") {
-    vars[name] = uuidHex();
+    setRuntimeVar(vars, name, uuidHex());
     return;
   }
   if (definition.type === "idcard") {
@@ -1481,11 +1623,11 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       throw new Error(`generatedVars idcard \u7684 regionCode \u5FC5\u987B\u662F 6 \u4F4D\u6570\u5B57: ${regionCode}`);
     }
     const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-    vars[name] = buildChinaIdNumber({
+    setRuntimeVar(vars, name, buildChinaIdNumber({
       regionCode,
       birthDate: definition.birthDate,
       sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-    });
+    }));
     return;
   }
   if (definition.type === "luhn") {
@@ -1502,7 +1644,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
       body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
     const first = `${prefix}${body}`;
-    vars[name] = `${first}${luhnCheckDigit(first)}`;
+    setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
     return;
   }
   if (definition.type === "phone") {
@@ -1514,7 +1656,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 8; i += 1) {
       tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
     }
-    vars[name] = `${prefix}${tail}`;
+    setRuntimeVar(vars, name, `${prefix}${tail}`);
     return;
   }
   if (definition.type === "uscc") {
@@ -1526,12 +1668,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     for (let i = 0; i < 9; i += 1) {
       orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
     }
-    vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+    setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
     return;
   }
   if (definition.type === "md5") {
     const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-    vars[name] = md5(source);
+    setRuntimeVar(vars, name, md5(source));
     return;
   }
   if (definition.type === "signature") {
@@ -1540,12 +1682,12 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     if (!secret) {
       throw new Error(`\u7B7E\u540D\u751F\u6210\u5931\u8D25: \u7F3A\u5C11\u5BC6\u94A5\u53D8\u91CF vars.${definition.secretVar || "apiSecret"}`);
     }
-    vars[name] = generateSignature(params, secret);
+    setRuntimeVar(vars, name, generateSignature(params, secret));
     return;
   }
   if (definition.type === "enum") {
     const { values, weights } = normalizeEnumDefinition(definition);
-    vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+    setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
     return;
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
@@ -1618,6 +1760,10 @@ function formatDuration(milliseconds) {
 // src/utils/failure-diff.js
 var SHORT_VALUE_LIMIT = 80;
 var MAX_LINES = 20;
+var HUNK_CONTEXT = 2;
+var MAX_DIFF_CELLS = 4e6;
+var MAX_DIFF_TOTAL_LINES = 2e5;
+var HUNK_SKIPPED_MARK = "\u2026\uFF08\u4E2D\u95F4\u76F8\u540C\u884C\u5DF2\u7701\u7565\uFF09";
 var CONTEXT_RADIUS = 40;
 var MAX_LINE_WIDTH = 240;
 var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
@@ -1644,19 +1790,25 @@ function formatFailureValue(value) {
   if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
   return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
 }
+function escapeStringLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)));
+}
+function escapeJsonLineContent(line) {
+  return defuseCiCommandMarkers(escapeC1(line));
+}
 function splitStringLines(text, prefix) {
   const raw = String(text).split(/\r\n|\n|\r/);
   const width = String(raw.length).length;
-  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)))}`);
+  return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${escapeStringLineContent(line)}`);
 }
 function prettyLines(value) {
   let text;
   try {
-    text = defuseCiCommandMarkers(escapeC1(JSON.stringify(value, null, 2) ?? String(value)));
+    text = JSON.stringify(value, null, 2) ?? String(value);
   } catch {
-    text = defuseCiCommandMarkers(String(value));
+    text = String(value);
   }
-  const lines = text.split("\n");
+  const lines = text.split("\n").map(escapeJsonLineContent);
   if (lines.length > MAX_LINES) {
     return [
       ...lines.slice(0, MAX_LINES),
@@ -1689,19 +1841,135 @@ function firstDifferenceLines(expected, actual, prefix) {
 function failureDiffLines(expected, actual, prefix = "") {
   if (isShortValue(expected) && isShortValue(actual)) return [];
   const lines = [];
-  if (!isShortValue(expected)) {
-    lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
-    lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
-  }
-  if (!isShortValue(actual)) {
-    lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
-    lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+  const bothLong = !isShortValue(expected) && !isShortValue(actual);
+  const aligned = bothLong ? alignedDiffLines(expected, actual, prefix) : null;
+  if (aligned) {
+    lines.push(...aligned);
+  } else {
+    if (!isShortValue(expected)) {
+      lines.push(`${prefix}  \u671F\u671B\u503C\uFF08expected\uFF09:`);
+      lines.push(...expandValueLines(expected, `${prefix}    `, prefix.length));
+    }
+    if (!isShortValue(actual)) {
+      lines.push(`${prefix}  \u5B9E\u9645\u503C\uFF08actual\uFF09:`);
+      lines.push(...expandValueLines(actual, `${prefix}    `, prefix.length));
+    }
   }
   lines.push(...firstDifferenceLines(
     typeof expected === "string" ? expected : void 0,
     typeof actual === "string" ? actual : void 0,
     `${prefix}  `
   ));
+  return lines;
+}
+function valueToRawLines(value, isStringValue) {
+  if (isStringValue) return String(value).split(/\r\n|\n|\r/);
+  let text;
+  try {
+    text = JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.split("\n");
+}
+function diffLineOps(expectedLines, actualLines) {
+  if (expectedLines.length + actualLines.length > MAX_DIFF_TOTAL_LINES) return null;
+  let start = 0;
+  const minLines = Math.min(expectedLines.length, actualLines.length);
+  while (start < minLines && expectedLines[start] === actualLines[start]) start += 1;
+  let endA = expectedLines.length;
+  let endB = actualLines.length;
+  while (endA > start && endB > start && expectedLines[endA - 1] === actualLines[endB - 1]) {
+    endA -= 1;
+    endB -= 1;
+  }
+  const midA = endA - start;
+  const midB = endB - start;
+  if ((midA + 1) * (midB + 1) > MAX_DIFF_CELLS) return null;
+  const ops = [];
+  for (let i2 = 0; i2 < start; i2 += 1) ops.push({ t: "=", e: i2, a: i2 });
+  const stride = midB + 1;
+  const lcs = new Int32Array((midA + 1) * stride);
+  for (let i2 = midA - 1; i2 >= 0; i2 -= 1) {
+    for (let j2 = midB - 1; j2 >= 0; j2 -= 1) {
+      lcs[i2 * stride + j2] = expectedLines[start + i2] === actualLines[start + j2] ? lcs[(i2 + 1) * stride + (j2 + 1)] + 1 : Math.max(lcs[(i2 + 1) * stride + j2], lcs[i2 * stride + (j2 + 1)]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < midA && j < midB) {
+    if (expectedLines[start + i] === actualLines[start + j]) {
+      ops.push({ t: "=", e: start + i, a: start + j });
+      i += 1;
+      j += 1;
+    } else if (lcs[(i + 1) * stride + j] >= lcs[i * stride + (j + 1)]) {
+      ops.push({ t: "-", e: start + i });
+      i += 1;
+    } else {
+      ops.push({ t: "+", a: start + j });
+      j += 1;
+    }
+  }
+  while (i < midA) {
+    ops.push({ t: "-", e: start + i });
+    i += 1;
+  }
+  while (j < midB) {
+    ops.push({ t: "+", a: start + j });
+    j += 1;
+  }
+  for (let k = 0; k < expectedLines.length - endA; k += 1) ops.push({ t: "=", e: endA + k, a: endB + k });
+  return ops;
+}
+function alignedDiffLines(expected, actual, prefix) {
+  const bothStrings = typeof expected === "string" && typeof actual === "string";
+  if (!bothStrings && !(typeof expected !== "string" && typeof actual !== "string")) return null;
+  const expectedLines = valueToRawLines(expected, bothStrings);
+  const actualLines = valueToRawLines(actual, bothStrings);
+  const ops = diffLineOps(expectedLines, actualLines);
+  if (!ops) return null;
+  const groups = [];
+  let previousChange = -1;
+  for (let index = 0; index < ops.length; index += 1) {
+    if (ops[index].t === "=") continue;
+    if (groups.length === 0 || index - previousChange - 1 > HUNK_CONTEXT * 2) {
+      groups.push({ from: index, to: index });
+    } else {
+      groups[groups.length - 1].to = index;
+    }
+    previousChange = index;
+  }
+  if (groups.length === 0) return null;
+  const rendered = [];
+  groups.forEach((group, groupIndex) => {
+    if (groupIndex > 0) rendered.push(null);
+    const from = Math.max(0, group.from - HUNK_CONTEXT);
+    const to = Math.min(ops.length - 1, group.to + HUNK_CONTEXT);
+    for (let index = from; index <= to; index += 1) rendered.push(ops[index]);
+  });
+  let expectedWidth = 1;
+  let actualWidth = 1;
+  for (const op of rendered) {
+    if (!op) continue;
+    if (op.e !== void 0) expectedWidth = Math.max(expectedWidth, String(op.e + 1).length);
+    if (op.a !== void 0) actualWidth = Math.max(actualWidth, String(op.a + 1).length);
+  }
+  const escapeContent = bothStrings ? escapeStringLineContent : escapeJsonLineContent;
+  const lines = [`${prefix}  \u884C\u7EA7\u5DEE\u5F02\uFF08\u4EC5\u5C55\u5F00\u5DEE\u5F02\u884C \xB1${HUNK_CONTEXT} \u884C\u4E0A\u4E0B\u6587\uFF0C- \u671F\u671B\u884C / + \u5B9E\u9645\u884C\uFF09:`];
+  for (const op of rendered) {
+    if (!op) {
+      lines.push(`${prefix}    ${HUNK_SKIPPED_MARK}`);
+      continue;
+    }
+    const expectedCell = op.e === void 0 ? " ".repeat(expectedWidth) : String(op.e + 1).padStart(expectedWidth);
+    const actualCell = op.a === void 0 ? " ".repeat(actualWidth) : String(op.a + 1).padStart(actualWidth);
+    const content = op.t === "+" ? escapeContent(actualLines[op.a]) : escapeContent(expectedLines[op.e]);
+    lines.push(capContentLine(`${prefix}    ${op.t === "=" ? " " : op.t} ${expectedCell} ${actualCell} | ${content}`, prefix.length));
+  }
+  if (lines.length > MAX_LINES) {
+    const total = lines.length;
+    return [...lines.slice(0, MAX_LINES), `${prefix}    \u2026\uFF08\u5171 ${total} \u884C\uFF0C\u5DF2\u622A\u65AD\uFF09`];
+  }
   return lines;
 }
 function expandValueLines(value, prefix, baseLength) {
@@ -1761,11 +2029,36 @@ function validateAdapterResponse(response, adapterName = "unknown") {
 var scenarioRegistry = /* @__PURE__ */ new Map();
 var adapterRegistry = /* @__PURE__ */ new Map();
 var currentConfig = null;
-function invariant(condition, message) {
-  if (!condition) throw new TypeError(message);
+function invariant(condition, message, code) {
+  if (!condition) {
+    const error = new TypeError(message);
+    if (code) error.code = code;
+    throw error;
+  }
 }
 function nonEmptyString(value) {
   return typeof value === "string" && Boolean(value.trim());
+}
+function describeValue(value) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return "\u6570\u7EC4";
+  if (isPlainObject(value)) return "\u5BF9\u8C61";
+  return String(value);
+}
+function inheritedEnumerableKey(value) {
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+  }
+  return null;
+}
+function isPlainHeadersObject(value) {
+  if (!isPlainObject(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === null) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
+  if (prototype.constructor.prototype !== prototype) return false;
+  return inheritedEnumerableKey(value) === null;
 }
 function describeUnknownKeys(input, allowed) {
   const allowedSet = new Set(allowed);
@@ -1785,12 +2078,15 @@ function editDistance(a, b) {
   }
   return rows[a.length][b.length];
 }
-function looksLikeKeyTypo(key, allowed) {
+function findKeySuggestion(key, allowed) {
   const lower = key.toLowerCase();
-  return allowed.some((candidate) => {
+  return allowed.find((candidate) => {
     const target = candidate.toLowerCase();
     return target === lower || editDistance(lower, target) <= 1;
   });
+}
+function looksLikeKeyTypo(key, allowed) {
+  return findKeySuggestion(key, allowed) !== void 0;
 }
 var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
 function normalizeTags(tags, label) {
@@ -1803,7 +2099,46 @@ function normalizeTags(tags, label) {
   return [...new Set(normalized)];
 }
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
-  return `${label} \u5305\u542B\u672A\u77E5\u952E ${unknownKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+  const described = unknownKeys.map((key) => {
+    const suggestion = findKeySuggestion(key, allowed);
+    return suggestion ? `"${key}"\uFF08\u662F\u5426\u60F3\u5199 "${suggestion}"\uFF1F\uFF09` : `"${key}"`;
+  });
+  return `${label} \u5305\u542B\u672A\u77E5\u952E ${described.join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${allowed.join("/")}${hint}`;
+}
+function assertKnownKeys(input, allowed, label, hint = "") {
+  const unknownKeys = describeUnknownKeys(input, allowed);
+  invariant(
+    unknownKeys.length === 0,
+    unknownKeysMessage(label, unknownKeys, allowed, hint),
+    "SCENARIO_CONFIG_UNKNOWN_KEY"
+  );
+}
+function normalizeBaseUrl(value, label) {
+  if (value === void 0 || value === null) return value;
+  invariant(
+    typeof value === "string",
+    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  invariant(
+    /^https?:\/\//i.test(trimmed),
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
+  }
+  invariant(
+    (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    "SCENARIO_CONFIG_BASE_URL"
+  );
+  return trimmed;
 }
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
@@ -1827,7 +2162,7 @@ function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSe
           !TEMPLATE_OPERATOR_CHARS.test(expression),
           `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
         );
-        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
+        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\u3001items[*].id\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
         continue;
       }
       for (const token of tokens) {
@@ -1879,10 +2214,15 @@ function defineScenario(input) {
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
   const scenarioTags = normalizeTags(input.tags, `\u573A\u666F ${input.name}`);
+  assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
+  let generatedVarIndex = 0;
   for (const definition of input.generatedVars || []) {
-    invariant(isPlainObject(definition), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u5FC5\u987B\u662F\u5BF9\u8C61`);
-    invariant(nonEmptyString(definition.name), `\u573A\u666F ${input.name} \u7684 generatedVars \u9879\u7F3A\u5C11 name`);
+    generatedVarIndex += 1;
+    const label = `\u573A\u666F ${input.name} \u7684 generatedVars \u7B2C ${generatedVarIndex} \u9879`;
+    invariant(isPlainObject(definition), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    invariant(nonEmptyString(definition.name), `${label} \u7F3A\u5C11 name`);
+    assertNotReservedVar(definition.name, `${label} name`);
     invariant(
       contract.generatedVars.types.includes(definition.type),
       `\u573A\u666F ${input.name} \u7684 generatedVars \u7C7B\u578B\u4E0D\u652F\u6301: ${definition.type}\uFF08\u652F\u6301 ${contract.generatedVars.types.join("/")}\uFF09`
@@ -1891,10 +2231,16 @@ function defineScenario(input) {
   input.steps.forEach((step, index) => {
     invariant(isPlainObject(step), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u5FC5\u987B\u662F\u5BF9\u8C61`);
     invariant(nonEmptyString(step.name), `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\u7F3A\u5C11 name`);
+    const stepLabel = `\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`;
     if (step.request !== void 0) {
       invariant(
         isPlainObject(step.request),
         `\u6B65\u9AA4 ${step.name} \u7684 request \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08\u5F53\u524D ${JSON.stringify(step.request)}\uFF0C\u975E\u5BF9\u8C61\u4F1A\u5728\u8FD0\u884C\u671F\u88AB\u9759\u9ED8\u5FFD\u7565\uFF09`
+      );
+      const inheritedRequestKey = inheritedEnumerableKey(step.request);
+      invariant(
+        inheritedRequestKey === null,
+        `${stepLabel} \u7684 request \u5305\u542B\u7EE7\u627F\u7684\u53EF\u679A\u4E3E\u5B57\u6BB5 "${inheritedRequestKey}"\uFF08\u8FD0\u884C\u671F clone \u53EA\u4FDD\u7559\u81EA\u6709\u5B57\u6BB5\uFF0C\u4F1A\u9759\u9ED8\u4E22\u5931\uFF1B\u8BF7\u6539\u4E3A\u5BF9\u8C61\u81EA\u6709\u5B57\u6BB5\uFF09`
       );
       if (step.request.params !== void 0) {
         invariant(
@@ -1949,10 +2295,10 @@ function defineScenario(input) {
         step.retryUntil.assertions === void 0,
         `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u4E0D\u652F\u6301 assertions \u5B57\u6BB5\uFF08\u91CD\u8BD5\u5224\u5B9A\u4F7F\u7528\u6B65\u9AA4\u9876\u5C42 assertions\uFF09\uFF0C\u8BF7\u628A\u65AD\u8A00\u79FB\u5230\u6B65\u9AA4\u7684 assertions`
       );
-      const unknownRetryKeys = describeUnknownKeys(step.retryUntil, contract.scenario.retryUntilKeys);
+      const unknownRetryKeys = Object.keys(step.retryUntil).filter((key) => !contract.retryUntil.keys.includes(key));
       invariant(
         unknownRetryKeys.length === 0,
-        `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.scenario.retryUntilKeys.join("/")}`
+        `\u6B65\u9AA4 ${step.name} \u7684 retryUntil \u5305\u542B\u672A\u77E5\u952E ${unknownRetryKeys.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.retryUntil.keys.join("/")}`
       );
       const maxAttempts = Number(step.retryUntil.maxAttempts ?? 10);
       const intervalMs = Number(step.retryUntil.intervalMs ?? 2e3);
@@ -1961,16 +2307,30 @@ function defineScenario(input) {
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
       if (step.retryUntil.intervalFactor !== void 0) {
-        const factor = Number(step.retryUntil.intervalFactor);
-        invariant(Number.isFinite(factor) && factor >= 1, `\u6B65\u9AA4 ${step.name} \u7684 intervalFactor \u5FC5\u987B\u662F \u22651 \u7684\u6709\u9650\u6570\u5B57`);
+        const intervalFactor = Number(step.retryUntil.intervalFactor);
+        invariant(
+          Number.isFinite(intervalFactor) && intervalFactor >= 1,
+          `\u6B65\u9AA4 ${step.name} \u7684 intervalFactor \u5FC5\u987B\u662F \u22651 \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.intervalFactor)}\uFF09`
+        );
       }
       if (step.retryUntil.maxIntervalMs !== void 0) {
         const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
-        invariant(Number.isFinite(maxIntervalMs) && maxIntervalMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs \u5FC5\u987B\u662F\u6B63\u6570`);
         invariant(
-          maxIntervalMs >= intervalMs,
-          `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs\uFF08${maxIntervalMs}\uFF09\u4E0D\u80FD\u5C0F\u4E8E intervalMs\uFF08${intervalMs}\uFF09`
+          Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+          `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs \u5FC5\u987B\u662F \u2265 intervalMs \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.maxIntervalMs)}\uFF0CintervalMs=${intervalMs}\uFF09`
         );
+      }
+      if (step.retryUntil.retryOn !== void 0) {
+        invariant(
+          Array.isArray(step.retryUntil.retryOn),
+          `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF09`
+        );
+        for (const retryType of step.retryUntil.retryOn) {
+          invariant(
+            contract.retryUntil.retryOn.includes(retryType),
+            `\u6B65\u9AA4 ${step.name} \u7684 retryOn \u9879\u53EA\u652F\u6301 ${contract.retryUntil.retryOn.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(retryType)}\uFF09`
+          );
+        }
       }
     }
     if (step.always !== void 0) {
@@ -2027,7 +2387,7 @@ function defineScenario(input) {
         if (item.path !== void 0) {
           invariant(
             typeof item.path === "string" && !item.path.includes("{{") && (item.path === "" || tokenizePath(item.path) !== null),
-            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
+            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
           );
         }
       });
@@ -2073,6 +2433,44 @@ function defineScenario(input) {
       rejectedKeys.length === 0,
       unknownKeysMessage(`\u573A\u666F ${input.name} \u7B2C ${index + 1} \u6B65\uFF08\u6B65\u9AA4 ${step.name}\uFF09`, rejectedKeys, contract.scenario.stepKeys)
     );
+    if (step.timeoutMs !== void 0) {
+      invariant(
+        typeof step.timeoutMs === "number" && Number.isFinite(step.timeoutMs) && step.timeoutMs > 0,
+        `${stepLabel} \u7684 timeoutMs \u5FC5\u987B\u662F\u6B63\u6570\uFF08\u6BEB\u79D2\uFF0C\u4E14\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.timeoutMs)}\u2014\u2014\u975E\u6CD5\u503C\u4F1A\u88AB\u8FD0\u884C\u671F\u9759\u9ED8\u94B3\u5236\u4E3A 30000ms\uFF09`
+      );
+    }
+    if (requestDef.timeoutMs !== void 0) {
+      const requestTimeoutMs = requestDef.timeoutMs;
+      const isWholeTemplate = typeof requestTimeoutMs === "string" && /^\s*\{\{[^{}]*\S[^{}]*\}\}\s*$/.test(requestTimeoutMs);
+      invariant(
+        isWholeTemplate || typeof requestTimeoutMs === "number" && Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0,
+        `${stepLabel} \u7684 request.timeoutMs \u5FC5\u987B\u662F\u6B63\u6570\u6216\u6574\u4E32 {{ }} \u6A21\u677F\uFF08\u5F53\u524D ${describeValue(requestTimeoutMs)}\u2014\u2014\u975E\u6CD5\u503C\u4F1A\u88AB\u8FD0\u884C\u671F\u9759\u9ED8\u94B3\u5236\u4E3A 30000ms\uFF09`
+      );
+    }
+    if (step.saveResponseAs !== void 0) {
+      invariant(
+        nonEmptyString(step.saveResponseAs),
+        `${stepLabel} \u7684 saveResponseAs \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.saveResponseAs)}\u2014\u2014\u7A7A\u4E32\u4F1A\u9759\u9ED8\u4E0D\u4FDD\u5B58\uFF09`
+      );
+    }
+    if (step.path !== void 0) {
+      invariant(
+        typeof step.path === "string",
+        `${stepLabel} \u7684 path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(step.path)}\uFF09`
+      );
+    }
+    if (requestDef.path !== void 0) {
+      invariant(
+        typeof requestDef.path === "string",
+        `${stepLabel} \u7684 request.path \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\uFF08\u5141\u8BB8 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${describeValue(requestDef.path)}\uFF09`
+      );
+    }
+    if (requestDef.headers !== void 0) {
+      invariant(
+        isPlainHeadersObject(requestDef.headers),
+        `${stepLabel} \u7684 request.headers \u5FC5\u987B\u662F\u666E\u901A\u5BF9\u8C61\uFF08\u5F53\u524D ${describeValue(requestDef.headers)}\u2014\u2014\u975E\u5BF9\u8C61\u4F1A\u88AB\u5C55\u5F00\u6210\u5B57\u7B26\u4E32\u4E0B\u6807\u952E\uFF0C\u4EA7\u751F\u65E0\u6548\u8BF7\u6C42\u5934\uFF09`
+      );
+    }
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
@@ -2080,10 +2478,13 @@ function defineScenario(input) {
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
+  assertKnownKeys(input, contract.config.configKeys, "\u914D\u7F6E", "\uFF08\u914D\u7F6E\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
+  const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
-  const envs = Array.isArray(input.envs) ? input.envs.map((env) => {
-    invariant(isPlainObject(env), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u662F\u5BF9\u8C61");
+  const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
+    invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
+    assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
     if (env.vars !== void 0) {
       invariant(isPlainObject(env.vars), `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars \u5FC5\u987B\u662F\u5BF9\u8C61`);
       assertNoReservedVars(env.vars, `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars`);
@@ -2096,6 +2497,7 @@ function defineConfig(input) {
   }) : [];
   for (const env of envs) {
     invariant(nonEmptyString(env.key) && nonEmptyString(env.name), "\u6BCF\u4E2A\u73AF\u5883\u5FC5\u987B\u5305\u542B\u975E\u7A7A key \u548C name");
+    env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
@@ -2117,7 +2519,10 @@ function defineConfig(input) {
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
     invariant(isPlainObject(item), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u5B9A\u4E49\u65E0\u6548`);
     invariant(nonEmptyString(item.name), `\u7B2C ${index + 1} \u4E2A\u53D8\u91CF\u7F3A\u5C11 name`);
+    assertKnownKeys(item, contract.config.variableKeys, `\u53D8\u91CF ${item.name}`, "\uFF08\u53D8\u91CF\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (item.label !== void 0) invariant(typeof item.label === "string", `\u53D8\u91CF ${item.name} \u7684 label \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
     if (item.env !== void 0) invariant(nonEmptyString(item.env), `\u53D8\u91CF ${item.name} \u7684 env \u65E0\u6548`);
+    if (item.required !== void 0) invariant(typeof item.required === "boolean", `\u53D8\u91CF ${item.name} \u7684 required \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     return { ...item };
   }) : [];
   assertUnique(variables, "name", "\u53D8\u91CF name");
@@ -2127,6 +2532,7 @@ function defineConfig(input) {
   invariant(Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0, "requestTimeoutMs \u5FC5\u987B\u662F\u6B63\u6570");
   return {
     ...input,
+    baseUrl,
     globals,
     envs,
     scenarios,
@@ -2209,6 +2615,28 @@ function abortReason(signal) {
 function timeoutErrorMessage(timeoutMs) {
   return `\u8BF7\u6C42\u8D85\u65F6\uFF08${timeoutMs}ms\uFF09`;
 }
+function isTimeoutError(error) {
+  return Boolean(error?.scenarioTimedOut || error?.scenarioContext?.timedOut);
+}
+function describeError(error) {
+  const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
+  const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
+  return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
+function retryBackoffIntervalMs(retry, attempt, maxElapsedMs) {
+  const rawIntervalMs = Number(retry?.intervalMs);
+  const baseIntervalMs = Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3;
+  const rawFactor = Number(retry?.intervalFactor);
+  const intervalFactor = Number.isFinite(rawFactor) && rawFactor >= 1 ? rawFactor : 1;
+  const rawMaxIntervalMs = Number(retry?.maxIntervalMs);
+  const maxIntervalMs = Number.isFinite(rawMaxIntervalMs) && rawMaxIntervalMs >= 0 ? rawMaxIntervalMs : Infinity;
+  let computed = baseIntervalMs * Math.pow(intervalFactor, Math.max(0, attempt - 1));
+  if (!Number.isFinite(computed)) {
+    computed = Number.isFinite(maxIntervalMs) ? maxIntervalMs : maxElapsedMs;
+  }
+  computed = Math.min(computed, maxIntervalMs);
+  return Math.max(100, computed);
+}
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
   if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -2229,13 +2657,56 @@ function createTimeoutError(timeoutMs, message) {
   error.scenarioTimedOut = true;
   return error;
 }
+var MAX_TIMER_DELAY_MS = 2147483647;
+function scheduleTimeout(callback, timeoutMs) {
+  let timer = null;
+  let disposed = false;
+  const deadline = now() + timeoutMs;
+  const tick = () => {
+    if (disposed) return;
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      callback();
+      return;
+    }
+    timer = setTimeout(tick, Math.min(remaining, MAX_TIMER_DELAY_MS));
+  };
+  tick();
+  return {
+    clear() {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    }
+  };
+}
+function resolveTimeoutMs(step, request, options) {
+  const stepTimeoutSource = step.timeoutMs || void 0;
+  if (stepTimeoutSource !== void 0) {
+    const stepTimeout = Number(stepTimeoutSource);
+    return Number.isFinite(stepTimeout) && stepTimeout > 0 ? stepTimeout : 3e4;
+  }
+  if (request.timeoutMs !== void 0) {
+    const requestTimeoutSource = request.timeoutMs;
+    const hasNumericType = typeof requestTimeoutSource === "number" || typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "";
+    const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
+    if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
+      const value = typeof requestTimeoutSource === "string" || typeof requestTimeoutSource === "object" && requestTimeoutSource !== null ? JSON.stringify(requestTimeoutSource) : String(requestTimeoutSource);
+      throw new Error(
+        `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7684 request.timeoutMs \u89E3\u6790\u540E\u4E0D\u662F\u6709\u6548\u7684\u6B63\u6570\u6BEB\u79D2\uFF08\u5F53\u524D ${value}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u53D8\u91CF\u503C`
+      );
+    }
+    return requestTimeout;
+  }
+  const configuredTimeout = Number(options.requestTimeoutMs);
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 3e4;
+}
 function createRequestSignal(parentSignal, timeoutMs) {
   const controller = new AbortController();
   let timedOut = false;
   const abort = () => controller.abort(abortReason(parentSignal));
   if (parentSignal?.aborted) abort();
   else parentSignal?.addEventListener("abort", abort, { once: true });
-  const timer = timeoutMs > 0 ? setTimeout(() => {
+  const timer = timeoutMs > 0 ? scheduleTimeout(() => {
     timedOut = true;
     controller.abort(createTimeoutError(timeoutMs));
   }, timeoutMs) : null;
@@ -2245,7 +2716,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
       return timedOut;
     },
     dispose() {
-      if (timer) clearTimeout(timer);
+      if (timer) timer.clear();
       parentSignal?.removeEventListener("abort", abort);
     }
   };
@@ -2282,7 +2753,7 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         );
       }
     }
-    vars[name] = value;
+    setRuntimeVar(vars, name, value);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
@@ -2332,10 +2803,12 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
-function readBodyChunks(response, signal) {
+function readBodyChunks(response, signal, maxBytes = 0) {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
   const reader = response.body.getReader();
   const chunks = [];
+  let totalBytes = 0;
   return new Promise((resolve2, reject) => {
     const onAbort = () => {
       reader.cancel().catch(() => {
@@ -2354,6 +2827,12 @@ function readBodyChunks(response, signal) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          totalBytes += value.byteLength;
+          if (maxBytes > 0 && totalBytes > maxBytes) {
+            reader.cancel().catch(() => {
+            });
+            throw createResponseTooLargeError(totalBytes, maxBytes);
+          }
           chunks.push(value);
         }
         resolve2(chunks);
@@ -2363,6 +2842,82 @@ function readBodyChunks(response, signal) {
         if (signal) signal.removeEventListener("abort", onAbort);
       }
     })();
+  });
+}
+function createResponseTooLargeError(bytesRead, limitBytes) {
+  const error = new Error(`\u54CD\u5E94\u4F53\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5DF2\u8BFB\u53D6 ${bytesRead} \u5B57\u8282\uFF0C\u9650\u5236 ${limitBytes} \u5B57\u8282`);
+  error.scenarioResponseTooLarge = true;
+  error.responseTooLarge = { bytesRead, limitBytes };
+  return error;
+}
+function resolveMaxResponseBytes(options = {}) {
+  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value);
+}
+function resolveMaxUploadBytes(options = {}) {
+  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value === void 0 ? void 0 : normalizeByteLimit(value);
+}
+function createSaveBodyStream(body, signal, maxBytes) {
+  if (!body) {
+    return new ReadableStream({
+      start(controller) {
+        if (signal?.aborted) controller.error(abortReason(signal));
+        else controller.close();
+      }
+    });
+  }
+  const reader = body.getReader();
+  let totalBytes = 0;
+  let finished = false;
+  let onAbort = null;
+  const cleanup = () => {
+    finished = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    onAbort = null;
+  };
+  const cancelReader = (reason) => reader.cancel(reason).catch(() => {
+  });
+  return new ReadableStream({
+    start(controller) {
+      if (!signal) return;
+      onAbort = () => {
+        if (finished) return;
+        cleanup();
+        cancelReader(abortReason(signal));
+        controller.error(abortReason(signal));
+      };
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    },
+    async pull(controller) {
+      if (finished) return;
+      try {
+        const { done, value } = await reader.read();
+        if (finished) return;
+        if (done) {
+          cleanup();
+          controller.close();
+          return;
+        }
+        totalBytes += value.byteLength;
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          cleanup();
+          cancelReader();
+          controller.error(createResponseTooLargeError(totalBytes, maxBytes));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        if (finished) return;
+        cleanup();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return cancelReader(reason);
+    }
   });
 }
 function decoderForContentType(contentType2) {
@@ -2442,23 +2997,42 @@ function applyCookieJar(headers, runtime, url) {
   if (explicitKey) headers[explicitKey] = `${jarText}; ${explicitText}`;
   else headers.Cookie = jarText;
 }
-async function readResponse(response, step, io, runtime, signal) {
+async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType2 = String(headers["content-type"] || "");
+  const maxResponseBytes = resolveMaxResponseBytes(options);
   const setCookies = typeof response.headers?.getSetCookie === "function" ? response.headers.getSetCookie() : headers["set-cookie"] ? [headers["set-cookie"]] : [];
-  const chunks = await readBodyChunks(response, signal);
-  if (step.saveResponseAs && io?.saveResponse) {
-    const data = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
+  if (step.saveResponseAs) {
+    const relativePath = resolveString(step.saveResponseAs, runtime);
+    const metadata = { contentType: contentType2, headers, maxResponseBytes };
+    if (io?.saveResponseStream) {
+      const saved = await io.saveResponseStream(
+        relativePath,
+        createSaveBodyStream(response.body, signal, maxResponseBytes),
+        metadata
+      );
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
     }
-    const saved = await io.saveResponse(resolveString(step.saveResponseAs, runtime), data, { contentType: contentType2, headers });
-    const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
-    if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
-    return savedResponse;
+    if (io?.saveResponse) {
+      const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
+      const total = chunks2.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+      const data = chunks2.length === 1 ? chunks2[0] : new Uint8Array(total);
+      if (chunks2.length > 1) {
+        let offset = 0;
+        for (const chunk of chunks2) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+      const saved = await io.saveResponse(relativePath, data, metadata);
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
+    }
   }
+  const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType2);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
   const responseData = { status: response.status, headers, body: parseBody(bodyText, contentType2), bodyText };
@@ -2474,20 +3048,7 @@ async function executeHttp(step, runtime, options) {
   const allowEnvironmentAuthorization = !absoluteUrl || request.useEnvironmentAuthorization === true;
   const globals = options.globals || [];
   if (allowEnvironmentAuthorization && globals.length) {
-    const existingKeys = /* @__PURE__ */ new Set();
-    const queryIndex = requestPath.indexOf("?");
-    if (queryIndex >= 0) {
-      for (const pair of requestPath.slice(queryIndex + 1).split("&")) {
-        const key = pair.split("=")[0];
-        if (key) existingKeys.add(decodeURIComponent(key));
-      }
-    }
-    const queryParts = [];
-    for (const global of globals) {
-      if (global.type !== "query" || existingKeys.has(global.name)) continue;
-      queryParts.push(...queryPairs(global.name, resolve(global.value, runtime)));
-    }
-    if (queryParts.length) requestPath = `${requestPath}${queryIndex >= 0 ? "&" : "?"}${queryParts.join("&")}`;
+    requestPath = appendGlobalQuery(requestPath, globals, runtime);
     const cookieParts = globals.filter((global) => global.type === "cookie").map((global) => `${global.name}=${resolveString(global.value, runtime)}`);
     if (cookieParts.length) {
       const cookieKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
@@ -2518,8 +3079,15 @@ async function executeHttp(step, runtime, options) {
   if (request.redirect !== void 0) fetchOptions.redirect = request.redirect;
   if (request.fileUpload) {
     if (!options.io?.createUploadBody) throw new Error("\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u4E0D\u652F\u6301 fileUpload");
-    const upload = await options.io.createUploadBody(resolve(request.fileUpload, runtime), runtime);
+    const upload = await options.io.createUploadBody(
+      resolve(request.fileUpload, runtime),
+      runtime,
+      { maxUploadBytes: resolveMaxUploadBytes(options) }
+    );
     fetchOptions.body = upload.body;
+    if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
+      fetchOptions.duplex = "half";
+    }
     for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
@@ -2531,13 +3099,12 @@ async function executeHttp(step, runtime, options) {
       fetchOptions.body = JSON.stringify(request.body);
     }
   }
-  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
-  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const timeoutMs = resolveTimeoutMs(step, request, options);
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;
   try {
     const response = await options.fetch(requestUrl, fetchOptions);
-    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal);
+    const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
     if (options.cookieJar && parsedRequestUrl) {
       storeSetCookies(runtime, responseData[SET_COOKIES], parsedRequestUrl);
     }
@@ -2559,7 +3126,8 @@ async function executeHttp(step, runtime, options) {
 }
 var AdapterExecutionError = class extends Error {
   constructor(adapterName, originalError, step) {
-    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${originalError.message}`;
+    const detail = originalError?.message || (originalError === void 0 ? "undefined" : String(originalError));
+    const message = `\u9002\u914D\u5668 ${adapterName} \u6267\u884C\u5931\u8D25: ${detail}`;
     super(message, { cause: originalError });
     this.name = "AdapterExecutionError";
     this.adapterName = adapterName;
@@ -2567,11 +3135,17 @@ var AdapterExecutionError = class extends Error {
     this.stepName = step?.name || "\u672A\u547D\u540D\u6B65\u9AA4";
     if (originalError?.scenarioTimedOut) this.scenarioTimedOut = true;
     if (originalError?.scenarioContext) this.scenarioContext = originalError.scenarioContext;
+    if (originalError?.responseTooLarge) this.responseTooLarge = originalError.responseTooLarge;
+    if (originalError?.uploadTooLarge) this.uploadTooLarge = originalError.uploadTooLarge;
   }
 };
 function raceWithSignal(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  if (signal.aborted) {
+    promise.catch(() => {
+    });
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise((resolveRace, rejectRace) => {
     const onAbort = () => rejectRace(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
@@ -2590,9 +3164,8 @@ function raceWithSignal(promise, signal) {
 async function executeAdapter(adapter, adapterName, step, runtime, options) {
   if (!adapter) throw new Error(`\u672A\u6CE8\u518C\u6B65\u9AA4\u9002\u914D\u5668: ${adapterName || "unknown"}`);
   let output;
-  const request = isPlainObject(step.request) ? step.request : {};
-  const rawTimeoutMs = Number(step.timeoutMs || request.timeoutMs || options.requestTimeoutMs || 3e4);
-  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 3e4;
+  const request = isPlainObject(step.request) ? resolveClone(step.request, runtime) : {};
+  const timeoutMs = resolveTimeoutMs(step, request, options);
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   const adapterOptions = { ...options, signal: requestSignal.signal, timeoutMs };
   try {
@@ -2662,6 +3235,8 @@ function createEngine(engineOptions = {}) {
       adapters,
       requestTimeoutMs: runOptions.requestTimeoutMs || engineOptions.requestTimeoutMs || 3e4
     };
+    if (options.maxResponseBytes === void 0) options.maxResponseBytes = engineOptions.maxResponseBytes;
+    if (options.maxUploadBytes === void 0) options.maxUploadBytes = engineOptions.maxUploadBytes;
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
@@ -2689,50 +3264,120 @@ function createEngine(engineOptions = {}) {
     const missingVars = /* @__PURE__ */ new Set();
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
+    const retryOn = new Set(
+      retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
+    );
+    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
+    let lastAttemptError = null;
+    const retryTimeoutError = (attemptCount) => {
+      const lastErrorText = lastAttemptError ? `
+\u6700\u540E\u9519\u8BEF: ${describeError(lastAttemptError)}` : "";
+      return createTimeoutError(
+        maxElapsedMs,
+        `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attemptCount} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms${lastErrorText}
+\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
+      );
+    };
     try {
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
-        if (retry && now() - retryStartTime > maxElapsedMs) {
-          throw createTimeoutError(
-            maxElapsedMs,
-            `\u91CD\u8BD5\u8D85\u65F6: \u5DF2\u5C1D\u8BD5 ${attempt - 1} \u6B21\uFF0C\u8017\u65F6\u8D85\u8FC7 ${maxElapsedMs}ms
-\u63D0\u793A: \u8003\u8651\u8C03\u6574 retryUntil.maxElapsedMs \u6216\u68C0\u67E5\u63A5\u53E3\u54CD\u5E94`
-          );
+        if (retry) {
+          const elapsedMs = now() - retryStartTime;
+          const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
+          if (expired) throw retryTimeoutError(attempt - 1);
         }
-        collectStepMissingVars(step, runtime, missingVars);
-        const selection = chooseAdapter(step, adapters);
-        const attemptStartedAt = now();
-        lastExecution = selection ? await executeAdapter(selection.adapter, selection.name, step, runtime, options) : await executeHttp(step, runtime, options);
-        if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
-          lastExecution.response.durationMs = now() - attemptStartedAt;
+        let attemptDeadline = null;
+        if (enforceAttemptDeadline) {
+          const remainingMs = maxElapsedMs - (now() - retryStartTime);
+          if (remainingMs <= 0) throw retryTimeoutError(attempt - 1);
+          attemptDeadline = createRequestSignal(options.signal, remainingMs);
         }
-        runtime.lastResponse = lastExecution.response;
-        runtime.lastResponseBody = lastExecution.response.body;
-        const extractResult = applyExtract(step, lastExecution.response, runtime);
-        stepWarnings = [...missingTemplateVarWarnings(missingVars), ...extractResult.warnings];
-        assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
-        if (extractResult.failures.length) assertions.push(...extractResult.failures);
-        if (assertions.every((item) => item.passed) || attempt === totalAttempts) break;
-        const rawIntervalMs = Number(retry.intervalMs);
-        const baseIntervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
-        const factor = Number(retry.intervalFactor);
-        const maxIntervalMs = Number(retry.maxIntervalMs);
-        const backoff = Number.isFinite(factor) && factor >= 1 ? factor ** (attempt - 1) : 1;
-        const intervalMs = Math.max(100, Math.min(
-          baseIntervalMs * backoff,
-          Number.isFinite(maxIntervalMs) && maxIntervalMs > 0 ? maxIntervalMs : Number.POSITIVE_INFINITY
-        ));
-        await (runOptions.onAttempt ?? engineOptions.onAttempt)?.({
-          step,
-          attempt,
-          totalAttempts,
-          intervalMs,
-          status: lastExecution.response?.status ?? null,
-          failedAssertion: assertions.find((item) => !item.passed)?.name || ""
-        });
-        await delay(intervalMs, options.signal);
+        let attemptError = null;
+        let attemptErrorType = "";
+        try {
+          collectStepMissingVars(step, runtime, missingVars);
+          const selection = chooseAdapter(step, adapters);
+          const attemptStartedAt = now();
+          const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
+          const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
+          lastExecution = attemptDeadline ? await raceWithSignal(execution, attemptDeadline.signal) : await execution;
+          if (lastExecution.response && typeof lastExecution.response === "object" && lastExecution.response.durationMs === void 0) {
+            lastExecution.response.durationMs = now() - attemptStartedAt;
+          }
+          runtime.lastResponse = lastExecution.response;
+          runtime.lastResponseBody = lastExecution.response.body;
+          const extractResult = applyExtract(step, lastExecution.response, runtime);
+          stepWarnings = [...missingTemplateVarWarnings(missingVars), ...extractResult.warnings];
+          assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
+          if (extractResult.failures.length) assertions.push(...extractResult.failures);
+        } catch (error) {
+          if (options.signal?.aborted) throw error;
+          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+            throw retryTimeoutError(attempt);
+          }
+          const errorType = isTimeoutError(error) ? "timeout" : "error";
+          if (!retry || !retryOn.has(errorType) || attempt === totalAttempts) throw error;
+          attemptError = error;
+          attemptErrorType = errorType;
+          lastAttemptError = error;
+          stepWarnings = [];
+          assertions = [];
+        } finally {
+          attemptDeadline?.dispose();
+        }
+        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          throw retryTimeoutError(attempt);
+        }
+        const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
+        if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
+        const intervalMs = retryBackoffIntervalMs(retry, attempt, maxElapsedMs);
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const remainingForWait = Math.max(0, maxElapsedMs - (now() - retryStartTime));
+        const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
+        const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
+        if (attemptCallback) {
+          const callbackInfo = {
+            step,
+            attempt,
+            totalAttempts,
+            intervalMs: waitBeforeCallback,
+            status: attemptError ? null : lastExecution.response?.status ?? null,
+            failedAssertion,
+            errorType: attemptErrorType,
+            errorMessage: attemptError ? describeError(attemptError) : ""
+          };
+          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          if (enforceAttemptDeadline) {
+            const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
+            if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
+            const callbackDeadline = createRequestSignal(options.signal, callbackRemainingMs);
+            try {
+              await raceWithSignal(callbackPromise, callbackDeadline.signal);
+            } catch (error) {
+              if (options.signal?.aborted) throw error;
+              if (callbackDeadline.timedOut() || now() - retryStartTime >= maxElapsedMs) {
+                throw retryTimeoutError(attempt);
+              }
+              throw error;
+            } finally {
+              callbackDeadline.dispose();
+            }
+          } else {
+            await callbackPromise;
+          }
+        }
+        if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
+          throw retryTimeoutError(attempt);
+        }
+        const remainingBeforeWait = maxElapsedMs - (now() - retryStartTime);
+        const waitMs = Math.max(0, Math.min(intervalMs, remainingBeforeWait));
+        const waitConsumesDeadline = enforceAttemptDeadline && intervalMs >= remainingBeforeWait;
+        await delay(waitMs, options.signal);
+        if (waitConsumesDeadline) throw retryTimeoutError(attempt);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -2757,17 +3402,23 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path10 = context && context.path || resolveString(step.path || "", runtime);
+      const path11 = context && context.path || resolveString(step.path || "", runtime);
+      const responseTooLarge = error?.responseTooLarge || null;
+      const uploadTooLarge = error?.uploadTooLarge || null;
+      const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path10,
+        path: path11,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
         always: step.always === true,
         cancelled,
         timedOut,
+        errorCode,
+        ...responseTooLarge ? { responseTooLarge } : {},
+        ...uploadTooLarge ? { uploadTooLarge } : {},
         error: errorMessage,
         warnings: [],
         assertions: [{ name: cancelled ? "\u6267\u884C\u672A\u53D6\u6D88" : timedOut ? "\u8BF7\u6C42\u672A\u8D85\u65F6" : "\u8BF7\u6C42\u6267\u884C\u6210\u529F", passed: false, actual: errorMessage, expected: "\u65E0\u5F02\u5E38" }],
@@ -2864,7 +3515,7 @@ async function runScenario(scenario, options = {}) {
 
 // src/capabilities.js
 function buildCapabilities(inputContract = contract) {
-  const { assertions, when, extract, reservedVars, generatedVars, globals, config, scenario, cli } = inputContract;
+  const { assertions, when, extract, reservedVars, generatedVars, globals, config, retryUntil, scenario, cli } = inputContract;
   return {
     schema: "scenario-test-capabilities",
     version: inputContract.runtimeVersion,
@@ -2903,11 +3554,22 @@ function buildCapabilities(inputContract = contract) {
       note: globals.note
     },
     config: {
+      configKeys: [...config.configKeys],
       scenarioItemKeys: [...config.scenarioItemKeys],
       environmentKeys: [...config.environmentKeys],
       variableKeys: [...config.variableKeys],
+      baseUrl: {
+        protocol: config.baseUrl.protocol,
+        note: config.baseUrl.note
+      },
       manual: { ...config.manual },
       tags: { ...config.tags || {} }
+    },
+    retryUntil: {
+      keys: [...retryUntil.keys],
+      retryOn: [...retryUntil.retryOn],
+      defaultRetryOn: [...retryUntil.defaultRetryOn],
+      note: retryUntil.note
     },
     scenario: {
       keys: [...scenario.keys],
@@ -2977,13 +3639,16 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`globals \u7C7B\u578B: ${capabilities.globals.types.join(" / ")}`);
   lines.push("");
+  lines.push(`config \u9876\u5C42\u5B57\u6BB5: ${capabilities.config.configKeys.join(" / ")}`);
   lines.push(`config.scenarios \u9879\u5B57\u6BB5: ${capabilities.config.scenarioItemKeys.join(" / ")}`);
+  lines.push(`  baseUrl\uFF08${capabilities.config.baseUrl.protocol}\uFF09: ${capabilities.config.baseUrl.note}`);
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
-  if (capabilities.scenario.retryUntilKeys?.length) {
-    lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.scenario.retryUntilKeys.join(" / ")}`);
+  if (capabilities.retryUntil) {
+    lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
+    lines.push(`  ${capabilities.retryUntil.note}`);
   }
   if (capabilities.scenario.note) lines.push(`  ${capabilities.scenario.note}`);
   lines.push("");
@@ -3002,6 +3667,8 @@ function renderCapabilitiesText(capabilities) {
 // src/node/io.js
 var import_node_fs2 = __toESM(require("node:fs"), 1);
 var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_stream = require("node:stream");
+var import_promises = require("node:stream/promises");
 
 // src/utils/path-validator.js
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -3072,43 +3739,122 @@ function validatePath(root, userPath, options = {}) {
 }
 
 // src/node/io.js
-function createNodeIo(workspace = process.cwd()) {
+function createNodeIo(workspace = process.cwd(), options = {}) {
   const root = import_node_path2.default.resolve(workspace);
-  return {
-    async createUploadBody(definition) {
-      const filePath = typeof definition === "string" ? definition : definition.filePath;
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, filePath);
-      } catch (error) {
-        throw new Error(
-          `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
+  const defaultMaxUploadBytes = normalizeByteLimit(options.maxUploadBytes);
+  function resolveUploadPath(filePath) {
+    try {
+      return validatePath(root, filePath);
+    } catch (error) {
+      throw new Error(
+        `\u6587\u4EF6\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u5B89\u5168: ${filePath}
 \u539F\u56E0: ${error.message}
 \u63D0\u793A: \u4E0A\u4F20\u6587\u4EF6\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
+      );
+    }
+  }
+  function resolveSavePath(relativePath) {
+    try {
+      return validatePath(root, relativePath);
+    } catch (error) {
+      throw new Error(
+        `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+      );
+    }
+  }
+  function resolveWriteTarget(absolutePath) {
+    let current = absolutePath;
+    const seen = /* @__PURE__ */ new Set();
+    for (let depth = 0; depth < 32; depth += 1) {
+      let stat;
+      try {
+        stat = import_node_fs2.default.lstatSync(current);
+      } catch (error) {
+        if (error.code === "ENOENT") return current;
+        throw error;
       }
+      if (!stat.isSymbolicLink()) return current;
+      if (seen.has(current)) throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u5305\u542B\u7B26\u53F7\u94FE\u63A5\u5FAA\u73AF: ${absolutePath}`);
+      seen.add(current);
+      const linkTarget = import_node_fs2.default.readlinkSync(current);
+      current = import_node_path2.default.resolve(import_node_path2.default.dirname(current), linkTarget);
+    }
+    throw new Error(`\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u7B26\u53F7\u94FE\u63A5\u5C42\u7EA7\u8FC7\u6DF1: ${absolutePath}`);
+  }
+  return {
+    async createUploadBody(definition, runtime, callOptions = {}) {
+      const filePath = typeof definition === "string" ? definition : definition.filePath;
+      const absolutePath = resolveUploadPath(filePath);
       if (!import_node_fs2.default.existsSync(absolutePath)) throw new Error(`\u4E0A\u4F20\u6587\u4EF6\u4E0D\u5B58\u5728: ${absolutePath}`);
+      const stat = import_node_fs2.default.statSync(absolutePath);
+      if (!stat.isFile()) throw new Error(`\u4E0A\u4F20\u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6: ${absolutePath}`);
+      const callMaxUploadBytes = callOptions?.maxUploadBytes;
+      const maxUploadBytes = callMaxUploadBytes === void 0 || callMaxUploadBytes === null ? defaultMaxUploadBytes : normalizeByteLimit(callMaxUploadBytes);
+      if (maxUploadBytes > 0 && stat.size > maxUploadBytes) {
+        const error = new Error(`\u4E0A\u4F20\u6587\u4EF6\u8D85\u8FC7\u5927\u5C0F\u4E0A\u9650: \u5B9E\u9645 ${stat.size} \u5B57\u8282\uFF0C\u9650\u5236 ${maxUploadBytes} \u5B57\u8282`);
+        error.scenarioUploadTooLarge = true;
+        error.uploadTooLarge = { actualBytes: stat.size, limitBytes: maxUploadBytes };
+        throw error;
+      }
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      form.append(fieldName, new Blob([import_node_fs2.default.readFileSync(absolutePath)]), filename);
+      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
-      let absolutePath;
-      try {
-        absolutePath = validatePath(root, relativePath);
-      } catch (error) {
-        throw new Error(
-          `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
-\u539F\u56E0: ${error.message}
-\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
-        );
-      }
+      const absolutePath = resolveSavePath(relativePath);
       import_node_fs2.default.mkdirSync(import_node_path2.default.dirname(absolutePath), { recursive: true });
       import_node_fs2.default.writeFileSync(absolutePath, data);
       return { savedTo: absolutePath, size: data.byteLength, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
+    },
+    async saveResponseStream(relativePath, body, metadata = {}) {
+      const absolutePath = resolveSavePath(relativePath);
+      const writeTarget = resolveWriteTarget(absolutePath);
+      if (writeTarget !== absolutePath) {
+        try {
+          validatePath(root, writeTarget, { allowAbsolute: true });
+        } catch (error) {
+          throw new Error(
+            `\u54CD\u5E94\u4FDD\u5B58\u8DEF\u5F84\u4E0D\u5B89\u5168: ${relativePath}
+\u539F\u56E0: ${error.message}
+\u63D0\u793A: \u4FDD\u5B58\u8DEF\u5F84\u5FC5\u987B\u5728\u5DE5\u4F5C\u533A\u5185 (${root})`
+          );
+        }
+      }
+      const directory = import_node_path2.default.dirname(writeTarget);
+      import_node_fs2.default.mkdirSync(directory, { recursive: true });
+      const tempPath = import_node_path2.default.join(
+        directory,
+        `.${import_node_path2.default.basename(writeTarget)}.part-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      );
+      const file = import_node_fs2.default.createWriteStream(tempPath);
+      let size = 0;
+      const counter = new import_node_stream.Transform({
+        transform(chunk, _encoding, callback) {
+          size += chunk.byteLength;
+          callback(null, chunk);
+        }
+      });
+      try {
+        const source = body == null ? import_node_stream.Readable.from([]) : typeof body.getReader === "function" ? import_node_stream.Readable.fromWeb(body) : body;
+        await (0, import_promises.pipeline)(source, counter, file);
+        import_node_fs2.default.renameSync(tempPath, writeTarget);
+      } catch (error) {
+        if (!file.closed) {
+          await new Promise((resolveClose) => {
+            file.once("close", resolveClose);
+            file.destroy();
+          });
+        }
+        import_node_fs2.default.rmSync(tempPath, { force: true });
+        throw error;
+      }
+      return { savedTo: absolutePath, size, contentType: metadata.contentType || "", [SAVED_RESPONSE]: true };
     }
   };
 }
@@ -3188,10 +3934,10 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 2. \u4E1A\u52A1\u529F\u80FD\u662F\u8BBE\u8BA1\u8FB9\u754C\uFF0C\u573A\u666F\u662F\u8BE5\u529F\u80FD\u4E0B\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84\u3002\u6309\u8BC1\u636E\u8986\u76D6\u6210\u529F\u8DEF\u5F84\u3001\u4E1A\u52A1\u89C4\u5219/\u53C2\u6570\u6821\u9A8C\u3001\u6743\u9650\u3001\u8FB9\u754C\u503C\u3001\u91CD\u590D\u64CD\u4F5C\u6216\u5E42\u7B49\u3001\u5408\u6CD5\u4E0E\u975E\u6CD5\u72B6\u6001\u6D41\u8F6C\uFF1B\u6CA1\u6709\u8BC1\u636E\u7684\u7C7B\u522B\u4E0D\u751F\u6210\u3002\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u5305\u542B\u51C6\u5907\u3001\u6267\u884C\u3001\u67E5\u8BE2\u9A8C\u8BC1\u548C\u7CBE\u786E\u6E05\u7406\u7B49\u591A\u4E2A HTTP \u6B65\u9AA4\uFF0C\u4F46\u8FD9\u4E9B\u6B65\u9AA4\u53EA\u670D\u52A1\u4E8E\u76EE\u6807\u529F\u80FD\uFF0C\u4E0D\u628A\u591A\u4E2A\u4E1A\u52A1\u529F\u80FD\u4E32\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002\u8BA4\u8BC1\u7B49\u516C\u5171\u524D\u7F6E\u53EA\u4F5C\u4E3A\u51C6\u5907\u6B65\u9AA4\uFF0C\u4E0D\u6539\u53D8\u573A\u666F\u5F52\u5C5E\u3002
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u6B65\u9AA4\u7EC4\u5408\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
-5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`scope: "suite"\` \u7684\u63D0\u53D6\u503C\u4F1A\u5728\u672C\u6B21 run \u7684\u540E\u7EED\u573A\u666F\u53EF\u89C1\uFF08\u767B\u5F55 token \u590D\u7528\uFF09\u3002\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 \`shape: { type: "object", required: [...], properties: {...} }\`\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF0C\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
+5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`scope: "suite"\` \u7684\u63D0\u53D6\u503C\u4F1A\u5728\u672C\u6B21 run \u7684\u540E\u7EED\u573A\u666F\u53EF\u89C1\uFF08\u767B\u5F55 token \u590D\u7528\uFF09\u3002\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 \`shape: { type: "object", required: [...], properties: {...} }\`\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF0C\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BCLI \u9700\u8981\u81EA\u52A8\u7EF4\u6301\u4F1A\u8BDD\u65F6\u53EF\u52A0 \`run --cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF0C\u4E0D\u843D\u76D8\uFF09\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
-8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u5199\u6570\u636E\u573A\u666F\u7684\u6E05\u7406\u6B65\u9AA4\u53EF\u58F0\u660E \`always: true\`\uFF1A\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\u540E\u4ECD\u4F1A\u6267\u884C\uFF08\u7528\u6237\u53D6\u6D88\u65F6\u4E0D\u6267\u884C\uFF09\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u957F\u8F6E\u8BE2\u53EF\u7528 \`intervalFactor\`\uFF08\u22651\uFF09\u4E0E \`maxIntervalMs\` \u6307\u6570\u9000\u907F\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002
+8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u5199\u6570\u636E\u573A\u666F\u7684\u6E05\u7406\u6B65\u9AA4\u53EF\u58F0\u660E \`always: true\`\uFF1A\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\u540E\u4ECD\u4F1A\u6267\u884C\uFF08\u7528\u6237\u53D6\u6D88\u65F6\u4E0D\u6267\u884C\uFF09\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u6309\u8BC1\u636E\u58F0\u660E \`retryUntil.intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E\u53EF\u9009 \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u9650\u7EA6\u675F\u3002
 9. \u9519\u8BEF\u54CD\u5E94\u4F53\u6CA1\u6709\u4EE3\u7801\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u4F9D\u636E\u65F6\uFF0C\u53EA\u65AD\u8A00\u5DF2\u786E\u8BA4\u7684 HTTP status\uFF0C\u4E0D\u80FD\u731C\u6D4B\u6216\u65AD\u8A00 code\u3001message\u3001error \u7B49\u5B57\u6BB5\u5B58\u5728\u3002
 10. \u4E0D\u4FEE\u6539\u4E1A\u52A1\u4EE3\u7801\u3001\u6784\u5EFA\u914D\u7F6E\u6216\u516C\u5171\u8FD0\u884C\u65F6\uFF1B\u4E0D\u5199\u5165\u751F\u4EA7\u5730\u5740\u3001\u4E2A\u4EBA\u6570\u636E\u3001\u56FA\u5B9A Token \u6216\u975E\u6D4B\u8BD5\u51ED\u636E\u3002
 11. \u843D\u76D8\u540E\u9010\u6587\u4EF6\u81EA\u68C0\uFF1A\u4E0D\u5F97\u51FA\u73B0\u65E0\u8BC1\u636E\u7684 SUCCESS\u3001PDF\u3001pdf\u3001\u9519\u8BEF\u5B57\u6BB5\u65AD\u8A00\u6216 \`retryUntil + exists\`\uFF1B\u6240\u6709\u5916\u90E8\u8F93\u5165\u53D8\u91CF\u5FC5\u987B\u5728\u914D\u7F6E\u4E2D\u58F0\u660E\uFF0C\u573A\u666F vars \u53EA\u4FDD\u5B58\u6D4B\u8BD5\u6807\u8BB0\u3001\u63D0\u53D6\u7ED3\u679C\u6216\u5185\u90E8\u72B6\u6001\u3002\u53D1\u73B0\u8FDD\u89C4\u5FC5\u987B\u5148\u4FEE\u6B63\u518D\u62A5\u544A\u3002
@@ -3213,7 +3959,7 @@ var SCENARIO_PATTERNS = [
   "7. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\uFF1Bfrom: 'headers' \u7684 path \u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF0C\u4E0D\u5199 request.params\uFF1BGET/HEAD \u4E0D\u5199\u8BF7\u6C42\u4F53\uFF08request.body\u3001request.fileUpload \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u53C2\u6570\u4E00\u5F8B\u653E params\u3002",
   "8. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars\u3001variables\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002 \u9700\u8981\u552F\u4E00\u53F7\u7801/\u8BC1\u53F7\u7684\u6D4B\u8BD5\u6570\u636E\u5728 generatedVars \u58F0\u660E\uFF1A\u8EAB\u4EFD\u8BC1 { name, type: 'idcard', birthDate, gender }\u3001\u94F6\u884C\u5361 { name, type: 'luhn', length, prefix }\u3001\u624B\u673A\u53F7 { name, type: 'phone', prefix }\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801 { name, type: 'uscc', regionCode }\uFF0C\u5F15\u64CE\u6309\u8F6E\u6B21\u751F\u6210\u6821\u9A8C\u4F4D\u5408\u6CD5\u4E14\u8DE8\u8F6E\u552F\u4E00\u7684\u503C\uFF0C\u7528 {{vars.<name>}} \u5F15\u7528\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\u7528 timestamp \u7C7B\u578B\uFF1A{ name, type: 'timestamp', offset: '-7d', unit: 's' } \u6216 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }\uFF08offset \u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF1Bformat \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u65F6\u95F4\u6233\u6216\u65E5\u671F\u5B57\u7B26\u4E32\u3002\u4E1A\u52A1\u4E3B\u952E UUID \u7528 { name, type: 'uuid' }\uFF08\u5E26\u8FDE\u5B57\u7B26\uFF09\uFF0C32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u7528 uuidHex\u3002\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 enum\uFF1A{ name, type: 'enum', values: [<\u5019\u9009>], weights: [<\u975E\u8D1F\u6743\u91CD\uFF0C\u53EF\u9009>] }\uFF0C\u7F3A\u7701\u7B49\u6743\u3001\u6743\u91CD 0 \u7684\u5019\u9009\u6C38\u4E0D\u9009\u4E2D\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF1B\u5019\u9009\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u3002",
   "9. \u65E0\u6CD5\u786E\u8BA4\u7684\u5FC5\u586B\u8BF7\u6C42\u503C\u653E\u5165\u914D\u7F6E vars \u7559\u7A7A\uFF0C\u5E76\u5728 variables \u58F0\u660E required: true\uFF1B\u4E0D\u5F97\u7528 PDF\u3001pdf\u3001SUCCESS \u6216 scenario-{{vars.runNo}} \u5145\u5F53\u672A\u77E5\u679A\u4E3E\u3002",
-  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 shape: { type: 'object', required: [...], properties: {...} }\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bscope: 'suite' \u7684\u63D0\u53D6\u503C\u4F9B\u672C\u6B21 run \u540E\u7EED\u573A\u666F\u590D\u7528\uFF08\u5982\u767B\u5F55 token\uFF09\u3002from: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
+  `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 shape: { type: 'object', required: [...], properties: {...} }\uFF08jsonSchema-lite\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF09\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bpath \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF08items[*].id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 []\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\uFF09\u4E14\u7ED3\u679C\u53EF\u76F4\u63A5\u7528 length/includes/each \u65AD\u8A00\uFF1Bscope: 'suite' \u7684\u63D0\u53D6\u503C\u4F9B\u672C\u6B21 run \u540E\u7EED\u573A\u666F\u590D\u7528\uFF08\u5982\u767B\u5F55 token\uFF09\u3002from: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
   "",
   "\u4EE5\u4E0B\u6A21\u5F0F\u662F\u529F\u80FD\u573A\u666F\u5185\u90E8\u7684\u6B65\u9AA4\u7EC4\u5408\u3002\u6309\u76EE\u6807\u529F\u80FD\u6240\u9700\u9009\u7528\uFF0C\u4E0D\u8981\u6C42\u5168\u90E8\u4F7F\u7528\uFF0C\u4E5F\u4E0D\u8981\u628A\u6240\u6709\u6A21\u5F0F\u62FC\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002",
   "",
@@ -3282,7 +4028,7 @@ var SCENARIO_PATTERNS = [
   "        ]",
   "    }));",
   "",
-  "\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002",
+  '\u7981\u6B62\u56FA\u5B9A sleep\uFF0C\u4F7F\u7528 retryUntil\u3002maxAttempts \u662F\u6700\u5927\u5C1D\u8BD5\u603B\u6B21\u6570\uFF08\u542B\u9996\u6B21\u8BF7\u6C42\uFF09\uFF1B\u91CD\u8BD5\u6B21\u6570\u3001\u95F4\u9694\u3001\u72B6\u6001\u5B57\u6BB5\u548C\u5B8C\u6210\u72B6\u6001\u5FC5\u987B\u4ECE\u9879\u76EE\u5B9E\u73B0\u3001\u679A\u4E3E\u3001\u6587\u6863\u6216\u65E2\u6709\u6D4B\u8BD5\u786E\u8BA4\uFF1B\u65E0\u6CD5\u786E\u8BA4\u7EC8\u6001\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\uFF0C\u4E0D\u751F\u6210 retryUntil\u3002retryUntil \u7684\u65AD\u8A00\u5FC5\u987B\u6BD4\u8F83\u5DF2\u786E\u8BA4\u7EC8\u6001\uFF0C\u4E0D\u80FD\u53EA\u68C0\u67E5 exists\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD ECONNREFUSED \u65F6\uFF0C\u53EF\u52A0 retryOn: ["assertion", "error", "timeout"] \u8BA9\u8FDE\u63A5\u5931\u8D25\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF1B\u9ED8\u8BA4 ["assertion"] \u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u53EF\u6309\u8BC1\u636E\u52A0 intervalFactor: 2 \u4E0E maxIntervalMs: 10000\uFF08\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u7EA6\u675F\uFF09\u3002',
   "",
   "## \u6A21\u5F0F\u4E94\uFF1A\u4E3A\u6821\u9A8C\u5931\u8D25\u4E0E\u6743\u9650\u62D2\u7EDD\u5206\u522B\u5EFA\u573A\u666F",
   "",
@@ -3491,12 +4237,12 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 \u5E38\u7528\u80FD\u529B\uFF1A
 
 - \u7528 \`{{vars.name}}\` \u5728 path\u3001Query\u3001Header\u3001Body \u4E2D\u5F15\u7528\u53D8\u91CF\u3002
-- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\uFF1B\u53EF\u9009\u5B57\u6BB5\u53EF\u58F0\u660E \`default\` \u515C\u5E95\u503C\uFF08\u4E0E required \u4E92\u65A5\uFF09\u3002\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\`records[-1]\` \u4E3A\u672B\u9879\uFF09\u3002\`from: "headers"\` \u914D \`path\` \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 \`from: "headers"\`\u3001\`header\` \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002
+- \u7528 \`extract\` \u4ECE\u54CD\u5E94\u63D0\u53D6 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u4F9B\u540E\u7EED\u6B65\u9AA4\u4F7F\u7528\uFF1B\u8DEF\u5F84\u5FC5\u586B\u65F6\u52A0 \`required: true\`\uFF0C\u7F3A\u5931\u4F1A\u5931\u8D25\uFF0C\u9ED8\u8BA4\u7F3A\u5931\u53EA\u4EA7\u751F warning\uFF1B\u53EF\u9009\u5B57\u6BB5\u53EF\u58F0\u660E \`default\` \u515C\u5E95\u503C\uFF08\u4E0E required \u4E92\u65A5\uFF09\u3002\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\`records[-1]\` \u4E3A\u672B\u9879\uFF09\u3002\u8DEF\u5F84\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF08\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u4E3A\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\uFF09\u3002\`from: "headers"\` \u914D \`path\` \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 \`from: "headers"\`\u3001\`header\` \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002
 - \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u6570\u503C\u6BD4\u8F83\u7528 \`gte: 5\`\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF0C\u975E\u8D1F\u6574\u6570\u7B49\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF09\u3002
 - \u767B\u5F55\u3001\u6362 Token\u3001\u7B7E\u540D\u90FD\u6309\u666E\u901A\u6B65\u9AA4\u548C\u53D8\u91CF\u5B9E\u73B0\uFF1B\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u663E\u5F0F\u4F7F\u7528 \`request.credentials: "include"\`\uFF0CCLI \u9700\u8981\u81EA\u52A8\u7EF4\u6301\u4F1A\u8BDD\u65F6\u53EF\u52A0 \`run --cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF0C\u4E0D\u843D\u76D8\u3001\u4E0D\u8DE8\u573A\u666F\uFF09\u3002
 - \u6BCF\u4E00\u6B65\u81F3\u5C11\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF1B\u5173\u952E\u7ED3\u679C\u8865\u5145 \`assertions\`\u3002
 - \u672A\u5199 \`status\` \u548C \`assertions\` \u65F6\u8FD0\u884C\u65F6\u9ED8\u8BA4\u8981\u6C42 HTTP 2xx\uFF0C\u4E0D\u80FD\u628A\u5F02\u5E38\u54CD\u5E94\u5F53\u6210\u529F\u3002
-- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
+- \u6700\u7EC8\u4E00\u81F4\u6027\u4F7F\u7528 \`retryUntil\`\uFF0C\u907F\u514D\u56FA\u5B9A\u7B49\u5F85\uFF1B\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\u7528 \`retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8D85\u65F6\u7EE7\u7EED\u8F6E\u8BE2\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF09\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u524D\u5148\u786E\u8BA4\u5B89\u5168\uFF1B\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\u7528 \`intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF0C\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E \`maxElapsedMs\` \u7EA6\u675F\uFF1B\u524D\u7F6E\u53D8\u91CF\u53EF\u80FD\u4E3A\u7A7A\u7684\u5220\u9664\u64CD\u4F5C\u4F7F\u7528 \`when\` \u4FDD\u62A4\uFF08\`when\` \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 \`from: "vars"\` / \`from: "lastResponse"\` / \`from: "status"\`\uFF0C\u6216\u7528 \`target: "status"\` \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF09\u3002
 - \`runId\` / \`runNo\` \u662F\u8FD0\u884C\u65F6\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E\u6216\u573A\u666F\u4E2D\u58F0\u660E\u6216\u8986\u76D6\u3002
 - \u9ED8\u8BA4\u5931\u8D25\u5373\u505C\u6B62\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\uFF0C\u624D\u5728\u573A\u666F\u4E0A\u8BBE \`failurePolicy: "continue"\`\u3002
 - SKIP \u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7/\u6267\u884C\u7EDF\u8BA1\uFF0C\u5168\u8DF3\u8FC7\u65F6\u573A\u666F\u72B6\u6001\u4E3A SKIPPED\uFF1B\u5199\u6570\u636E\u7C7B\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u52A0 \`manual: true\`\uFF0C\`--all\` \u4F1A\u9ED8\u8BA4\u6392\u9664\uFF0C\u9700\u7528 \`--scenario <id>\` \u663E\u5F0F\u6267\u884C\u3002
@@ -3826,6 +4572,39 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+function checkConfigBaseUrl(config) {
+  const environments = Array.isArray(config.envs) ? config.envs : [];
+  const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
+  const missingKeys = environments.filter((env) => !String(env.baseUrl || "").trim()).map((env) => env.key);
+  if (environments.length === 0) {
+    if (fallback) {
+      return { name: "base-url", status: "PASS", message: `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u9876\u5C42 baseUrl \u53EF\u7528: ${fallback}`, fix: "" };
+    }
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: "\u914D\u7F6E\u672A\u58F0\u660E envs \u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl",
+      fix: "\u5728 scenario.config.js \u4E2D\u8865\u5145 envs[].baseUrl \u6216\u9876\u5C42 baseUrl\uFF08http(s)://\uFF09"
+    };
+  }
+  if (fallback) {
+    return {
+      name: "base-url",
+      status: "PASS",
+      message: missingKeys.length ? `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u5355\u72EC\u8BBE\u7F6E baseUrl\uFF0C\u5C06\u56DE\u9000\u9876\u5C42 baseUrl: ${fallback}` : `\u73AF\u5883 baseUrl \u5DF2\u58F0\u660E\uFF08http(s)://\uFF09\uFF0C\u9876\u5C42\u56DE\u9000\u5730\u5740: ${fallback}`,
+      fix: ""
+    };
+  }
+  if (missingKeys.length) {
+    return {
+      name: "base-url",
+      status: "WARN",
+      message: `\u73AF\u5883 ${missingKeys.join(", ")} \u672A\u8BBE\u7F6E baseUrl\uFF0C\u4E14\u9876\u5C42 baseUrl \u4E3A\u7A7A\uFF1ACLI run \u9700\u8981 --base-url \u6216\u914D\u7F6E baseUrl`,
+      fix: "\u4E3A\u6BCF\u4E2A\u73AF\u5883\u8865\u5145 http(s):// baseUrl\uFF0C\u6216\u58F0\u660E\u9876\u5C42 baseUrl \u4F5C\u4E3A\u56DE\u9000"
+    };
+  }
+  return { name: "base-url", status: "PASS", message: "\u6240\u6709\u73AF\u5883\u5747\u5DF2\u58F0\u660E http(s):// baseUrl", fix: "" };
+}
 function satisfiesNodeEngine(version, range) {
   const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
   if (!match) return false;
@@ -3884,15 +4663,32 @@ function buildDoctorReport(options) {
       config = loadConfigFile(configPath, api);
       checks.push({ name: "config-load", status: "PASS", message: `\u914D\u7F6E\u53EF\u52A0\u8F7D: ${configPath}`, fix: "" });
     } catch (error) {
+      const reason = String(error?.message || error);
       checks.push({
         name: "config-load",
         status: "FAIL",
-        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${error.message}\uFF09`,
+        message: `\u914D\u7F6E\u6587\u4EF6\u52A0\u8F7D\u5931\u8D25: ${configPath}\uFF08\u539F\u56E0: ${reason}\uFF09`,
         fix: "\u68C0\u67E5\u914D\u7F6E\u8BED\u6CD5\u4E0E defineConfig \u8C03\u7528\uFF1B\u4FEE\u590D\u540E\u91CD\u65B0\u8FD0\u884C doctor"
       });
+      if (error?.code === "SCENARIO_CONFIG_UNKNOWN_KEY") {
+        checks.push({
+          name: "config-keys",
+          status: "FAIL",
+          message: `\u914D\u7F6E\u5B57\u6BB5\u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u6309\u62A5\u9519\u4E2D\u300C\u662F\u5426\u60F3\u5199\u300D\u6216\u5141\u8BB8\u7684\u952E\u540D\u4FEE\u6B63\u62FC\u5199"
+        });
+      } else if (error?.code === "SCENARIO_CONFIG_BASE_URL") {
+        checks.push({
+          name: "base-url",
+          status: "FAIL",
+          message: `baseUrl \u6821\u9A8C\u5931\u8D25: ${reason}`,
+          fix: "\u5C06 envs[].baseUrl \u6216\u9876\u5C42 baseUrl \u6539\u4E3A http:// \u6216 https:// \u5F00\u5934\u7684\u5B8C\u6574 URL"
+        });
+      }
     }
   }
   if (config) {
+    checks.push(checkConfigBaseUrl(config));
     const entries = config.scenarios || [];
     if (entries.length === 0) {
       checks.push({ name: "scenario-list", status: "PASS", message: "\u914D\u7F6E\u4E2D\u6682\u65E0\u53EF\u68C0\u67E5\u7684\u573A\u666F\uFF08scenarios \u4E3A\u7A7A\uFF09", fix: "" });
@@ -4337,7 +5133,8 @@ function resolveStartupProxyTarget(config, envKey, baseUrlOverride) {
     return {
       key: overridden ? `${environment.key}\uFF08--base-url \u8986\u76D6\uFF09` : environment.key,
       envKey: environment.key,
-      target: trimUrl(overridden ? baseUrlOverride : environment.baseUrl || "")
+      // 环境缺省（或纯空白）baseUrl 时回退顶层 baseUrl，与 doctor/run 同口径（#61）
+      target: trimUrl(overridden ? baseUrlOverride : environment.baseUrl || config.baseUrl || "")
     };
   }
   return {
@@ -4356,8 +5153,9 @@ function resolveRequestProxyTarget(options) {
       const keys = config.envs.map((item) => item.key);
       throw new Error(`\u672A\u77E5\u73AF\u5883 ${selectedKey || "(\u7A7A)"}\uFF0C\u53EF\u7528\u503C: ${keys.join(", ")}`);
     }
-    if (!environment.baseUrl) throw new Error(`\u73AF\u5883 ${environment.key} \u672A\u914D\u7F6E baseUrl`);
-    return { key: environment.key, envKey: environment.key, target: trimUrl(environment.baseUrl) };
+    const target = trimUrl(environment.baseUrl || config.baseUrl || "");
+    if (!target) throw new Error(`\u73AF\u5883 ${environment.key} \u672A\u914D\u7F6E baseUrl`);
+    return { key: environment.key, envKey: environment.key, target };
   }
   if (envKey && envKey !== defaultEnvKey) {
     throw new Error(`\u914D\u7F6E\u672A\u58F0\u660E\u73AF\u5883 ${envKey}\uFF0C\u65E0\u6CD5\u5207\u6362\u4EE3\u7406\u76EE\u6807`);
@@ -4528,6 +5326,733 @@ function createServeServer(options) {
   });
 }
 
+// src/import.js
+var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
+var DEFAULT_MAX_IMPORT_ENTRIES = 50;
+var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".css",
+  ".map",
+  ".html",
+  ".htm",
+  ".xhtml",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".ico",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+  ".eot",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".br"
+]);
+var IGNORED_REQUEST_HEADERS = /* @__PURE__ */ new Set([
+  "host",
+  "content-length",
+  "connection",
+  "proxy-connection",
+  "accept-encoding",
+  "transfer-encoding",
+  "upgrade",
+  "te",
+  "trailer",
+  "priority"
+]);
+var SENSITIVE_HEADER_NAMES = /* @__PURE__ */ new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "api-key",
+  "apikey",
+  "x-apikey",
+  "x-auth-token",
+  "x-access-token",
+  "x-token",
+  "x-client-secret",
+  "x-secret"
+]);
+var SENSITIVE_QUERY_NAMES = /* @__PURE__ */ new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "api_key",
+  "apikey",
+  "key",
+  "secret",
+  "client_secret",
+  "password",
+  "passwd",
+  "pwd",
+  "signature",
+  "sign",
+  "sig",
+  "authorization",
+  "auth",
+  "session",
+  "sessionid",
+  "cookie"
+]);
+var BINARY_MIME_PATTERN = /^(?:image\/|audio\/|video\/|font\/)|application\/(?:octet-stream|pdf|zip|gzip)$/i;
+var MULTIPART_MIME_PATTERN = /^multipart\//i;
+var ImportError = class extends Error {
+  constructor(message, hint) {
+    super(message);
+    this.name = "ImportError";
+    this.hint = hint || "";
+  }
+};
+function isEmpty(value) {
+  return value === void 0 || value === null || value === "";
+}
+function safeText(value) {
+  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+}
+function normalizeHeaders(headers) {
+  const pairs = [];
+  if (Array.isArray(headers)) {
+    for (const item of headers) {
+      if (!item) continue;
+      if (Array.isArray(item) && item.length >= 2) {
+        pairs.push([String(item[0]), String(item[1])]);
+        continue;
+      }
+      if (typeof item !== "object" || item.name === void 0 || item.value === void 0) continue;
+      pairs.push([String(item.name), String(item.value)]);
+    }
+  } else if (headers && typeof headers === "object") {
+    for (const [name, value] of Object.entries(headers)) {
+      if (value === void 0 || value === null) continue;
+      pairs.push([String(name), Array.isArray(value) ? value.join(", ") : String(value)]);
+    }
+  }
+  const result = [];
+  const seen = /* @__PURE__ */ new Map();
+  for (const [rawName, rawValue] of pairs) {
+    const name = rawName.trim();
+    if (!name || name.startsWith(":") || IGNORED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
+    const lower = name.toLowerCase();
+    const value = rawValue.trim();
+    if (seen.has(lower)) {
+      const existing = seen.get(lower);
+      existing.value = `${existing.value}${lower === "cookie" ? "; " : ", "}${value}`;
+      continue;
+    }
+    const entry = { name, value };
+    seen.set(lower, entry);
+    result.push(entry);
+  }
+  return result;
+}
+function headerVariableName(name) {
+  const normalized = String(name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "secret";
+}
+function maskSensitiveHeaders(headers) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const result = {};
+  for (const { name, value } of headers) {
+    const lower = name.toLowerCase();
+    const sensitive = SENSITIVE_HEADER_NAMES.has(lower) || lower.endsWith("-token") || lower.endsWith("_token") || lower.includes("token") || lower.endsWith("-secret") || lower.endsWith("_secret") || lower.includes("secret") || lower.endsWith("-key") || lower.endsWith("_key") || lower.includes("apikey") || lower.includes("auth");
+    if (!sensitive || value.includes("{{")) {
+      result[name] = value;
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    result[name] = `{{vars.${variableName}}}`;
+    vars[variableName] = "";
+    notices.push(`${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { headers: result, vars, notices };
+}
+function isSensitiveQueryName(name) {
+  const lower = String(name).toLowerCase();
+  return SENSITIVE_QUERY_NAMES.has(lower) || lower.endsWith("_token") || lower.endsWith("-token") || lower.endsWith("_key") || lower.endsWith("-key") || lower.endsWith("_secret") || lower.endsWith("-secret");
+}
+function maskQueryParams(value) {
+  const vars = {};
+  const notices = [];
+  const usedNames = /* @__PURE__ */ new Set();
+  const entries = [];
+  for (const [name, raw] of value) {
+    if (!isSensitiveQueryName(name) || String(raw).includes("{{")) {
+      entries.push([name, raw]);
+      continue;
+    }
+    let variableName = headerVariableName(name);
+    let suffix = 2;
+    while (usedNames.has(variableName)) {
+      variableName = `${headerVariableName(name)}_${suffix}`;
+      suffix += 1;
+    }
+    usedNames.add(variableName);
+    entries.push([name, `{{vars.${variableName}}}`]);
+    vars[variableName] = "";
+    notices.push(`\u67E5\u8BE2\u53C2\u6570 ${name} \u5DF2\u66FF\u6362\u4E3A {{vars.${variableName}}}`);
+  }
+  return { params: Object.fromEntries(entries), vars, notices };
+}
+function parseHttpUrl(raw, label) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    throw new ImportError(`${label}\u4E0D\u662F\u5408\u6CD5\u7684 URL: ${safeText(raw)}`);
+  }
+  if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname) {
+    throw new ImportError(`${label}\u53EA\u652F\u6301 http(s) URL: ${safeText(raw)}`);
+  }
+  return parsed;
+}
+function redactUrlForComment(raw) {
+  let parsed;
+  try {
+    parsed = new URL(String(raw));
+  } catch {
+    return safeText(raw);
+  }
+  parsed.username = "";
+  parsed.password = "";
+  for (const key of Array.from(parsed.searchParams.keys())) {
+    if (isSensitiveQueryName(key)) parsed.searchParams.set(key, "<redacted>");
+  }
+  return parsed.toString();
+}
+function urlToStepPath(parsed) {
+  return parsed.pathname || "/";
+}
+function queryFromUrl(parsed) {
+  const values = /* @__PURE__ */ new Map();
+  for (const [name, value] of parsed.searchParams) {
+    if (!values.has(name)) values.set(name, value);
+    else if (Array.isArray(values.get(name))) values.get(name).push(value);
+    else values.set(name, [values.get(name), value]);
+  }
+  return Array.from(values);
+}
+function isStaticOrPreflight(entry) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  if (method === "OPTIONS") return true;
+  const headers = Array.isArray(request.headers) ? request.headers : [];
+  if (headers.some((header) => String(header?.name || "").toLowerCase() === "access-control-request-method")) return true;
+  let parsed;
+  try {
+    parsed = new URL(String(request.url || ""));
+  } catch {
+    return true;
+  }
+  if (!/^https?:$/i.test(parsed.protocol)) return true;
+  const extension = import_node_path9.default.extname(parsed.pathname).toLowerCase();
+  if (STATIC_EXTENSIONS.has(extension)) return true;
+  const mimeType = String(entry?.response?.content?.mimeType || "");
+  if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
+  return /^(?:image\/|audio\/|video\/|font\/|text\/css$|application\/(?:javascript|pdf|zip|gzip)$)/i.test(mimeType);
+}
+function bodyFromHar(request, notes, headers) {
+  const postData = request?.postData;
+  if (!postData || isEmpty(postData.text) && !Array.isArray(postData.params)) return { body: void 0 };
+  const mimeType = String(postData.mimeType || "");
+  let text = postData.text;
+  if (postData.encoding === "base64") {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A base64 \u7F16\u7801\u7684\u4E8C\u8FDB\u5236\u5185\u5BB9\uFF0C\u5DF2\u7701\u7565\uFF08\u539F MIME: ${mimeType || "unknown"}\uFF09`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (isEmpty(text) && Array.isArray(postData.params) && postData.params.length) {
+    if (MULTIPART_MIME_PATTERN.test(mimeType)) {
+      notes.push(`\u8BF7\u6C42\u4F53\u4E3A multipart/form-data\uFF0C\u5DF2\u7701\u7565\uFF08\u542B\u6587\u4EF6/\u4E8C\u8FDB\u5236\u5B57\u6BB5\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload\uFF09`);
+      removeContentType(headers);
+      return { body: void 0 };
+    }
+    if (/x-www-form-urlencoded/i.test(mimeType)) {
+      text = postData.params.map((item) => `${encodeURIComponent(String(item.name ?? ""))}=${encodeURIComponent(String(item.value ?? ""))}`).join("&");
+    }
+  }
+  if (isEmpty(text)) return { body: void 0 };
+  const bodyText = String(text);
+  if (BINARY_MIME_PATTERN.test(mimeType) || MULTIPART_MIME_PATTERN.test(mimeType) || bodyText.includes("\0") || bodyText.includes("\uFFFD")) {
+    notes.push(`\u8BF7\u6C42\u4F53\u4E3A\u4E8C\u8FDB\u5236\u6216\u4E0D\u652F\u6301\u7684\u683C\u5F0F\uFF08MIME: ${mimeType || "unknown"}\uFF09\uFF0C\u5DF2\u7701\u7565\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload/\u539F\u59CB body`);
+    removeContentType(headers);
+    return { body: void 0 };
+  }
+  if (/json/i.test(mimeType) || /^[\[{]/.test(bodyText.trim())) {
+    try {
+      return { body: JSON.parse(bodyText) };
+    } catch {
+      return { body: bodyText };
+    }
+  }
+  return { body: bodyText };
+}
+function removeContentType(headers) {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === "content-type") delete headers[key];
+  }
+}
+function harEntryToStep(entry, index) {
+  const request = entry?.request || {};
+  const method = String(request.method || "GET").toUpperCase();
+  const parsed = parseHttpUrl(request.url, `HAR \u7B2C ${index + 1} \u6761\u8BF7\u6C42`);
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(request.headers));
+  const notes = [];
+  const body = bodyFromHar(request, notes, maskedHeaders.headers);
+  const responseStatus = Number(entry?.response?.status);
+  const validResponseStatus = Number.isInteger(responseStatus) && responseStatus >= 100 && responseStatus <= 599;
+  const status = validResponseStatus ? responseStatus : 200;
+  if (!validResponseStatus) {
+    notes.push("HAR \u672A\u63D0\u4F9B\u6709\u6548\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4");
+  }
+  let requestBody = body.body;
+  if (requestBody !== void 0 && ["GET", "HEAD"].includes(method)) {
+    notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+    removeContentType(maskedHeaders.headers);
+    requestBody = void 0;
+  }
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (requestBody !== void 0) requestDefinition.body = requestBody;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = status;
+  return {
+    step,
+    notes: [
+      `\u6E90\u8BF7\u6C42: ${method} ${redactUrlForComment(request.url)}`,
+      `status: ${status} \u6765\u81EA HAR \u89C2\u6D4B\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4\u65AD\u8A00\u662F\u5426\u9002\u5E94\u5176\u4ED6\u73AF\u5883`,
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ],
+    vars: { ...maskedHeaders.vars, ...maskedQuery.vars },
+    binaryBody: notes.some((note) => note.includes("\u4E8C\u8FDB\u5236") || note.includes("multipart"))
+  };
+}
+function normalizeHar(input) {
+  let har = input;
+  if (typeof har === "string") {
+    try {
+      har = JSON.parse(har);
+    } catch (error) {
+      throw new ImportError(`HAR \u4E0D\u662F\u5408\u6CD5 JSON: ${error.message}`, "\u8BF7\u786E\u8BA4\u5BFC\u51FA\u7684\u662F\u6D4F\u89C8\u5668/\u4EE3\u7406\u751F\u6210\u7684\u5B8C\u6574 HAR \u6587\u4EF6\u3002");
+    }
+  }
+  if (!har || typeof har !== "object" || !har.log || !Array.isArray(har.log.entries)) {
+    throw new ImportError("HAR \u7F3A\u5C11 log.entries \u6570\u7EC4", "\u8BF7\u786E\u8BA4\u6587\u4EF6\u6765\u81EA\u6D4F\u89C8\u5668 Network \u9762\u677F\u6216\u6293\u5305\u5DE5\u5177\u7684 HAR \u5BFC\u51FA\u3002");
+  }
+  return har;
+}
+function parseHostFilter(value) {
+  return String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+function createHarDraft(input, options = {}) {
+  const har = normalizeHar(input);
+  const maxEntries = Number.isFinite(Number(options.maxEntries)) && Number(options.maxEntries) > 0 ? Math.floor(Number(options.maxEntries)) : DEFAULT_MAX_IMPORT_ENTRIES;
+  const hostList = Array.isArray(options.hosts) ? options.hosts : options.hosts ? [options.hosts] : [];
+  const hosts = new Set(hostList.map((host) => String(host).toLowerCase()));
+  const stats = {
+    total: har.log.entries.length,
+    imported: 0,
+    filteredStatic: 0,
+    filteredHost: 0,
+    filteredInvalid: 0,
+    omittedByLimit: 0,
+    binaryBodies: 0,
+    maskedFields: 0
+  };
+  const records = [];
+  const vars = {};
+  for (let entryIndex = 0; entryIndex < har.log.entries.length; entryIndex += 1) {
+    const entry = har.log.entries[entryIndex];
+    const request = entry?.request;
+    if (!request || isEmpty(request.url)) {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    if (isStaticOrPreflight(entry)) {
+      stats.filteredStatic += 1;
+      continue;
+    }
+    let host;
+    try {
+      host = new URL(String(request.url)).host.toLowerCase();
+    } catch {
+      stats.filteredInvalid += 1;
+      continue;
+    }
+    let hostname = "";
+    try {
+      hostname = new URL(String(request.url)).hostname.toLowerCase();
+    } catch {
+    }
+    if (hosts.size && !hosts.has(host) && !hosts.has(hostname)) {
+      stats.filteredHost += 1;
+      continue;
+    }
+    if (records.length >= maxEntries) {
+      stats.omittedByLimit += 1;
+      continue;
+    }
+    let record;
+    try {
+      record = harEntryToStep(entry, entryIndex);
+    } catch (error) {
+      if (error instanceof ImportError) {
+        stats.filteredInvalid += 1;
+        continue;
+      }
+      throw error;
+    }
+    records.push(record);
+    Object.assign(vars, record.vars);
+    stats.imported += 1;
+    stats.binaryBodies += record.binaryBody ? 1 : 0;
+    stats.maskedFields += record.notes.filter((note) => note.includes("\u5DF2\u66FF\u6362\u4E3A {{vars.")).length;
+  }
+  return {
+    scenario: {
+      name: "\u5BFC\u5165\u6D41\u91CF\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: records.map((record) => record.step)
+    },
+    stepNotes: records.map((record) => record.notes),
+    stats,
+    source: options.source || "HAR"
+  };
+}
+function tokenizeCurl(command) {
+  const text = String(command || "");
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  let hasToken = false;
+  const push = () => {
+    if (!hasToken) return;
+    tokens.push(current);
+    current = "";
+    hasToken = false;
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quote === "'") {
+      if (char === "'") quote = "";
+      else current += char;
+      hasToken = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') {
+        quote = "";
+      } else if (char === "\\" && ['"', "\\", "$", "`"].includes(next)) {
+        current += next;
+        index += 1;
+      } else {
+        current += char;
+      }
+      hasToken = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+      continue;
+    }
+    if (char === "\\") {
+      if (next === "\n") {
+        index += 1;
+        continue;
+      }
+      if (next === "\r" && text[index + 2] === "\n") {
+        index += 2;
+        continue;
+      }
+      if (next !== void 0) {
+        current += next;
+        index += 1;
+        hasToken = true;
+      }
+      continue;
+    }
+    if ((char === "`" || char === "^") && (next === "\n" || next === "\r" && text[index + 2] === "\n")) {
+      index += next === "\r" ? 2 : 1;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      push();
+      continue;
+    }
+    current += char;
+    hasToken = true;
+  }
+  if (quote) throw new ImportError("curl \u547D\u4EE4\u4E2D\u7684\u5F15\u53F7\u672A\u95ED\u5408", "\u8BF7\u68C0\u67E5\u5355\u5F15\u53F7/\u53CC\u5F15\u53F7\u662F\u5426\u6210\u5BF9\u540E\u518D\u91CD\u8BD5\u3002");
+  push();
+  if (tokens[0] === "$" || tokens[0] === ">" || /^PS[^>]*>$/i.test(tokens[0] || "")) tokens.shift();
+  if (tokens.length && /(?:^|[\\/])curl(?:\.exe)?$/i.test(tokens[0])) tokens.shift();
+  return tokens;
+}
+var CURL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set([
+  "--max-time",
+  "--connect-timeout",
+  "--retry",
+  "--retry-delay",
+  "--proxy",
+  "-x",
+  "--cacert",
+  "--cert",
+  "--key",
+  "--output",
+  "-o",
+  "--output-dir",
+  "--write-out",
+  "-w"
+]);
+function curlHeaderValue(value) {
+  const separator = String(value).indexOf(":");
+  if (separator <= 0) return null;
+  return [String(value).slice(0, separator).trim(), String(value).slice(separator + 1).trim()];
+}
+function createCurlDraft(command, options = {}) {
+  const tokens = tokenizeCurl(command);
+  if (!tokens.length) throw new ImportError("curl \u547D\u4EE4\u4E3A\u7A7A", '\u793A\u4F8B\uFF1Ascenario-test import --curl "curl -X GET https://api.example.com/health"');
+  let method = "";
+  let methodExplicit = false;
+  let url = "";
+  let hasData = false;
+  let isGet = false;
+  let isHead = false;
+  const headerPairs = [];
+  const dataParts = [];
+  const formParts = [];
+  const notes = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const takeValue = (option) => {
+      const value = tokens[index + 1];
+      if (value === void 0) throw new ImportError(`curl \u9009\u9879 ${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
+      index += 1;
+      return value;
+    };
+    if (token === "-X" || token === "--request") {
+      method = takeValue(token).toUpperCase();
+      methodExplicit = true;
+    } else if (token === "-H" || token === "--header") {
+      const pair = curlHeaderValue(takeValue(token));
+      if (pair) headerPairs.push(pair);
+    } else if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(token)) {
+      dataParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "--json") {
+      dataParts.push(takeValue(token));
+      hasData = true;
+      headerPairs.push(["Content-Type", "application/json"]);
+      headerPairs.push(["Accept", "application/json"]);
+    } else if (token === "-F" || token === "--form") {
+      formParts.push(takeValue(token));
+      hasData = true;
+    } else if (token === "-b" || token === "--cookie") {
+      headerPairs.push(["Cookie", takeValue(token)]);
+    } else if (token === "-u" || token === "--user") {
+      const credentials = takeValue(token);
+      headerPairs.push(["Authorization", `Basic ${Buffer.from(credentials).toString("base64")}`]);
+    } else if (token === "-A" || token === "--user-agent") {
+      headerPairs.push(["User-Agent", takeValue(token)]);
+    } else if (token === "-e" || token === "--referer") {
+      headerPairs.push(["Referer", takeValue(token)]);
+    } else if (token === "--url") {
+      url = takeValue(token);
+    } else if (token === "-G" || token === "--get") {
+      isGet = true;
+    } else if (token === "-I" || token === "--head") {
+      isHead = true;
+    } else if (token === "-L" || token === "--location" || token === "-k" || token === "--insecure" || token === "-s" || token === "--silent" || token === "-S" || token === "--show-error" || token === "--compressed" || token === "-i" || token === "--include" || token === "-v" || token === "--verbose") {
+    } else if (CURL_OPTIONS_WITH_VALUE.has(token)) {
+      takeValue(token);
+    } else if (token.startsWith("--") && token.includes("=")) {
+    } else if (token.startsWith("-")) {
+    } else if (!url) {
+      url = token;
+    }
+  }
+  if (!url) throw new ImportError("\u65E0\u6CD5\u4ECE curl \u547D\u4EE4\u4E2D\u8BC6\u522B URL", "\u8BF7\u786E\u8BA4\u547D\u4EE4\u5305\u542B\u5B8C\u6574 URL\uFF0C\u6216\u4F7F\u7528 --url \u660E\u786E\u6307\u5B9A\u3002");
+  if (!method) method = isHead ? "HEAD" : hasData ? "POST" : "GET";
+  if (isGet && !methodExplicit) method = "GET";
+  if (isHead) method = "HEAD";
+  if (isGet && method === "GET") hasData = true;
+  let parsed = parseHttpUrl(url, "curl \u547D\u4EE4\u4E2D\u7684 URL");
+  if (parsed.username || parsed.password) {
+    notes.push("URL \u4E2D\u7684\u7528\u6237\u540D/\u5BC6\u7801\u5DF2\u79FB\u9664\uFF1B\u5982\u9700\u8BA4\u8BC1\u8BF7\u901A\u8FC7 vars \u63D0\u4F9B Authorization");
+    parsed = new URL(parsed.toString());
+    parsed.username = "";
+    parsed.password = "";
+  }
+  const formData = formParts.length > 0;
+  if (formData) notes.push("curl -F/--form \u4E3A multipart/form-data\uFF0C\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u8865\u5145\u8868\u5355\u5B57\u6BB5");
+  let body;
+  if (!formData && dataParts.length) {
+    const rawBody = dataParts.join("&");
+    if (rawBody.startsWith("@")) {
+      notes.push("curl \u8BF7\u6C42\u4F53\u5F15\u7528 @\u6587\u4EF6\uFF0C\u5DF2\u7701\u7565\uFF1B\u8BF7\u4EBA\u5DE5\u6539\u7528 fileUpload \u6216\u539F\u59CB body");
+    } else if (["GET", "HEAD"].includes(method) || isGet) {
+      if (isGet || method === "GET") {
+        const extra = new URLSearchParams(rawBody);
+        for (const [name, value] of extra) parsed.searchParams.append(name, value);
+        notes.push("curl -G/GET \u7684 -d \u6570\u636E\u5DF2\u8F6C\u4E3A query \u53C2\u6570");
+      } else {
+        notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
+      }
+    } else {
+      const contentType2 = headerPairs.find(([name]) => name.toLowerCase() === "content-type")?.[1] || "";
+      if (/json/i.test(contentType2) || /^[\[{]/.test(rawBody.trim())) {
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          body = rawBody;
+        }
+      } else {
+        body = rawBody;
+      }
+    }
+  }
+  if (body !== void 0 && typeof body === "string" && !/^[\[{]/.test(body.trim()) && !headerPairs.some(([name]) => name.toLowerCase() === "content-type")) {
+    headerPairs.push(["Content-Type", "application/x-www-form-urlencoded"]);
+  }
+  const maskedHeaders = maskSensitiveHeaders(normalizeHeaders(headerPairs));
+  const query = queryFromUrl(parsed);
+  const maskedQuery = maskQueryParams(query);
+  const requestDefinition = {};
+  if (Object.keys(maskedHeaders.headers).length) requestDefinition.headers = maskedHeaders.headers;
+  if (body !== void 0) requestDefinition.body = body;
+  const step = {
+    name: `${method} ${urlToStepPath(parsed)}`,
+    method,
+    path: urlToStepPath(parsed)
+  };
+  if (Object.keys(maskedQuery.params).length) step.params = maskedQuery.params;
+  if (Object.keys(requestDefinition).length) step.request = requestDefinition;
+  step.status = 200;
+  const vars = { ...maskedHeaders.vars, ...maskedQuery.vars };
+  return {
+    scenario: {
+      name: "\u5BFC\u5165 curl \u8BF7\u6C42\uFF08\u5F85\u4EBA\u5DE5\u786E\u8BA4\uFF09",
+      ...Object.keys(vars).length ? { vars } : {},
+      steps: [step]
+    },
+    stepNotes: [[
+      `\u6765\u6E90: curl \u5BFC\u5165\uFF08\u654F\u611F\u5934\u5DF2\u8131\u654F\uFF09`,
+      "curl \u672A\u63D0\u4F9B\u54CD\u5E94\u72B6\u6001\uFF0Cstatus: 200 \u4E3A\u5360\u4F4D\u503C\uFF0C\u8BF7\u6309\u5B9E\u9645\u63A5\u53E3\u8C03\u6574",
+      ...maskedHeaders.notices,
+      ...maskedQuery.notices,
+      ...notes
+    ]],
+    stats: {
+      total: 1,
+      imported: 1,
+      filteredStatic: 0,
+      filteredHost: 0,
+      filteredInvalid: 0,
+      omittedByLimit: 0,
+      binaryBodies: notes.some((note) => note.includes("\u7701\u7565")) ? 1 : 0,
+      maskedFields: maskedHeaders.notices.length + maskedQuery.notices.length
+    },
+    source: options.source || "curl \u547D\u4EE4"
+  };
+}
+function indent(text, prefix) {
+  return String(text).split("\n").map((line) => `${prefix}${line}`).join("\n");
+}
+function indentAfterFirst(text, prefix) {
+  const lines = String(text).split("\n");
+  return `${lines[0]}${lines.slice(1).map((line) => `
+${prefix}${line}`).join("")}`;
+}
+function comment(text, prefix) {
+  return `${prefix}// ${safeText(text)}`;
+}
+function renderStep(step, notes, indentText) {
+  const lines = [];
+  for (const note of notes || []) lines.push(comment(note, indentText));
+  const literal = JSON.stringify(step, null, 4);
+  lines.push(indent(literal, indentText) + ",");
+  return lines.join("\n");
+}
+function renderDraftFile(draft, meta = {}) {
+  const id = String(meta.id || "imported-scenario");
+  const generatedAt = meta.generatedAt || (/* @__PURE__ */ new Date()).toISOString();
+  const stats = draft.stats || {};
+  const scenario = draft.scenario || {};
+  const lines = [];
+  lines.push(`// \u7531 scenario-test import \u751F\u6210\uFF08${safeText(draft.source || "unknown")}\uFF09`);
+  lines.push(`// \u751F\u6210\u65F6\u95F4\uFF1A${safeText(generatedAt)}`);
+  lines.push("// \u26A0\uFE0F \u8349\u7A3F\u6587\u4EF6\uFF1Astatus \u6765\u81EA\u6D41\u91CF\u89C2\u6D4B\u6216\u5360\u4F4D\u503C\uFF0C\u8BF7\u4EBA\u5DE5\u6838\u5BF9\u6B65\u9AA4\u3001\u8BA4\u8BC1\u3001\u52A8\u6001\u5B57\u6BB5\u4E0E\u65AD\u8A00\u540E\u518D\u7EB3\u5165\u56DE\u5F52\u3002");
+  if (stats.total !== void 0) {
+    const filtered = (stats.filteredStatic || 0) + (stats.filteredInvalid || 0);
+    lines.push(`// \u626B\u63CF ${stats.total} \u6761\u8BF7\u6C42\uFF0C\u5BFC\u5165 ${stats.imported || 0} \u6761\uFF1B\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90/\u9884\u68C0/\u65E0\u6548\u8BF7\u6C42 ${filtered} \u6761\uFF0C\u4E3B\u673A\u8FC7\u6EE4 ${stats.filteredHost || 0} \u6761\uFF0C\u8D85\u51FA\u4E0A\u9650 ${stats.omittedByLimit || 0} \u6761\u3002`);
+  }
+  if ((stats.maskedFields || 0) > 0) {
+    lines.push("// \u654F\u611F\u8BF7\u6C42\u5934/\u67E5\u8BE2\u53C2\u6570\u5DF2\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D\uFF1B\u8BF7\u5728 scenario.config.js \u7684 vars \u6216 --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u5207\u52FF\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  if ((stats.binaryBodies || 0) > 0) {
+    lines.push("// \u4E8C\u8FDB\u5236/\u4E0D\u652F\u6301\u683C\u5F0F\u7684\u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF0C\u5BF9\u5E94\u6B65\u9AA4\u4E0A\u65B9\u6709\u8BF4\u660E\uFF1B\u9700\u8981\u65F6\u8BF7\u624B\u5DE5\u8865\u5145 fileUpload \u6216\u539F\u59CB body\u3002");
+  }
+  lines.push(`ScenarioTest.registerScenario(${JSON.stringify(id)}, ScenarioTest.defineScenario({`);
+  lines.push(`    name: ${JSON.stringify(scenario.name || "\u5BFC\u5165\u573A\u666F\u8349\u7A3F")},`);
+  if (scenario.vars && Object.keys(scenario.vars).length) {
+    const varsLiteral = JSON.stringify(scenario.vars, null, 4);
+    lines.push(`    vars: ${indentAfterFirst(varsLiteral, "    ")},`);
+  }
+  lines.push("    steps: [");
+  (scenario.steps || []).forEach((step, index) => {
+    lines.push(renderStep(step, draft.stepNotes?.[index], "        "));
+  });
+  lines.push("    ]");
+  lines.push("}));");
+  lines.push("");
+  return lines.join("\n");
+}
+function readHarFile(filePath) {
+  try {
+    return import_node_fs9.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+  } catch (error) {
+    throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
+  }
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -4599,7 +6124,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0 };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -4653,6 +6178,9 @@ function parseArgs(argv) {
   if (args.all && args.scenario) throw new CliUsageError("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u8BF7\u79FB\u9664\u5176\u4E2D\u4E00\u4E2A\u9009\u9879\u540E\u91CD\u8BD5\u3002");
   if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
     throw new CliUsageError("--port \u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570", "\u8BF7\u4E3A --port \u9009\u62E9 1 \u5230 65535 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
+  }
+  if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
+    throw new CliUsageError("--concurrency \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u8BF7\u4E3A --concurrency \u9009\u62E9 1 \u6216\u66F4\u5927\u7684\u6574\u6570\uFF1B\u9ED8\u8BA4 1 \u4FDD\u6301\u4E32\u884C\u3002");
   }
   if (args.timeout !== void 0 && (!Number.isFinite(args.timeout) || args.timeout <= 0)) {
     throw new CliUsageError(
@@ -4735,6 +6263,14 @@ ${optionHelp}
   doctor                \u9879\u76EE\u9759\u6001\u4F53\u68C0\uFF1ANode \u7248\u672C\u3001\u914D\u7F6E/\u573A\u666F\u52A0\u8F7D\u3001DSL \u6821\u9A8C
                         \u4E0E AI \u89C4\u5219\u5C31\u7EEA\u68C0\u67E5\uFF1B\u6709 FAIL \u65F6\u9000\u51FA\u7801 1
 
+\u5BFC\u5165\u547D\u4EE4:
+  import --har <file>   \u89E3\u6790\u6D4F\u89C8\u5668/\u6293\u5305 HAR\uFF0C\u8FC7\u6EE4\u9759\u6001\u8D44\u6E90\u4E0E OPTIONS \u9884\u68C0\uFF0C
+                        \u4E3A\u6BCF\u4E2A API \u8BF7\u6C42\u751F\u6210\u53EF\u91CD\u653E\u7684\u573A\u666F\u6B65\u9AA4\u8349\u7A3F
+  import --curl "<cmd>" \u89E3\u6790\u5355\u6761 curl\uFF0C\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F\uFF1BAuthorization/Cookie
+                        \u7B49\u654F\u611F\u5934\u66FF\u6362\u4E3A {{vars.*}} \u5360\u4F4D
+  --output <file>       \u81EA\u5B9A\u4E49\u8F93\u51FA\u6587\u4EF6\uFF1B\u9ED8\u8BA4 scenarios/imported-<ts>.js
+  --host <host,...>     \u53EA\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\u7684\u8BF7\u6C42\uFF1B--max-entries \u9650\u5236\u5BFC\u5165\u6761\u6570\uFF08\u9ED8\u8BA4 50\uFF09
+
 \u8BA4\u8BC1\u9009\u9879:
   \u73AF\u5883\u53D8\u91CF SCENARIO_AUTH       \u63A8\u8350\u65B9\u5F0F\uFF0C\u8BBE\u7F6E\u6388\u6743\u4EE4\u724C\uFF1B\u907F\u514D\u4EE4\u724C\u8FDB\u5165\u8FDB\u7A0B\u53C2\u6570\u3002
 
@@ -4755,24 +6291,24 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path9.default.resolve(projectRoot, relativePath);
-  if (import_node_fs9.default.existsSync(target) && !force) return false;
-  import_node_fs9.default.mkdirSync(import_node_path9.default.dirname(target), { recursive: true });
-  import_node_fs9.default.writeFileSync(target, content, "utf8");
+  const target = import_node_path10.default.resolve(projectRoot, relativePath);
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path9.default.resolve(projectRoot, directory);
-  const relative = import_node_path9.default.relative(projectRoot, target);
-  if (!directory || import_node_path9.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path9.default.isAbsolute(relative)) {
+  const target = import_node_path10.default.resolve(projectRoot, directory);
+  const relative = import_node_path10.default.relative(projectRoot, target);
+  if (!directory || import_node_path10.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
   }
   return directory;
 }
 async function askInitMode(directory) {
   if (!process.stdin.isTTY) return "keep";
-  const rl = (0, import_promises.createInterface)({ input: process.stdin, output: process.stdout });
+  const rl = (0, import_promises2.createInterface)({ input: process.stdin, output: process.stdout });
   try {
     const answer = await rl.question(
       `\u76EE\u6807\u76EE\u5F55 ${directory} \u5DF2\u5B58\u5728\u3002
@@ -4790,30 +6326,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs9.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs10.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path9.default.resolve(import_node_path9.default.dirname(process.argv[1]), fileName),
-    import_node_path9.default.resolve(import_node_path9.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), fileName),
+    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs9.default.existsSync(target) && !force) return false;
-  const source = import_node_path9.default.resolve(process.argv[1]);
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  const source = import_node_path10.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs9.default.mkdirSync(import_node_path9.default.dirname(target), { recursive: true });
-  import_node_fs9.default.copyFileSync(source, target);
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs9.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs9.default.existsSync(candidate));
-  import_node_fs9.default.mkdirSync(import_node_path9.default.dirname(target), { recursive: true });
+  if (import_node_fs10.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs10.default.existsSync(candidate));
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs9.default.copyFileSync(source, target);
+    import_node_fs10.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -4822,7 +6358,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs9.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs10.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -4835,7 +6371,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs9.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs10.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -4848,20 +6384,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs9.default.mkdirSync(import_node_path9.default.dirname(target), { recursive: true });
-  import_node_fs9.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  import_node_fs10.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs9.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs9.default.existsSync(lockPath)) return true;
+  if (!import_node_fs10.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs9.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs10.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -4877,14 +6413,14 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path9.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path10.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path9.default.basename(projectRoot).trim() || "project";
+  const projectName = import_node_path10.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
   let force = args.force;
-  if (!force && import_node_fs9.default.existsSync(import_node_path9.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs10.default.existsSync(import_node_path10.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -4916,7 +6452,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs9.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -4928,12 +6464,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path9.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path10.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path9.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs9.default.existsSync(candidate)) {
+  const candidate = import_node_path10.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs10.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -4953,7 +6489,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path9.default.isAbsolute(pluginPath) ? pluginPath : import_node_path9.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path10.default.isAbsolute(pluginPath) ? pluginPath : import_node_path10.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -5010,7 +6546,7 @@ function configVariables(config, overrides = {}, environment = null) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path9.default.dirname(configPath);
+  const configDir = import_node_path10.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -5107,6 +6643,95 @@ ${choices.join("\n")}${remaining > 0 ? `
     for (const secret of collectSecretValues(vars, [baseOptions.authorization, ...extra])) allSecrets.add(secret);
   };
   const reports = [];
+  const accumulateReport = (report) => {
+    total += report.planned;
+    passedTotal += report.passedSteps;
+    const stoppedUnexecuted = report.planned - report.executed - report.skipped;
+    actualFailedTotal += report.failed;
+    stoppedUnexecutedTotal += stoppedUnexecuted;
+    failedTotal += report.failed + stoppedUnexecuted;
+    skippedTotal += report.skipped;
+  };
+  const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
+  const runEntry = async (entry, entryPrint) => {
+    if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
+    let scenarioPath;
+    if (import_node_path10.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    else {
+      try {
+        scenarioPath = validatePath(configDir, entry.url);
+      } catch (error) {
+        throw new Error(
+          `\u573A\u666F ${entry.id} \u7684 url \u4E0D\u5B89\u5168: ${entry.url}
+\u539F\u56E0: ${error.message}
+url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F84`
+        );
+      }
+    }
+    let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
+    scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
+    entryPrint(`
+# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+    const report = await createEngine(baseOptions).runScenario(scenario, {
+      ...baseOptions,
+      // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
+      // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
+      async onAttempt(info) {
+        const label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
+        const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
+        entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+      },
+      async onStep(result, _stepIndex, runtime) {
+        const runtimeForResolve = runtime || { vars: {} };
+        const stepSecrets = collectSecretValues(runtimeForResolve.vars, [
+          baseOptions.authorization,
+          ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => resolveString(item.value, runtimeForResolve))
+        ]);
+        for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
+        const redact = (value) => redactSecrets(value, stepSecrets);
+        const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
+        entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${formatDuration(result.duration)})`);
+        for (const warning of result.warnings || []) {
+          entryPrint(`  [WARN] ${escapeInlineText(redact(warning))}`);
+        }
+        const printEachDetail = (detail, prefix) => {
+          for (const item of detail || []) {
+            if (!item) continue;
+            if (!Array.isArray(item.assertions) || item.index === void 0) {
+              print(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+              continue;
+            }
+            const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
+            for (const sub of item.assertions) {
+              if (sub.passed) continue;
+              entryPrint(`      \u21B3 ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
+              if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(redact(sub.reason))}`);
+              for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
+                entryPrint(line);
+              }
+              printEachDetail(sub.detail, `${label} \u203A `);
+            }
+          }
+        };
+        for (const assertion of result.assertions.filter((item) => !item.passed)) {
+          entryPrint(`  - ${escapeInlineText(redact(assertion.name))}: expected=${formatFailureValue(redact(assertion.expected))} actual=${formatFailureValue(redact(assertion.actual))}`);
+          if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(redact(assertion.reason))}`);
+          for (const line of failureDiffLines(redact(assertion.expected), redact(assertion.actual), "    ")) {
+            entryPrint(line);
+          }
+          printEachDetail(assertion.detail, "");
+        }
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => stepSecrets);
+      }
+    });
+    for (const plugin of plugins) {
+      await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
+    }
+    rememberSecrets(report.vars, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value]) => value).filter((value) => typeof value === "string")));
+    report.scenarioId = entry.id;
+    report.tags = entry.tags || [];
+    return report;
+  };
   for (const [rowIndex, row] of dataRows.entries()) {
     if (bailTriggered) {
       for (const entry of entries) notRun.push({ id: entry.id, name: entry.name, url: entry.url, row: rowIndex + 1, reason: "bail" });
@@ -5114,102 +6739,60 @@ ${choices.join("\n")}${remaining > 0 ? `
     }
     const rowVars = row || {};
     baseOptions.vars = { ...baseVars, ...rowVars, ...args.vars || {} };
-    const rowReports = [];
+    const rowReports = new Array(entries.length);
     if (dataset) print(`
 ## \u6570\u636E\u884C ${rowIndex + 1}/${dataRows.length}${Object.keys(rowVars).length ? ` (${Object.keys(rowVars).join(", ")})` : ""}`);
-    for (const entry of entries) {
-      if (bailTriggered) {
-        notRun.push({ id: entry.id, name: entry.name, url: entry.url, reason: "bail" });
-        continue;
-      }
-      if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
-      let scenarioPath;
-      if (import_node_path9.default.isAbsolute(entry.url)) scenarioPath = entry.url;
-      else {
-        try {
-          scenarioPath = validatePath(configDir, entry.url);
-        } catch (error) {
-          throw new Error(
-            `\u573A\u666F ${entry.id} \u7684 url \u4E0D\u5B89\u5168: ${entry.url}
-\u539F\u56E0: ${error.message}
-url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F84`
-          );
+    if (args.concurrency <= 1) {
+      for (let index = 0; index < entries.length; index += 1) {
+        if (bailTriggered) {
+          notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
+          continue;
         }
+        const report = await runEntry(entries[index], print);
+        rowReports[index] = report;
+        reports.push(report);
+        accumulateReport(report);
+        print(reportSummary(report));
+        if (!report.passed && args.bail) bailTriggered = true;
       }
-      let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
-      scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-      print(`
-# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
-      const report = await createEngine(baseOptions).runScenario(scenario, {
-        ...baseOptions,
-        // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
-        // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
-        async onAttempt(info) {
-          const detail = `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-          print(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21\u672A\u901A\u8FC7\uFF08${detail}\uFF09\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
-        },
-        async onStep(result, _stepIndex, runtime) {
-          const runtimeForResolve = runtime || { vars: {} };
-          const stepSecrets = collectSecretValues(runtimeForResolve.vars, [
-            baseOptions.authorization,
-            ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => resolveString(item.value, runtimeForResolve))
-          ]);
-          for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
-          const redact = (value) => redactSecrets(value, stepSecrets);
-          const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
-          print(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${formatDuration(result.duration)})`);
-          for (const warning of result.warnings || []) {
-            print(`  [WARN] ${escapeInlineText(redact(warning))}`);
-          }
-          const printEachDetail = (detail, prefix) => {
-            for (const item of detail || []) {
-              if (!item) continue;
-              if (!Array.isArray(item.assertions) || item.index === void 0) {
-                print(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
-                continue;
-              }
-              const label = `${prefix}\u7B2C ${item.index + 1} \u9879`;
-              for (const sub of item.assertions) {
-                if (sub.passed) continue;
-                print(`      \u21B3 ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
-                if (sub.reason) print(`        \u539F\u56E0: ${escapeInlineText(redact(sub.reason))}`);
-                for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
-                  print(line);
-                }
-                printEachDetail(sub.detail, `${label} \u203A `);
-              }
+    } else {
+      let nextIndex = 0;
+      let firstError = null;
+      let hasError = false;
+      const workerCount = Math.min(args.concurrency, entries.length);
+      const worker = async () => {
+        while (true) {
+          if (hasError || bailTriggered) return;
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= entries.length) return;
+          const bufferedLines = [];
+          const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+          try {
+            const report = await runEntry(entries[index], bufferedPrint);
+            rowReports[index] = report;
+            accumulateReport(report);
+            bufferedPrint(reportSummary(report));
+            if (!report.passed && args.bail) bailTriggered = true;
+          } catch (error) {
+            if (!hasError) {
+              hasError = true;
+              firstError = error;
             }
-          };
-          for (const assertion of result.assertions.filter((item) => !item.passed)) {
-            print(`  - ${escapeInlineText(redact(assertion.name))}: expected=${formatFailureValue(redact(assertion.expected))} actual=${formatFailureValue(redact(assertion.actual))}`);
-            if (assertion.reason) print(`      \u539F\u56E0: ${escapeInlineText(redact(assertion.reason))}`);
-            for (const line of failureDiffLines(redact(assertion.expected), redact(assertion.actual), "    ")) {
-              print(line);
-            }
-            printEachDetail(assertion.detail, "");
+          } finally {
+            for (const line of bufferedLines) print(line);
           }
-          if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, print, () => stepSecrets);
         }
-      });
-      for (const plugin of plugins) {
-        await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
+      };
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      if (hasError) throw firstError;
+      for (let index = 0; index < entries.length; index += 1) {
+        const report = rowReports[index];
+        if (report) reports.push(report);
+        else notRun.push({ id: entries[index].id, name: entries[index].name, url: entries[index].url, row: rowIndex + 1, reason: "bail" });
       }
-      rememberSecrets(report.vars, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value]) => value).filter((value) => typeof value === "string")));
-      report.scenarioId = entry.id;
-      report.tags = entry.tags || [];
-      reports.push(report);
-      rowReports.push(report);
-      total += report.planned;
-      passedTotal += report.passedSteps;
-      const stoppedUnexecuted = report.planned - report.executed - report.skipped;
-      actualFailedTotal += report.failed;
-      stoppedUnexecutedTotal += stoppedUnexecuted;
-      failedTotal += report.failed + stoppedUnexecuted;
-      skippedTotal += report.skipped;
-      print(`Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`);
-      if (!report.passed && args.bail) bailTriggered = true;
     }
-    if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: rowReports });
+    if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: rowReports.filter(Boolean) });
   }
   print(`
 Overall: ${passedTotal}/${total} passed`);
@@ -5299,8 +6882,8 @@ function printFailedStepBody(result, print = console.log, secretsOf = []) {
 }
 async function serveCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path9.default.dirname(configPath);
-  const libraryDist = import_node_path9.default.dirname(import_node_path9.default.resolve(process.argv[1]));
+  const workspace = import_node_path10.default.dirname(configPath);
+  const libraryDist = import_node_path10.default.dirname(import_node_path10.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
   if (startup.error) {
@@ -5336,6 +6919,80 @@ async function serveCommand(args) {
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });
 }
+function importTimestamp(date = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+function scenarioIdFromOutput(output, timestamp) {
+  const stem = import_node_path10.default.basename(output, import_node_path10.default.extname(output)).trim();
+  const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
+  return normalized || `imported-${timestamp}`;
+}
+function defaultImportOutput(timestamp) {
+  let candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let suffix = 2;
+  while (import_node_fs10.default.existsSync(candidate)) {
+    candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+    suffix += 1;
+  }
+  return candidate;
+}
+function importCommand(args) {
+  if (args.har && args.curl) {
+    throw new CliUsageError("--har \u4E0E --curl \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u4E00\u6B21\u5BFC\u5165\u53EA\u9009\u62E9\u4E00\u79CD\u6765\u6E90\uFF1AHAR \u6587\u4EF6\u6216\u5355\u6761 curl \u547D\u4EE4\u3002");
+  }
+  if (!args.har && !args.curl) {
+    throw new CliUsageError(
+      "import \u9700\u8981 --har \u6216 --curl",
+      '\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs import --har session.har\uFF1B\u6216 import --curl "curl -X GET https://api.example.com/health"\u3002'
+    );
+  }
+  const maxEntries = Number(args.maxEntries);
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
+  }
+  const timestamp = importTimestamp();
+  const output = args.output ? import_node_path10.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const id = scenarioIdFromOutput(output, timestamp);
+  let draft;
+  try {
+    draft = args.har ? createHarDraft(readHarFile(args.har), {
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path10.default.basename(args.har),
+      maxEntries,
+      hosts: parseHostFilter(args.host)
+    }) : createCurlDraft(args.curl);
+  } catch (error) {
+    if (error instanceof ImportError) throw new CliUsageError(error.message, error.hint || void 0);
+    throw error;
+  }
+  if (!draft.scenario.steps.length) {
+    throw new CliUsageError(
+      `\u672A\u4ECE ${args.har ? "HAR " : "curl \u547D\u4EE4"}\u4E2D\u89E3\u6790\u51FA\u53EF\u5BFC\u5165\u7684 API \u8BF7\u6C42`,
+      "HAR \u53EF\u80FD\u53EA\u5305\u542B\u9759\u6001\u8D44\u6E90\u3001\u9884\u68C0\u8BF7\u6C42\u6216\u88AB --host/--max-entries \u8FC7\u6EE4\uFF1B\u8BF7\u68C0\u67E5\u8F93\u5165\u4E0E\u8FC7\u6EE4\u6761\u4EF6\u3002"
+    );
+  }
+  const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(output), { recursive: true });
+  import_node_fs10.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path10.default.relative(process.cwd(), output).split(import_node_path10.default.sep).join("/") || output;
+  console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
+  console.log(`\u573A\u666F id: ${id}`);
+  console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
+  if (draft.stats) {
+    const filtered = (draft.stats.filteredStatic || 0) + (draft.stats.filteredInvalid || 0);
+    console.log(`\u626B\u63CF\u8BF7\u6C42: ${draft.stats.total}\uFF1B\u8FC7\u6EE4\u9759\u6001/\u9884\u68C0/\u65E0\u6548 ${filtered}\uFF1B\u4E3B\u673A\u8FC7\u6EE4 ${draft.stats.filteredHost || 0}\uFF1B\u8D85\u51FA\u4E0A\u9650 ${draft.stats.omittedByLimit || 0}`);
+  }
+  const variables = Object.keys(draft.scenario.vars || {});
+  if (variables.length) {
+    console.log(`\u654F\u611F\u5934/\u67E5\u8BE2\u53C2\u6570\u5360\u4F4D\u53D8\u91CF: ${variables.join(", ")}`);
+    console.log("\u63D0\u793A: \u8BF7\u5728 scenario.config.js \u7684 vars \u6216 run --vars \u4E2D\u63D0\u4F9B\u771F\u5B9E\u503C\uFF0C\u4E0D\u8981\u63D0\u4EA4\u660E\u6587\u51ED\u636E\u3002");
+  }
+  console.log(`\u63D0\u793A: \u5728 scenario.config.js \u7684 scenarios \u4E2D\u6DFB\u52A0 { id: ${JSON.stringify(id)}, url: ${JSON.stringify(relativeOutput)} } \u540E\u5373\u53EF run\u3002`);
+  if (args.curl) {
+    console.log("\n\u5355\u6B65\u9AA4\u7247\u6BB5\uFF08\u53EF\u76F4\u63A5\u7C98\u8D34\u5230 steps \u6570\u7EC4\uFF09\uFF1A");
+    console.log(JSON.stringify(draft.scenario.steps[0], null, 2));
+  }
+}
 function capabilitiesCommand(args) {
   const capabilities = buildCapabilities(contract);
   if (args.json) {
@@ -5350,10 +7007,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path9.default.dirname(configPath);
+    configDir = import_node_path10.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path9.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path9.default.dirname(configPath);
+    configPath = import_node_path10.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path10.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
@@ -5374,6 +7031,7 @@ async function main() {
   else if (args.command === "serve") await serveCommand(args);
   else if (args.command === "capabilities") capabilitiesCommand(args);
   else if (args.command === "doctor") doctorCommand(args);
+  else if (args.command === "import") importCommand(args);
   else await runCommand(args);
 }
 main().catch((error) => {

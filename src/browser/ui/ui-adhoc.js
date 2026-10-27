@@ -1,5 +1,6 @@
-import { esc, fmt, safeJson, sanitizeSensitive } from './ui-utils.js';
+import { copyText, esc, fmt, isSecretName, safeJson, sanitizeSensitive } from './ui-utils.js';
 import { clone, isPlainObject, evalExpression } from '../../core.js';
+import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
 const workbenchAdhoc = (function () {
     'use strict';
@@ -11,6 +12,8 @@ const workbenchAdhoc = (function () {
     var adhocState = {
         request: null,
         result: null,
+        lastExecution: null,
+        draft: '',
         running: false
     };
 
@@ -58,8 +61,8 @@ const workbenchAdhoc = (function () {
             searchStr.split('&').forEach(function (pair) {
                 if (!pair) return;
                 var parts = pair.split('=');
-                var key = decodeURIComponent(parts[0] || '');
-                var val = decodeURIComponent(parts.slice(1).join('=') || '');
+                var key = safeDecodeComponent(parts[0] || '');
+                var val = safeDecodeComponent(parts.slice(1).join('=') || '');
                 if (key) params[key] = val;
             });
         }
@@ -112,6 +115,138 @@ const workbenchAdhoc = (function () {
         };
     }
 
+    // ===== adhoc 请求 → 场景步骤草稿 =====
+
+    // 请求头名转可读的 vars 名称：X-API-Key → xApiKey、Authorization → authorization。
+    // 同名头归一化后可能碰撞（X-Token / Token），追加序号保证占位变量互不覆盖。
+    function headerVariableName(name, used) {
+        var parts = String(name || '').split(/[^A-Za-z0-9]+/).filter(Boolean);
+        var base = parts.map(function (part, index) {
+            var lower = part.toLowerCase();
+            return index === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+        }).join('');
+        if (!base) base = 'secret';
+        if (/^[0-9]/.test(base)) base = 'secret' + base;
+        var candidate = base;
+        var suffix = 2;
+        while (used[candidate]) {
+            candidate = base + suffix;
+            suffix += 1;
+        }
+        used[candidate] = true;
+        return candidate;
+    }
+
+    // Cookie 不在 SECRET_VAR_PATTERN 的 auth/token 名单里，但同样是会话凭据：
+    // adhoc 草稿一并转为 {{vars.cookie}}，避免 Authorization/Cookie 任一落明文。
+    function isSensitiveHeaderName(name) {
+        var text = String(name || '');
+        return isSecretName(text) || /^(?:set-)?cookie$/i.test(text);
+    }
+
+    function sanitizeDraftHeaders(headers) {
+        if (!isPlainObject(headers)) return {};
+        var used = Object.create(null);
+        return Object.keys(headers).reduce(function (result, key) {
+            result[key] = isSensitiveHeaderName(key)
+                ? '{{vars.' + headerVariableName(key, used) + '}}'
+                : headers[key];
+            return result;
+        }, {});
+    }
+
+    // 生成可直接粘贴进 scenarios/*.js 的 step 对象字面量（JSON 是合法 JS）。
+    // 只消费最后一次实际执行的请求与响应状态；status 必须是数值，网络错误/超时
+    // 的 ERROR/TIMEOUT 字符串不能伪装成可运行的断言。
+    function buildAdhocStepDraft(execution, result) {
+        if (!execution) throw new Error('请先执行一次请求，再转为步骤');
+        // 兼容两种调用方式：扁平的 { method, path, headers, body, status }，
+        // 或接近 step 定义的 { method, path, request: { headers, body } } + result。
+        var requestDef = isPlainObject(execution.request) ? execution.request : {};
+        var status = typeof result === 'number'
+            ? result
+            : (result && result.status !== undefined
+                ? result.status
+                : (execution.status !== undefined ? execution.status : (execution.result && execution.result.status)));
+        if (typeof status !== 'number' || !isFinite(status)) {
+            throw new Error('请求未返回有效状态码，无法转为步骤');
+        }
+        var method = String(execution.method || requestDef.method || 'GET').toUpperCase();
+        var path = String(execution.path || requestDef.path || '').trim();
+        if (!path) throw new Error('请求路径不能为空，无法转为步骤');
+        var params = execution.params !== undefined ? execution.params : requestDef.params;
+        var headers = sanitizeDraftHeaders(execution.headers !== undefined ? execution.headers : requestDef.headers);
+        var body = execution.body !== undefined ? execution.body : requestDef.body;
+        var step = {
+            name: String(execution.name || '').trim() || '待填写步骤名称',
+            method: method,
+            path: path
+        };
+        if (isPlainObject(params) && Object.keys(params).length) {
+            step.params = clone(params);
+        }
+        step.status = status;
+        var request = {};
+        if (Object.keys(headers).length) request.headers = headers;
+        // GET/HEAD 的 request.body 会被 DSL 定义期拒绝，也不会真正发出：草稿同步省略，
+        // 保证片段可直接注册运行，而不是仅语法合法。
+        if (body !== undefined && body !== null && method !== 'GET' && method !== 'HEAD') {
+            request.body = clone(body);
+        }
+        if (Object.keys(request).length) step.request = request;
+        return JSON.stringify(step, null, 4);
+    }
+
+    function resetAdhocDraft() {
+        adhocState.lastExecution = null;
+        adhocState.draft = '';
+        var node = document.getElementById('adhocDraft');
+        if (node) node.classList.add('hidden');
+        var code = document.getElementById('adhocDraftCode');
+        if (code) code.textContent = '';
+        var hint = document.getElementById('adhocDraftHint');
+        if (hint) hint.textContent = '生成后可复制到 scenarios/*.js 的 steps 数组。';
+    }
+
+    function setAdhocDraftHint(message) {
+        var hint = document.getElementById('adhocDraftHint');
+        if (hint) hint.textContent = message;
+    }
+
+    function showAdhocStepDraft() {
+        try {
+            var draft = buildAdhocStepDraft(adhocState.lastExecution);
+            adhocState.draft = draft;
+            var node = document.getElementById('adhocDraft');
+            var code = document.getElementById('adhocDraftCode');
+            if (node) node.classList.remove('hidden');
+            if (code) code.textContent = draft;
+            showAdhocError('');
+            setAdhocDraftHint('已生成步骤草稿，正在复制到剪贴板…');
+            syncAdhocFormDisabled(adhocState.running);
+            copyText(draft).then(function (ok) {
+                // 用户可能已关闭弹窗或再次执行：只更新仍属于当前草稿的提示
+                if (adhocState.draft !== draft) return;
+                setAdhocDraftHint(ok ? '已生成步骤草稿并复制到剪贴板。' : '已生成步骤草稿，可点击「复制草稿」手动复制。');
+            }).catch(function () {
+                if (adhocState.draft === draft) setAdhocDraftHint('已生成步骤草稿，可点击「复制草稿」手动复制。');
+            });
+        } catch (error) {
+            showAdhocError(error && error.message ? error.message : '生成步骤草稿失败');
+        }
+    }
+
+    function copyAdhocStepDraft() {
+        if (!adhocState.draft) return;
+        var draft = adhocState.draft;
+        copyText(draft).then(function (ok) {
+            if (adhocState.draft !== draft) return;
+            setAdhocDraftHint(ok ? '已复制到剪贴板。' : '复制失败，请手动选择草稿文本复制。');
+        }).catch(function () {
+            if (adhocState.draft === draft) setAdhocDraftHint('复制失败，请手动选择草稿文本复制。');
+        });
+    }
+
     function showAdhocError(message) {
         var node = document.getElementById('adhocError');
         if (!node) return;
@@ -148,6 +283,13 @@ const workbenchAdhoc = (function () {
         }
         var execBtn = document.getElementById('adhocExecuteBtn');
         if (execBtn) execBtn.textContent = disabled ? '执行中...' : '执行一次';
+        var draftBtn = document.getElementById('adhocDraftBtn');
+        if (draftBtn) {
+            var hasStatus = adhocState.lastExecution && typeof adhocState.lastExecution.status === 'number' && isFinite(adhocState.lastExecution.status);
+            draftBtn.disabled = disabled || !hasStatus;
+        }
+        var copyBtn = document.getElementById('adhocDraftCopyBtn');
+        if (copyBtn) copyBtn.disabled = disabled || !adhocState.draft;
     }
 
     function renderAdhocParamsRows(paramsObj) {
@@ -206,6 +348,7 @@ const workbenchAdhoc = (function () {
         adhocState.request = request;
         adhocState.result = null;
         adhocState.running = false;
+        resetAdhocDraft();
 
         document.getElementById('adhocNameInput').value = request.name;
         document.getElementById('adhocMethodInput').value = request.method;
@@ -228,6 +371,7 @@ const workbenchAdhoc = (function () {
     function closeAdhocModal() {
         if (adhocState.running) return;
         adhocState.request = null;
+        resetAdhocDraft();
         var modal = document.getElementById('adhocModal');
         if (!modal || modal.classList.contains('hidden')) return;
         modal.classList.add('hidden');
@@ -238,6 +382,8 @@ const workbenchAdhoc = (function () {
 
     async function executeAdhocRequest(executeStepFn, getEnvFn, getBaseUrlFn, getAuthFn, getGlobalsFn, getVarsFn) {
         if (adhocState.running) return;
+        // 新一轮执行：先丢弃旧草稿，避免新请求失败后仍把上一次结果转成步骤
+        resetAdhocDraft();
         try {
             var step = buildAdhocStep({
                 name: document.getElementById('adhocNameInput').value,
@@ -266,6 +412,15 @@ const workbenchAdhoc = (function () {
             syncAdhocFormDisabled(true);
             var result = await executeStepFn(step, runtime, appConfig);
             adhocState.result = result;
+            adhocState.lastExecution = {
+                name: step.name,
+                method: step.method,
+                path: step.path,
+                params: clone(step.params),
+                headers: clone(step.request.headers || {}),
+                body: clone(step.request.body),
+                status: result.status
+            };
             renderAdhocResult(result);
         } catch (error) {
             showAdhocError(error && error.message ? error.message : '临时请求执行失败');
@@ -325,12 +480,17 @@ const workbenchAdhoc = (function () {
                 addAdhocParamRow('', '');
             });
         }
+        var draftBtn = document.getElementById('adhocDraftBtn');
+        if (draftBtn) draftBtn.addEventListener('click', showAdhocStepDraft);
+        var draftCopyBtn = document.getElementById('adhocDraftCopyBtn');
+        if (draftCopyBtn) draftCopyBtn.addEventListener('click', copyAdhocStepDraft);
     }
 
     return {
         setConfig: function (config) { appConfig = config || {}; },
         buildAdhocRequest: buildAdhocRequest,
         buildAdhocStep: buildAdhocStep,
+        buildAdhocStepDraft: buildAdhocStepDraft,
         openAdhocModal: openAdhocModal,
         closeAdhocModal: closeAdhocModal,
         executeAdhocRequest: executeAdhocRequest,

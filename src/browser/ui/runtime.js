@@ -1,9 +1,10 @@
 import * as core from "../../core.js";
 import { createEngine } from "../../engine.js";
-import { esc, safeJson, copyText } from "./ui-utils.js";
+import { esc, isSecretName, safeJson, copyText } from "./ui-utils.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
+import { buildStepCurl } from './curl.js';
 
 export function createWorkbenchRuntime(options) {
     'use strict';
@@ -554,10 +555,13 @@ export function createWorkbenchRuntime(options) {
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
             onAttempt: function (info) {
-                var detail = 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
+                var label = info.errorType === 'timeout' ? '超时' : (info.errorType ? '连接失败' : '未通过');
+                var detail = info.errorType
+                    ? (info.errorMessage || '')
+                    : 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
                 uiView.setRunState('running',
                     '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
-                    + ' 次未通过（' + detail + '），' + info.intervalMs + 'ms 后重试');
+                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试');
             }
         });
     }
@@ -1016,7 +1020,8 @@ export function createWorkbenchRuntime(options) {
         });
     }
 
-    // 凭据类变量名启发式：与 CLI/核心共用同一名单（core.isSecretVarName），命中则输入框掩码
+    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换；
+    // 名单与 adhoc「转为步骤」共用 ui-utils.isSecretName，且与 core.isSecretVarName 同口径
     function renderScenarioVariableInputs() {
         var container = document.getElementById('scenarioVarsInput');
         if (!container) return;
@@ -1029,7 +1034,7 @@ export function createWorkbenchRuntime(options) {
         container.innerHTML = defs.map(function (def) {
             var value = stored[def.name] || '';
             // 凭据类变量掩码显示（可切换明文），避免联调时 Token 在屏幕侧显
-            var isSecret = core.isSecretVarName(def.name);
+            var isSecret = isSecretName(def.name);
             return '<label class="flex flex-col gap-1.5">' +
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')' +
                     (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">显示</button>' : '') +
@@ -1391,16 +1396,8 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
-    // POSIX shell 单引号转义：单引号内不做 $VAR/$(...)/反引号展开，值中的 ' 用 '\'' 收尾再续开。
-    // 复制出的命令与工作台实际发送值一致，也避免变量值借复制粘贴注入命令。
-    function shellSingleQuote(value) {
-        return "'" + String(value).replace(/'/g, "'\\''") + "'";
-    }
-
-    function generateStepCurl(step, stepIndex) {
+    function generateStepCurl(step) {
         if (!step) return '';
-        var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
-        var baseUrl = getRequestBaseUrl();
         var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables());
         var resolvedVars = clone(rawVars);
         if (state.activeRuntime && state.activeRuntime.vars) {
@@ -1408,72 +1405,11 @@ export function createWorkbenchRuntime(options) {
         } else if (state.stepRuntime && state.stepRuntime.vars) {
             Object.assign(resolvedVars, state.stepRuntime.vars);
         }
-        var runtime = { vars: resolvedVars };
-        var stepPath = step.path || (step.request && step.request.path) || '';
-        var stepParams = step.params || (step.request && step.request.params);
-        var requestPath = core.buildUrl(stepPath, stepParams, runtime);
-
-        var globals = getEffectiveGlobals();
-        var headers = {};
-
-        // 拼接 globals 的 query
-        var queryIndex = requestPath.indexOf('?');
-        var existingKeys = new Set();
-        if (queryIndex >= 0) {
-            requestPath.slice(queryIndex + 1).split('&').forEach(function (pair) {
-                var key = pair.split('=')[0];
-                if (key) existingKeys.add(decodeURIComponent(key));
-            });
-        }
-        var queryParts = [];
-        globals.forEach(function (global) {
-            if (global.type !== 'query' || existingKeys.has(global.name)) return;
-            queryParts.push.apply(queryParts, core.queryPairs(global.name, core.resolve(global.value, runtime)));
+        return buildStepCurl(step, {
+            baseUrl: getRequestBaseUrl(),
+            vars: resolvedVars,
+            globals: getEffectiveGlobals()
         });
-        if (queryParts.length) {
-            requestPath += (queryIndex >= 0 ? '&' : '?') + queryParts.join('&');
-        }
-
-        // 拼接 globals 的 cookie
-        var cookieParts = globals
-            .filter(function (global) { return global.type === 'cookie'; })
-            .map(function (global) { return global.name + '=' + core.resolveString(global.value, runtime); });
-
-        // headers
-        globals.forEach(function (g) {
-            if (g.type === 'header' && g.name) {
-                headers[g.name] = core.resolveString(g.value || '', runtime);
-            }
-        });
-        if (step.request && step.request.headers) {
-            var reqHeaders = step.request.headers;
-            if (typeof reqHeaders === 'object' && reqHeaders !== null) {
-                Object.keys(reqHeaders).forEach(function (k) {
-                    headers[k] = core.resolveString(String(reqHeaders[k]), runtime);
-                });
-            }
-        }
-        if (cookieParts.length) {
-            var cookieKey = Object.keys(headers).find(function (key) { return key.toLowerCase() === 'cookie'; });
-            var mergedCookie = cookieKey ? (headers[cookieKey] + '; ' + cookieParts.join('; ')) : cookieParts.join('; ');
-            if (cookieKey) headers[cookieKey] = mergedCookie;
-            else headers.Cookie = mergedCookie;
-        }
-
-        var fullUrl = core.joinUrl(baseUrl, requestPath);
-        var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
-
-        Object.keys(headers).forEach(function (key) {
-            parts.push('-H ' + shellSingleQuote(key + ': ' + String(headers[key])));
-        });
-
-        if (step.request && step.request.body != null) {
-            var bodyVal = step.request.body;
-            var bodyStr = typeof bodyVal === 'string' ? bodyVal : JSON.stringify(bodyVal);
-            bodyStr = core.resolveString(bodyStr, runtime);
-            parts.push('-d ' + shellSingleQuote(bodyStr));
-        }
-        return parts.join(' \\\n  ');
     }
 
     function bindStepCurlActions() {

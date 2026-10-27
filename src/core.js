@@ -1,5 +1,6 @@
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
+import { safeDecodeComponent } from "./utils/safe-decode.js";
 
 export { contract, CONTRACT_VERSION } from "./contract.js";
 
@@ -39,12 +40,20 @@ export function isPlainObject(value) {
 // JSON 序列化不可表达 Symbol，服务端/适配器业务数据无法伪造
 export const SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
 
-// 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标或引号键，引号内支持
-// \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分「取不到」与「写错」。
-// getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被静默忽略剩余字符，
-// 空 token 序列甚至返回根对象本身（when 条件意外成立）
+// 字节上限归一化：仅有限正数生效（向下取整），其余（0/负数/NaN/Infinity/空值）
+// 统一视为“不限制”以保持既有行为。config 与 run options 共用同一口径
+// （engine 的 maxResponseBytes/maxUploadBytes、node io 的 maxUploadBytes）。
+export function normalizeByteLimit(value) {
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+}
+
+// 路径严格分词：点段（任意非 .[] 字符）与下标段（整数下标、引号键或通配 [*]，
+// 引号内支持 \" \' \\ 转义）交替组成；任一段不合法返回 null，供调用方区分
+// 「取不到」与「写错」。getByPath 此前用宽松 match 分词——vars[]、vars[ 等畸形写法被
+// 静默忽略剩余字符，空 token 序列甚至返回根对象本身（when 条件意外成立）
 const PATH_SEGMENT = /[^.\[\]]+/y;
-const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+const PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\*)\]/y;
 // 分词是 {{vars.*}} 模板、断言/extract 裸路径取值的公共热路径：同一路径串在多步骤
 // 与 retryUntil 轮询间反复出现，按字符串缓存结果（有界 FIFO 防路径爆炸占内存，
 // 非法路径的 null 同样缓存）。缓存内部数组冻结——防止经任何引用改写污染后续取值；
@@ -99,6 +108,8 @@ export function getByPath(source, valuePath) {
     // 畸形路径（vars[]、vars[、a..b、未闭合下标）返回 undefined 而非取到错误值/根对象
     const tokens = tokenizePath(valuePath);
     if (!tokens) return undefined;
+    // 通配段走展开分支；纯标量/下标路径继续走下方原热路径，行为与性能零变化
+    if (tokens.includes("[*]")) return getByWildcardPath(source, tokens);
     let cursor = source;
     for (const token of tokens) {
         if (cursor === undefined || cursor === null) return undefined;
@@ -119,6 +130,53 @@ export function getByPath(source, valuePath) {
         cursor = Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : undefined;
     }
     return cursor;
+}
+
+// 通配展开结果必须与「路径本身恰好取到数组」区分：items[*].tags 应产出数组的数组，
+// 而不是把每项 tags 展平。内部包装符号只在本次递归内出现，不会泄漏给调用方。
+const WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
+
+function isWildcardExpansion(value) {
+    return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+}
+
+// 与 getByPath 标量分支同口径的单 token 导航（负下标/引号键/原型链安全）。
+function navigatePathToken(cursor, token) {
+    const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+    if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+        return cursor[cursor.length + Number(inner)];
+    }
+    const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
+    return Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : undefined;
+}
+
+function walkWildcardPath(cursor, tokens, index) {
+    if (index >= tokens.length) return cursor;
+    const token = tokens[index];
+    if (token === "[*]") {
+        // 通配段只在真实数组上展开；非数组按路径缺失处理（required/default 语义随之上浮）
+        if (!Array.isArray(cursor)) return undefined;
+        const values = [];
+        for (let itemIndex = 0; itemIndex < cursor.length; itemIndex += 1) {
+            // 与标量路径同口径只读自有下标：稀疏数组空位/原型链上的同号成员不参与展开
+            if (!Object.prototype.hasOwnProperty.call(cursor, itemIndex)) continue;
+            const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
+            // 元素缺失该子路径时跳过，不产出 undefined 洞；嵌套通配结果展平为一级数组
+            if (result === undefined) continue;
+            if (isWildcardExpansion(result)) {
+                // 不用 push(...result.values)：超大嵌套数组会撞实参数量上限
+                for (const value of result.values) values.push(value);
+            } else values.push(result);
+        }
+        return { [WILDCARD_EXPANSION]: true, values };
+    }
+    if (cursor === undefined || cursor === null) return undefined;
+    return walkWildcardPath(navigatePathToken(cursor, token), tokens, index + 1);
+}
+
+function getByWildcardPath(source, tokens) {
+    const result = walkWildcardPath(source, tokens, 0);
+    return isWildcardExpansion(result) ? result.values : result;
 }
 
 export function evalExpression(expression, runtime) {
@@ -375,13 +433,57 @@ export function queryPairs(key, value) {
     return [`${encodedKey}=${encodeURIComponent(String(value))}`];
 }
 
+// 按 fragment（#）拆分 URL。查询参数必须拼在 fragment 之前：浏览器 fetch 不会发送
+// fragment 之后的内容，拼到 # 之后会让参数静默丢失。
+export function splitUrlFragment(url) {
+    const text = String(url || "");
+    const fragmentIndex = text.indexOf("#");
+    return fragmentIndex < 0
+        ? { path: text, fragment: "" }
+        : { path: text.slice(0, fragmentIndex), fragment: text.slice(fragmentIndex) };
+}
+
+// 读取 URL 已有 query 的 key 集合（只看 fragment 之前的部分）。
+// 单个畸形百分号编码（bad%zz、字面 %）不应抛 URIError 中断整个请求：失败时保留原串。
+export function queryKeys(url) {
+    const keys = new Set();
+    const { path } = splitUrlFragment(url);
+    const queryIndex = path.indexOf("?");
+    if (queryIndex < 0) return keys;
+    for (const pair of path.slice(queryIndex + 1).split("&")) {
+        const key = pair.split("=")[0];
+        if (key) keys.add(safeDecodeComponent(key));
+    }
+    return keys;
+}
+
+// 把已序列化的 query 对拼到 URL 上：保留原 fragment，参数总是追加在 fragment 之前。
+export function appendQueryPairs(url, pairs) {
+    const text = String(url || "");
+    if (!pairs || !pairs.length) return text;
+    const { path, fragment } = splitUrlFragment(text);
+    return `${path}${path.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+}
+
+// 注入环境 globals query（跳过 URL 中已存在的 key）。引擎执行与浏览器 cURL 预览共用，
+// 保证两边拼接位置（含 fragment 处理）始终一致。
+export function appendGlobalQuery(url, globals, runtime) {
+    const existingKeys = queryKeys(url);
+    const pairs = [];
+    for (const global of globals || []) {
+        if (global.type !== "query" || existingKeys.has(global.name)) continue;
+        // 数组值（含模板整体解析出的数组）按重复 key 展开，与 buildUrl 同一实现
+        pairs.push(...queryPairs(global.name, resolve(global.value, runtime)));
+    }
+    return appendQueryPairs(url, pairs);
+}
+
 export function buildUrl(requestPath, params, runtime) {
     const rawPath = resolveString(requestPath || "", runtime);
     if (!params || !isPlainObject(params)) return rawPath;
     const resolved = resolve(params, runtime);
     const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
-    if (!pairs.length) return rawPath;
-    return `${rawPath}${rawPath.includes("?") ? "&" : "?"}${pairs.join("&")}`;
+    return appendQueryPairs(rawPath, pairs);
 }
 
 export function parseBody(text, contentType) {
@@ -553,7 +655,7 @@ export function validateAssertion(definition, context, options = {}) {
             );
         }
         if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
-            throw new TypeError(`${prefix}: path 不是合法路径写法（支持 点段/整数下标/引号键，如 a.b、list[-1]、a["x>y"]；当前 ${JSON.stringify(definition.path)}）`);
+            throw new TypeError(`${prefix}: path 不是合法路径写法（支持 点段/整数下标/引号键/通配段 [*]，如 a.b、list[-1]、a["x>y"]、items[*].id；当前 ${JSON.stringify(definition.path)}）`);
         }
     }
     // each 子断言的作用对象是数组元素：elementResponse 仅 body=元素 与 runtime.vars 有实值，
@@ -890,15 +992,30 @@ export function assertNoReservedVars(source, label) {
     }
 }
 
+/**
+ * 安全写入运行时 vars：普通赋值遇到 "__proto__" 会走 Object.prototype 的原型 setter——
+ * 对象值改写 vars 原型、原始值被静默丢弃。defineProperty 始终生成普通自有可写键，
+ * 作为定义期保留名拦截之外的运行期兜底（直接调用 runStep/applyGeneratedVar 时同样生效）。
+ */
+export function setRuntimeVar(vars, name, value) {
+    Object.defineProperty(vars, name, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+    });
+    return value;
+}
+
 export function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
     // 共享作用域写入点：scope:"suite" 的提取值同时进入 run 级共享 vars（#69）
     const store = (name, value, suiteScope) => {
-        runtime.vars[name] = value;
+        setRuntimeVar(runtime.vars, name, value);
         if (suiteScope) {
             if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
-            runtime.suiteVars[name] = value;
+            setRuntimeVar(runtime.suiteVars, name, value);
         }
     };
     for (const definition of step.extract || []) {
@@ -1217,25 +1334,25 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             if (!/(?:YYYY|MM|DD|HH|mm|ss)/.test(definition.format) || !TIMESTAMP_FORMAT_PATTERN.test(definition.format)) {
                 throw new Error(`generatedVars timestamp 的 format 仅支持 YYYY/MM/DD/HH/mm/ss 的本地时间组合（如 YYYY-MM-DD HH:mm:ss）: ${definition.format}`);
             }
-            vars[name] = formatTimestamp(base, definition.format);
+            setRuntimeVar(vars, name, formatTimestamp(base, definition.format));
         } else if (definition.unit != null && definition.unit !== "ms") {
             if (definition.unit !== "s") {
                 throw new Error(`generatedVars timestamp 的 unit 只支持 ms（默认）/s: ${definition.unit}`);
             }
-            vars[name] = Math.floor(base / 1000);
+            setRuntimeVar(vars, name, Math.floor(base / 1000));
         } else {
-            vars[name] = base;
+            setRuntimeVar(vars, name, base);
         }
         return;
     }
     if (definition.type === "uuid") {
         // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
         if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-        vars[name] = globalThis.crypto.randomUUID();
+        setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
         return;
     }
     if (definition.type === "uuidHex") {
-        vars[name] = uuidHex();
+        setRuntimeVar(vars, name, uuidHex());
         return;
     }
     if (definition.type === "idcard") {
@@ -1256,11 +1373,11 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             throw new Error(`generatedVars idcard 的 regionCode 必须是 6 位数字: ${regionCode}`);
         }
         const seqBase = seedToIndex(`${identifiers.runId}|${name}`, 500);
-        vars[name] = buildChinaIdNumber({
+        setRuntimeVar(vars, name, buildChinaIdNumber({
             regionCode,
             birthDate: definition.birthDate,
             sequence: seqBase * 2 + (gender === "MALE" ? 1 : 0)
-        });
+        }));
         return;
     }
     if (definition.type === "luhn") {
@@ -1279,7 +1396,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
             body += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
         const first = `${prefix}${body}`;
-        vars[name] = `${first}${luhnCheckDigit(first)}`;
+        setRuntimeVar(vars, name, `${first}${luhnCheckDigit(first)}`);
         return;
     }
     if (definition.type === "phone") {
@@ -1295,7 +1412,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 8; i += 1) {
             tail += seedToIndex(`${identifiers.runId}|${name}|${i}`, 10);
         }
-        vars[name] = `${prefix}${tail}`;
+        setRuntimeVar(vars, name, `${prefix}${tail}`);
         return;
     }
     if (definition.type === "uscc") {
@@ -1310,12 +1427,12 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         for (let i = 0; i < 9; i += 1) {
             orgCode += USCC_ALPHABET[seedToIndex(`${identifiers.runId}|${name}|${i}`, USCC_ALPHABET.length)];
         }
-        vars[name] = buildUsccCode({ categoryCode: "91", regionCode, orgCode });
+        setRuntimeVar(vars, name, buildUsccCode({ categoryCode: "91", regionCode, orgCode }));
         return;
     }
     if (definition.type === "md5") {
         const source = (definition.parts || []).map((part) => vars[part] == null ? "" : String(vars[part])).join("");
-        vars[name] = md5(source);
+        setRuntimeVar(vars, name, md5(source));
         return;
     }
     if (definition.type === "signature") {
@@ -1326,14 +1443,14 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
         if (!secret) {
             throw new Error(`签名生成失败: 缺少密钥变量 vars.${definition.secretVar || "apiSecret"}`);
         }
-        vars[name] = generateSignature(params, secret);
+        setRuntimeVar(vars, name, generateSignature(params, secret));
         return;
     }
     if (definition.type === "enum") {
         // 枚举造数（可带权重）：从 values 按 weights 抽取一个值。按 runId+变量名确定性派生
         // （轮内稳定、跨轮变化、双端一致），命中概率之比即权重之比。
         const { values, weights } = normalizeEnumDefinition(definition);
-        vars[name] = values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)];
+        setRuntimeVar(vars, name, values[pickWeightedIndex(`${identifiers.runId}|${name}`, weights)]);
         return;
     }
     throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);

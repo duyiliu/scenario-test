@@ -36,7 +36,7 @@ node --test tests/engine.test.js
 node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 ```
 
-公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`。选项见 `--help`。
+公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`、`import`（HAR/curl 导入场景草稿）。选项见 `--help`。
 
 ## 架构
 
@@ -74,4 +74,4 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check && npm run test:browser`，打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check`（已含浏览器测试），打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。

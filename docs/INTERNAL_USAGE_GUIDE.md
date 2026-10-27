@@ -41,6 +41,9 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 # 命令行运行
 npx @yc_yzkj/scenario-test --config scenario-test/scenario.config.js --env local --all
 
+# 多场景并发（默认 1 串行；场景内步骤仍串行）
+npx @yc_yzkj/scenario-test --config scenario-test/scenario.config.js --env local --all --concurrency 4
+
 # 浏览器运行
 npx @yc_yzkj/scenario-test serve --config scenario-test/scenario.config.js
 ```
@@ -86,6 +89,8 @@ vars: {
 }
 ```
 
+列表型响应可用通配段 `[*]` 一次提取整列：`{ name: "ids", path: "data.items[*].id" }` 产出数组（如 `[1, 2, 3]`）。元素缺失该子路径时跳过，不产生 `undefined` 洞；空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。提取结果可直接用于 `length`/`includes`/`each` 断言。
+
 ### 断言
 
 ```javascript
@@ -105,7 +110,13 @@ assertions: [
     path: "/api/tasks/{{vars.taskId}}",
     retryUntil: {
         maxAttempts: 10,
-        intervalMs: 2000
+        intervalMs: 2000,
+        // 可选：指数退避（默认 factor 1 = 固定间隔）；第 n 次重试等待 = intervalMs × factor^(n-1)
+        intervalFactor: 2,
+        // 可选：单次等待上限（>= intervalMs，未声明不封顶）；最终仍受 100ms 下限与 maxElapsedMs 约束
+        maxIntervalMs: 10000,
+        // 可选：assertion（默认）/ error / timeout；服务刚启动时让连接失败与单次超时也参与轮询
+        retryOn: ["assertion", "error", "timeout"]
     },
     assertions: [
         { path: "status", equals: "completed" }

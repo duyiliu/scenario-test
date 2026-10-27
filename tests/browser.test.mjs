@@ -214,9 +214,47 @@ try {
             assert.equal(await page.locator('#stepsList li[data-passed="true"]').count(), 1, `${key} 不应清除场景结果`);
             assert.equal(await page.evaluate(() => document.activeElement.id), "adhocHeadersInput", `${key} 不应移走临时请求焦点`);
         }
+        await page.locator("#adhocHeadersInput").fill(JSON.stringify({ "Authorization": "Bearer top-secret-token", "X-Trace": "adhoc" }));
+        await page.evaluate(() => {
+            window.__lastCopiedText = "";
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: async (text) => { window.__lastCopiedText = text; } },
+                configurable: true
+            });
+        });
+        assert.equal(await page.locator("#adhocDraftBtn").isDisabled(), true, "未执行请求前不应允许转为步骤");
         await page.locator("#adhocExecuteBtn").click();
         await page.waitForFunction(() => !document.querySelector("#adhocResult").classList.contains("hidden"));
         assert.match(await page.locator("#adhocResult").textContent(), /状态：200/);
+        assert.equal(await page.locator("#adhocDraftBtn").isDisabled(), false, "执行成功后应允许转为步骤");
+        await page.locator("#adhocDraftBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#adhocDraft").classList.contains("hidden"));
+        const draftText = await page.locator("#adhocDraftCode").textContent();
+        assert.match(draftText, /"status": 200/, "草稿应使用实际响应状态码");
+        assert.match(draftText, /"method": "GET"/);
+        assert.match(draftText, /"Authorization": "\{\{vars\.authorization\}\}"/);
+        assert.doesNotMatch(draftText, /top-secret-token/, "敏感请求头不得写成明文");
+        const generatedStep = await page.evaluate((text) => {
+            const step = new Function("return (" + text + ");")();
+            return { name: step.name, method: step.method, path: step.path, status: step.status, headers: step.request && step.request.headers };
+        }, draftText);
+        assert.equal(generatedStep.method, "GET");
+        assert.equal(generatedStep.path, "health");
+        assert.equal(generatedStep.status, 200);
+        assert.equal(generatedStep.headers && generatedStep.headers["X-Trace"], "adhoc");
+        await page.waitForFunction(() => document.querySelector("#adhocDraftHint").textContent.includes("已生成步骤草稿并复制到剪贴板"));
+        assert.equal(await page.evaluate(() => window.__lastCopiedText), draftText, "生成草稿时应自动复制到剪贴板");
+        await page.locator("#adhocDraftCopyBtn").click();
+        await page.waitForFunction(() => document.querySelector("#adhocDraftHint").textContent.includes("已复制到剪贴板。"));
+        assert.equal(await page.evaluate(() => window.__lastCopiedText), draftText, "复制草稿按钮应复制同一片段");
+        // 恢复后续用例依赖的剪贴板失败态（上面仅为验证草稿复制临时替换）
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: () => Promise.reject(new Error("剪贴板权限拒绝")) },
+                configurable: true
+            });
+            Object.defineProperty(document, "execCommand", { value: () => false, configurable: true });
+        });
         await page.locator("#adhocCloseBtn").click();
 
         await page.locator("#resetBtn").click();
@@ -309,6 +347,32 @@ try {
         await page.close();
     }
 
+    // Issue #44：cURL 预览对带 fragment 的路径同样要把全局 query 拼在 # 之前；
+    // 已有 query 含畸形百分号编码时也不得抛 URIError。
+    const curlPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const curlPageErrors = [];
+    curlPage.on("pageerror", (error) => curlPageErrors.push(error.message));
+    await curlPage.route(/\/scenarios\/health\.js(?:\?.*)?$/, (route) => route.fulfill({
+        status: 200,
+        contentType: "text/javascript",
+        body: 'ScenarioTest.registerScenario("health", ScenarioTest.defineScenario({ name: "cURL fragment", steps: [{ name: "带 fragment 的步骤", method: "GET", path: "health?bad%zz=1#frag", params: { id: "42" } }] }));'
+    }));
+    await curlPage.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
+    await curlPage.waitForFunction(() => document.querySelectorAll("[data-curl-step]").length === 1);
+    await curlPage.evaluate(() => {
+        Object.defineProperty(navigator, "clipboard", {
+            value: { writeText: async (text) => { window.__lastCopiedText = text; } },
+            configurable: true
+        });
+    });
+    await curlPage.locator("[data-curl-step='0']").click();
+    await curlPage.waitForFunction(() => document.querySelector("[data-curl-step='0']").textContent.includes("已复制"));
+    const curlText = await curlPage.evaluate(() => window.__lastCopiedText);
+    const curlUrl = /curl -X GET '([^']+)'/.exec(curlText)?.[1] || "";
+    assert.match(curlUrl, /\/health\?bad%zz=1&id=42&source=scenario-test#frag$/, `cURL URL 应保留 fragment 并把 step.params/全局 query 放在 # 之前: ${curlText}`);
+    assert.deepEqual(curlPageErrors, [], `cURL 预览不应产生 pageerror: ${curlPageErrors.join(", ")}`);
+    await curlPage.close();
+
     // ?scenario= 白名单：URL 参数指向未列入配置清单的文件时必须拒绝加载，
     // 不得把工作区内任意 JS 当场景脚本执行（registerScenario 校验在脚本执行之后，挡不住注入）
     const evilPath = path.join(root, "examples/basic/evil-unlisted-test.js");
@@ -324,6 +388,42 @@ try {
         await page.close();
     } finally {
         fs.rmSync(evilPath, { force: true });
+    }
+    // config.storageKeys 是浏览器工作台公开配置：defineConfig 不得当未知键拒绝，
+    // 且自定义键必须真正用于 LocalStorage 读写（主题作为可观测面）。
+    const storageKeysPagePath = path.join(root, "examples/basic/storage-keys-regression.html");
+    fs.writeFileSync(storageKeysPagePath, `<!doctype html>
+<html lang="zh-CN">
+<body style="margin:0">
+    <div id="scenario-test" style="height:100vh"></div>
+    <script src="../../dist/scenario-test.umd.js"></script>
+    <script>
+        localStorage.setItem("custom.storage.theme", "claude-code");
+        ScenarioTest.createApp({
+            mount: "#scenario-test",
+            config: ScenarioTest.defineConfig({
+                envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
+                storageKeys: { theme: "custom.storage.theme" },
+                scenarios: []
+            })
+        });
+    </script>
+</body>
+</html>`, "utf8");
+    try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        await page.goto(`http://127.0.0.1:${port}/storage-keys-regression.html`, { waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#scenario-test-root"));
+        assert.equal(
+            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")),
+            true,
+            "storageKeys.theme 应作为自定义 LocalStorage 键被读取"
+        );
+        await page.locator("#themeSelect").selectOption("default");
+        assert.equal(await page.evaluate(() => localStorage.getItem("custom.storage.theme")), "default", "主题切换应写入自定义 storageKeys.theme");
+        await page.close();
+    } finally {
+        fs.rmSync(storageKeysPagePath, { force: true });
     }
 } finally {
     await browser?.close();

@@ -47,8 +47,8 @@ test("B3：request/params 非对象与双写冲突定义期拒绝", () => {
 });
 
 // Issue #26 F3：environment.authorization 一直被 CLI/浏览器消费，契约补投射
-// （contract v11 引入；后续契约递增时版本断言同步更新）
-test("F3：契约 environmentKeys 补投射 authorization（contract v13）", () => {
-    assert.equal(CONTRACT_VERSION, 13);
+// （contract v11 引入；v12 新增 CLI --concurrency/--vars/--timeout，v13 新增 configKeys 与 retryUntil.retryOn，v14 新增路径 [*] 通配与 import，v15 新增 retryUntil.intervalFactor/maxIntervalMs，v16 新增 shape/always/suite/tags/envs.vars，版本断言随契约递增）
+test("F3：契约 environmentKeys 补投射 authorization（contract v16）", () => {
+    assert.equal(CONTRACT_VERSION, 16);
     assert.ok(contract.config.environmentKeys.includes("authorization"));
 });
