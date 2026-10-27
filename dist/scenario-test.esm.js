@@ -327,7 +327,8 @@ var contract = Object.freeze({
     // shape 断言支持的结构键与类型名（jsonSchema-lite，不引入依赖）
     shape: Object.freeze({
       keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
-      types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"])
+      types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
+      note: "shape \u662F\u5BF9\u54CD\u5E94\u7ED3\u6784\u7684\u8F7B\u91CF JSON Schema \u5B50\u96C6\u6821\u9A8C\uFF1Atype \u652F\u6301 object/array/string/number/integer/boolean/null\uFF1Brequired \u4E3A\u5BF9\u8C61\u5FC5\u586B\u952E\u6570\u7EC4\uFF1Bproperties \u4E3A\u9010\u5B57\u6BB5\u5B50 schema\uFF1Bitems \u4E3A\u6570\u7EC4\u5143\u7D20\u5B50 schema\uFF1Benum \u4E3A\u6DF1\u6BD4\u8F83\u5019\u9009\u503C\u6570\u7EC4\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\u3002\u672A\u8BC6\u522B shape \u952E\u5B9A\u4E49\u671F\u5373\u62D2\u3002additionalProperties:false \u5BF9\u542B\u52A8\u6001\u5B57\u6BB5\u7684\u54CD\u5E94\u53EF\u80FD\u8BEF\u62A5\uFF0C\u52A8\u6001\u5B57\u6BB5\u573A\u666F\u8BF7\u4FDD\u7559\u9ED8\u8BA4\u6216\u6539\u7528\u9010\u5B57\u6BB5\u65AD\u8A00"
     })
   }),
   when: Object.freeze({
@@ -906,7 +907,7 @@ function validateShapeSchema(schema, trail = "shape") {
   if (!isPlainObject(schema)) throw new TypeError(`${trail} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08jsonSchema-lite \u5B50\u96C6\uFF09`);
   const unknown = Object.keys(schema).filter((key) => !SHAPE_KEYS.has(key));
   if (unknown.length) {
-    throw new TypeError(`${trail} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${[...SHAPE_KEYS].join("/")}`);
+    throw new TypeError(`${trail} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684 shape \u952E\u4E3A ${[...SHAPE_KEYS].join("/")}`);
   }
   if (schema.type !== void 0 && !SHAPE_TYPES.has(schema.type)) {
     throw new TypeError(`${trail}.type \u53EA\u652F\u6301 ${[...SHAPE_TYPES].join("/")}\uFF08\u5F53\u524D ${JSON.stringify(schema.type)}\uFF09`);
@@ -937,10 +938,18 @@ function validateShapeSchema(schema, trail = "shape") {
 function shapeActualType(value) {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
-  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "number";
+    return Number.isInteger(value) ? "integer" : "number";
+  }
+  if (typeof value === "string") return "string";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "undefined") return "undefined";
+  if (typeof value === "bigint") return "bigint";
+  if (isPlainObject(value)) return "object";
   return typeof value;
 }
-function shapeTypeMatches(type, value) {
+function shapeTypeMatches(value, type) {
   if (type === "null") return value === null;
   if (type === "array") return Array.isArray(value);
   if (type === "object") return isPlainObject(value);
@@ -948,43 +957,109 @@ function shapeTypeMatches(type, value) {
   if (type === "number") return typeof value === "number" && Number.isFinite(value);
   return typeof value === type;
 }
-function shapeErrors(schema, value, path, errors) {
-  const type = schema.type || (schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0);
-  if (type && !shapeTypeMatches(type, value)) {
-    errors.push({ path: path || "(\u6839)", expected: `type: ${type}`, actual: shapeActualType(value), value });
-    return errors;
+function shapeChildPath(parent, key) {
+  const text = String(key);
+  const simple = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(text);
+  if (simple) return parent ? `${parent}.${text}` : text;
+  const bracket = `[${JSON.stringify(text)}]`;
+  return parent ? `${parent}${bracket}` : bracket;
+}
+function shapeIndexPath(parent, index) {
+  return parent ? `${parent}[${index}]` : `[${index}]`;
+}
+function pushShapeFailure(failures, failure) {
+  failures.push({
+    path: failure.path || "(\u6839)",
+    expected: failure.expected,
+    actual: failure.actual,
+    // 实际值类型：显式传入时以调用方为准（如缺失必填字段为 undefined），否则按值推断
+    actualType: failure.actualType || shapeActualType(failure.actual),
+    expectedType: failure.expectedType,
+    reason: failure.reason
+  });
+}
+function collectShapeFailures(value, schema, path, failures) {
+  const type = schema.type !== void 0 ? schema.type : schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0;
+  const actualType = shapeActualType(value);
+  if (type !== void 0 && !shapeTypeMatches(value, type)) {
+    pushShapeFailure(failures, {
+      path,
+      expected: `type: ${type}`,
+      expectedType: type,
+      actual: value,
+      actualType,
+      reason: `\u7C7B\u578B\u4E0D\u7B26\uFF1A\u671F\u671B ${type}\uFF0C\u5B9E\u9645 ${actualType}`
+    });
+    return failures;
   }
-  if (schema.enum !== void 0 && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
-    errors.push({ path: path || "(\u6839)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+  if (Array.isArray(schema.enum)) {
+    const actualText = stableStringify(value);
+    if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
+      pushShapeFailure(failures, {
+        path,
+        expected: `enum: ${JSON.stringify(schema.enum)}`,
+        actual: value,
+        actualType,
+        reason: `\u53D6\u503C\u4E0D\u5728 enum \u5141\u8BB8\u8303\u56F4\uFF08\u5B9E\u9645 ${actualType}\uFF09`
+      });
+    }
   }
   if (isPlainObject(value)) {
-    for (const name of schema.required || []) {
-      if (!Object.prototype.hasOwnProperty.call(value, name)) {
-        errors.push({ path: path ? `${path}.${name}` : name, expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: "\u7F3A\u5931", value: void 0 });
+    const properties = isPlainObject(schema.properties) ? schema.properties : {};
+    for (const key of schema.required || []) {
+      if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) {
+        pushShapeFailure(failures, {
+          path: shapeChildPath(path, key),
+          expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728",
+          actual: void 0,
+          actualType: "undefined",
+          reason: "\u7F3A\u5C11\u5FC5\u586B\u5B57\u6BB5"
+        });
       }
     }
-    const properties = schema.properties || {};
-    for (const [name, subSchema] of Object.entries(properties)) {
-      if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
-      shapeErrors(subSchema, value[name], path ? `${path}.${name}` : name, errors);
+    for (const [key, child] of Object.entries(properties)) {
+      if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) continue;
+      collectShapeFailures(value[key], child, shapeChildPath(path, key), failures);
     }
     if (schema.additionalProperties === false) {
-      for (const name of Object.keys(value)) {
-        if (!Object.prototype.hasOwnProperty.call(properties, name)) {
-          errors.push({ path: path ? `${path}.${name}` : name, expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5", actual: value[name], value: value[name] });
-        }
+      for (const key of Object.keys(value)) {
+        if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
+        pushShapeFailure(failures, {
+          path: shapeChildPath(path, key),
+          expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5",
+          actual: value[key],
+          actualType: shapeActualType(value[key]),
+          reason: `additionalProperties:false\uFF1A\u51FA\u73B0\u672A\u58F0\u660E\u952E "${key}"`
+        });
       }
     }
   }
   if (Array.isArray(value) && schema.items !== void 0) {
-    value.forEach((item, index) => {
-      shapeErrors(schema.items, item, `${path || ""}[${index}]`, errors);
-    });
+    value.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path, index), failures));
   }
-  return errors;
+  return failures;
 }
 function evaluateShape(schema, actual) {
-  return shapeErrors(schema, actual, "", []);
+  const failures = collectShapeFailures(actual, schema, "", []);
+  return failures.map((failure, index) => ({
+    index,
+    path: failure.path,
+    expected: failure.expected,
+    actual: failure.actual,
+    value: failure.actual,
+    expectedType: failure.expectedType,
+    actualType: failure.actualType,
+    reason: failure.reason,
+    assertions: [{
+      name: failure.path,
+      passed: false,
+      expected: failure.expected,
+      actual: failure.actual,
+      reason: failure.reason,
+      expectedType: failure.expectedType,
+      actualType: failure.actualType
+    }]
+  }));
 }
 function validateAssertion(definition, context, options = {}) {
   const where = formatAssertionContext(context);
@@ -1141,12 +1216,44 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
   }
   if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
     expected = resolve(definition.shape, runtime);
+    let shapeDefinitionError = "";
     if (isPlainObject(expected)) {
-      shapeFailures = evaluateShape(expected, actual);
-      if (shapeFailures.length) passed = false;
+      try {
+        validateShapeSchema(expected);
+      } catch (error) {
+        shapeDefinitionError = error?.message || String(error);
+      }
     } else {
+      shapeDefinitionError = "shape \u5B9A\u4E49\u5FC5\u987B\u662F\u5BF9\u8C61\uFF08jsonSchema-lite \u5B50\u96C6\uFF09";
+    }
+    if (shapeDefinitionError) {
       passed = false;
-      shapeFailures = [{ path: "(\u6839)", expected: "shape \u5B9A\u4E49\u5BF9\u8C61", actual: shapeActualType(expected), value: expected }];
+      const actualType = shapeActualType(expected);
+      shapeFailures = [{
+        index: 0,
+        path: "(\u6839)",
+        expected: "shape \u5B9A\u4E49\u5BF9\u8C61",
+        actual: actualType,
+        value: expected,
+        expectedType: "object",
+        actualType,
+        reason: shapeDefinitionError,
+        assertions: [{
+          name: "(\u6839)",
+          passed: false,
+          expected: "shape \u5B9A\u4E49\u5BF9\u8C61",
+          actual: actualType,
+          reason: shapeDefinitionError,
+          expectedType: "object",
+          actualType
+        }]
+      }];
+    } else {
+      const failures = evaluateShape(expected, actual);
+      if (failures.length) {
+        shapeFailures = failures;
+        passed = false;
+      }
     }
   }
   if (Object.prototype.hasOwnProperty.call(definition, "each")) {
@@ -1219,9 +1326,9 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     expected,
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
-    // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
-    ...eachFailures ? { detail: eachFailures } : {},
-    ...shapeFailures ? { detail: shapeFailures } : {}
+    // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
+    // 同一断言同时声明 each + shape 时合并为一份明细，避免后者覆盖前者。
+    ...eachFailures && eachFailures.length || shapeFailures && shapeFailures.length ? { detail: [...eachFailures || [], ...shapeFailures || []] } : {}
   };
 }
 function normalizeWhenDefinition(definition) {
@@ -3230,7 +3337,13 @@ function buildCapabilities(inputContract = contract) {
       from: [...assertions.from || []],
       note: assertions.note,
       numericOperators: [...assertions.numericOperators],
-      ...assertions.shape ? { shape: { keys: [...assertions.shape.keys], types: [...assertions.shape.types] } } : {}
+      ...assertions.shape ? {
+        shape: {
+          keys: [...assertions.shape.keys],
+          types: [...assertions.shape.types],
+          ...assertions.shape.note ? { note: assertions.shape.note } : {}
+        }
+      } : {}
     },
     when: {
       sources: [...when.sources],
@@ -3318,6 +3431,10 @@ function renderCapabilitiesText(capabilities) {
   }
   if (capabilities.assertions.note) {
     lines.push(`  ${capabilities.assertions.note}`);
+  }
+  if (capabilities.assertions.shape) {
+    lines.push(`  shape \u652F\u6301: type = ${capabilities.assertions.shape.types.join(" / ")}\uFF1B\u952E = ${capabilities.assertions.shape.keys.join(" / ")}`);
+    if (capabilities.assertions.shape.note) lines.push(`  ${capabilities.assertions.shape.note}`);
   }
   lines.push("");
   lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);
@@ -4747,7 +4864,7 @@ var workbenchView = function() {
   function eachDetailRows2(detail, prefix) {
     var html = "";
     (Array.isArray(detail) ? detail : []).forEach(function(d) {
-      var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+      var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
       d.assertions.forEach(function(sub) {
         if (sub.passed) return;
         html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 ' + label + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
@@ -4761,7 +4878,7 @@ var workbenchView = function() {
   }
   function pushEachDetailLines(lines, detail, prefix, depth) {
     (Array.isArray(detail) ? detail : []).forEach(function(d) {
-      var label = (prefix ? prefix + " \u203A " : "") + "\u7B2C " + (d.index + 1) + " \u9879";
+      var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
       d.assertions.forEach(function(sub) {
         if (sub.passed) return;
         lines.push("    ".repeat(depth) + "- " + label + "\u5931\u8D25: \u671F\u671B " + mdInline(sub.expected) + ",\u5B9E\u5F97 " + mdInline(sub.actual));

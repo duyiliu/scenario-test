@@ -530,7 +530,7 @@ export function validateShapeSchema(schema, trail = "shape") {
     if (!isPlainObject(schema)) throw new TypeError(`${trail} 必须是对象（jsonSchema-lite 子集）`);
     const unknown = Object.keys(schema).filter((key) => !SHAPE_KEYS.has(key));
     if (unknown.length) {
-        throw new TypeError(`${trail} 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，允许的键为 ${[...SHAPE_KEYS].join("/")}`);
+        throw new TypeError(`${trail} 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，允许的 shape 键为 ${[...SHAPE_KEYS].join("/")}`);
     }
     if (schema.type !== undefined && !SHAPE_TYPES.has(schema.type)) {
         throw new TypeError(`${trail}.type 只支持 ${[...SHAPE_TYPES].join("/")}（当前 ${JSON.stringify(schema.type)}）`);
@@ -561,14 +561,23 @@ export function validateShapeSchema(schema, trail = "shape") {
     return schema;
 }
 
+// 实际值的 JSON 类型名：integer 与 number 区分开，便于失败明细直接说明「期望 integer，实际 string」
 function shapeActualType(value) {
     if (value === null) return "null";
     if (Array.isArray(value)) return "array";
-    if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) return "number";
+        return Number.isInteger(value) ? "integer" : "number";
+    }
+    if (typeof value === "string") return "string";
+    if (typeof value === "boolean") return "boolean";
+    if (typeof value === "undefined") return "undefined";
+    if (typeof value === "bigint") return "bigint";
+    if (isPlainObject(value)) return "object";
     return typeof value;
 }
 
-function shapeTypeMatches(type, value) {
+function shapeTypeMatches(value, type) {
     if (type === "null") return value === null;
     if (type === "array") return Array.isArray(value);
     if (type === "object") return isPlainObject(value);
@@ -577,48 +586,125 @@ function shapeTypeMatches(type, value) {
     return typeof value === type;
 }
 
-function shapeErrors(schema, value, path, errors) {
-    const type = schema.type
-        || (schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined
+function shapeChildPath(parent, key) {
+    const text = String(key);
+    const simple = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(text);
+    if (simple) return parent ? `${parent}.${text}` : text;
+    const bracket = `[${JSON.stringify(text)}]`;
+    return parent ? `${parent}${bracket}` : bracket;
+}
+
+function shapeIndexPath(parent, index) {
+    return parent ? `${parent}[${index}]` : `[${index}]`;
+}
+
+function pushShapeFailure(failures, failure) {
+    failures.push({
+        path: failure.path || "(根)",
+        expected: failure.expected,
+        actual: failure.actual,
+        // 实际值类型：显式传入时以调用方为准（如缺失必填字段为 undefined），否则按值推断
+        actualType: failure.actualType || shapeActualType(failure.actual),
+        expectedType: failure.expectedType,
+        reason: failure.reason
+    });
+}
+
+// 递归收集全部结构失败（不短路）：字段路径、期望类型/值、实际类型/值与可读原因一并保留，
+// 供 AssertionResult.detail 复用 each 的分层明细结构透出。
+function collectShapeFailures(value, schema, path, failures) {
+    // 未显式声明 type 时按已声明的结构键推断：required/properties/additionalProperties → object，
+    // items → array，避免漏写 type 时对非对象/非数组值静默通过。
+    const type = schema.type !== undefined
+        ? schema.type
+        : (schema.properties !== undefined || schema.required !== undefined || schema.additionalProperties !== undefined
             ? "object"
             : (schema.items !== undefined ? "array" : undefined));
-    if (type && !shapeTypeMatches(type, value)) {
-        errors.push({ path: path || "(根)", expected: `type: ${type}`, actual: shapeActualType(value), value });
-        // 类型不符时后续 required/properties/items 无意义，避免级联噪声
-        return errors;
+    const actualType = shapeActualType(value);
+    if (type !== undefined && !shapeTypeMatches(value, type)) {
+        pushShapeFailure(failures, {
+            path,
+            expected: `type: ${type}`,
+            expectedType: type,
+            actual: value,
+            actualType,
+            reason: `类型不符：期望 ${type}，实际 ${actualType}`
+        });
+        // 根类型不符时继续下钻 properties/items 只会产生噪声
+        return failures;
     }
-    if (schema.enum !== undefined && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
-        errors.push({ path: path || "(根)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+    if (Array.isArray(schema.enum)) {
+        const actualText = stableStringify(value);
+        if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
+            pushShapeFailure(failures, {
+                path,
+                expected: `enum: ${JSON.stringify(schema.enum)}`,
+                actual: value,
+                actualType,
+                reason: `取值不在 enum 允许范围（实际 ${actualType}）`
+            });
+        }
     }
     if (isPlainObject(value)) {
-        for (const name of schema.required || []) {
-            if (!Object.prototype.hasOwnProperty.call(value, name)) {
-                errors.push({ path: path ? `${path}.${name}` : name, expected: "必填字段存在", actual: "缺失", value: undefined });
+        const properties = isPlainObject(schema.properties) ? schema.properties : {};
+        for (const key of schema.required || []) {
+            if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === undefined) {
+                pushShapeFailure(failures, {
+                    path: shapeChildPath(path, key),
+                    expected: "必填字段存在",
+                    actual: undefined,
+                    actualType: "undefined",
+                    reason: "缺少必填字段"
+                });
             }
         }
-        const properties = schema.properties || {};
-        for (const [name, subSchema] of Object.entries(properties)) {
-            if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
-            shapeErrors(subSchema, value[name], path ? `${path}.${name}` : name, errors);
+        for (const [key, child] of Object.entries(properties)) {
+            if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === undefined) continue;
+            collectShapeFailures(value[key], child, shapeChildPath(path, key), failures);
         }
         if (schema.additionalProperties === false) {
-            for (const name of Object.keys(value)) {
-                if (!Object.prototype.hasOwnProperty.call(properties, name)) {
-                    errors.push({ path: path ? `${path}.${name}` : name, expected: "不允许的额外字段", actual: value[name], value: value[name] });
-                }
+            for (const key of Object.keys(value)) {
+                if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
+                pushShapeFailure(failures, {
+                    path: shapeChildPath(path, key),
+                    expected: "不允许的额外字段",
+                    actual: value[key],
+                    actualType: shapeActualType(value[key]),
+                    reason: `additionalProperties:false：出现未声明键 "${key}"`
+                });
             }
         }
     }
     if (Array.isArray(value) && schema.items !== undefined) {
-        value.forEach((item, index) => {
-            shapeErrors(schema.items, item, `${path || ""}[${index}]`, errors);
-        });
+        value.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path, index), failures));
     }
-    return errors;
+    return failures;
 }
 
+// 对外保留 evaluateShape(schema, actual)：返回可直接渲染的明细项。
+// 每项同时携带 each 的 index/assertions 分层结构与 path 等扁平字段，
+// 既能复用工作台/CLI 的 each 明细渲染，也兼容仅读取 path/expected/actual 的旧消费方。
 export function evaluateShape(schema, actual) {
-    return shapeErrors(schema, actual, "", []);
+    const failures = collectShapeFailures(actual, schema, "", []);
+    return failures.map((failure, index) => ({
+        index,
+        path: failure.path,
+        expected: failure.expected,
+        actual: failure.actual,
+        value: failure.actual,
+        expectedType: failure.expectedType,
+        actualType: failure.actualType,
+        reason: failure.reason,
+        assertions: [{
+            name: failure.path,
+            passed: false,
+            expected: failure.expected,
+            actual: failure.actual,
+            reason: failure.reason,
+            expectedType: failure.expectedType,
+            actualType: failure.actualType
+        }]
+    }));
 }
 
 export function validateAssertion(definition, context, options = {}) {
@@ -844,13 +930,46 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     // 非数组实际值 / 期望值形状非法直接失败（与 oneOf 非数组口径一致：FAIL 而非抛异常）
     if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
         expected = resolve(definition.shape, runtime);
+        let shapeDefinitionError = "";
         if (isPlainObject(expected)) {
-            shapeFailures = evaluateShape(expected, actual);
-            if (shapeFailures.length) passed = false;
+            try {
+                // 定义期已校验；模板解析后可能改变 enum/required 等值，运行期再校一次，
+                // 非法定义按断言失败处理并给出字段级明细，而非抛异常中断整个步骤。
+                validateShapeSchema(expected);
+            } catch (error) {
+                shapeDefinitionError = error?.message || String(error);
+            }
         } else {
-            // 模板解析后的结构定义非法：按失败处理并给出可定位原因，而非抛异常中断步骤
+            shapeDefinitionError = "shape 定义必须是对象（jsonSchema-lite 子集）";
+        }
+        if (shapeDefinitionError) {
             passed = false;
-            shapeFailures = [{ path: "(根)", expected: "shape 定义对象", actual: shapeActualType(expected), value: expected }];
+            const actualType = shapeActualType(expected);
+            shapeFailures = [{
+                index: 0,
+                path: "(根)",
+                expected: "shape 定义对象",
+                actual: actualType,
+                value: expected,
+                expectedType: "object",
+                actualType,
+                reason: shapeDefinitionError,
+                assertions: [{
+                    name: "(根)",
+                    passed: false,
+                    expected: "shape 定义对象",
+                    actual: actualType,
+                    reason: shapeDefinitionError,
+                    expectedType: "object",
+                    actualType
+                }]
+            }];
+        } else {
+            const failures = evaluateShape(expected, actual);
+            if (failures.length) {
+                shapeFailures = failures;
+                passed = false;
+            }
         }
     }
     if (Object.prototype.hasOwnProperty.call(definition, "each")) {
@@ -937,9 +1056,11 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         expected,
         // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
         ...(reason ? { reason } : {}),
-        // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
-        ...(eachFailures ? { detail: eachFailures } : {}),
-        ...(shapeFailures ? { detail: shapeFailures } : {})
+        // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
+        // 同一断言同时声明 each + shape 时合并为一份明细，避免后者覆盖前者。
+        ...((eachFailures && eachFailures.length) || (shapeFailures && shapeFailures.length)
+            ? { detail: [...(eachFailures || []), ...(shapeFailures || [])] }
+            : {})
     };
 }
 
