@@ -11,14 +11,14 @@ description: 为当前业务项目接入、设计、维护、诊断或执行 sce
 
 1. 从当前工作目录执行只读探测（Node.js 18+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。
 2. `status=installed`：只证明文件存在，**不代表 doctor PASS**。使用脚本返回的 `projectRoot`、`scenarioDir`、`config` 等路径。不同项目不可混用规则/配置/CLI；不要自动执行 `init` 或升级。
-3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)；只有用户明确授权接入或安装后才能安装。若用户仅请求“生成测试”，先说明未接入并征求接入许可。
+3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录执行官方固定 tag 安装脚本（见 https://github.com/duyiliu/scenario-test 的 README「快速接入」，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。
-5. 按本次意图选择：**接入/修复/升级** → [init.md](references/init.md)；**生成/修改/补充场景** → [author.md](references/author.md)；**执行/调试/启动工作台** → [execute.md](references/execute.md)。一次请求可以按先后顺序使用多个工作流，但每个有副作用的操作都遵守独立授权边界。
+5. 按本次意图选择：**接入/修复/升级** → [init.md](references/init.md)；**生成/修改/补充场景** → [author.md](references/author.md)；**执行/调试/启动工作台** → [execute.md](references/execute.md)。一次请求可以按先后顺序使用多个工作流；初始化按第 3 条自动执行，编写阶段不调用接口，执行阶段仍需用户明确提出。
 
 ## 不变约束
 
 - DSL 的事实来源是当前业务项目的 `.scenario-test/scenario-test-capabilities.json`（由库中 `src/contract.js` 生成）；场景编写规则以同一项目同版本的 `AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 为准。**不要依据本 Skill 自行发明操作符、字段、CLI 参数或接口响应**。
-- 默认免 npm 接入，不修改业务应用源码、`package.json` 或构建配置；不克隆公共库源码；不覆盖已有配置/场景。更新运行时需要用户明确要求，尤其不可自动 `--force`。
+- 默认免 npm 接入，不修改业务应用源码、`package.json` 或构建配置；不克隆公共库源码；不覆盖已有配置/场景。自动初始化只针对未接入项目；已接入项目不自动升级运行时，更新运行时需要用户明确要求，尤其不可自动 `--force`。
 - 只分析用户指定的业务功能及直接证据，不扫描整个项目批量生成。
 - **生成场景 ≠ 执行测试**。编写阶段绝不调用 HTTP 接口、启动服务或写入实际业务数据；运行阶段需要用户明确提出，写操作/非本地环境遵守 [execute.md](references/execute.md) 的安全闸门。
 - **诊断、执行与工作台一律走当前项目的 CLI**：`node <cli> doctor|run|serve|capabilities`。禁止直接 `require`/`import` 运行时（UMD、内部模块），也禁止自写脚本或临时 HTTP 请求复现场景执行；命令与参数以该项目 `capabilities --json` 和 `--help` 为准。

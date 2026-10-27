@@ -1,6 +1,6 @@
 # 初始化、修复、升级
 
-此工作流仅在用户**明确请求接入、安装、升级或授权修复**时使用。探测脚本检查文件存在性，`doctor` 才负责运行时完整性、版本锁、配置有效性检查。
+探测脚本检查文件存在性，`doctor` 才负责运行时完整性、版本锁、配置有效性检查。
 
 ## 前置检查
 
@@ -8,6 +8,34 @@
 2. `installed` 时，普通“测试某个功能”请求直接进入 `author.md`，**不得先重跑安装**。
 3. `incomplete` 时展示缺失项；不要删除目录、覆盖配置或场景。修复前备份/确认可能受影响文件。
 4. 用户明确要求升级时，再查看当前版本锁及目标发布版本，并确认安装来源；不要把全局 Skill 版本等同于运行时版本。
+5. `not-initialized` 且本次请求是生成/补充/执行场景测试时，按下方“自动初始化”直接安装，不再等待二次确认；仅询问能力或文档时不要安装。
+
+## 自动初始化（默认行为）
+
+用户请求为某个业务功能生成/补充/执行场景测试，而项目尚未接入时，直接完成初始化，不再要求二次确认：
+
+1. 确认 `projectRoot` 与目标目录（默认 `scenario-test`），用一行说明将执行的安装命令。
+2. 从公共仓库 https://github.com/duyiliu/scenario-test 的 README「快速接入」获取并执行**固定 tag** 的官方安装脚本（Windows PowerShell / macOS·Linux Bash）。不要在 Skill 内手抄版本号，也不要拼接未确认来源。
+3. 重新运行探测脚本确认 `status=installed`，再执行 `doctor`；FAIL 时停止并报告。
+4. 通过后按 `author.md` 继续，不需要用户再次确认接入。
+
+例外（改为先征询）：用户明确拒绝自动安装、设置 `SCENARIO_TEST_NO_AUTO_INIT=1`、`status=incomplete`（不自动修复），或用户只是询问能力/文档而未提出测试需求。
+
+## 安装源
+
+默认且唯一推荐的来源是 README「快速接入」中的固定 tag 官方脚本（从 npm Registry 下载固定版本 tarball）。仅当用户明确要求以下方式时，才改用对应来源，并在结果中说明：
+
+- **本地/未发布版本（开发验证）**：用目标仓库产物初始化，例如
+  `node <仓库根>/dist/scenario-test-cli.cjs init --project . --dir scenario-test --no-input`；
+  或用 `--library-url <包含 CLI/UMD/d.ts/capabilities 的目录>` 指定运行时目录。产物版本可能与发布版不同，以 `doctor` 显示的实际版本为准。
+- **内网**：使用 README 已有的 `-Source` / `SCENARIO_TEST_SOURCE`（或安装脚本第三个参数）指向内网运行时目录。
+- **npm 模式**：仅用户指定时使用 `npm install -D @yc_yzkj/scenario-test` + `npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"`。
+
+不要自行降级、切换或拼接未确认来源。
+
+## 幂等与覆盖语义
+
+`init` 幂等，可重复执行：`--no-input` 对已存在目录按 keep 语义保留 `scenario.config.js` 与 `scenarios/`，仅刷新 `.scenario-test/` 运行时副本与 AI 规则；只有 `--force` 会覆盖已有配置/场景，默认禁止使用。重复执行不会产生重复场景或丢失已有改动。
 
 ## 接入方式
 

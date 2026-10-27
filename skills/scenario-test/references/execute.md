@@ -9,3 +9,4 @@
 5. 使用**当前项目内** CLI：`node <cli> run --config <config> --env <KEY> --scenario <ID>`；如果用户明确要求批量且安全，才使用 `--all`。命令与参数遵循该项目版本的 `capabilities --json`。
 6. 浏览器工作台仅当用户明确要求时通过项目原有 `start-scenario-test.cmd`（Windows）或 `node <cli> serve --config <config>` 启动；不将公网绑定/代理地址当作默认设置。
 7. 输出本次环境、执行的场景 ID、通过/失败/跳过及错误原因；敏感字段应脱敏，区分 doctor 与真正的 HTTP 执行结果。
+8. 用户要求 CI 报告或批量执行时，按当前项目 `capabilities --json` 与 `--help` 使用对应参数（如 `--json`/`--junit`/`--tag`/`--data`/`--bail`/`--concurrency`），不要假设版本支持；批量与 `--all` 仍受第 2、3 条安全闸门约束。

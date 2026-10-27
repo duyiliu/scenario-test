@@ -6,7 +6,7 @@
 
 ## 全局 AI Skill（多业务项目推荐）
 
-可以在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中**按用户安装一次**，之后进入不同业务项目，只需说“为 OrderController 生成 HTTP 场景测试”。Skill 会按当前工作目录自动定位业务项目、检测接入状态，并读取该项目**自身版本**的 AI 规则和能力清单。无需每个项目复制 Skill；未接入时会提示并等待确认，不会自行下载安装。
+可以在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中**按用户安装一次**，之后进入不同业务项目，只需说“为 OrderController 生成 HTTP 场景测试”。Skill 会按当前工作目录自动定位业务项目、检测接入状态，并读取该项目**自身版本**的 AI 规则和能力清单。无需每个项目复制 Skill；未接入时会在确认项目根目录后自动执行官方固定版本安装脚本完成初始化（设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时改为先征询）。
 
 ```bash
 # 用户级全局安装；按提示选择你使用的 Agent
@@ -21,7 +21,7 @@ Skill 入口在 [`skills/scenario-test/SKILL.md`](skills/scenario-test/SKILL.md)
 node /path/to/scenario-test-skill/scripts/detect-project.mjs --cwd /path/to/business-project
 ```
 
-探测只检查文件存在性；正式运行前仍以每个项目的 `doctor` 结果为准。生成场景不会自动执行 HTTP 请求；全局 Skill 升级也**不会**自动升级各业务项目运行时。
+探测只检查文件存在性；正式运行前仍以每个项目的 `doctor` 结果为准。生成场景不会自动执行 HTTP 请求；自动初始化只针对未接入项目，不会升级已接入项目的运行时，全局 Skill 升级也**不会**自动升级各业务项目运行时。
 
 ## 快速接入
 
