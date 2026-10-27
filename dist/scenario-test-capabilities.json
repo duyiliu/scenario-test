@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 14,
+  "contractVersion": 16,
   "assertions": {
     "operators": {
       "exists": {
@@ -25,8 +25,8 @@
         "valueType": "assertion"
       },
       "shape": {
-        "description": "结构断言（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构；失败时 detail 定位到字段路径、期望类型与实际类型/值；未识别 shape 键定义期即拒",
-        "valueType": "shape"
+        "description": "结构级校验（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构，失败明细定位到字段路径与期望/实际类型",
+        "valueType": "any"
       },
       "matches": {
         "description": "正则表达式匹配字符串化后的实际值",
@@ -83,7 +83,7 @@
       "headers",
       "bodyText"
     ],
-    "note": "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配",
+    "note": "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配。裸 path 支持通配段 [*]：仅在数组上展开，非数组按路径缺失处理；元素缺失该子路径时跳过（不产生 undefined 洞）；连续通配（如 groups[*].members[*].id）展平为一级数组。items[*].id 产出 [1,2,3]，可直接配合 each/length/includes 等操作符断言。",
     "numericOperators": [
       "gt",
       "gte",
@@ -91,6 +91,14 @@
       "lte"
     ],
     "shape": {
+      "keys": [
+        "type",
+        "required",
+        "properties",
+        "items",
+        "enum",
+        "additionalProperties"
+      ],
       "types": [
         "object",
         "array",
@@ -99,14 +107,6 @@
         "integer",
         "boolean",
         "null"
-      ],
-      "keys": [
-        "type",
-        "required",
-        "properties",
-        "items",
-        "enum",
-        "additionalProperties"
       ],
       "note": "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言"
     }
@@ -130,7 +130,8 @@
       "target",
       "header",
       "required",
-      "default"
+      "default",
+      "scope"
     ],
     "from": [
       "body",
@@ -138,12 +139,16 @@
       "bodyText",
       "response"
     ],
+    "scopes": [
+      "step",
+      "suite"
+    ],
     "targets": [
       "status"
     ],
     "required": "boolean",
     "default": "any",
-    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配"
+    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配；scope: \"suite\" 时提取值写入本次 run 共享变量，后续场景可直接用 {{vars.<name>}} 引用（默认 step 仅当前场景可见）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
   },
   "reservedVars": [
     "runId",
@@ -197,14 +202,16 @@
       "id",
       "name",
       "url",
-      "manual"
+      "manual",
+      "tags"
     ],
     "environmentKeys": [
       "key",
       "name",
       "baseUrl",
       "globals",
-      "authorization"
+      "authorization",
+      "vars"
     ],
     "variableKeys": [
       "name",
@@ -220,6 +227,10 @@
     "manual": {
       "type": "boolean",
       "note": "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
+    },
+    "tags": {
+      "type": "string[]",
+      "note": "配置清单项声明 tags 用于 run --tag 筛选（重复参数之间为 OR，单个参数内逗号分隔为 AND；不会自动放行 manual:true 场景）；场景顶层 tags 为场景元数据"
     }
   },
   "retryUntil": {
@@ -227,7 +238,9 @@
       "maxAttempts",
       "intervalMs",
       "maxElapsedMs",
-      "retryOn"
+      "retryOn",
+      "intervalFactor",
+      "maxIntervalMs"
     ],
     "retryOn": [
       "assertion",
@@ -237,7 +250,7 @@
     "defaultRetryOn": [
       "assertion"
     ],
-    "note": "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
+    "note": "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage。intervalFactor 可选（默认 1，固定间隔），第 n 次重试等待 = intervalMs × intervalFactor^(n-1)；maxIntervalMs 可选封顶，最终仍受 100ms 下限与 maxElapsedMs 总时长约束"
   },
   "scenario": {
     "keys": [
@@ -246,7 +259,8 @@
       "vars",
       "envVars",
       "generatedVars",
-      "failurePolicy"
+      "failurePolicy",
+      "tags"
     ],
     "stepKeys": [
       "name",
@@ -261,12 +275,22 @@
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ],
     "failurePolicies": [
       "stop",
       "continue"
-    ]
+    ],
+    "retryUntilKeys": [
+      "maxAttempts",
+      "intervalMs",
+      "maxElapsedMs",
+      "retryOn",
+      "intervalFactor",
+      "maxIntervalMs"
+    ],
+    "note": "always: true 的步骤在前置普通步骤失败（failurePolicy: stop）后仍会执行，用于 teardown；用户取消执行时不运行。retryUntil 第 n 次重试间隔 = intervalMs * intervalFactor^(n-1)，封顶 maxIntervalMs，且不低于 100ms"
   },
   "cli": {
     "commands": [
@@ -274,7 +298,8 @@
       "serve",
       "init",
       "capabilities",
-      "doctor"
+      "doctor",
+      "import"
     ],
     "options": {
       "config": {
@@ -303,6 +328,32 @@
         "kind": "value",
         "description": "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs",
         "parse": "number"
+      },
+      "proxy-timeout": {
+        "kind": "value",
+        "description": "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）",
+        "parse": "number"
+      },
+      "data": {
+        "kind": "value",
+        "description": "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景"
+      },
+      "junit": {
+        "kind": "value",
+        "description": "输出 JUnit XML 报告到指定文件"
+      },
+      "tag": {
+        "kind": "value",
+        "description": "按标签筛选场景（可重复；重复参数之间为 OR，单个参数内逗号分隔为 AND）",
+        "repeatable": true
+      },
+      "bail": {
+        "kind": "flag",
+        "description": "任一场景失败后不再启动后续场景（已执行场景跑完）"
+      },
+      "cookie-jar": {
+        "kind": "flag",
+        "description": "run 为每个场景启用内存 Cookie Jar（自动携带 Set-Cookie，默认关闭）"
       },
       "port": {
         "kind": "value",
@@ -356,6 +407,30 @@
         "aliases": [
           "authorization"
         ]
+      },
+      "har": {
+        "kind": "value",
+        "description": "import：HAR 文件路径（- 表示从 stdin 读取）"
+      },
+      "curl": {
+        "kind": "value",
+        "description": "import：curl 命令文本；单请求生成单步骤草稿"
+      },
+      "output": {
+        "kind": "value",
+        "description": "import：输出场景文件（默认 scenarios/imported-<ts>.js）",
+        "aliases": [
+          "out"
+        ]
+      },
+      "host": {
+        "kind": "value",
+        "description": "import：仅导入指定主机（可逗号分隔多个）"
+      },
+      "max-entries": {
+        "kind": "value",
+        "description": "import：最多导入请求数，默认 50（防超大 HAR 生成失控场景）",
+        "parse": "number"
       }
     }
   }

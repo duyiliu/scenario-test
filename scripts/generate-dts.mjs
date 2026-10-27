@@ -23,11 +23,10 @@ const valueTypeToTs = {
     string: "string",
     array: "unknown[]",
     finiteNumber: "number",
-    assertion: "Assertion | Assertion[]",
-    shape: "ShapeDefinition"
+    assertion: "Assertion | Assertion[]"
 };
 
-const operatorMembers = (indent) => Object.entries(contract.assertions.operators).map(([name, spec]) => {
+const operatorMembers = (indent) => Object.entries(contract.assertions.operators).filter(([name]) => name !== "shape").map(([name, spec]) => {
     const tsType = valueTypeToTs[spec.valueType];
     if (!tsType) throw new Error(`contract 操作符 ${name} 的 valueType "${spec.valueType}" 缺少 d.ts TS 类型映射`);
     return `${indent}/** ${spec.description} */\n${indent}${name}?: ${tsType};`;
@@ -47,9 +46,9 @@ export type WhenSource = ${quote(contract.when.sources)};
 export type WhenTarget = ${quote(contract.when.targets)};
 export type AssertionSource = ${quote(contract.assertions.from)};
 export type ExtractSource = ${quote(contract.extract.from)};
+export type ExtractScope = ${quote(contract.extract.scopes)};
 export type FailurePolicy = ${quote(contract.scenario.failurePolicies)};
 export type RetryOn = ${quote(contract.retryUntil.retryOn)};
-export type ShapeType = ${quote(contract.assertions.shape.types)};
 
 export interface GlobalParam {
     type: GlobalParamType;
@@ -63,6 +62,8 @@ export interface Environment {
     baseUrl?: string;
     globals?: GlobalParam[];
     authorization?: string;
+    /** 环境级变量（#58）：优先级 config.vars < env.vars < --vars */
+    vars?: Record<string, unknown>;
 }
 
 export interface ConfigVariable {
@@ -79,6 +80,8 @@ export interface ScenarioListItem {
     name?: string;
     url: string;
     manual?: boolean;
+    /** 场景标签（#68）：run --tag 筛选；不会自动放行 manual:true 场景 */
+    tags?: string[];
     /** 兼容回退字段（等价 url） */
     file?: string;
     path?: string;
@@ -116,22 +119,7 @@ export interface ScenarioConfig {
     envVars?: Record<string, string>;
 }
 
-/** shape 断言（jsonSchema-lite）子 schema：键集合与类型名单由 contract 投影，未识别键定义期即拒 */
-export interface ShapeDefinition {
-    type?: ShapeType;
-    /** 对象必填键数组 */
-    required?: string[];
-    /** 对象逐字段子 schema */
-    properties?: Record<string, ShapeDefinition>;
-    /** 数组元素子 schema */
-    items?: ShapeDefinition;
-    /** 候选值数组（深比较） */
-    enum?: unknown[];
-    /** 默认 true；声明 false 时未知键失败（动态字段响应可能误报） */
-    additionalProperties?: boolean;
-}
-
-/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration */
+/** 断言定义：元数据键 + 至少一个操作符；gt/gte/lt/lte/length 只接受有限 number；target 可取 status/duration；path 支持点段/整数下标/引号键/通配段 [*]（仅数组展开，如 items[*].id） */
 export interface Assertion {
     name?: string;
     path?: string;
@@ -141,10 +129,13 @@ export interface Assertion {
     header?: string;
     implicit?: boolean;
 ${operatorMembers("    ")}
+    /** 结构级校验（jsonSchema-lite）：失败明细在 result.detail 中按 path 定位 */
+    shape?: ShapeDefinition;
 }
 
 export interface ExtractDefinition {
     name: string;
+    /** 路径支持点段/整数下标/引号键/通配段 [*]（items[*].id 逐元素提取并跳过缺失子路径） */
     path?: string;
     /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；from:"response" 仍按精确键匹配 */
     from?: ExtractSource;
@@ -156,6 +147,18 @@ export interface ExtractDefinition {
     required?: boolean;
     /** 路径不存在时的兜底值（支持模板；与 required 互斥，声明后缺失不产生 warning） */
     default?: unknown;
+    /** 提取作用域：step（默认，仅当前场景）/ suite（写入本次 run 共享变量，后续场景可引用） */
+    scope?: ExtractScope;
+}
+
+/** shape 断言（jsonSchema-lite）：不引入依赖的结构校验子集 */
+export interface ShapeDefinition {
+    type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
+    required?: string[];
+    properties?: Record<string, ShapeDefinition>;
+    items?: ShapeDefinition;
+    enum?: unknown[];
+    additionalProperties?: boolean;
 }
 
 /** when 对象形式：from: WhenSource（contract.when.sources = vars/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
@@ -164,6 +167,7 @@ export interface WhenDefinition {
     target?: WhenTarget;
     path?: string;
 ${operatorMembers("    ")}
+    shape?: ShapeDefinition;
 }
 
 export interface GeneratedVarDefinition {
@@ -198,7 +202,15 @@ export interface RetryUntil {
     /** 最大尝试总次数（含首次请求），默认 10；两次尝试之间至少间隔 100ms */
     maxAttempts?: number;
     intervalMs?: number;
+    /** 第 n 次重试的等待倍率，默认 1（固定间隔）；必须 >= 1，第 n 次等待 = intervalMs * intervalFactor^(n-1) */
+    intervalFactor?: number;
+    /** 单次等待间隔上限（毫秒，必须 >= intervalMs）；未声明时不封顶；最终仍受 100ms 下限与 maxElapsedMs 约束 */
+    maxIntervalMs?: number;
     maxElapsedMs?: number;
+    /** 指数退避因子（≥1）：第 n 次重试间隔 = intervalMs * intervalFactor^(n-1) */
+    intervalFactor?: number;
+    /** 退避间隔上限（毫秒），不能小于 intervalMs */
+    maxIntervalMs?: number;
     /** 参与重试的失败类型，默认 ["assertion"]；包含 error/timeout 时网络错误与单次请求超时也会继续轮询 */
     retryOn?: RetryOn[];
 }
@@ -232,6 +244,8 @@ export interface Step {
     timeoutMs?: number;
     saveResponseAs?: string;
     adapter?: string;
+    /** teardown 步骤：前置普通步骤失败（failurePolicy: stop）后仍执行；用户取消时不执行 */
+    always?: boolean;
     /** 适配器专属步骤键与兼容字段 */
     [key: string]: unknown;
 }
@@ -243,17 +257,34 @@ export interface ScenarioDefinition {
     envVars?: Record<string, string>;
     generatedVars?: GeneratedVarDefinition[];
     failurePolicy?: FailurePolicy;
+    /** 场景标签；配置清单 tags 用于 --tag 筛选，两处可独立声明 */
+    tags?: string[];
 }
 
 // each 操作符的失败元素明细：index 为失败元素在数组中的下标（0 基），
 // actual 为该元素值，assertions 为该元素上全部子断言的求值结果
-// （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）
+// （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）。
+// shape 失败明细复用同一分层结构，并额外携带字段路径与期望/实际类型。
 export interface AssertionEachFailure {
     index: number;
-    /** shape 失败字段路径（如 items[0].sku）；each 明细不携带 */
+    /** shape 失败字段路径（如 items[0].sku；根为 "(根)"）；each 明细不携带 */
     path?: string;
+    /** shape 失败明细的期望/实际摘要（each 明细不携带） */
+    expected?: unknown;
     actual?: unknown;
+    value?: unknown;
+    expectedType?: string;
+    actualType?: string;
+    reason?: string;
     assertions: AssertionResult[];
+}
+
+/** 兼容旧消费方：shape 失败明细的扁平视图（与 AssertionEachFailure 同源） */
+export interface AssertionShapeFailure {
+    path: string;
+    expected: string;
+    actual: unknown;
+    value?: unknown;
 }
 
 export interface AssertionResult {
@@ -266,7 +297,7 @@ export interface AssertionResult {
     actualType?: string;
     /** 失败原因（语义化引导）：includes 命中对象实际值、shape 结构不符时给可操作说明，其余情况不携带 */
     reason?: string;
-    detail?: AssertionEachFailure[];
+    detail?: AssertionEachFailure[] | AssertionShapeFailure[];
 }
 
 export interface ScenarioStepResult {
@@ -279,6 +310,8 @@ export interface ScenarioStepResult {
     skipped?: boolean;
     cancelled?: boolean;
     timedOut?: boolean;
+    /** 是否为 always 清理步骤（无论成功/失败均在结果中标识） */
+    always?: boolean;
     error?: string;
     /** 结构化错误码：responseTooLarge / uploadTooLarge（大小上限类错误） */
     errorCode?: string;
@@ -293,6 +326,10 @@ export interface ScenarioStepResult {
 
 export interface ScenarioReport {
     scenarioName: string;
+    /** CLI run 附加：配置清单场景 id */
+    scenarioId?: string;
+    /** CLI run 附加：配置清单场景标签 */
+    tags?: string[];
     passed: boolean;
     status: "PASSED" | "FAILED" | "SKIPPED" | "CANCELLED";
     planned: number;
@@ -301,13 +338,19 @@ export interface ScenarioReport {
     failed: number;
     skipped: number;
     results: ScenarioStepResult[];
+    /** 取消导致未进入执行的步骤名 */
+    unexecuted?: string[];
     vars: Record<string, unknown>;
+    /** 本次 run 共享变量（extract scope: "suite"） */
+    suiteVars?: Record<string, unknown>;
 }
 
 export interface Runtime {
     vars: Record<string, unknown>;
     lastResponse: unknown;
     lastResponseBody: unknown;
+    /** run 级共享变量容器（extract scope: "suite" 写入） */
+    suiteVars?: Record<string, unknown>;
 }
 
 export interface EngineOptions {
@@ -327,6 +370,12 @@ export interface EngineOptions {
     isolateAdapters?: boolean;
     signal?: AbortSignal;
     verboseErrors?: boolean;
+    /** 启用内存 Cookie Jar（Node CLI --cookie-jar）；默认关闭 */
+    cookieJar?: boolean;
+    /** run 级共享变量容器：跨场景复用 extract scope: "suite" 产物 */
+    suiteVars?: Record<string, unknown>;
+    /** 可注入时间源（generatedVars timestamp），默认 Date.now */
+    now?: () => number;
     /** 引擎级步骤完成回调（runOptions.onStep 优先） */
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
     /** 引擎级重试进度回调（runOptions.onAttempt 优先） */
@@ -357,6 +406,8 @@ export interface RunOptions {
     vars?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;
+    suiteVars?: Record<string, unknown>;
+    now?: () => number;
     /** 响应体大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
     maxResponseBytes?: number;
     /** 上传文件大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
@@ -435,10 +486,10 @@ export declare const contract: {
         from: readonly AssertionSource[];
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
-        shape: { types: readonly ShapeType[]; keys: readonly string[]; note: string };
+        shape: { keys: readonly string[]; types: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
-    extract: { metaKeys: readonly string[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
+    extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
     reservedVars: readonly ReservedVar[];
     generatedVars: { types: readonly GeneratedVarType[] };
     globals: { types: readonly GlobalParamType[]; note: string };
@@ -449,6 +500,7 @@ export declare const contract: {
         variableKeys: readonly string[];
         baseUrl: { protocol: string; note: string };
         manual: { type: string; note: string };
+        tags: { type: string; note: string };
     };
     retryUntil: {
         keys: readonly string[];
@@ -460,6 +512,8 @@ export declare const contract: {
         keys: readonly string[];
         stepKeys: readonly string[];
         failurePolicies: readonly FailurePolicy[];
+        retryUntilKeys: readonly string[];
+        note: string;
     };
     cli: {
         commands: readonly string[];

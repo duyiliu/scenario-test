@@ -22,10 +22,10 @@ function shapeFailures(result) {
     return (result.detail || []).flatMap((item) => item.assertions);
 }
 
-test("contract v14：shape 操作符与 jsonSchema-lite 键/类型名单对外投射", () => {
-    assert.equal(CONTRACT_VERSION, 14);
+test("contract v16：shape 操作符与 jsonSchema-lite 键/类型名单对外投射", () => {
+    assert.equal(CONTRACT_VERSION, 16);
     assert.ok(contract.assertions.operators.shape, "contract 缺少 shape 操作符");
-    assert.equal(contract.assertions.operators.shape.valueType, "shape");
+    assert.equal(contract.assertions.operators.shape.valueType, "any");
     assert.deepEqual(contract.assertions.shape.types, ["object", "array", "string", "number", "integer", "boolean", "null"]);
     assert.deepEqual(
         contract.assertions.shape.keys,
@@ -215,15 +215,15 @@ test("shape：未识别键/非法 type/非法子 schema 定义期即拒", () => 
     );
     assert.throws(
         () => validateAssertion({ path: "data", shape: { properties: { id: { type: "object", typo: 1 } } } }, context),
-        /shape properties.id 包含未知键 "typo"/
+        /shape\.properties\.id 包含未知键 "typo"/
     );
     assert.throws(
         () => validateAssertion({ path: "data", shape: { items: { type: "date" } } }, context),
-        /shape items.type 只支持/
+        /shape\.items\.type 只支持/
     );
     assert.throws(
         () => validateAssertion({ path: "data", shape: { additionalProperties: "false" } }, context),
-        /additionalProperties 只支持布尔值/
+        /additionalProperties 必须是布尔值/
     );
     // 通过 defineScenario 同样在定义期拒绝（doctor/loader 共用 registry）
     assert.throws(
