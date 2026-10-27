@@ -1570,10 +1570,17 @@ var ScenarioTest = (() => {
     if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
     return globalThis.crypto.randomUUID().replace(/-/g, "");
   }
+  function resolveNowSource(deps = {}) {
+    const candidate = deps.now ?? deps.clock;
+    if (typeof candidate === "function") return candidate;
+    if (candidate && typeof candidate.now === "function") return () => candidate.now();
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return () => candidate;
+    return Date.now;
+  }
   function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     const name = definition.name;
     const uuidHex = deps.uuidHex || defaultUuidHex;
-    const now2 = typeof deps.now === "function" ? deps.now : Date.now;
+    const now2 = resolveNowSource(deps);
     if (definition.type === "timestamp") {
       const base = now2() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
       if (definition.format != null) {
@@ -2530,7 +2537,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       if (!contract.generatedVars.types.includes(definition.type)) {
         throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
       }
-      applyGeneratedVar(definition, vars, identifiers, { now: options.now });
+      applyGeneratedVar(definition, vars, identifiers, { now: options.now, clock: options.clock });
     }
     return vars;
   }
@@ -2542,7 +2549,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         scenario,
         { ...suiteVars, ...config.vars || {}, ...options.vars || {} },
         options.environmentVariables || {},
-        { now: options.now }
+        { now: options.now, clock: options.clock }
       ),
       suiteVars,
       lastResponse: null,
@@ -3204,7 +3211,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
         environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
         suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
-        now: runOptions.now || engineOptions.now
+        // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
+        now: runOptions.now ?? engineOptions.now,
+        clock: runOptions.clock ?? engineOptions.clock
       });
       const results = [];
       let halted = false;

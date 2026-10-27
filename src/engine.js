@@ -245,7 +245,9 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
         if (!contract.generatedVars.types.includes(definition.type)) {
             throw new Error(`不支持的 generatedVars 类型: ${definition.type}`);
         }
-        applyGeneratedVar(definition, vars, identifiers, { now: options.now });
+        // 时间源 seam：测试可经 createEngine/runScenario 的 now/clock 注入固定时钟；
+        // 浏览器工作台走同一 core.applyGeneratedVar 且不注入时回落 Date.now。
+        applyGeneratedVar(definition, vars, identifiers, { now: options.now, clock: options.clock });
     }
     // vars 由引擎统一构建，执行期 extract 是唯一写入方；不做冻结，场景/插件不应直接修改
     return vars;
@@ -260,7 +262,7 @@ export function createRuntime(scenario, options = {}) {
             scenario,
             { ...suiteVars, ...(config.vars || {}), ...(options.vars || {}) },
             options.environmentVariables || {},
-            { now: options.now }
+            { now: options.now, clock: options.clock }
         ),
         suiteVars,
         lastResponse: null,
@@ -1111,7 +1113,9 @@ export function createEngine(engineOptions = {}) {
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
             suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
-            now: runOptions.now || engineOptions.now
+            // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
+            now: runOptions.now ?? engineOptions.now,
+            clock: runOptions.clock ?? engineOptions.clock
         });
         const results = [];
         // failurePolicy:stop 后只继续执行 always 步骤（#56）；用户取消时不补跑清理
