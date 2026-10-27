@@ -895,10 +895,15 @@ export function createEngine(engineOptions = {}) {
                 }
                 // 等待时长不得超过 maxElapsedMs 剩余额度：否则总时限已到仍会白等完整
                 // interval（例如 maxElapsedMs=50ms、intervalMs=10000ms 时多等 10 秒）。
-                // 截断后下一轮顶部按各自路径的到时判定并返回 TIMEOUT，实际耗时贴近配置总时限。
-                const waitMs = Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime)));
+                // 仅新重试路径：等待被总时限截断时，等满剩余额度即视为到时，直接返回 TIMEOUT。
+                // 不能只依赖下一轮顶部按 >= 判定——定时器可能提早几毫秒触发，届时会凭空
+                // 多发起一次注定无法在总时限内完成的尝试（并多发一次 onAttempt）。
+                const remainingBeforeWait = maxElapsedMs - (now() - retryStartTime);
+                const waitMs = Math.max(0, Math.min(intervalMs, remainingBeforeWait));
+                const waitConsumesDeadline = enforceAttemptDeadline && intervalMs >= remainingBeforeWait;
                 // error/timeout 重试额外透出 errorType/errorMessage，便于显示「连接失败」。
                 await delay(waitMs, options.signal);
+                if (waitConsumesDeadline) throw retryTimeoutError(attempt);
             }
             const failed = assertions.find((item) => !item.passed);
             return {

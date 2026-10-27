@@ -140,6 +140,43 @@ test("退避等待按 maxElapsedMs 剩余额度截断，不在总时限后睡完
     assert.ok(elapsed < 800, `总时限应约束退避等待，实际耗时 ${elapsed}ms`);
 });
 
+test("总时限截断的等待结束后直接 TIMEOUT，不因定时器提前触发多跑一次", async () => {
+    const originalPerformance = globalThis.performance;
+    let fixedNow = 0;
+    globalThis.performance = { now: () => fixedNow };
+    try {
+        let calls = 0;
+        const intervals = [];
+        const engine = createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async () => {
+                calls += 1;
+                // 用可控时钟模拟「请求很快返回、但等待结束后仍未到总时限」的计时器提前竞态
+                fixedNow = 10;
+                throw new Error("ECONNREFUSED");
+            }
+        });
+        const report = await engine.runScenario(defineScenario({
+            name: "截断等待不追加尝试",
+            steps: [retryStep({
+                maxAttempts: 5,
+                intervalMs: 1000,
+                maxElapsedMs: 50,
+                retryOn: ["error"]
+            })]
+        }), {
+            onAttempt: (info) => { intervals.push(info.intervalMs); }
+        });
+
+        assert.equal(report.results[0].status, "TIMEOUT");
+        assert.equal(report.results[0].timedOut, true);
+        assert.equal(calls, 1, "总时限已无法容纳下一次尝试，不应再发请求");
+        assert.deepEqual(intervals, [40], "onAttempt 应报告按剩余额度截断后的等待时长");
+    } finally {
+        globalThis.performance = originalPerformance;
+    }
+});
+
 test("定义期校验 intervalFactor ≥1 与 maxIntervalMs ≥ intervalMs", () => {
     const withRetry = (retryUntil) => defineScenario({
         name: "退避校验",
