@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - 新增 DSL/CLI/serve 特性测试；serve 拆为 `src/cli/serve-server.js` 以便单测（#33）。
 - `test:coverage` 只统计 `src/`（排除 dist/tests/scripts/browser），阈值 line 90 / branch 80（#48）。
 - 新增 GitHub Actions：Node 20/22 × Ubuntu/Windows 单测与行尾审计、覆盖率、Playwright 浏览器测试（#47）。
+- `npm test`/`test:unit`/`test:coverage` 改由 `scripts/run-tests.mjs` 枚举 `tests/*.test.js` 后传给 `node --test`：Windows PowerShell/cmd 与 Node 18/20 不展开 glob，修复 Windows + Node 20 CI 直接报 `Could not find '...\tests\*.test.js'` 的问题；测试集合与覆盖参数不变。
 - `generatedVars timestamp` 支持注入时钟（`options.now`），测试改为精确断言（#12）。
 
 ### DSL 与诊断
