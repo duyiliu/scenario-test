@@ -89,6 +89,38 @@ vars: {
 }
 ```
 
+### 跨场景共享 suite
+
+登录 token、租户 ID 等一次获取、多个场景复用的前置产物，可在 `extract` 项声明 `scope: "suite"`：
+
+```javascript
+// scenarios/login.js：前置场景把 token 写入本次 run 的 suite 命名空间
+{
+    name: "登录",
+    method: "POST",
+    path: "/api/login",
+    extract: [
+        { name: "loginToken", path: "data.token", scope: "suite" }
+    ]
+},
+// scenarios/profile.js：后续场景用 {{suite.loginToken}} 引用
+{
+    name: "查询个人资料",
+    path: "/api/profile",
+    request: { headers: { "Authorization": "Bearer {{suite.loginToken}}" } }
+}
+```
+
+语义：
+
+- 仅在同一次 run 内共享，不跨 run、不落盘；默认 `scope: "step"` 仍写入当前场景 `vars`。
+- `when` 对象形式与断言支持 `from: "suite"`；`{{suite.<name>}}` 可用于 path、params、headers、body 等模板位置。
+- 不建立显式依赖：前置场景失败不会自动跳过后续场景，缺失变量按空值解析，应由断言暴露。
+- 默认串行（`--concurrency 1`）时写序即配置清单顺序；`--concurrency > 1` 时每个场景使用启动时快照、结束时合并，写序为完成顺序（同名键后完成者覆盖）。需要确定的前置顺序时使用默认串行。
+- 浏览器工作台单场景执行时 suite 在该次执行内跨步骤共享，并在「运行时变量」面板以 `suite.` 前缀展示。
+
+### 通配提取
+
 列表型响应可用通配段 `[*]` 一次提取整列：`{ name: "ids", path: "data.items[*].id" }` 产出数组（如 `[1, 2, 3]`）。元素缺失该子路径时跳过，不产生 `undefined` 洞；空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。提取结果可直接用于 `length`/`includes`/`each` 断言。
 
 ### 断言

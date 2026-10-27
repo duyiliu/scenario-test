@@ -241,7 +241,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 16;
+var CONTRACT_VERSION = 17;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -252,8 +252,8 @@ var contract = Object.freeze({
     metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
     // 断言目标 target 的取值：status=HTTP 状态码，duration=本次请求耗时（毫秒，引擎挂载在 response.durationMs）
     targets: Object.freeze(["status", "duration"]),
-    // 断言数据来源 from 的取值（缺省按 body 取值）
-    from: Object.freeze(["body", "vars", "headers", "bodyText"]),
+    // 断言数据来源 from 的取值（缺省按 body 取值）；suite=本次 run 跨场景共享命名空间
+    from: Object.freeze(["body", "vars", "suite", "headers", "bodyText"]),
     // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
     // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
     // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
@@ -332,11 +332,11 @@ var contract = Object.freeze({
     })
   }),
   when: Object.freeze({
-    // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
-    sources: Object.freeze(["vars", "lastResponse", "status"]),
+    // when 对象形式的来源：vars=已提取变量；suite=本次 run 共享变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
+    sources: Object.freeze(["vars", "suite", "lastResponse", "status"]),
     // when 对象形式也可用 target 读取上一步响应级通道，目前仅 status（与断言 target 白名单的 status 对齐）
     targets: Object.freeze(["status"]),
-    note: 'when \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 from: vars / lastResponse / status\uFF08lastResponse \u53D6\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cstatus \u53D6\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: "status" \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49'
+    note: 'when \u5BF9\u8C61\u5F62\u5F0F\u652F\u6301 from: vars / suite / lastResponse / status\uFF08lastResponse \u53D6\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cstatus \u53D6\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: "status" \u8BFB\u53D6\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u975E\u5BF9\u8C61\u5F62\u5F0F\uFF08\u6A21\u677F\u5B57\u7B26\u4E32/\u5E03\u5C14\uFF09\u4FDD\u6301\u771F\u503C\u8BED\u4E49\uFF1Bsuite \u4E3A\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u53D8\u91CF'
   }),
   extract: Object.freeze({
     // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
@@ -354,7 +354,12 @@ var contract = Object.freeze({
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\uFF1Bscope: "suite" \u65F6\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF0C\u540E\u7EED\u573A\u666F\u53EF\u76F4\u63A5\u7528 {{vars.<name>}} \u5F15\u7528\uFF08\u9ED8\u8BA4 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
+    // scope 语义：step（默认，写入当前场景 runtime.vars）或 suite（写入本次 run 共享的
+    // runtime.suite，后续场景可用 {{suite.<name>}} 引用；为兼容 v16 同时以最低优先级
+    // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
+    // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
+    scope: "step",
+    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -633,6 +638,7 @@ function evalExpression(expression, runtime) {
   const text = String(expression || "").trim();
   if (!text) return "";
   if (text === "vars") return runtime.vars;
+  if (text === "suite") return runtime.suite || runtime.suiteVars;
   if (text === "lastResponse") return runtime.lastResponse;
   if (text === "lastResponseBody") return runtime.lastResponseBody;
   if (text.startsWith("vars.")) {
@@ -640,6 +646,11 @@ function evalExpression(expression, runtime) {
     return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : void 0;
   }
   if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+  if (text.startsWith("suite.")) {
+    const sub = text.slice(6);
+    return sub && !sub.startsWith(".") ? getByPath(runtime.suite || runtime.suiteVars, sub) : void 0;
+  }
+  if (text.startsWith("suite[")) return getByPath(runtime.suite || runtime.suiteVars, text.slice(5));
   if (text.startsWith("lastResponse.")) {
     const sub = text.slice(13);
     return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : void 0;
@@ -1125,6 +1136,10 @@ function assertionActual(definition, response, runtime) {
   if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : void 0;
   if (definition.header) return headerValue(response.headers, definition.header);
   if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
+  if (definition.from === "suite") {
+    const suite = runtime.suite || runtime.suiteVars;
+    return definition.path ? getByPath(suite, definition.path) : suite;
+  }
   if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
   if (definition.from === "bodyText") return response.bodyText;
   return definition.path ? getByPath(response.body, definition.path) : response.body;
@@ -1371,12 +1386,17 @@ function setRuntimeVar(vars, name, value) {
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
-  const store = (name, value, suiteScope) => {
-    setRuntimeVar(runtime.vars, name, value);
-    if (suiteScope) {
-      if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
-      setRuntimeVar(runtime.suiteVars, name, value);
+  const storeSuite = (name, value) => {
+    if (!isPlainObject(runtime.suite)) runtime.suite = {};
+    setRuntimeVar(runtime.suite, name, value);
+    if (runtime.suiteVars !== runtime.suite) {
+      if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = runtime.suite;
+      else setRuntimeVar(runtime.suiteVars, name, value);
     }
+  };
+  const store = (name, value, suiteScope) => {
+    if (suiteScope) storeSuite(name, value);
+    else setRuntimeVar(runtime.vars, name, value);
   };
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
@@ -2119,7 +2139,7 @@ function defineScenario(input) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
       step.extract.forEach((item, extractIndex) => {
         const label = `\u6B65\u9AA4 ${step.name} \u7684 extract \u7B2C ${extractIndex + 1} \u9879`;
-        invariant(isPlainObject(item), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08{ name, path?, from?, required?, default? }\uFF09`);
+        invariant(isPlainObject(item), `${label} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08{ name, path?, from?, required?, default?, scope? }\uFF09`);
         const unknownKeys = Object.keys(item).filter((key) => !contract.extract.metaKeys.includes(key));
         invariant(
           unknownKeys.length === 0,
@@ -2139,6 +2159,12 @@ function defineScenario(input) {
           !(item.required === true && item.default !== void 0),
           `${label} \u7684 required: true \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00`
         );
+        if (item.scope !== void 0) {
+          invariant(
+            contract.extract.scopes.includes(item.scope),
+            `${label} \u7684 scope \u53EA\u652F\u6301 ${contract.extract.scopes.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.scope)}\uFF0C\u7F3A\u7701 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF1Bsuite \u5199\u5165\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF09`
+          );
+        }
         if (item.header !== void 0) {
           invariant(
             typeof item.header === "string" && item.header.trim() !== "" && !item.header.includes("{{"),
@@ -2155,12 +2181,6 @@ function defineScenario(input) {
           invariant(
             contract.extract.from.includes(item.from),
             `${label} \u7684 from \u53EA\u652F\u6301 ${contract.extract.from.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.from)}\uFF0C\u7F3A\u7701\u6309 body \u53D6\u503C\uFF09`
-          );
-        }
-        if (item.scope !== void 0) {
-          invariant(
-            contract.extract.scopes.includes(item.scope),
-            `${label} \u7684 scope \u53EA\u652F\u6301 ${contract.extract.scopes.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.scope)}\uFF1B\u7F3A\u7701 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF09`
           );
         }
         if (item.path !== void 0) {
@@ -2546,15 +2566,18 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
 }
 function createRuntime(scenario, options = {}) {
   const config = options.config || {};
-  const suiteVars = isPlainObject(options.suiteVars) ? options.suiteVars : {};
+  const suite = isPlainObject(options.suite) ? options.suite : isPlainObject(options.suiteVars) ? options.suiteVars : {};
   const runtime = {
     vars: buildGeneratedVars(
       scenario,
-      { ...suiteVars, ...config.vars || {}, ...options.vars || {} },
+      { ...suite, ...config.vars || {}, ...options.vars || {} },
       options.environmentVariables || {},
       { now: options.now, clock: options.clock }
     ),
-    suiteVars,
+    // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
+    // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
+    suite,
+    suiteVars: suite,
     lastResponse: null,
     lastResponseBody: null,
     // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
@@ -3213,7 +3236,8 @@ function createEngine(engineOptions = {}) {
       config,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
-      suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
+      // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
+      suite: runOptions.suite !== void 0 ? runOptions.suite : runOptions.suiteVars !== void 0 ? runOptions.suiteVars : engineOptions.suite !== void 0 ? engineOptions.suite : engineOptions.suiteVars,
       // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
       now: runOptions.now ?? engineOptions.now,
       clock: runOptions.clock ?? engineOptions.clock
@@ -3285,7 +3309,10 @@ function createEngine(engineOptions = {}) {
       // 取消导致未进入循环的剩余步骤（供 JUnit/报告标注）
       unexecuted: scenario.steps.slice(results.length).map((step) => step.name || "\u672A\u547D\u540D\u6B65\u9AA4"),
       vars: runtime.vars,
-      suiteVars: { ...runtime.suiteVars || {} }
+      // 报告保留本次场景结束时的 suite 快照；共享对象继续被后续场景使用
+      // suiteVars 为 v16 兼容别名，与 suite 同内容
+      suite: { ...runtime.suite || runtime.suiteVars || {} },
+      suiteVars: { ...runtime.suite || runtime.suiteVars || {} }
     };
   }
   return { runStep, runScenario: runScenario2, createRuntime };
@@ -3330,6 +3357,7 @@ function buildCapabilities(inputContract = contract) {
       targets: [...extract.targets || []],
       required: extract.required,
       default: extract.default,
+      scope: extract.scope,
       note: extract.note
     },
     reservedVars: [...reservedVars],
@@ -3417,7 +3445,7 @@ function renderCapabilitiesText(capabilities) {
   lines.push("");
   lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
   if (capabilities.extract.scopes?.length) {
-    lines.push(`  \u63D0\u53D6\u4F5C\u7528\u57DF scope: ${capabilities.extract.scopes.join(" / ")}\uFF08suite \u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u53D8\u91CF\uFF09`);
+    lines.push(`  \u63D0\u53D6\u4F5C\u7528\u57DF scope: ${capabilities.extract.scopes.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.extract.scope}\uFF1Bsuite \u4E3A\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF09`);
   }
   if (capabilities.extract.targets?.length) {
     lines.push(`  \u63D0\u53D6\u76EE\u6807 target: ${capabilities.extract.targets.join(" / ")}\uFF1B\u5141\u8BB8\u5B57\u6BB5: ${capabilities.extract.metaKeys.join(" / ")}`);
@@ -5297,15 +5325,24 @@ var workbenchView = function() {
     return text;
   }
   function renderVarsSection(view) {
-    if (!view || !view.vars) return "";
-    var keys = Object.keys(view.vars);
-    if (!keys.length) return "";
+    if (!view || !view.vars && !view.suite) return "";
     var changed = view.changedKeys || [];
-    var rows = keys.map(function(key) {
-      var isChanged = changed.indexOf(key) >= 0;
-      return '<tr class="' + (isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) + (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(view.vars[key])) + "</td></tr>";
+    var changedSuite = view.changedSuiteKeys || [];
+    var entries = [];
+    Object.keys(view.vars || {}).forEach(function(key) {
+      entries.push({ name: key, value: view.vars[key], isChanged: changed.indexOf(key) >= 0 });
+    });
+    Object.keys(view.suite || {}).forEach(function(key) {
+      entries.push({ name: "suite." + key, value: view.suite[key], isChanged: changedSuite.indexOf(key) >= 0 });
+    });
+    if (!entries.length) return "";
+    var changedCount = entries.filter(function(entry) {
+      return entry.isChanged;
+    }).length;
+    var rows = entries.map(function(entry) {
+      return '<tr class="' + (entry.isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(entry.name) + (entry.isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(entry.value)) + "</td></tr>";
     }).join("");
-    return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80"><summary>\u8FD0\u884C\u65F6\u53D8\u91CF \xB7 ' + keys.length + " \u9879" + (changed.length ? "\uFF08\u672C\u6B65\u53D8\u66F4 " + changed.length + "\uFF09" : "") + '</summary><div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider"><tr><th class="px-3 py-1.5">\u53D8\u91CF\u540D</th><th class="px-3 py-1.5">\u503C\uFF08\u672C\u6B65\u9AA4\u6267\u884C\u540E\uFF09</th></tr></thead><tbody class="divide-y divide-slate-100">' + rows + "</tbody></table></div></details>";
+    return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80"><summary>\u8FD0\u884C\u65F6\u53D8\u91CF \xB7 ' + entries.length + " \u9879" + (changedCount ? "\uFF08\u672C\u6B65\u53D8\u66F4 " + changedCount + "\uFF09" : "") + '</summary><div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider"><tr><th class="px-3 py-1.5">\u53D8\u91CF\u540D</th><th class="px-3 py-1.5">\u503C\uFF08\u672C\u6B65\u9AA4\u6267\u884C\u540E\uFF09</th></tr></thead><tbody class="divide-y divide-slate-100">' + rows + "</tbody></table></div></details>";
   }
   function extractQueryParams(pathStr, queryObj) {
     var params = [];
@@ -6225,7 +6262,7 @@ function shellSingleQuote(value) {
 function buildStepCurl(step, options) {
   if (!step) return "";
   var opts = options || {};
-  var runtime = { vars: opts.vars || {} };
+  var runtime = { vars: opts.vars || {}, suite: opts.suite || {} };
   var globals = opts.globals || [];
   var method = String(step.method || step.request && step.request.method || "GET").toUpperCase();
   var stepPath = step.path || step.request && step.request.path || "";
@@ -6416,9 +6453,11 @@ function createWorkbenchRuntime(options) {
     lastReport: null,
     startTime: null,
     endTime: null,
-    // varsTrail[i] = 第 i 步执行后的 runtime.vars 浅拷贝；与 debugRuntimes[i]（执行前快照）做差集
-    // 供工作台「运行时变量」面板展示每步执行后的变量与 extract 变更项
-    varsTrail: []
+    // varsTrail[i] / suiteTrail[i] = 第 i 步执行后的 runtime.vars / runtime.suite 浅拷贝；
+    // 与 debugRuntimes[i]（执行前快照）做差集，供工作台「运行时变量」面板展示
+    // 每步执行后的变量与 extract 变更项（suite 为本次运行跨步骤共享变量，名称带 suite. 前缀展示）
+    varsTrail: [],
+    suiteTrail: []
   };
   function getStorageKeys() {
     var cfg = appConfig;
@@ -6790,15 +6829,18 @@ function createWorkbenchRuntime(options) {
   }
   function createExecutionRuntime() {
     var environment = getSelectedEnvironment();
+    var suite = {};
     var runtime = {
       vars: buildScenarioRuntimeVars(),
+      suite,
       lastResponse: null,
       lastResponseBody: null,
       baseUrl: getRequestBaseUrl(),
       authorization: getEffectiveAuthorization(),
       globals: getRequestGlobals(),
-      // #69：浏览器单场景执行时提供 suite 作用域容器（与 Node 引擎同一接口）
-      suiteVars: {},
+      // #69：浏览器单场景执行时提供 suite 作用域容器（与 Node 引擎同一接口）；
+      // 与上方 suite 指向同一对象
+      suiteVars: suite,
       environment: environment ? clone2(environment) : null,
       startedAt: Date.now(),
       abortController: new AbortController(),
@@ -6810,6 +6852,7 @@ function createWorkbenchRuntime(options) {
   function snapshotStepRuntime(runtime) {
     return {
       vars: { ...runtime.vars },
+      suite: { ...runtime.suite || {} },
       lastResponse: runtime.lastResponse,
       lastResponseBody: runtime.lastResponseBody
     };
@@ -6822,6 +6865,7 @@ function createWorkbenchRuntime(options) {
     if (!snapshot) return null;
     return {
       vars: { ...snapshot.vars },
+      suite: { ...snapshot.suite || {} },
       lastResponse: snapshot.lastResponse,
       lastResponseBody: snapshot.lastResponseBody
     };
@@ -6837,17 +6881,31 @@ function createWorkbenchRuntime(options) {
   function buildVarsView(stepIndex) {
     var before = state.debugRuntimes[stepIndex];
     if (!before) return null;
-    var after = state.varsTrail[stepIndex] || before.vars;
+    var afterVars = state.varsTrail[stepIndex] || before.vars;
+    var afterSuite = state.suiteTrail[stepIndex] || before.suite || {};
     var displayVars = {};
-    Object.keys(after || {}).forEach(function(name) {
-      var value = after[name];
+    Object.keys(afterVars || {}).forEach(function(name) {
+      var value = afterVars[name];
       var scalar = typeof value === "string" || typeof value === "number";
       displayVars[name] = isSecretVarName(name) && value != null && value !== "" && scalar ? maskSecret(value) : value;
     });
-    return { vars: displayVars, changedKeys: diffVars(before.vars, after) };
+    var displaySuite = {};
+    Object.keys(afterSuite || {}).forEach(function(name) {
+      var value = afterSuite[name];
+      var scalar = typeof value === "string" || typeof value === "number";
+      displaySuite[name] = isSecretVarName(name) && value != null && value !== "" && scalar ? maskSecret(value) : value;
+    });
+    return {
+      vars: displayVars,
+      suite: displaySuite,
+      changedKeys: diffVars(before.vars, afterVars),
+      changedSuiteKeys: diffVars(before.suite || {}, afterSuite)
+    };
   }
   function restoreStepRuntime(runtime, snapshot) {
     runtime.vars = { ...snapshot.vars };
+    runtime.suite = { ...snapshot.suite || {} };
+    if (runtime.suiteVars) runtime.suiteVars = runtime.suite;
     runtime.lastResponse = snapshot.lastResponse;
     runtime.lastResponseBody = snapshot.lastResponseBody;
     runtime.abortController = new AbortController();
@@ -6866,6 +6924,7 @@ function createWorkbenchRuntime(options) {
     state.stepCheckpoints = state.stepCheckpoints.slice(0, stepIndex + 1);
     state.debugRuntimes = state.debugRuntimes.slice(0, stepIndex);
     state.varsTrail = state.varsTrail.slice(0, stepIndex);
+    state.suiteTrail = state.suiteTrail.slice(0, stepIndex);
     state.nextStepIndex = stepIndex;
     state.lastReport = null;
     state.endTime = null;
@@ -6915,6 +6974,7 @@ function createWorkbenchRuntime(options) {
     state.stepCheckpoints = [];
     state.debugRuntimes = [];
     state.varsTrail = [];
+    state.suiteTrail = [];
     state.activeRuntime = null;
     state.nextStepIndex = 0;
     state.lastReport = null;
@@ -7068,6 +7128,7 @@ function createWorkbenchRuntime(options) {
     state.startTime = /* @__PURE__ */ new Date();
     state.endTime = null;
     state.varsTrail = [];
+    state.suiteTrail = [];
     setExecutionButtonsDisabled(true);
     uiView.setRunState("running", "\u6267\u884C\u4E2D");
     renderStepsAll();
@@ -7080,6 +7141,7 @@ function createWorkbenchRuntime(options) {
         result.stepNo = i + 1;
         state.steps.push(result);
         state.varsTrail[i] = { ...runtime.vars };
+        state.suiteTrail[i] = { ...runtime.suite };
         renderStatsAll();
         renderFilterAll();
         uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
@@ -7118,6 +7180,7 @@ function createWorkbenchRuntime(options) {
       state.startTime = /* @__PURE__ */ new Date();
       state.endTime = null;
       state.varsTrail = [];
+      state.suiteTrail = [];
       renderStepsAll();
       setSidePanelTab("stats");
     }
@@ -7136,6 +7199,7 @@ function createWorkbenchRuntime(options) {
       result.stepNo = stepIndex + 1;
       state.steps.push(result);
       state.varsTrail[stepIndex] = { ...runtime.vars };
+      state.suiteTrail[stepIndex] = { ...runtime.suite };
       state.nextStepIndex += 1;
       state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
       renderStatsAll();
@@ -7539,6 +7603,7 @@ function createWorkbenchRuntime(options) {
     return buildStepCurl(step, {
       baseUrl: getRequestBaseUrl(),
       vars: resolvedVars,
+      suite: state.activeRuntime && state.activeRuntime.suite || state.stepRuntime && state.stepRuntime.suite || {},
       globals: getEffectiveGlobals()
     });
   }
@@ -7779,7 +7844,7 @@ function createWorkbenchRuntime(options) {
         var debugRt = getDebugRuntime(idx);
         if (debugRt) return debugRt;
         var rawVars = Object.assign({}, getConfiguredScenarioVariables(), getStoredScenarioVariables(), state.scenario && state.scenario.vars || {});
-        return { vars: rawVars, lastResponse: null, lastResponseBody: null };
+        return { vars: rawVars, suite: state.activeRuntime && state.activeRuntime.suite || state.stepRuntime && state.stepRuntime.suite || {}, lastResponse: null, lastResponseBody: null };
       },
       executeStep,
       getSelectedEnvironment,

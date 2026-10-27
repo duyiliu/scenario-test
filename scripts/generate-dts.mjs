@@ -147,7 +147,7 @@ export interface ExtractDefinition {
     required?: boolean;
     /** 路径不存在时的兜底值（支持模板；与 required 互斥，声明后缺失不产生 warning） */
     default?: unknown;
-    /** 提取作用域：step（默认，仅当前场景）/ suite（写入本次 run 共享变量，后续场景可引用） */
+    /** step（默认，写入当前场景 vars）或 suite（写入本次 run 跨场景共享命名空间，模板用 {{suite.<name>}} 引用；{{vars.<name>}} 兼容可读） */
     scope?: ExtractScope;
 }
 
@@ -161,7 +161,7 @@ export interface ShapeDefinition {
     additionalProperties?: boolean;
 }
 
-/** when 对象形式：from: WhenSource（contract.when.sources = vars/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
+/** when 对象形式：from: WhenSource（contract.when.sources = vars/suite/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
 export interface WhenDefinition {
     from?: WhenSource;
     target?: WhenTarget;
@@ -341,12 +341,16 @@ export interface ScenarioReport {
     /** 取消导致未进入执行的步骤名 */
     unexecuted?: string[];
     vars: Record<string, unknown>;
-    /** 本次 run 共享变量（extract scope: "suite"） */
+    /** 本次场景结束时的 suite 快照（报告不与共享对象共享引用） */
+    suite: Record<string, unknown>;
+    /** v16 兼容别名：与 suite 同内容 */
     suiteVars?: Record<string, unknown>;
 }
 
 export interface Runtime {
     vars: Record<string, unknown>;
+    /** 本次 run 跨场景共享变量（extract scope: "suite" 写入） */
+    suite: Record<string, unknown>;
     lastResponse: unknown;
     lastResponseBody: unknown;
     /** run 级共享变量容器（extract scope: "suite" 写入） */
@@ -359,6 +363,8 @@ export interface EngineOptions {
     authorization?: string;
     globals?: GlobalParam[];
     vars?: Record<string, unknown>;
+    /** 本次 run 跨场景共享变量对象；未提供时每个 runScenario 使用独立空对象 */
+    suite?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     fetch?: typeof globalThis.fetch;
     requestTimeoutMs?: number;
@@ -404,6 +410,8 @@ export interface RetryAttemptInfo {
 export interface RunOptions {
     config?: ScenarioConfig;
     vars?: Record<string, unknown>;
+    /** 本次 run 跨场景共享变量对象（优先于 EngineOptions.suite） */
+    suite?: Record<string, unknown>;
     environmentVariables?: Record<string, string | undefined>;
     signal?: AbortSignal;
     suiteVars?: Record<string, unknown>;
@@ -489,7 +497,7 @@ export declare const contract: {
         shape: { keys: readonly string[]; types: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
-    extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
+    extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; scope: string; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };
     reservedVars: readonly ReservedVar[];
     generatedVars: { types: readonly GeneratedVarType[] };
     globals: { types: readonly GlobalParamType[]; note: string };

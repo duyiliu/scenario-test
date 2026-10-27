@@ -10,8 +10,9 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-// v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强
-export const CONTRACT_VERSION = 16;
+// v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
+// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）
+export const CONTRACT_VERSION = 17;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -25,8 +26,8 @@ export const contract = Object.freeze({
         metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
         // 断言目标 target 的取值：status=HTTP 状态码，duration=本次请求耗时（毫秒，引擎挂载在 response.durationMs）
         targets: Object.freeze(["status", "duration"]),
-        // 断言数据来源 from 的取值（缺省按 body 取值）
-        from: Object.freeze(["body", "vars", "headers", "bodyText"]),
+        // 断言数据来源 from 的取值（缺省按 body 取值）；suite=本次 run 跨场景共享命名空间
+        from: Object.freeze(["body", "vars", "suite", "headers", "bodyText"]),
         // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
         // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
         // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
@@ -106,11 +107,11 @@ export const contract = Object.freeze({
     }),
 
     when: Object.freeze({
-        // when 对象形式的来源：vars=已提取变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
-        sources: Object.freeze(["vars", "lastResponse", "status"]),
+        // when 对象形式的来源：vars=已提取变量；suite=本次 run 共享变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
+        sources: Object.freeze(["vars", "suite", "lastResponse", "status"]),
         // when 对象形式也可用 target 读取上一步响应级通道，目前仅 status（与断言 target 白名单的 status 对齐）
         targets: Object.freeze(["status"]),
-        note: "when 对象形式支持 from: vars / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义"
+        note: "when 对象形式支持 from: vars / suite / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义；suite 为本次 run 跨场景共享变量"
     }),
 
     extract: Object.freeze({
@@ -129,7 +130,13 @@ export const contract = Object.freeze({
         required: "boolean",
         // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
         default: "any",
-        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配；scope: \"suite\" 时提取值写入本次 run 共享变量，后续场景可直接用 {{vars.<name>}} 引用（默认 step 仅当前场景可见）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+        // scope 语义：step（默认，写入当前场景 runtime.vars）或 suite（写入本次 run 共享的
+        // runtime.suite，后续场景可用 {{suite.<name>}} 引用；为兼容 v16 同时以最低优先级
+        // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
+        // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
+        scope: "step",
+        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+
     }),
 
     // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。

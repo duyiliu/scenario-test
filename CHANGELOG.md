@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 契约 v17
+
+- 跨场景共享上下文（#69）：`extract` 的 `scope: "suite"` 从 v16 的共享变量扩展为独立 `suite` 命名空间，后续场景用 `{{suite.<name>}}` 引用（为兼容 v16，`{{vars.<name>}}` 仍可按最低优先级读取）；`when` 对象形式与断言 `from` 同步支持 `suite` 来源；`createEngine`/`runScenario` 接受共享 `suite` 对象（`suiteVars` 为兼容别名），报告新增 `suite`/`suiteVars` 快照。CLI 在一次 run 的所有场景间共享 `suite`：每个场景以启动时的快照运行、结束时整体合并；默认串行（`--concurrency 1`）下写序即配置清单顺序，`--concurrency > 1` 时写序为完成顺序、同名键后完成者覆盖。`suite` 不跨 run、不建立显式依赖；前置场景失败不会自动跳过后续场景，缺失 suite 变量按空值解析并由断言暴露。浏览器工作台单场景执行时 suite 在本次执行内跨步骤共享，并在「运行时变量」面板以 `suite.` 前缀展示。同步投射 capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库/项目 README 模板。
+
 ### 契约 v16
 
 - 断言新增 `shape`（jsonSchema-lite）：`type`/`required`/`properties`/`items`/`enum`/`additionalProperties`，失败明细按字段路径定位，可在 `each` 子断言内嵌套；未知 shape 键定义期拒绝。

@@ -11,7 +11,7 @@ export function shellSingleQuote(value) {
 export function buildStepCurl(step, options) {
     if (!step) return '';
     var opts = options || {};
-    var runtime = { vars: opts.vars || {} };
+    var runtime = { vars: opts.vars || {}, suite: opts.suite || {} };
     var globals = opts.globals || [];
     var method = String(step.method || (step.request && step.request.method) || 'GET').toUpperCase();
     var stepPath = step.path || (step.request && step.request.path) || '';

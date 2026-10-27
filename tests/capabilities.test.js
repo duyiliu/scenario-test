@@ -18,11 +18,13 @@ test("capabilities JSON 结构直接来自 contract 且序列化稳定", () => {
     assert.deepEqual(caps.assertions.targets, ["status", "duration"]);
     assert.deepEqual(caps.assertions.from, [...contract.assertions.from], "断言 from 白名单必须对外投射（contract v8 新增消费面）");
     assert.deepEqual(caps.assertions.numericOperators, [...contract.assertions.numericOperators]);
-    assert.deepEqual(caps.when.sources, ["vars", "lastResponse", "status"]);
+    assert.deepEqual(caps.when.sources, ["vars", "suite", "lastResponse", "status"]);
     assert.deepEqual(caps.when.targets, ["status"]);
     assert.deepEqual(caps.extract.from, [...contract.extract.from]);
     assert.deepEqual(caps.extract.targets, [...contract.extract.targets]);
     assert.deepEqual(caps.extract.metaKeys, [...contract.extract.metaKeys]);
+    assert.deepEqual(caps.extract.scopes, ["step", "suite"]);
+    assert.equal(caps.extract.scope, "step");
     assert.equal(caps.extract.default, contract.extract.default);
     assert.deepEqual(caps.reservedVars, [...contract.reservedVars]);
     assert.deepEqual(caps.generatedVars.types, [...contract.generatedVars.types]);
@@ -47,10 +49,11 @@ test("capabilities 文本：版本、操作符、when、extract、保留变量�
         assert.match(text, new RegExp(`\\b${op}\\b`), `文本缺少操作符 ${op}`);
     }
     assert.match(text, /断言目标 target: status \/ duration/);
-    assert.match(text, /断言来源 from: body \/ vars \/ headers \/ bodyText/);
+    assert.match(text, /断言来源 from: body \/ vars \/ suite \/ headers \/ bodyText/);
     assert.match(text, /提取目标 target: status/);
-    assert.match(text, /when 条件来源: vars \/ lastResponse \/ status/);
+    assert.match(text, /when 条件来源: vars \/ suite \/ lastResponse \/ status/);
     assert.match(text, /when 响应级 target: status/);
+    assert.match(text, /提取作用域 scope: step \/ suite/);
     assert.match(text, /extract/);
     assert.match(text, /runId/);
     assert.match(text, /runNo/);

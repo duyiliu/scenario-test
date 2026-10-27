@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 16,
+  "contractVersion": 17,
   "assertions": {
     "operators": {
       "exists": {
@@ -80,6 +80,7 @@
     "from": [
       "body",
       "vars",
+      "suite",
       "headers",
       "bodyText"
     ],
@@ -114,13 +115,14 @@
   "when": {
     "sources": [
       "vars",
+      "suite",
       "lastResponse",
       "status"
     ],
     "targets": [
       "status"
     ],
-    "note": "when 对象形式支持 from: vars / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义"
+    "note": "when 对象形式支持 from: vars / suite / lastResponse / status（lastResponse 取上一步响应 body，status 取上一步 HTTP 状态码），也可用 target: \"status\" 读取上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。非对象形式（模板字符串/布尔）保持真值语义；suite 为本次 run 跨场景共享变量"
   },
   "extract": {
     "metaKeys": [
@@ -148,7 +150,8 @@
     ],
     "required": "boolean",
     "default": "any",
-    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配；scope: \"suite\" 时提取值写入本次 run 共享变量，后续场景可直接用 {{vars.<name>}} 引用（默认 step 仅当前场景可见）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+    "scope": "step",
+    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
   },
   "reservedVars": [
     "runId",

@@ -255,16 +255,22 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
 
 export function createRuntime(scenario, options = {}) {
     const config = options.config || {};
-    // run 级共享变量（#69）：suite 提取产物作为最低优先级基底，配置/场景 vars 可显式覆盖
-    const suiteVars = isPlainObject(options.suiteVars) ? options.suiteVars : {};
+    // run 级共享命名空间（#69）：suite 提取产物作为最低优先级基底并入 vars，
+    // 兼容 v16 的 {{vars.<name>}} 写法；配置/场景 vars 同名时优先。
+    const suite = isPlainObject(options.suite)
+        ? options.suite
+        : (isPlainObject(options.suiteVars) ? options.suiteVars : {});
     const runtime = {
         vars: buildGeneratedVars(
             scenario,
-            { ...suiteVars, ...(config.vars || {}), ...(options.vars || {}) },
+            { ...suite, ...(config.vars || {}), ...(options.vars || {}) },
             options.environmentVariables || {},
             { now: options.now, clock: options.clock }
         ),
-        suiteVars,
+        // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
+        // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
+        suite: suite,
+        suiteVars: suite,
         lastResponse: null,
         lastResponseBody: null,
         // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
@@ -1112,7 +1118,10 @@ export function createEngine(engineOptions = {}) {
             config,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
-            suiteVars: runOptions.suiteVars || engineOptions.suiteVars,
+            // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
+            suite: runOptions.suite !== undefined ? runOptions.suite
+                : (runOptions.suiteVars !== undefined ? runOptions.suiteVars
+                    : (engineOptions.suite !== undefined ? engineOptions.suite : engineOptions.suiteVars)),
             // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
             now: runOptions.now ?? engineOptions.now,
             clock: runOptions.clock ?? engineOptions.clock
@@ -1198,7 +1207,10 @@ export function createEngine(engineOptions = {}) {
             // 取消导致未进入循环的剩余步骤（供 JUnit/报告标注）
             unexecuted: scenario.steps.slice(results.length).map((step) => step.name || "未命名步骤"),
             vars: runtime.vars,
-            suiteVars: { ...(runtime.suiteVars || {}) }
+            // 报告保留本次场景结束时的 suite 快照；共享对象继续被后续场景使用
+            // suiteVars 为 v16 兼容别名，与 suite 同内容
+            suite: { ...(runtime.suite || runtime.suiteVars || {}) },
+            suiteVars: { ...(runtime.suite || runtime.suiteVars || {}) }
         };
     }
 

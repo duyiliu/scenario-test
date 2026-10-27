@@ -47,6 +47,7 @@ test("d.ts 由 contract 投影：操作符/保留变量/类型名单与 contract
     assert.deepEqual(parseUnion(dts, "WhenSource"), [...contract.when.sources].sort());
     assert.deepEqual(parseUnion(dts, "WhenTarget"), [...contract.when.targets].sort());
     assert.deepEqual(parseUnion(dts, "ExtractSource"), [...contract.extract.from].sort());
+    assert.deepEqual(parseUnion(dts, "ExtractScope"), [...contract.extract.scopes].sort());
     assert.deepEqual(parseUnion(dts, "FailurePolicy"), [...contract.scenario.failurePolicies].sort());
     assert.deepEqual(parseUnion(dts, "RetryOn"), [...contract.retryUntil.retryOn].sort());
 });

@@ -415,7 +415,7 @@ export function defineScenario(input) {
             invariant(Array.isArray(step.extract), `步骤 ${step.name} 的 extract 必须是数组`);
             step.extract.forEach((item, extractIndex) => {
                 const label = `步骤 ${step.name} 的 extract 第 ${extractIndex + 1} 项`;
-                invariant(isPlainObject(item), `${label} 必须是对象（{ name, path?, from?, required?, default? }）`);
+                invariant(isPlainObject(item), `${label} 必须是对象（{ name, path?, from?, required?, default?, scope? }）`);
                 // 未知键即拒：heder/fromm 这类拼错此前静默落到 body 来源，同断言 metaKeys 口径
                 const unknownKeys = Object.keys(item).filter((key) => !contract.extract.metaKeys.includes(key));
                 invariant(
@@ -436,6 +436,12 @@ export function defineScenario(input) {
                     !(item.required === true && item.default !== undefined),
                     `${label} 的 required: true 与 default 互斥，只能声明其一`
                 );
+                if (item.scope !== undefined) {
+                    invariant(
+                        contract.extract.scopes.includes(item.scope),
+                        `${label} 的 scope 只支持 ${contract.extract.scopes.join("/")}（当前 ${JSON.stringify(item.scope)}，缺省 step 仅当前场景可见；suite 写入本次 run 跨场景共享命名空间）`
+                    );
+                }
                 if (item.header !== undefined) {
                     invariant(
                         typeof item.header === "string" && item.header.trim() !== "" && !item.header.includes("{{"),
@@ -452,12 +458,6 @@ export function defineScenario(input) {
                     invariant(
                         contract.extract.from.includes(item.from),
                         `${label} 的 from 只支持 ${contract.extract.from.join("/")}（当前 ${JSON.stringify(item.from)}，缺省按 body 取值）`
-                    );
-                }
-                if (item.scope !== undefined) {
-                    invariant(
-                        contract.extract.scopes.includes(item.scope),
-                        `${label} 的 scope 只支持 ${contract.extract.scopes.join("/")}（当前 ${JSON.stringify(item.scope)}；缺省 step 仅当前场景可见）`
                     );
                 }
                 if (item.path !== undefined) {

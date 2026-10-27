@@ -545,24 +545,32 @@ const workbenchView = (function () {
         return text;
     }
 
-    // 变量视图 view = { vars: 执行后全量, changedKeys: 本步骤 extract 变更的键 }；
-    // 回答两个调试问题：本步骤的 {{vars.*}} 解析成了什么、本步 extract 写入了什么
+    // 变量视图 view = { vars: 执行后全量, suite: run 级共享全量, changedKeys, changedSuiteKeys }；
+    // 回答两个调试问题：本步骤的 {{vars.*}} / {{suite.*}} 解析成了什么、本步 extract 写入了什么。
+    // suite 变量统一以 suite. 前缀展示，与 vars 同名时也能区分命名空间。
     function renderVarsSection(view) {
-        if (!view || !view.vars) return '';
-        var keys = Object.keys(view.vars);
-        if (!keys.length) return '';
+        if (!view || (!view.vars && !view.suite)) return '';
         var changed = view.changedKeys || [];
-        var rows = keys.map(function (key) {
-            var isChanged = changed.indexOf(key) >= 0;
-            return '<tr class="' + (isChanged ? 'bg-emerald-50/60' : '') + '">' +
-                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(key) +
-                    (isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">本步变更</span>' : '') +
+        var changedSuite = view.changedSuiteKeys || [];
+        var entries = [];
+        Object.keys(view.vars || {}).forEach(function (key) {
+            entries.push({ name: key, value: view.vars[key], isChanged: changed.indexOf(key) >= 0 });
+        });
+        Object.keys(view.suite || {}).forEach(function (key) {
+            entries.push({ name: 'suite.' + key, value: view.suite[key], isChanged: changedSuite.indexOf(key) >= 0 });
+        });
+        if (!entries.length) return '';
+        var changedCount = entries.filter(function (entry) { return entry.isChanged; }).length;
+        var rows = entries.map(function (entry) {
+            return '<tr class="' + (entry.isChanged ? 'bg-emerald-50/60' : '') + '">' +
+                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(entry.name) +
+                    (entry.isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">本步变更</span>' : '') +
                 '</td>' +
-                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(view.vars[key])) + '</td>' +
+                '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(entry.value)) + '</td>' +
             '</tr>';
         }).join('');
         return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80">' +
-            '<summary>运行时变量 · ' + keys.length + ' 项' + (changed.length ? '（本步变更 ' + changed.length + '）' : '') + '</summary>' +
+            '<summary>运行时变量 · ' + entries.length + ' 项' + (changedCount ? '（本步变更 ' + changedCount + '）' : '') + '</summary>' +
             '<div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2">' +
                 '<table class="w-full text-left text-xs">' +
                     '<thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider">' +

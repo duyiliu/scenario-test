@@ -183,6 +183,8 @@ export function evalExpression(expression, runtime) {
     const text = String(expression || "").trim();
     if (!text) return "";
     if (text === "vars") return runtime.vars;
+    // suite：本次 run 跨场景共享的命名空间（extract scope: "suite" 写入）
+    if (text === "suite") return runtime.suite || runtime.suiteVars;
     // 模板变量语义（双端一致，勿单边修改）：
     //   lastResponse      完整响应对象（status / headers / body / bodyText）
     //   lastResponseBody  解析后的响应体（JSON 已转为对象；原始文本用断言 from: "bodyText" 获取）
@@ -195,6 +197,11 @@ export function evalExpression(expression, runtime) {
         return sub && !sub.startsWith(".") ? getByPath(runtime.vars, sub) : undefined;
     }
     if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
+    if (text.startsWith("suite.")) {
+        const sub = text.slice(6);
+        return sub && !sub.startsWith(".") ? getByPath(runtime.suite || runtime.suiteVars, sub) : undefined;
+    }
+    if (text.startsWith("suite[")) return getByPath(runtime.suite || runtime.suiteVars, text.slice(5));
     if (text.startsWith("lastResponse.")) {
         const sub = text.slice(13);
         return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : undefined;
@@ -797,6 +804,10 @@ function assertionActual(definition, response, runtime) {
     if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : undefined;
     if (definition.header) return headerValue(response.headers, definition.header);
     if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
+    if (definition.from === "suite") {
+        const suite = runtime.suite || runtime.suiteVars;
+        return definition.path ? getByPath(suite, definition.path) : suite;
+    }
     if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
     if (definition.from === "bodyText") return response.bodyText;
     return definition.path ? getByPath(response.body, definition.path) : response.body;
@@ -1131,17 +1142,25 @@ export function setRuntimeVar(vars, name, value) {
 export function applyExtract(step, response, runtime) {
     const warnings = [];
     const failures = [];
-    // 共享作用域写入点：scope:"suite" 的提取值同时进入 run 级共享 vars（#69）
-    const store = (name, value, suiteScope) => {
-        setRuntimeVar(runtime.vars, name, value);
-        if (suiteScope) {
-            if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = {};
-            setRuntimeVar(runtime.suiteVars, name, value);
+    // 共享作用域写入点：scope:"suite" 只写 run 级 suite 命名空间（#69）；
+    // suiteVars 是 v16 的兼容别名，两者在引擎/工作台运行时指向同一对象。
+    // 直接调用 applyExtract 的宿主若只提供其中之一，这里补齐引用并同步写入。
+    const storeSuite = (name, value) => {
+        if (!isPlainObject(runtime.suite)) runtime.suite = {};
+        setRuntimeVar(runtime.suite, name, value);
+        if (runtime.suiteVars !== runtime.suite) {
+            if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = runtime.suite;
+            else setRuntimeVar(runtime.suiteVars, name, value);
         }
+    };
+    const store = (name, value, suiteScope) => {
+        if (suiteScope) storeSuite(name, value);
+        else setRuntimeVar(runtime.vars, name, value);
     };
     for (const definition of step.extract || []) {
         if (!definition || !definition.name) continue;
         assertNotReservedVar(definition.name, "extract 变量");
+        // scope: "suite" 写入本次 run 共享命名空间（跨场景复用），默认 step 作用域仍写 runtime.vars
         // required 与 default 语义互斥（一个要缺失即失败、一个要缺失即兜底），同声明即定义错误
         const hasDefault = definition.default !== undefined;
         if (definition.required === true && hasDefault) {

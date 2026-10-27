@@ -22,8 +22,8 @@ function shapeFailures(result) {
     return (result.detail || []).flatMap((item) => item.assertions);
 }
 
-test("contract v16：shape 操作符与 jsonSchema-lite 键/类型名单对外投射", () => {
-    assert.equal(CONTRACT_VERSION, 16);
+test("contract v17：shape 操作符与 jsonSchema-lite 键/类型名单对外投射", () => {
+    assert.equal(CONTRACT_VERSION, 17);
     assert.ok(contract.assertions.operators.shape, "contract 缺少 shape 操作符");
     assert.equal(contract.assertions.operators.shape.valueType, "any");
     assert.deepEqual(contract.assertions.shape.types, ["object", "array", "string", "number", "integer", "boolean", "null"]);
