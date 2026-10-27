@@ -9,7 +9,11 @@ All notable changes to this project will be documented in this file.
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 
+- `extract` / 断言 / 模板共用的路径支持通配段 `[*]`（contract v13 → v14）：`items[*].id` 逐元素提取并产出数组（如 `[1,2,3]`），元素缺失该子路径时跳过、不产生 `undefined` 洞，空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default`/warning 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。`a[0]`/`a[-1]`/引号键/原型链安全键等既有标量行为不变，纯标量路径仍走原热路径。断言 path 上的通配结果可直接配合 `each`/`length`/`includes` 使用；契约说明、capabilities、d.ts、AI Prompt/模式库/项目 README 模板与根 README 同步投射。
+
 ### CLI
+
+- 新增 `import` 子命令（contract v13 → v14，issue #89）：`--har <file>` 解析浏览器/抓包 HAR，过滤静态资源（JS/CSS/图片/字体等）与 OPTIONS 预检，为每个 API 请求生成标准场景步骤草稿；`--curl "<命令>"` 解析单条 curl（支持 `-X/-H/-d/--json/-G/-u/-b`、引号与续行），生成单步骤草稿。默认写入 `scenarios/imported-<ts>.js`，可用 `--output`/`--out` 指定；`--host` 过滤主机，`--max-entries` 限制导入条数（默认 50）。Authorization/Cookie 等敏感头及敏感 query 参数替换为 `{{vars.*}}` 占位并在场景 `vars` 中留空，二进制/multipart 请求体降级为注释，草稿可直接由 `run` 加载重放（status 占位需人工确认）。命令与选项同步投射 capabilities JSON/文本、`--help` 与 `dist/scenario-test.d.ts`。
 
 - 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
   默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
@@ -25,7 +29,7 @@ All notable changes to this project will be documented in this file.
 
 - `run --timeout <ms>`：透传 `runOptions.requestTimeoutMs` 覆盖配置 `requestTimeoutMs`，用于临时排查慢接口；非法（非正数/非数字）报错，短超时配合慢响应返回结构化 `TIMEOUT`。
 
-- `serve --proxy-timeout <ms>`（contract v13 → v14）：上游空闲超时从硬编码 30 秒外提为可配置项，取值 1-600000 的整数毫秒，缺省仍为 30000（无迁移成本）。非法值（非正整数、超上限）在参数解析期拒绝，报错信息带参数名 `--proxy-timeout`；启动日志打印实际生效值。语义不变：响应头未发出时返回 502，传输已开始则直接断开连接。同步投射 capabilities JSON/文本、`--help`、`dist/` 产物与 README。
+- `serve --proxy-timeout <ms>`（contract v14 → v15）：上游空闲超时从硬编码 30 秒外提为可配置项，取值 1-600000 的整数毫秒，缺省仍为 30000（无迁移成本）。非法值（非正整数、超上限）在参数解析期拒绝，报错信息带参数名 `--proxy-timeout`；启动日志打印实际生效值。语义不变：响应头未发出时返回 502，传输已开始则直接断开连接。同步投射 capabilities JSON/文本、`--help`、`dist/` 产物与 README。
 ### 产物
 
 - `node.js` 入口不再透传 `index.js` 的 `createApp`：改为逐项枚举核心导出 + 浏览器占位函数（`typeof` 仍为 `function`，调用时报「仅在浏览器环境可用」而非 `document is not defined`）。Node/CLI 产物随之不再打进浏览器工作台与 Tailwind 内联样式（此前 `cli.js` 把 `import * as ScenarioTest` 整个命名空间对象传入 loader/插件工厂，esbuild 无法 tree-shake）；`scenario-test.cjs`/`scenario-test-cli.cjs` 显著瘦身。UMD/ESM 浏览器产物的 `createApp` 不变。
@@ -43,6 +47,8 @@ All notable changes to this project will be documented in this file.
 - `loadScenarioFile` 场景缓存按「id + 文件路径」判定：同进程加载同名 id 的另一个文件不再返回首个文件的陈旧场景，同名不同路径时重新执行文件、由 `registerScenario` 后注册覆盖。
 
 ### 浏览器工作台
+
+- adhoc 临时请求新增「转为步骤」（issue #91）：执行成功后可一键生成可粘贴进 `scenarios/*.js` 的 step 对象草稿，复用当次 method/path/params/headers/body 并将实际响应状态码写成 `status`；Authorization/Token/API Key/Cookie 等敏感请求头按 `SECRET_VAR_PATTERN` 转为 `{{vars.*}}` 占位，草稿同时自动复制到剪贴板并保留草稿区供手动复制。请求失败（ERROR/TIMEOUT 等无有效状态码）时拒绝生成，GET/HEAD 草稿自动省略会被定义期拒绝的请求体。
 
 - 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
 - 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。

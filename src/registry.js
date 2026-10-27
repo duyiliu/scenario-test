@@ -183,7 +183,7 @@ function assertTemplatePathsOnly(value, trail, seen = new WeakSet()) {
                     !TEMPLATE_OPERATOR_CHARS.test(expression),
                     `${trail} 的模板 {{${expression}}} 不允许使用运算符：${TEMPLATE_PATH_HINT}`
                 );
-                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键（vars.a、list[-1]、vars["a>b"]），不允许空下标或未闭合括号`);
+                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键/通配段 [*]（vars.a、list[-1]、vars["a>b"]、items[*].id），不允许空下标或未闭合括号`);
                 continue;
             }
             for (const token of tokens) {
@@ -430,7 +430,7 @@ export function defineScenario(input) {
                     invariant(
                         typeof item.path === "string" && !item.path.includes("{{")
                             && (item.path === "" || tokenizePath(item.path) !== null),
-                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
+                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键/通配段 [*]，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
                     );
                 }
             });

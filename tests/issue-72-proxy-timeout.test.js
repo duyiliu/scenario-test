@@ -86,8 +86,8 @@ function makeProject(backendPort) {
     return { project, configPath: path.join(dir, "scenario.config.js") };
 }
 
-test("contract v14 投射 --proxy-timeout 到 capabilities 与 --help", () => {
-    assert.equal(CONTRACT_VERSION, 14);
+test("contract v15 投射 --proxy-timeout 到 capabilities 与 --help", () => {
+    assert.equal(CONTRACT_VERSION, 15);
     const option = contract.cli.options["proxy-timeout"];
     assert.equal(option.kind, "value");
     assert.equal(option.prop, "proxyTimeout");

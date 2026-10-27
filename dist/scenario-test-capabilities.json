@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.8.0",
-  "contractVersion": 14,
+  "contractVersion": 15,
   "assertions": {
     "operators": {
       "exists": {
@@ -79,7 +79,7 @@
       "headers",
       "bodyText"
     ],
-    "note": "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配",
+    "note": "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配。裸 path 支持通配段 [*]：仅在数组上展开，非数组按路径缺失处理；元素缺失该子路径时跳过（不产生 undefined 洞）；连续通配（如 groups[*].members[*].id）展平为一级数组。items[*].id 产出 [1,2,3]，可直接配合 each/length/includes 等操作符断言。",
     "numericOperators": [
       "gt",
       "gte",
@@ -119,7 +119,7 @@
     ],
     "required": "boolean",
     "default": "any",
-    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配"
+    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
   },
   "reservedVars": [
     "runId",
@@ -250,7 +250,8 @@
       "serve",
       "init",
       "capabilities",
-      "doctor"
+      "doctor",
+      "import"
     ],
     "options": {
       "config": {
@@ -337,6 +338,30 @@
         "aliases": [
           "authorization"
         ]
+      },
+      "har": {
+        "kind": "value",
+        "description": "import：HAR 文件路径（- 表示从 stdin 读取）"
+      },
+      "curl": {
+        "kind": "value",
+        "description": "import：curl 命令文本；单请求生成单步骤草稿"
+      },
+      "output": {
+        "kind": "value",
+        "description": "import：输出场景文件（默认 scenarios/imported-<ts>.js）",
+        "aliases": [
+          "out"
+        ]
+      },
+      "host": {
+        "kind": "value",
+        "description": "import：仅导入指定主机（可逗号分隔多个）"
+      },
+      "max-entries": {
+        "kind": "value",
+        "description": "import：最多导入请求数，默认 50（防超大 HAR 生成失控场景）",
+        "parse": "number"
       }
     }
   }

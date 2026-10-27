@@ -33,7 +33,7 @@ node --test tests/engine.test.js
 node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 ```
 
-公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`。选项见 `--help`。
+公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`、`import`（HAR/curl 导入场景草稿）。选项见 `--help`。
 
 ## 架构
 

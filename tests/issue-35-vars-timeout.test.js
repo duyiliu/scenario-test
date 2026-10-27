@@ -38,8 +38,8 @@ async function withServer(handler, run) {
     }
 }
 
-test("contract v14（v12 新增 --vars/--timeout，v14 新增 --proxy-timeout）与 --help 投射 --vars/--timeout", () => {
-    assert.equal(CONTRACT_VERSION, 14);
+test("contract v15（v12 引入 --vars/--timeout，v15 新增 --proxy-timeout）与 --help 投射 --vars/--timeout", () => {
+    assert.equal(CONTRACT_VERSION, 15);
     assert.equal(contract.cli.options.vars.kind, "value");
     assert.equal(contract.cli.options.vars.repeatable, true);
     assert.match(contract.cli.options.vars.description, /key=value/);
