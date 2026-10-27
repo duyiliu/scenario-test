@@ -263,14 +263,23 @@ export interface ScenarioDefinition {
 
 // each 操作符的失败元素明细：index 为失败元素在数组中的下标（0 基），
 // actual 为该元素值，assertions 为该元素上全部子断言的求值结果
-// （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）
+// （嵌套 each 的子结果同样是 AssertionResult，失败时携带各自的 detail）。
+// shape 失败明细复用同一分层结构，并额外携带字段路径与期望/实际类型。
 export interface AssertionEachFailure {
     index: number;
+    /** shape 失败字段路径（如 items[0].sku；根为 "(根)"）；each 明细不携带 */
+    path?: string;
+    /** shape 失败明细的期望/实际摘要（each 明细不携带） */
+    expected?: unknown;
     actual?: unknown;
+    value?: unknown;
+    expectedType?: string;
+    actualType?: string;
+    reason?: string;
     assertions: AssertionResult[];
 }
 
-/** shape 断言失败明细：path 为字段路径（根为 "(根)"），actual 为实际类型名或额外字段值 */
+/** 兼容旧消费方：shape 失败明细的扁平视图（与 AssertionEachFailure 同源） */
 export interface AssertionShapeFailure {
     path: string;
     expected: string;
@@ -283,7 +292,10 @@ export interface AssertionResult {
     passed: boolean;
     actual?: unknown;
     expected?: unknown;
-    /** 失败原因（语义化引导）：includes 命中对象实际值时提示改用 equals 或字段 path 断言，其余情况不携带 */
+    /** shape 失败明细的期望/实际类型（如 integer / string）；其余断言不携带 */
+    expectedType?: string;
+    actualType?: string;
+    /** 失败原因（语义化引导）：includes 命中对象实际值、shape 结构不符时给可操作说明，其余情况不携带 */
     reason?: string;
     detail?: AssertionEachFailure[] | AssertionShapeFailure[];
 }
@@ -474,7 +486,7 @@ export declare const contract: {
         from: readonly AssertionSource[];
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
-        shape: { keys: readonly string[]; types: readonly string[] };
+        shape: { keys: readonly string[]; types: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };

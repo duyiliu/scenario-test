@@ -100,7 +100,8 @@ export const contract = Object.freeze({
         // shape 断言支持的结构键与类型名（jsonSchema-lite，不引入依赖）
         shape: Object.freeze({
             keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
-            types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"])
+            types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
+            note: "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言"
         })
     }),
 

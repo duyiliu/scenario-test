@@ -767,7 +767,9 @@ async function runCommand(args) {
                             print(`      ↳ ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
                             continue;
                         }
-                        const label = `${prefix}第 ${item.index + 1} 项`;
+                        const label = `${prefix}${item.path !== undefined && item.path !== null && item.path !== ""
+                            ? item.path
+                            : `第 ${item.index + 1} 项`}`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
                             entryPrint(`      ↳ ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
