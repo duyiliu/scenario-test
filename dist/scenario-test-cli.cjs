@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.8.0 */
+/*! scenario-test v0.9.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -352,7 +352,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.8.0";
+var VERSION = "0.9.0";
 
 // src/contract.js
 var CONTRACT_VERSION = 17;
