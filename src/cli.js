@@ -16,6 +16,7 @@ import { writeJUnitReport } from "./utils/junit.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 import {
+    DEFAULT_PROXY_TIMEOUT_MS,
     MAX_PROXY_TIMEOUT_MS,
     createServeServer,
     resolveStartupProxyTarget
@@ -1004,6 +1005,8 @@ async function serveCommand(args) {
             "请将 --env 设置为上面列出的环境 key 后重试。"
         );
     }
+    // 启动日志打印实际生效值（默认/命令行来源），便于确认 --proxy-timeout 是否被识别
+    const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
     const server = createServeServer({
         workspace,
         libraryDist,
@@ -1027,7 +1030,10 @@ async function serveCommand(args) {
     server.listen(args.port, "127.0.0.1", () => {
         console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
         console.log(`配置目录: ${workspace}`);
-        if (startup.target) console.log(`接口代理: ${startup.key} -> ${startup.target}`);
+        if (startup.target) {
+            console.log(`接口代理: ${startup.key} -> ${startup.target}`);
+            console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
+        }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });
 }

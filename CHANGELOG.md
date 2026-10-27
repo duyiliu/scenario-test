@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - `extract` 新增 `scope: "suite"`：提取值写入本次 run 共享变量，后续场景可直接引用（如登录 token）。
 - 配置场景项/场景顶层新增 `tags`，`run --tag` 支持筛选（重复参数 OR、逗号分隔 AND）。
 - 环境新增 `envs[].vars`：优先级 `config.vars < env.vars < --vars`，浏览器切换环境同步生效。
-- CLI 新增 `--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--proxy-timeout`。
+- CLI 新增 `--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--proxy-timeout`；`serve` 启动日志打印实际生效的代理空闲超时（默认/命令行来源）。
 
 ### 修复
 
@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
 - 新增 DSL/CLI/serve 特性测试；serve 拆为 `src/cli/serve-server.js` 以便单测（#33）。
 - `test:coverage` 只统计 `src/`（排除 dist/tests/scripts/browser），阈值 line 90 / branch 80（#48）。
 - 新增 GitHub Actions：Node 20/22 × Ubuntu/Windows 单测与行尾审计、覆盖率、Playwright 浏览器测试（#47）。
+- `npm test`/`test:unit`/`test:coverage` 改由 `scripts/run-tests.mjs` 枚举 `tests/*.test.js` 后传给 `node --test`：Windows PowerShell/cmd 与 Node 18/20 不展开 glob，修复 Windows + Node 20 CI 直接报 `Could not find '...\tests\*.test.js'` 的问题；测试集合与覆盖参数不变。
+- 上传相关测试的临时目录清理加 `maxRetries`/`retryDelay`，并在 Windows + Node 20 上对读取内容的用例回退到 `readFileSync`：`fs.openAsBlob` 的句柄在 Blob 被 GC 前不释放，避免递归删除偶发 `ENOTEMPTY`。
 - `generatedVars timestamp` 支持注入时钟（`options.now`），测试改为精确断言（#12）。
 
 ### DSL 与诊断

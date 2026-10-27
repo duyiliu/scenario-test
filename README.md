@@ -112,6 +112,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
 ```
 
 > 手动指定 `--port` 默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+> 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
 
 ### 执行场景
 

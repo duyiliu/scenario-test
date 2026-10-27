@@ -7,8 +7,12 @@ const root = path.resolve(import.meta.dirname, "..");
 
 test("#48 测试脚本分层：unit/browser/all/coverage 与阈值显式声明", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    assert.match(pkg.scripts.test, /node --test tests\/\*\.test\.js/);
+    // Windows PowerShell/cmd 与 Node 18/20 不展开 tests/*.test.js，统一由跨平台 runner 枚举
+    assert.match(pkg.scripts.test, /scripts\/run-tests\.mjs/);
     assert.equal(pkg.scripts["test:unit"], pkg.scripts.test);
+    const runner = fs.readFileSync(path.join(root, "scripts/run-tests.mjs"), "utf8");
+    assert.match(runner, /\.test\.js/);
+    assert.match(runner, /"--test"/);
     assert.match(pkg.scripts["test:browser"], /browser\.test\.mjs/);
     assert.match(pkg.scripts["test:ui-style"], /ui-style\.test\.mjs/);
     assert.match(pkg.scripts["test:all"], /test:unit/);
