@@ -19,7 +19,8 @@ export function buildCapabilities(inputContract = contract) {
             targets: [...(assertions.targets || [])],
             from: [...(assertions.from || [])],
             note: assertions.note,
-            numericOperators: [...assertions.numericOperators]
+            numericOperators: [...assertions.numericOperators],
+            ...(assertions.shape ? { shape: { keys: [...assertions.shape.keys], types: [...assertions.shape.types] } } : {})
         },
         when: {
             sources: [...when.sources],
@@ -29,10 +30,10 @@ export function buildCapabilities(inputContract = contract) {
         extract: {
             metaKeys: [...(extract.metaKeys || [])],
             from: [...extract.from],
+            scopes: [...(extract.scopes || [])],
             targets: [...(extract.targets || [])],
             required: extract.required,
             default: extract.default,
-            scopes: [...(extract.scopes || [])],
             scope: extract.scope,
             note: extract.note
         },
@@ -53,7 +54,8 @@ export function buildCapabilities(inputContract = contract) {
                 protocol: config.baseUrl.protocol,
                 note: config.baseUrl.note
             },
-            manual: { ...config.manual }
+            manual: { ...config.manual },
+            tags: { ...(config.tags || {}) }
         },
         retryUntil: {
             keys: [...retryUntil.keys],
@@ -64,7 +66,9 @@ export function buildCapabilities(inputContract = contract) {
         scenario: {
             keys: [...scenario.keys],
             stepKeys: [...scenario.stepKeys],
-            failurePolicies: [...scenario.failurePolicies]
+            failurePolicies: [...scenario.failurePolicies],
+            retryUntilKeys: [...(scenario.retryUntilKeys || [])],
+            ...(scenario.note ? { note: scenario.note } : {})
         },
         cli: {
             commands: [...cli.commands],
@@ -115,11 +119,11 @@ export function renderCapabilitiesText(capabilities) {
     lines.push(`  ${capabilities.when.note}`);
     lines.push("");
     lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}（默认 body）, required: ${capabilities.extract.required}`);
+    if (capabilities.extract.scopes?.length) {
+        lines.push(`  提取作用域 scope: ${capabilities.extract.scopes.join(" / ")}（默认 ${capabilities.extract.scope}；suite 为本次 run 跨场景共享命名空间）`);
+    }
     if (capabilities.extract.targets?.length) {
         lines.push(`  提取目标 target: ${capabilities.extract.targets.join(" / ")}；允许字段: ${capabilities.extract.metaKeys.join(" / ")}`);
-    }
-    if (capabilities.extract.scopes?.length) {
-        lines.push(`  提取作用域 scope: ${capabilities.extract.scopes.join(" / ")}（默认 ${capabilities.extract.scope}；suite 为本次 run 跨场景共享）`);
     }
     lines.push(`  ${capabilities.extract.note}`);
     lines.push("");
@@ -140,6 +144,7 @@ export function renderCapabilitiesText(capabilities) {
         lines.push(`retryUntil 字段: ${capabilities.retryUntil.keys.join(" / ")}；retryOn: ${capabilities.retryUntil.retryOn.join(" / ")}（默认 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}）`);
         lines.push(`  ${capabilities.retryUntil.note}`);
     }
+    if (capabilities.scenario.note) lines.push(`  ${capabilities.scenario.note}`);
     lines.push("");
     lines.push("CLI 命令:");
     for (const command of capabilities.cli.commands) {

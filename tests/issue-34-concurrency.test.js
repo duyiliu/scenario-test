@@ -85,9 +85,9 @@ function createFixture(directory) {
     );
 }
 
-test("契约 v14：--concurrency 为 number 型 run 选项并投射到 --help", async () => {
+test("契约 v17：--concurrency 为 number 型 run 选项并投射到 --help", async () => {
     const { contract, CONTRACT_VERSION } = await import("../src/contract.js");
-    assert.equal(CONTRACT_VERSION, 14);
+    assert.equal(CONTRACT_VERSION, 17);
     assert.equal(contract.cli.options.concurrency.kind, "value");
     assert.equal(contract.cli.options.concurrency.parse, "number");
     assert.match(contract.cli.options.concurrency.description, /默认 1/);

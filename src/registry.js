@@ -93,10 +93,20 @@ function looksLikeKeyTypo(key, allowed) {
 }
 
 // 步骤声明这些字段即视为 HTTP 执行面（或非适配器步骤）：未知键按拼写错误拒绝。
-// 名单从 contract 派生（只排除 name/adapter 这两个非执行字段），勿另写副本。
+// 名单从 contract 派生（只排除 name/adapter 这两个非执行字段，以及 always 这类报告语义字段）。
 // 未声明任何 HTTP 字段的步骤可能是 matches 自动分发的适配器步骤，其自定义配置键
 // （如 `{ name, prepareLocal: true }`）不属于 DSL，不在白名单校验范围。
-const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+const HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
+
+function normalizeTags(tags, label) {
+    if (tags === undefined) return [];
+    invariant(Array.isArray(tags), `${label}的 tags 必须是字符串数组`);
+    const normalized = tags.map((tag, index) => {
+        invariant(nonEmptyString(tag), `${label}的 tags 第 ${index + 1} 项必须是非空字符串`);
+        return tag.trim();
+    });
+    return [...new Set(normalized)];
+}
 
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
     // 拼写相近时直接点名正确字段（assertion → "assertions"），避免只列出整份白名单
@@ -183,7 +193,7 @@ function assertTemplatePathsOnly(value, trail, seen = new WeakSet()) {
                     !TEMPLATE_OPERATOR_CHARS.test(expression),
                     `${trail} 的模板 {{${expression}}} 不允许使用运算符：${TEMPLATE_PATH_HINT}`
                 );
-                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键（vars.a、list[-1]、vars["a>b"]），不允许空下标或未闭合括号`);
+                invariant(false, `${trail} 的模板 {{${expression}}} 不是合法路径写法：支持 点段/整数下标/引号键/通配段 [*]（vars.a、list[-1]、vars["a>b"]、items[*].id），不允许空下标或未闭合括号`);
                 continue;
             }
             for (const token of tokens) {
@@ -240,6 +250,7 @@ export function defineScenario(input) {
     );
     // 保留变量 runId/runNo 与原型链安全键由运行时自动生成/占位，定义期拒绝场景 vars/envVars 声明
     assertNoReservedVars(input.vars, `场景 ${input.name} 的 vars`);
+    const scenarioTags = normalizeTags(input.tags, `场景 ${input.name}`);
     assertNoReservedVars(input.envVars, `场景 ${input.name} 的 envVars`);
     assertTemplatePathsOnly(input, `场景 ${input.name}`);
     // generatedVars：定义期校验类型枚举（来源 contract.generatedVars.types）与保留变量名；
@@ -338,7 +349,7 @@ export function defineScenario(input) {
                 validateAssertion(definition, { ...stepContext, assertionNo: assertionIndex + 1 });
             });
         }
-        // retryUntil 真实协议：{ maxAttempts, intervalMs, maxElapsedMs }，本身不含断言。
+        // retryUntil 真实协议：{ maxAttempts, intervalMs, intervalFactor, maxIntervalMs, maxElapsedMs, retryOn }，本身不含断言。
         // 重试判定只用步骤顶层 assertions——放在 retryUntil 内的 assertions 从不执行，
         // 定义期直接拒绝并指引迁移，避免"以为会按它重试、实际一次即停"的静默失效。
         if (step.retryUntil !== undefined) {
@@ -363,6 +374,22 @@ export function defineScenario(input) {
             // 运行期在 engine.js 统一钳制下限 100ms（未声明/非法值按默认 2000ms）
             invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `步骤 ${step.name} 的 intervalMs 不能为负数`);
             invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `步骤 ${step.name} 的 maxElapsedMs 必须是正数`);
+            // 退避参数（contract v15）：factor 默认 1 保持固定间隔；maxIntervalMs 缺省不封顶。
+            // 定义期即拒绝 <1 的倍率与小于基础间隔的上限，避免运行期静默钳制/降频。
+            if (step.retryUntil.intervalFactor !== undefined) {
+                const intervalFactor = Number(step.retryUntil.intervalFactor);
+                invariant(
+                    Number.isFinite(intervalFactor) && intervalFactor >= 1,
+                    `步骤 ${step.name} 的 intervalFactor 必须是 ≥1 的有限数字（当前 ${String(step.retryUntil.intervalFactor)}）`
+                );
+            }
+            if (step.retryUntil.maxIntervalMs !== undefined) {
+                const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
+                invariant(
+                    Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+                    `步骤 ${step.name} 的 maxIntervalMs 必须是 ≥ intervalMs 的有限数字（当前 ${String(step.retryUntil.maxIntervalMs)}，intervalMs=${intervalMs}）`
+                );
+            }
             // retryOn：声明哪些失败类型参与重试；默认 ["assertion"] 保持历史语义。
             // 非数组/未知值定义期即拒，避免拼写错误使 error/timeout 重试静默失效。
             if (step.retryUntil.retryOn !== undefined) {
@@ -377,6 +404,9 @@ export function defineScenario(input) {
                     );
                 }
             }
+        }
+        if (step.always !== undefined) {
+            invariant(typeof step.always === "boolean", `步骤 ${step.name} 的 always 必须是布尔值`);
         }
         // extract 项定义期校验：此前 extract 完全无校验——非对象项/缺 name 运行期
         // 静默跳过（连 warning 都没有），name 撞保留变量、required+default 互斥、
@@ -409,7 +439,7 @@ export function defineScenario(input) {
                 if (item.scope !== undefined) {
                     invariant(
                         contract.extract.scopes.includes(item.scope),
-                        `${label} 的 scope 只支持 ${contract.extract.scopes.join("/")}（当前 ${JSON.stringify(item.scope)}，缺省写入当前场景 vars）`
+                        `${label} 的 scope 只支持 ${contract.extract.scopes.join("/")}（当前 ${JSON.stringify(item.scope)}，缺省 step 仅当前场景可见；suite 写入本次 run 跨场景共享命名空间）`
                     );
                 }
                 if (item.header !== undefined) {
@@ -436,7 +466,7 @@ export function defineScenario(input) {
                     invariant(
                         typeof item.path === "string" && !item.path.includes("{{")
                             && (item.path === "" || tokenizePath(item.path) !== null),
-                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
+                        `${label} 的 path 不是合法路径写法（支持 点段/整数下标/引号键/通配段 [*]，不支持 {{ }} 模板；当前 ${JSON.stringify(item.path)}）`
                     );
                 }
             });
@@ -556,7 +586,7 @@ export function defineScenario(input) {
     });
     const failurePolicy = input.failurePolicy || "stop";
     invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy 只能是 stop 或 continue");
-    return { ...input, failurePolicy, steps: [...input.steps] };
+    return { ...input, failurePolicy, tags: scenarioTags, steps: [...input.steps] };
 }
 
 export function defineConfig(input) {
@@ -568,9 +598,15 @@ export function defineConfig(input) {
     const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
         invariant(isPlainObject(env), `第 ${index + 1} 个环境定义无效`);
         assertKnownKeys(env, contract.config.environmentKeys, `第 ${index + 1} 个环境`, "（环境只接受契约声明的字段）");
+        if (env.vars !== undefined) {
+            invariant(isPlainObject(env.vars), `环境 ${env.key || "(未命名)"} 的 vars 必须是对象`);
+            // 保留变量由运行时自动生成，环境 vars 声明即拒绝（与配置/场景 vars 同口径）
+            assertNoReservedVars(env.vars, `环境 ${env.key || "(未命名)"} 的 vars`);
+        }
         return {
             ...env,
-            globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`)
+            globals: normalizeGlobals(env.globals, `环境 ${env.key} 的`),
+            vars: env.vars ? { ...env.vars } : {}
         };
     }) : [];
     for (const env of envs) {
@@ -591,7 +627,7 @@ export function defineConfig(input) {
         if (entry.manual !== undefined) {
             invariant(typeof entry.manual === "boolean", `场景 ${id} 的 manual 必须是布尔值`);
         }
-        return { ...entry, id, name: entry.name || id, url };
+        return { ...entry, id, name: entry.name || id, url, tags: normalizeTags(entry.tags, `场景 ${id}`) };
     });
     assertUnique(scenarios, "id", "场景 id");
     const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {

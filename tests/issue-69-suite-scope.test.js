@@ -199,8 +199,8 @@ test("CLI --concurrency > 1：每个场景使用启动时 suite 快照，避免�
         const port = server.address().port;
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"login",name:"Login",url:"scenarios/login.js"},{id:"reader",name:"Reader",url:"scenarios/reader.js"}]}));`, "utf8");
-        fs.writeFileSync(path.join(directory, "scenarios/login.js"), `ScenarioTest.registerScenario("login",ScenarioTest.defineScenario({name:"Login",steps:[{name:"登录",method:"POST",path:"login",extract:[{name:"loginToken",path:"token",scope:"suite"}]}]}));`, "utf8");
-        fs.writeFileSync(path.join(directory, "scenarios/reader.js"), `ScenarioTest.registerScenario("reader",ScenarioTest.defineScenario({name:"Reader",steps:[{name:"等待登录完成",path:"hold",status:200},{name:"读取启动快照",path:"check",request:{headers:{"X-Suite-Token":"{{suite.loginToken}}"}},assertions:[{path:"token",equals:null}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/login.js"), `ScenarioTest.registerScenario("login",ScenarioTest.defineScenario({name:"Login",steps:[{name:"登录",method:"POST",path:"login",extract:[{name:"loginState",path:"token",scope:"suite"}]}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/reader.js"), `ScenarioTest.registerScenario("reader",ScenarioTest.defineScenario({name:"Reader",steps:[{name:"等待登录完成",path:"hold",status:200},{name:"读取启动快照",path:"check",request:{headers:{"X-Suite-Token":"{{suite.loginState}}"}},assertions:[{path:"token",equals:null}]}]}));`, "utf8");
         const cli = path.resolve(import.meta.dirname, "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all", "--concurrency", "2", "--json"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -215,7 +215,7 @@ test("CLI --concurrency > 1：每个场景使用启动时 suite 快照，避免�
         assert.equal(result.code, 0, `${result.stdout}\n${result.stderr}`);
         assert.deepEqual(checkHeaders, [""], "reader 应始终看到启动时的空 suite 快照（模板解析为空串，而非 writer 的 late-token）");
         const payload = JSON.parse(result.stdout);
-        assert.deepEqual(payload.scenarios[0].suite, { loginToken: "late-token" });
+        assert.deepEqual(payload.scenarios[0].suite, { loginState: "late-token" });
         assert.deepEqual(payload.scenarios[1].suite, {}, "reader 的报告不得混入 writer 在 reader 执行期间写入的变量");
     } finally {
         server.close();

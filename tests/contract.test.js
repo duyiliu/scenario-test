@@ -43,9 +43,9 @@ test("when 来源含 vars/suite/lastResponse/status；extract 来源、作用域
     assert.deepEqual(contract.assertions.from, ["body", "vars", "suite", "headers", "bodyText"]);
     assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
+    assert.deepEqual(contract.extract.scopes, ["step", "suite"]);
     assert.deepEqual(contract.extract.targets, ["status"]);
     assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default", "scope"]);
-    assert.deepEqual(contract.extract.scopes, ["step", "suite"]);
     assert.equal(contract.extract.scope, "step");
     assert.equal(contract.extract.required, "boolean");
     assert.deepEqual(contract.reservedVars, ["runId", "runNo", "__proto__", "constructor", "prototype"]);
@@ -65,9 +65,14 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
     assert.ok(contract.scenario.stepKeys.includes("when"));
     assert.ok(contract.scenario.stepKeys.includes("retryUntil"));
     assert.deepEqual(contract.scenario.failurePolicies, ["stop", "continue"]);
-    for (const command of ["run", "serve", "init", "capabilities", "doctor"]) {
+    for (const command of ["run", "serve", "init", "capabilities", "doctor", "import"]) {
         assert.ok(contract.cli.commands.includes(command), `CLI 命令缺少 ${command}`);
     }
+    for (const option of ["har", "curl", "output", "host", "max-entries"]) {
+        assert.equal(contract.cli.options[option].kind, "value", `import 选项缺少 --${option}`);
+    }
+    assert.equal(contract.cli.options.output.aliases[0], "out");
+    assert.equal(contract.cli.options["max-entries"].parse, "number");
     assert.equal(contract.cli.options["fail-on-skip"].kind, "flag");
     assert.equal(contract.cli.options.json.kind, "flag");
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);

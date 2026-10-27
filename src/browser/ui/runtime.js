@@ -1,6 +1,6 @@
 import * as core from "../../core.js";
 import { createEngine } from "../../engine.js";
-import { esc, safeJson, copyText } from "./ui-utils.js";
+import { esc, isSecretName, safeJson, copyText } from "./ui-utils.js";
 import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
@@ -165,6 +165,7 @@ export function createWorkbenchRuntime(options) {
         debugRuntimes: [],
         nextStepIndex: 0,
         scenarioSearch: '',
+        scenarioTag: '',
         discoveredFiles: [],
         lastReport: null,
         startTime: null,
@@ -268,7 +269,10 @@ export function createWorkbenchRuntime(options) {
 
     function getConfiguredScenarioVariables() {
         var config = appConfig;
-        return isPlainObject(config.scenarioVars) ? config.scenarioVars : {};
+        // #58：config.vars < 选中环境 env.vars（页面输入再覆盖）
+        var environment = getSelectedEnvironment();
+        return Object.assign({}, isPlainObject(config.scenarioVars) ? config.scenarioVars : {},
+            isPlainObject(environment && environment.vars) ? environment.vars : {});
     }
 
     function getStoredScenarioVariables() {
@@ -410,11 +414,14 @@ export function createWorkbenchRuntime(options) {
             throw new Error('缺少场景凭据：' + missing.map(function (def) { return def.label; }).join('、') + '。请在“配置参数 → 当前场景凭据”中填写并保存。');
         }
         var identifiers = createRunIdentifiers();
+        var environment = getSelectedEnvironment();
+        var environmentVars = isPlainObject(environment && environment.vars) ? environment.vars : {};
         // 保留变量 runId/runNo 由运行时自动生成，声明源冲突在使用前尽早报错
         assertNoReservedVars(scenario.vars, '场景 vars');
         assertNoReservedVars(cfg.vars, '配置 vars');
+        assertNoReservedVars(environmentVars, '环境 vars');
         assertNoReservedVars(scenarioVars, '页面场景变量');
-        var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, scenarioVars, identifiers);
+        var vars = Object.assign({}, scenario.vars || {}, cfg.vars || {}, environmentVars, scenarioVars, identifiers);
         (scenario.generatedVars || []).forEach(function (def) {
             if (!def || !def.name) return;
             assertNotReservedVar(def.name, 'generatedVars');
@@ -427,7 +434,25 @@ export function createWorkbenchRuntime(options) {
 
     // ===== 视图重绘桥接函数 =====
     function renderScenarioSelect() {
-        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles());
+        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles(), state.scenarioTag);
+    }
+
+    // 标签筛选（#68）：选项来自配置清单，选择后仅展示含该标签的场景
+    function renderScenarioTagFilter() {
+        var select = document.getElementById('scenarioTagFilter');
+        if (!select) return;
+        var tags = [];
+        (state.discoveredFiles || []).forEach(function (item) {
+            (item.tags || []).forEach(function (tag) {
+                if (tags.indexOf(tag) < 0) tags.push(tag);
+            });
+        });
+        tags.sort();
+        if (state.scenarioTag && tags.indexOf(state.scenarioTag) < 0) state.scenarioTag = '';
+        select.innerHTML = '<option value="">全部标签</option>' + tags.map(function (tag) {
+            return '<option value="' + esc(tag) + '"' + (tag === state.scenarioTag ? ' selected' : '') + '>' + esc(tag) + '</option>';
+        }).join('');
+        select.hidden = tags.length === 0;
     }
 
     function clearScenarioSearch() {
@@ -543,17 +568,35 @@ export function createWorkbenchRuntime(options) {
         });
     }
 
+    function getRequestGlobals() {
+        var globals = getEffectiveGlobals();
+        // #60：代理模式把当前环境 key 带给 serve，由服务端按请求解析真实目标；
+        // 该内部头由代理层剔除，不会到达上游。显式场景头若同名会覆盖（保留优先级）。
+        if (window.__SCENARIO_TEST_SERVE_PROXY__) {
+            var environment = getSelectedEnvironment();
+            if (environment && environment.key) {
+                globals = globals.concat([{ type: 'header', name: 'X-Scenario-Test-Env', value: environment.key }]);
+            }
+        }
+        return globals;
+    }
+
     function createExecutionRuntime() {
         var environment = getSelectedEnvironment();
+        // 工作台一次只运行一个场景：suite 仍按 run 级语义在本次执行内跨步骤共享；
+        // suiteVars 为 v16 兼容别名，指向同一容器
+        var suite = {};
         var runtime = {
             vars: buildScenarioRuntimeVars(),
-            // 工作台一次只运行一个场景：suite 仍按 run 级语义在本次执行内跨步骤共享
-            suite: {},
+            suite: suite,
             lastResponse: null,
             lastResponseBody: null,
             baseUrl: getRequestBaseUrl(),
             authorization: getEffectiveAuthorization(),
-            globals: getEffectiveGlobals(),
+            globals: getRequestGlobals(),
+            // #69：浏览器单场景执行时提供 suite 作用域容器（与 Node 引擎同一接口）；
+            // 与上方 suite 指向同一对象
+            suiteVars: suite,
             environment: environment ? clone(environment) : null,
             startedAt: Date.now(),
             abortController: new AbortController(),
@@ -606,9 +649,26 @@ export function createWorkbenchRuntime(options) {
         if (!before) return null;
         var afterVars = state.varsTrail[stepIndex] || before.vars;
         var afterSuite = state.suiteTrail[stepIndex] || before.suite || {};
+        // 与 CLI 同一脱敏口径：运行时变量面板不回显 Token/Secret 等敏感值
+        var displayVars = {};
+        Object.keys(afterVars || {}).forEach(function (name) {
+            var value = afterVars[name];
+            var scalar = typeof value === 'string' || typeof value === 'number';
+            displayVars[name] = core.isSecretVarName(name) && value != null && value !== '' && scalar
+                ? core.maskSecret(value)
+                : value;
+        });
+        var displaySuite = {};
+        Object.keys(afterSuite || {}).forEach(function (name) {
+            var value = afterSuite[name];
+            var scalar = typeof value === 'string' || typeof value === 'number';
+            displaySuite[name] = core.isSecretVarName(name) && value != null && value !== '' && scalar
+                ? core.maskSecret(value)
+                : value;
+        });
         return {
-            vars: afterVars,
-            suite: afterSuite,
+            vars: displayVars,
+            suite: displaySuite,
             changedKeys: diffVars(before.vars, afterVars),
             changedSuiteKeys: diffVars(before.suite || {}, afterSuite)
         };
@@ -617,6 +677,7 @@ export function createWorkbenchRuntime(options) {
     function restoreStepRuntime(runtime, snapshot) {
         runtime.vars = { ...snapshot.vars };
         runtime.suite = { ...(snapshot.suite || {}) };
+        if (runtime.suiteVars) runtime.suiteVars = runtime.suite;
         runtime.lastResponse = snapshot.lastResponse;
         runtime.lastResponseBody = snapshot.lastResponseBody;
         runtime.abortController = new AbortController();
@@ -990,9 +1051,8 @@ export function createWorkbenchRuntime(options) {
         });
     }
 
-    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换
-    var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key)/i;
-
+    // 凭据类变量名启发式：命中则输入框掩码（type=password）并提供明文切换；
+    // 名单与 adhoc「转为步骤」共用 ui-utils.isSecretName，且与 core.isSecretVarName 同口径
     function renderScenarioVariableInputs() {
         var container = document.getElementById('scenarioVarsInput');
         if (!container) return;
@@ -1005,7 +1065,7 @@ export function createWorkbenchRuntime(options) {
         container.innerHTML = defs.map(function (def) {
             var value = stored[def.name] || '';
             // 凭据类变量掩码显示（可切换明文），避免联调时 Token 在屏幕侧显
-            var isSecret = SECRET_VAR_PATTERN.test(def.name);
+            var isSecret = isSecretName(def.name);
             return '<label class="flex flex-col gap-1.5">' +
                 '<span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + ' (' + esc(def.name) + ')' +
                     (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">显示</button>' : '') +
@@ -1552,14 +1612,16 @@ export function createWorkbenchRuntime(options) {
         }
         state.discoveredFiles = cfg.scenarios.map(function (entry) {
             if (typeof entry === 'string') {
-                return { name: entry, file: entry };
+                return { name: entry, file: entry, tags: [] };
             }
             return {
                 name: entry.name || entry.file || '',
-                file: entry.file || entry.path || entry.url || ''
+                file: entry.file || entry.path || entry.url || '',
+                tags: Array.isArray(entry.tags) ? entry.tags.slice() : []
             };
         });
         await enrichDiscoveredScenarioNames();
+        renderScenarioTagFilter();
         renderScenarioSelect();
     }
 
@@ -1719,6 +1781,13 @@ export function createWorkbenchRuntime(options) {
             state.scenarioSearch = event.target.value;
             renderScenarioSelect();
         });
+        var scenarioTagFilter = document.getElementById('scenarioTagFilter');
+        if (scenarioTagFilter) {
+            scenarioTagFilter.addEventListener('change', function (event) {
+                state.scenarioTag = event.target.value || '';
+                renderScenarioSelect();
+            });
+        }
         scenarioSearchInput.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && scenarioSearchInput.value) {
                 event.preventDefault();

@@ -10,7 +10,9 @@
 //   - 不要在本模块手写 runtime 版本，统一复用 version.generated.js 的 VERSION。
 import { VERSION } from "./version.generated.js";
 
-export const CONTRACT_VERSION = 14;
+// v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
+// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）
+export const CONTRACT_VERSION = 17;
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -29,7 +31,7 @@ export const contract = Object.freeze({
         // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
         // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
         // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
-        note: "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配",
+        note: "from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与 header 简写、extract 同口径）；首段后的子路径在头值上取，from: \"response\" 与模板 lastResponse.headers.* 仍按精确键匹配。裸 path 支持通配段 [*]：仅在数组上展开，非数组按路径缺失处理；元素缺失该子路径时跳过（不产生 undefined 洞）；连续通配（如 groups[*].members[*].id）展平为一级数组。items[*].id 产出 [1,2,3]，可直接配合 each/length/includes 等操作符断言。",
         // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
         // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
         operators: Object.freeze({
@@ -52,6 +54,10 @@ export const contract = Object.freeze({
             each: Object.freeze({
                 description: "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
                 valueType: "assertion"
+            }),
+            shape: Object.freeze({
+                description: "结构级校验（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构，失败明细定位到字段路径与期望/实际类型",
+                valueType: "any"
             }),
             matches: Object.freeze({
                 description: "正则表达式匹配字符串化后的实际值",
@@ -91,7 +97,12 @@ export const contract = Object.freeze({
             })
         }),
         // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
-        numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+        numericOperators: Object.freeze(["gt", "gte", "lt", "lte"]),
+        // shape 断言支持的结构键与类型名（jsonSchema-lite，不引入依赖）
+        shape: Object.freeze({
+            keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
+            types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"])
+        })
     }),
 
     when: Object.freeze({
@@ -106,6 +117,8 @@ export const contract = Object.freeze({
         // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
         // 防止 heder/fromm 等拼错静默落到默认 body 来源）
         metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default", "scope"]),
+        // 提取作用域：step（默认，仅当前场景可见）/ suite（写入本次 run 的共享变量，后续场景可引用）
+        scopes: Object.freeze(["step", "suite"]),
         // extract 支持的来源（默认 body）
         // from:"headers" 配 path 时首段头名按大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；
         // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
@@ -117,11 +130,12 @@ export const contract = Object.freeze({
         // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
         default: "any",
         // scope 语义：step（默认，写入当前场景 runtime.vars）或 suite（写入本次 run 共享的
-        // runtime.suite，后续场景可用 {{suite.<name>}} 引用）；CLI 每个场景启动时取 suite
-        // 快照、结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
-        scopes: Object.freeze(["step", "suite"]),
+        // runtime.suite，后续场景可用 {{suite.<name>}} 引用；为兼容 v16 同时以最低优先级
+        // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
+        // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
         scope: "step",
-        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）"
+        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+
     }),
 
     // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
@@ -158,8 +172,8 @@ export const contract = Object.freeze({
             "authorization", "nodePlugins", "envVars"
         ]),
         // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-        scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-        environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
+        scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
+        environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
         variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
         baseUrl: Object.freeze({
             protocol: "http(s)",
@@ -168,29 +182,37 @@ export const contract = Object.freeze({
         manual: Object.freeze({
             type: "boolean",
             note: "manual: true 表示场景需要人工准备数据或写数据，--all 默认排除，--scenario <id> 可显式执行"
+        }),
+        tags: Object.freeze({
+            type: "string[]",
+            note: "配置清单项声明 tags 用于 run --tag 筛选（重复参数之间为 OR，单个参数内逗号分隔为 AND；不会自动放行 manual:true 场景）；场景顶层 tags 为场景元数据"
         })
     }),
 
     retryUntil: Object.freeze({
-        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
         // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
         retryOn: Object.freeze(["assertion", "error", "timeout"]),
         defaultRetryOn: Object.freeze(["assertion"]),
         note: "retryOn 声明哪些失败类型参与 retryUntil 轮询，默认 [\"assertion\"]（保持既有语义）。包含 error/timeout 时，单次执行异常/请求超时不再立即跳出，而是记录最近一次错误后继续轮询，直到 maxAttempts 或 maxElapsedMs 用尽；用户取消始终立即终止、不参与重试。onAttempt 回调会携带 errorType/errorMessage"
+            + "。intervalFactor 可选（默认 1，固定间隔），第 n 次重试等待 = intervalMs × intervalFactor^(n-1)；maxIntervalMs 可选封顶，最终仍受 100ms 下限与 maxElapsedMs 总时长约束"
     }),
 
     scenario: Object.freeze({
-        keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
+        keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy", "tags"]),
         stepKeys: Object.freeze([
             "name", "method", "path", "params", "request", "status",
             "assertions", "extract", "when", "retryUntil", "timeoutMs",
-            "saveResponseAs", "adapter"
+            "saveResponseAs", "adapter", "always"
         ]),
-        failurePolicies: Object.freeze(["stop", "continue"])
+        failurePolicies: Object.freeze(["stop", "continue"]),
+        // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
+        retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+        note: "always: true 的步骤在前置普通步骤失败（failurePolicy: stop）后仍会执行，用于 teardown；用户取消执行时不运行。retryUntil 第 n 次重试间隔 = intervalMs * intervalFactor^(n-1)，封顶 maxIntervalMs，且不低于 100ms"
     }),
 
     cli: Object.freeze({
-        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
         options: Object.freeze({
             config: { kind: "value", prop: "config", description: "场景配置文件" },
             env: { kind: "value", prop: "env", description: "配置中的环境 key" },
@@ -204,6 +226,17 @@ export const contract = Object.freeze({
                 description: "临时注入/覆盖配置变量（key=value，可重复；优先级最高，值支持 {{ }} 模板）"
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
+            "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）" },
+            data: { kind: "value", prop: "dataFile", description: "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景" },
+            junit: { kind: "value", prop: "junit", description: "输出 JUnit XML 报告到指定文件" },
+            tag: {
+                kind: "value",
+                prop: "tags",
+                repeatable: true,
+                description: "按标签筛选场景（可重复；重复参数之间为 OR，单个参数内逗号分隔为 AND）"
+            },
+            bail: { kind: "flag", prop: "bail", description: "任一场景失败后不再启动后续场景（已执行场景跑完）" },
+            "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run 为每个场景启用内存 Cookie Jar（自动携带 Set-Cookie，默认关闭）" },
             port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
             concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
@@ -219,6 +252,17 @@ export const contract = Object.freeze({
                 kind: "value", prop: "authorization",
                 aliases: ["authorization"],
                 description: "（已弃用）命令行传递授权令牌；推荐 SCENARIO_AUTH 环境变量"
+            },
+            har: { kind: "value", prop: "har", description: "import：HAR 文件路径（- 表示从 stdin 读取）" },
+            curl: { kind: "value", prop: "curl", description: "import：curl 命令文本；单请求生成单步骤草稿" },
+            output: {
+                kind: "value", prop: "output", aliases: ["out"],
+                description: "import：输出场景文件（默认 scenarios/imported-<ts>.js）"
+            },
+            host: { kind: "value", prop: "host", description: "import：仅导入指定主机（可逗号分隔多个）" },
+            "max-entries": {
+                kind: "value", prop: "maxEntries", parse: "number",
+                description: "import：最多导入请求数，默认 50（防超大 HAR 生成失控场景）"
             }
         })
     })

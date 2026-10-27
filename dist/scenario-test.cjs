@@ -250,6 +250,7 @@ __export(node_exports, {
   PHONE_TEST_PREFIXES: () => PHONE_TEST_PREFIXES,
   RESERVED_VARS: () => RESERVED_VARS,
   SAVED_RESPONSE: () => SAVED_RESPONSE,
+  SECRET_VAR_PATTERN: () => SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN: () => TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS: () => TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET: () => USCC_ALPHABET,
@@ -268,6 +269,8 @@ __export(node_exports, {
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
   clone: () => clone,
+  collectMissingTemplateVars: () => collectMissingTemplateVars,
+  collectSecretValues: () => collectSecretValues,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -277,6 +280,7 @@ __export(node_exports, {
   defineScenario: () => defineScenario,
   evalExpression: () => evalExpression,
   evaluateAssertion: () => evaluateAssertion,
+  evaluateShape: () => evaluateShape,
   evaluateWhen: () => evaluateWhen,
   executeDefinitionFile: () => executeDefinitionFile,
   formatAssertionContext: () => formatAssertionContext,
@@ -294,6 +298,7 @@ __export(node_exports, {
   headersToObject: () => headersToObject,
   isGlobalParam: () => isGlobalParam,
   isPlainObject: () => isPlainObject,
+  isSecretVarName: () => isSecretVarName,
   joinUrl: () => joinUrl,
   listAdapters: () => listAdapters,
   loadConfigFile: () => loadConfigFile,
@@ -302,6 +307,7 @@ __export(node_exports, {
   maskSecret: () => maskSecret,
   md5: () => md5,
   mergeGlobals: () => mergeGlobals,
+  missingTemplateVarWarnings: () => missingTemplateVarWarnings,
   normalizeByteLimit: () => normalizeByteLimit,
   normalizeEnumDefinition: () => normalizeEnumDefinition,
   normalizeGlobalParam: () => normalizeGlobalParam,
@@ -311,6 +317,7 @@ __export(node_exports, {
   pickWeightedIndex: () => pickWeightedIndex,
   queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
+  redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
   registerScenario: () => registerScenario,
@@ -324,12 +331,14 @@ __export(node_exports, {
   seedToUnit: () => seedToUnit,
   setRuntimeVar: () => setRuntimeVar,
   splitUrlFragment: () => splitUrlFragment,
+  templateExpressionRoot: () => templateExpressionRoot,
   tokenizePath: () => tokenizePath,
   unregisterAdapter: () => unregisterAdapter,
   usccCheckChar: () => usccCheckChar,
   validateAdapter: () => validateAdapter,
   validateAdapterResponse: () => validateAdapterResponse,
-  validateAssertion: () => validateAssertion
+  validateAssertion: () => validateAssertion,
+  validateShapeSchema: () => validateShapeSchema
 });
 module.exports = __toCommonJS(node_exports);
 
@@ -340,7 +349,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.8.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 14;
+var CONTRACT_VERSION = 17;
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -356,7 +365,7 @@ var contract = Object.freeze({
     // from:"headers" 配 path 时首段按 HTTP 头名大小写不敏感匹配（HTTP 头名不区分大小写，
     // HTTP/2 响应头全小写），与 header 简写、extract 的 from:"headers" 同口径；
     // 首段之后的子路径在头值上取，from:"response" 与模板 lastResponse.headers.* 仍按精确键匹配
-    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D',
+    note: 'from: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E header \u7B80\u5199\u3001extract \u540C\u53E3\u5F84\uFF09\uFF1B\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4E0E\u6A21\u677F lastResponse.headers.* \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002\u88F8 path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1A\u4EC5\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF1B\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF08\u4E0D\u4EA7\u751F undefined \u6D1E\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\uFF08\u5982 groups[*].members[*].id\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002items[*].id \u4EA7\u51FA [1,2,3]\uFF0C\u53EF\u76F4\u63A5\u914D\u5408 each/length/includes \u7B49\u64CD\u4F5C\u7B26\u65AD\u8A00\u3002',
     // 断言操作符：键为操作符名；valueType 描述期望值类型约束，
     // finiteNumber 表示实际值与期望值都必须是有限 number（不做字符串隐式转换）
     operators: Object.freeze({
@@ -379,6 +388,10 @@ var contract = Object.freeze({
       each: Object.freeze({
         description: "\u6570\u7EC4\u9010\u9879\u65AD\u8A00\uFF1A\u5B9E\u9645\u503C\u5FC5\u987B\u662F\u6570\u7EC4\uFF0Cexpected \u4E3A\u5B50\u65AD\u8A00\u5B9A\u4E49\u5BF9\u8C61\u6216\u5176\u6570\u7EC4\uFF0C\u5BF9\u6BCF\u4E2A\u5143\u7D20\u5957\u7528\u5B50\u65AD\u8A00\uFF08\u5B50\u65AD\u8A00 path \u76F8\u5BF9\u5143\u7D20\u81EA\u8EAB\uFF0C\u671F\u671B\u503C\u652F\u6301\u6A21\u677F\u53D8\u91CF\uFF09\uFF1B\u4EFB\u4E00\u5143\u7D20\u4EFB\u4E00\u5B50\u65AD\u8A00\u5931\u8D25\u5219\u6574\u4F53\u5931\u8D25\uFF0C\u7A7A\u6570\u7EC4\u6052\u901A\u8FC7\uFF0C\u975E\u6570\u7EC4\u5B9E\u9645\u503C\u76F4\u63A5\u5931\u8D25",
         valueType: "assertion"
+      }),
+      shape: Object.freeze({
+        description: "\u7ED3\u6784\u7EA7\u6821\u9A8C\uFF08jsonSchema-lite\uFF09\uFF1A\u6309 type/required/properties/items/enum/additionalProperties \u6821\u9A8C\u54CD\u5E94\u7ED3\u6784\uFF0C\u5931\u8D25\u660E\u7EC6\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\u4E0E\u671F\u671B/\u5B9E\u9645\u7C7B\u578B",
+        valueType: "any"
       }),
       matches: Object.freeze({
         description: "\u6B63\u5219\u8868\u8FBE\u5F0F\u5339\u914D\u5B57\u7B26\u4E32\u5316\u540E\u7684\u5B9E\u9645\u503C",
@@ -418,7 +431,12 @@ var contract = Object.freeze({
       })
     }),
     // 只接受有限 number 的操作符（与 operators 中 valueType: "finiteNumber" 一致）
-    numericOperators: Object.freeze(["gt", "gte", "lt", "lte"])
+    numericOperators: Object.freeze(["gt", "gte", "lt", "lte"]),
+    // shape 断言支持的结构键与类型名（jsonSchema-lite，不引入依赖）
+    shape: Object.freeze({
+      keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
+      types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"])
+    })
   }),
   when: Object.freeze({
     // when 对象形式的来源：vars=已提取变量；suite=本次 run 共享变量；lastResponse=上一步响应 body（path 子路径取值口径同 extract from:"body"）；status=上一步 HTTP 状态码（数值）
@@ -431,6 +449,8 @@ var contract = Object.freeze({
     // extract 项允许的键（与断言 metaKeys 同思路：未识别键定义期即拒，
     // 防止 heder/fromm 等拼错静默落到默认 body 来源）
     metaKeys: Object.freeze(["name", "path", "from", "target", "header", "required", "default", "scope"]),
+    // 提取作用域：step（默认，仅当前场景可见）/ suite（写入本次 run 的共享变量，后续场景可引用）
+    scopes: Object.freeze(["step", "suite"]),
     // extract 支持的来源（默认 body）
     // from:"headers" 配 path 时首段头名按大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；
     // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
@@ -442,11 +462,11 @@ var contract = Object.freeze({
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
     default: "any",
     // scope 语义：step（默认，写入当前场景 runtime.vars）或 suite（写入本次 run 共享的
-    // runtime.suite，后续场景可用 {{suite.<name>}} 引用）；CLI 每个场景启动时取 suite
-    // 快照、结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
-    scopes: Object.freeze(["step", "suite"]),
+    // runtime.suite，后续场景可用 {{suite.<name>}} 引用；为兼容 v16 同时以最低优先级
+    // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
+    // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
     scope: "step",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09'
+    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -484,8 +504,8 @@ var contract = Object.freeze({
       "envVars"
     ]),
     // 配置中 scenarios 清单项的字段（file/path 为 url 的兼容回退，不写入契约字段）
-    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual"]),
-    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization"]),
+    scenarioItemKeys: Object.freeze(["id", "name", "url", "manual", "tags"]),
+    environmentKeys: Object.freeze(["key", "name", "baseUrl", "globals", "authorization", "vars"]),
     variableKeys: Object.freeze(["name", "label", "env", "required", "defaultValue"]),
     baseUrl: Object.freeze({
       protocol: "http(s)",
@@ -494,17 +514,21 @@ var contract = Object.freeze({
     manual: Object.freeze({
       type: "boolean",
       note: "manual: true \u8868\u793A\u573A\u666F\u9700\u8981\u4EBA\u5DE5\u51C6\u5907\u6570\u636E\u6216\u5199\u6570\u636E\uFF0C--all \u9ED8\u8BA4\u6392\u9664\uFF0C--scenario <id> \u53EF\u663E\u5F0F\u6267\u884C"
+    }),
+    tags: Object.freeze({
+      type: "string[]",
+      note: "\u914D\u7F6E\u6E05\u5355\u9879\u58F0\u660E tags \u7528\u4E8E run --tag \u7B5B\u9009\uFF08\u91CD\u590D\u53C2\u6570\u4E4B\u95F4\u4E3A OR\uFF0C\u5355\u4E2A\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u653E\u884C manual:true \u573A\u666F\uFF09\uFF1B\u573A\u666F\u9876\u5C42 tags \u4E3A\u573A\u666F\u5143\u6570\u636E"
     })
   }),
   retryUntil: Object.freeze({
-    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn"]),
+    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
     // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
     retryOn: Object.freeze(["assertion", "error", "timeout"]),
     defaultRetryOn: Object.freeze(["assertion"]),
-    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage'
+    note: 'retryOn \u58F0\u660E\u54EA\u4E9B\u5931\u8D25\u7C7B\u578B\u53C2\u4E0E retryUntil \u8F6E\u8BE2\uFF0C\u9ED8\u8BA4 ["assertion"]\uFF08\u4FDD\u6301\u65E2\u6709\u8BED\u4E49\uFF09\u3002\u5305\u542B error/timeout \u65F6\uFF0C\u5355\u6B21\u6267\u884C\u5F02\u5E38/\u8BF7\u6C42\u8D85\u65F6\u4E0D\u518D\u7ACB\u5373\u8DF3\u51FA\uFF0C\u800C\u662F\u8BB0\u5F55\u6700\u8FD1\u4E00\u6B21\u9519\u8BEF\u540E\u7EE7\u7EED\u8F6E\u8BE2\uFF0C\u76F4\u5230 maxAttempts \u6216 maxElapsedMs \u7528\u5C3D\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\u3001\u4E0D\u53C2\u4E0E\u91CD\u8BD5\u3002onAttempt \u56DE\u8C03\u4F1A\u643A\u5E26 errorType/errorMessage\u3002intervalFactor \u53EF\u9009\uFF08\u9ED8\u8BA4 1\uFF0C\u56FA\u5B9A\u95F4\u9694\uFF09\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF1BmaxIntervalMs \u53EF\u9009\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u957F\u7EA6\u675F'
   }),
   scenario: Object.freeze({
-    keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy"]),
+    keys: Object.freeze(["name", "steps", "vars", "envVars", "generatedVars", "failurePolicy", "tags"]),
     stepKeys: Object.freeze([
       "name",
       "method",
@@ -518,12 +542,16 @@ var contract = Object.freeze({
       "retryUntil",
       "timeoutMs",
       "saveResponseAs",
-      "adapter"
+      "adapter",
+      "always"
     ]),
-    failurePolicies: Object.freeze(["stop", "continue"])
+    failurePolicies: Object.freeze(["stop", "continue"]),
+    // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
+    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
-    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor"]),
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
     options: Object.freeze({
       config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
@@ -537,6 +565,17 @@ var contract = Object.freeze({
         description: "\u4E34\u65F6\u6CE8\u5165/\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF08key=value\uFF0C\u53EF\u91CD\u590D\uFF1B\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 {{ }} \u6A21\u677F\uFF09"
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
+      "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
+      data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
+      junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
+      tag: {
+        kind: "value",
+        prop: "tags",
+        repeatable: true,
+        description: "\u6309\u6807\u7B7E\u7B5B\u9009\u573A\u666F\uFF08\u53EF\u91CD\u590D\uFF1B\u91CD\u590D\u53C2\u6570\u4E4B\u95F4\u4E3A OR\uFF0C\u5355\u4E2A\u53C2\u6570\u5185\u9017\u53F7\u5206\u9694\u4E3A AND\uFF09"
+      },
+      bail: { kind: "flag", prop: "bail", description: "\u4EFB\u4E00\u573A\u666F\u5931\u8D25\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u573A\u666F\uFF08\u5DF2\u6267\u884C\u573A\u666F\u8DD1\u5B8C\uFF09" },
+      "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run \u4E3A\u6BCF\u4E2A\u573A\u666F\u542F\u7528\u5185\u5B58 Cookie Jar\uFF08\u81EA\u52A8\u643A\u5E26 Set-Cookie\uFF0C\u9ED8\u8BA4\u5173\u95ED\uFF09" },
       port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
@@ -553,6 +592,21 @@ var contract = Object.freeze({
         prop: "authorization",
         aliases: ["authorization"],
         description: "\uFF08\u5DF2\u5F03\u7528\uFF09\u547D\u4EE4\u884C\u4F20\u9012\u6388\u6743\u4EE4\u724C\uFF1B\u63A8\u8350 SCENARIO_AUTH \u73AF\u5883\u53D8\u91CF"
+      },
+      har: { kind: "value", prop: "har", description: "import\uFF1AHAR \u6587\u4EF6\u8DEF\u5F84\uFF08- \u8868\u793A\u4ECE stdin \u8BFB\u53D6\uFF09" },
+      curl: { kind: "value", prop: "curl", description: "import\uFF1Acurl \u547D\u4EE4\u6587\u672C\uFF1B\u5355\u8BF7\u6C42\u751F\u6210\u5355\u6B65\u9AA4\u8349\u7A3F" },
+      output: {
+        kind: "value",
+        prop: "output",
+        aliases: ["out"],
+        description: "import\uFF1A\u8F93\u51FA\u573A\u666F\u6587\u4EF6\uFF08\u9ED8\u8BA4 scenarios/imported-<ts>.js\uFF09"
+      },
+      host: { kind: "value", prop: "host", description: "import\uFF1A\u4EC5\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\uFF08\u53EF\u9017\u53F7\u5206\u9694\u591A\u4E2A\uFF09" },
+      "max-entries": {
+        kind: "value",
+        prop: "maxEntries",
+        parse: "number",
+        description: "import\uFF1A\u6700\u591A\u5BFC\u5165\u8BF7\u6C42\u6570\uFF0C\u9ED8\u8BA4 50\uFF08\u9632\u8D85\u5927 HAR \u751F\u6210\u5931\u63A7\u573A\u666F\uFF09"
       }
     })
   })
@@ -597,7 +651,7 @@ function normalizeByteLimit(value) {
   return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
 }
 var PATH_SEGMENT = /[^.\[\]]+/y;
-var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\]/y;
+var PATH_BRACKET = /\[(?:-?\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\*)\]/y;
 var PATH_TOKEN_CACHE_LIMIT = 256;
 var pathTokenCache = /* @__PURE__ */ new Map();
 function tokenizePath(valuePath) {
@@ -638,6 +692,7 @@ function getByPath(source, valuePath) {
   if (!valuePath) return source;
   const tokens = tokenizePath(valuePath);
   if (!tokens) return void 0;
+  if (tokens.includes("[*]")) return getByWildcardPath(source, tokens);
   let cursor = source;
   for (const token of tokens) {
     if (cursor === void 0 || cursor === null) return void 0;
@@ -651,11 +706,46 @@ function getByPath(source, valuePath) {
   }
   return cursor;
 }
+var WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
+function isWildcardExpansion(value) {
+  return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+}
+function navigatePathToken(cursor, token) {
+  const inner = token.startsWith("[") ? token.slice(1, -1) : null;
+  if (inner !== null && /^-\d+$/.test(inner) && Array.isArray(cursor)) {
+    return cursor[cursor.length + Number(inner)];
+  }
+  const key = inner === null ? token : inner.replace(/^['"]|['"]$/g, "").replace(/\\(["'\\])/g, "$1");
+  return Object.prototype.hasOwnProperty.call(cursor, key) ? cursor[key] : void 0;
+}
+function walkWildcardPath(cursor, tokens, index) {
+  if (index >= tokens.length) return cursor;
+  const token = tokens[index];
+  if (token === "[*]") {
+    if (!Array.isArray(cursor)) return void 0;
+    const values = [];
+    for (let itemIndex = 0; itemIndex < cursor.length; itemIndex += 1) {
+      if (!Object.prototype.hasOwnProperty.call(cursor, itemIndex)) continue;
+      const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
+      if (result === void 0) continue;
+      if (isWildcardExpansion(result)) {
+        for (const value of result.values) values.push(value);
+      } else values.push(result);
+    }
+    return { [WILDCARD_EXPANSION]: true, values };
+  }
+  if (cursor === void 0 || cursor === null) return void 0;
+  return walkWildcardPath(navigatePathToken(cursor, token), tokens, index + 1);
+}
+function getByWildcardPath(source, tokens) {
+  const result = walkWildcardPath(source, tokens, 0);
+  return isWildcardExpansion(result) ? result.values : result;
+}
 function evalExpression(expression, runtime) {
   const text = String(expression || "").trim();
   if (!text) return "";
   if (text === "vars") return runtime.vars;
-  if (text === "suite") return runtime.suite;
+  if (text === "suite") return runtime.suite || runtime.suiteVars;
   if (text === "lastResponse") return runtime.lastResponse;
   if (text === "lastResponseBody") return runtime.lastResponseBody;
   if (text.startsWith("vars.")) {
@@ -665,9 +755,9 @@ function evalExpression(expression, runtime) {
   if (text.startsWith("vars[")) return getByPath(runtime.vars, text.slice(4));
   if (text.startsWith("suite.")) {
     const sub = text.slice(6);
-    return sub && !sub.startsWith(".") ? getByPath(runtime.suite, sub) : void 0;
+    return sub && !sub.startsWith(".") ? getByPath(runtime.suite || runtime.suiteVars, sub) : void 0;
   }
-  if (text.startsWith("suite[")) return getByPath(runtime.suite, text.slice(5));
+  if (text.startsWith("suite[")) return getByPath(runtime.suite || runtime.suiteVars, text.slice(5));
   if (text.startsWith("lastResponse.")) {
     const sub = text.slice(13);
     return sub && !sub.startsWith(".") ? getByPath(runtime.lastResponse, sub) : void 0;
@@ -713,6 +803,47 @@ function resolve(value, runtime) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolve(item, runtime)]));
   }
   return resolveString(value, runtime);
+}
+function templateExpressionRoot(expression) {
+  const text = String(expression || "").trim();
+  if (!text || text === "vars") return null;
+  if (text.startsWith("lastResponse")) return null;
+  let pathText;
+  if (text.startsWith("vars.")) pathText = text.slice(5);
+  else if (text.startsWith("vars[")) pathText = text.slice(4);
+  else pathText = text;
+  if (!pathText || pathText.startsWith(".")) return null;
+  const tokens = tokenizePath(pathText);
+  if (!tokens || !tokens.length) return null;
+  const token = tokens[0];
+  if (token.startsWith("[")) {
+    const inner = token.slice(1, -1).replace(/^['"]|['"]$/g, "");
+    return inner || null;
+  }
+  return token;
+}
+function collectMissingTemplateVars(value, vars, missing = /* @__PURE__ */ new Set(), seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value === "string") {
+    if (!value.includes("{{")) return missing;
+    for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+      const root = templateExpressionRoot(match[1]);
+      if (root && !Object.prototype.hasOwnProperty.call(vars || {}, root)) missing.add(root);
+    }
+    return missing;
+  }
+  if (value === null || typeof value !== "object" || seen.has(value)) return missing;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectMissingTemplateVars(item, vars, missing, seen);
+    return missing;
+  }
+  if (isPlainObject(value)) {
+    for (const item of Object.values(value)) collectMissingTemplateVars(item, vars, missing, seen);
+  }
+  return missing;
+}
+function missingTemplateVarWarnings(missing) {
+  return [...missing].map((name) => `\u6A21\u677F\u53D8\u91CF vars.${name} \u672A\u5B9A\u4E49\uFF0C\u5DF2\u6309\u7A7A\u4E32\u89E3\u6790\uFF08\u68C0\u67E5\u53D8\u91CF\u540D\u62FC\u5199\uFF0C\u6216\u8865\u5145 config/scenario vars\u3001extract \u4E0E --vars\uFF09`);
 }
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
 function resolveClone(value, runtime) {
@@ -877,6 +1008,92 @@ function formatAssertionContext(context) {
   if (context.assertionNo !== void 0) parts.push(`\u7B2C ${context.assertionNo} \u6761`);
   return parts.join(" ");
 }
+var SHAPE_KEYS = new Set(contract.assertions.shape.keys);
+var SHAPE_TYPES = new Set(contract.assertions.shape.types);
+function validateShapeSchema(schema, trail = "shape") {
+  if (!isPlainObject(schema)) throw new TypeError(`${trail} \u5FC5\u987B\u662F\u5BF9\u8C61\uFF08jsonSchema-lite \u5B50\u96C6\uFF09`);
+  const unknown = Object.keys(schema).filter((key) => !SHAPE_KEYS.has(key));
+  if (unknown.length) {
+    throw new TypeError(`${trail} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${[...SHAPE_KEYS].join("/")}`);
+  }
+  if (schema.type !== void 0 && !SHAPE_TYPES.has(schema.type)) {
+    throw new TypeError(`${trail}.type \u53EA\u652F\u6301 ${[...SHAPE_TYPES].join("/")}\uFF08\u5F53\u524D ${JSON.stringify(schema.type)}\uFF09`);
+  }
+  if (schema.required !== void 0) {
+    if (!Array.isArray(schema.required) || schema.required.some((name) => typeof name !== "string" || !name)) {
+      throw new TypeError(`${trail}.required \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\u6570\u7EC4`);
+    }
+  }
+  if (schema.properties !== void 0) {
+    if (!isPlainObject(schema.properties)) throw new TypeError(`${trail}.properties \u5FC5\u987B\u662F\u5BF9\u8C61`);
+    for (const [key, sub] of Object.entries(schema.properties)) {
+      validateShapeSchema(sub, `${trail}.properties.${key}`);
+    }
+  }
+  if (schema.items !== void 0) validateShapeSchema(schema.items, `${trail}.items`);
+  if (schema.enum !== void 0 && !Array.isArray(schema.enum)) {
+    throw new TypeError(`${trail}.enum \u5FC5\u987B\u662F\u6570\u7EC4`);
+  }
+  if (schema.additionalProperties !== void 0 && typeof schema.additionalProperties !== "boolean") {
+    throw new TypeError(`${trail}.additionalProperties \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
+  }
+  if (schema.type === void 0 && schema.required === void 0 && schema.properties === void 0 && schema.items === void 0 && schema.enum === void 0 && schema.additionalProperties === void 0) {
+    throw new TypeError(`${trail} \u81F3\u5C11\u9700\u8981\u58F0\u660E type/required/properties/items/enum/additionalProperties \u4E4B\u4E00`);
+  }
+  return schema;
+}
+function shapeActualType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
+}
+function shapeTypeMatches(type, value) {
+  if (type === "null") return value === null;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object") return isPlainObject(value);
+  if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+}
+function shapeErrors(schema, value, path4, errors) {
+  const type = schema.type || (schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0);
+  if (type && !shapeTypeMatches(type, value)) {
+    errors.push({ path: path4 || "(\u6839)", expected: `type: ${type}`, actual: shapeActualType(value), value });
+    return errors;
+  }
+  if (schema.enum !== void 0 && !schema.enum.some((candidate) => stableStringify(candidate) === stableStringify(value))) {
+    errors.push({ path: path4 || "(\u6839)", expected: `enum: ${JSON.stringify(schema.enum)}`, actual: value, value });
+  }
+  if (isPlainObject(value)) {
+    for (const name of schema.required || []) {
+      if (!Object.prototype.hasOwnProperty.call(value, name)) {
+        errors.push({ path: path4 ? `${path4}.${name}` : name, expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: "\u7F3A\u5931", value: void 0 });
+      }
+    }
+    const properties = schema.properties || {};
+    for (const [name, subSchema] of Object.entries(properties)) {
+      if (!Object.prototype.hasOwnProperty.call(value, name)) continue;
+      shapeErrors(subSchema, value[name], path4 ? `${path4}.${name}` : name, errors);
+    }
+    if (schema.additionalProperties === false) {
+      for (const name of Object.keys(value)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, name)) {
+          errors.push({ path: path4 ? `${path4}.${name}` : name, expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5", actual: value[name], value: value[name] });
+        }
+      }
+    }
+  }
+  if (Array.isArray(value) && schema.items !== void 0) {
+    value.forEach((item, index) => {
+      shapeErrors(schema.items, item, `${path4 || ""}[${index}]`, errors);
+    });
+  }
+  return errors;
+}
+function evaluateShape(schema, actual) {
+  return shapeErrors(schema, actual, "", []);
+}
 function validateAssertion(definition, context, options = {}) {
   const where = formatAssertionContext(context);
   const prefix = where ? `${where}\u65AD\u8A00\u65E0\u6548` : "\u65AD\u8A00\u65E0\u6548";
@@ -908,7 +1125,7 @@ function validateAssertion(definition, context, options = {}) {
       );
     }
     if (definition.path !== "" && !definition.path.includes("{{") && tokenizePath(definition.path) === null) {
-      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
+      throw new TypeError(`${prefix}: path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u5982 a.b\u3001list[-1]\u3001a["x>y"]\u3001items[*].id\uFF1B\u5F53\u524D ${JSON.stringify(definition.path)}\uFF09`);
     }
   }
   if (options.inEach && (definition.header !== void 0 || definition.target !== void 0 || definition.from !== void 0 && definition.from !== "body" && definition.from !== "vars")) {
@@ -928,6 +1145,9 @@ function validateAssertion(definition, context, options = {}) {
     } catch (error) {
       throw new TypeError(`${prefix}: matches \u671F\u671B\u503C\u4E0D\u662F\u5408\u6CD5\u6B63\u5219\u8868\u8FBE\u5F0F\uFF08${definition.matches}\uFF09: ${error.message}`);
     }
+  }
+  if (definition.shape !== void 0) {
+    validateShapeSchema(definition.shape, `${prefix}: shape`);
   }
   if (definition.each !== void 0) {
     const eachLabel = `${prefix}: each \u7684\u671F\u671B\u503C\u5FC5\u987B\u662F\u5B50\u65AD\u8A00\u5BF9\u8C61\u6216\u5176\u6570\u7EC4`;
@@ -949,7 +1169,10 @@ function assertionActual(definition, response, runtime) {
   if (definition.target === "duration") return response && typeof response === "object" ? response.durationMs : void 0;
   if (definition.header) return headerValue(response.headers, definition.header);
   if (definition.from === "vars") return definition.path ? getByPath(runtime.vars, definition.path) : runtime.vars;
-  if (definition.from === "suite") return definition.path ? getByPath(runtime.suite, definition.path) : runtime.suite;
+  if (definition.from === "suite") {
+    const suite = runtime.suite || runtime.suiteVars;
+    return definition.path ? getByPath(suite, definition.path) : suite;
+  }
   if (definition.from === "headers") return definition.path ? getHeaderByPath(response.headers, definition.path) : response.headers;
   if (definition.from === "bodyText") return response.bodyText;
   return definition.path ? getByPath(response.body, definition.path) : response.body;
@@ -995,6 +1218,7 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
   let passed = true;
   let reason = "";
   let eachFailures = null;
+  let shapeFailures = null;
   if (definition.exists !== void 0) {
     expected = Boolean(definition.exists);
     const exists = actual !== void 0 && actual !== null && actual !== "";
@@ -1021,6 +1245,16 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
       }
     } else {
       passed = passed && String(actual == null ? "" : actual).includes(String(expected));
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(definition, "shape")) {
+    expected = resolve(definition.shape, runtime);
+    if (isPlainObject(expected)) {
+      shapeFailures = evaluateShape(expected, actual);
+      if (shapeFailures.length) passed = false;
+    } else {
+      passed = false;
+      shapeFailures = [{ path: "(\u6839)", expected: "shape \u5B9A\u4E49\u5BF9\u8C61", actual: shapeActualType(expected), value: expected }];
     }
   }
   if (Object.prototype.hasOwnProperty.call(definition, "each")) {
@@ -1093,8 +1327,9 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     expected,
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
-    // detail 仅在 each 存在失败元素时出现；通过时保持既有四字段形状（旧消费方不受影响）
-    ...eachFailures ? { detail: eachFailures } : {}
+    // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）
+    ...eachFailures ? { detail: eachFailures } : {},
+    ...shapeFailures ? { detail: shapeFailures } : {}
   };
 }
 function normalizeWhenDefinition(definition) {
@@ -1152,10 +1387,21 @@ function setRuntimeVar(vars, name, value) {
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
+  const storeSuite = (name, value) => {
+    if (!isPlainObject(runtime.suite)) runtime.suite = {};
+    setRuntimeVar(runtime.suite, name, value);
+    if (runtime.suiteVars !== runtime.suite) {
+      if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = runtime.suite;
+      else setRuntimeVar(runtime.suiteVars, name, value);
+    }
+  };
+  const store = (name, value, suiteScope) => {
+    if (suiteScope) storeSuite(name, value);
+    else setRuntimeVar(runtime.vars, name, value);
+  };
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
     assertNotReservedVar(definition.name, "extract \u53D8\u91CF");
-    const target = definition.scope === "suite" ? runtime.suite || (runtime.suite = {}) : runtime.vars;
     const hasDefault = definition.default !== void 0;
     if (definition.required === true && hasDefault) {
       throw new TypeError(`extract \u53D8\u91CF ${definition.name}: required: true \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00`);
@@ -1169,7 +1415,7 @@ function applyExtract(step, response, runtime) {
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
     if (value === void 0) {
       if (hasDefault) {
-        setRuntimeVar(target, definition.name, resolve(definition.default, runtime));
+        store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
         continue;
       }
       if (definition.required === true) {
@@ -1183,7 +1429,7 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    setRuntimeVar(target, definition.name, value);
+    store(definition.name, value, definition.scope === "suite");
   }
   return { warnings, failures };
 }
@@ -1348,11 +1594,19 @@ function defaultUuidHex() {
   if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
   return globalThis.crypto.randomUUID().replace(/-/g, "");
 }
+function resolveNowSource(deps = {}) {
+  const candidate = deps.now ?? deps.clock;
+  if (typeof candidate === "function") return candidate;
+  if (candidate && typeof candidate.now === "function") return () => candidate.now();
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return () => candidate;
+  return Date.now;
+}
 function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
   const name = definition.name;
   const uuidHex = deps.uuidHex || defaultUuidHex;
+  const now2 = resolveNowSource(deps);
   if (definition.type === "timestamp") {
-    const base = Date.now() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
+    const base = now2() + (definition.offset == null ? 0 : parseTimestampOffset(definition.offset));
     if (definition.format != null) {
       if (definition.unit != null) {
         throw new Error(`generatedVars timestamp \u7684 format \u4E0E unit \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00: ${name}`);
@@ -1459,10 +1713,62 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
   }
   throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
 }
+var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?key|cookie)/i;
+function isSecretVarName(name) {
+  return SECRET_VAR_PATTERN.test(String(name || ""));
+}
 function maskSecret(value) {
   if (value === void 0 || value === null || value === "") return "";
   const text = String(value);
   return text.length > 12 ? `${text.slice(0, 4)}...${text.slice(-4)}` : "***";
+}
+function collectSecretValues(vars, extra = []) {
+  const secrets = /* @__PURE__ */ new Set();
+  for (const [name, value] of Object.entries(vars || {})) {
+    if (!isSecretVarName(name)) continue;
+    if (value === void 0 || value === null || value === "") continue;
+    if (typeof value === "object") continue;
+    secrets.add(String(value));
+  }
+  for (const value of extra || []) {
+    if (value === void 0 || value === null || value === "") continue;
+    secrets.add(String(value));
+  }
+  return [...secrets];
+}
+function redactSecrets(value, secrets, seen = /* @__PURE__ */ new WeakMap()) {
+  if (typeof value === "string") {
+    let text = value;
+    for (const secret of secrets || []) {
+      if (!secret) continue;
+      if (text === secret) return maskSecret(secret);
+      if (secret.length >= 4 && text.includes(secret)) {
+        text = text.split(secret).join(maskSecret(secret));
+      }
+    }
+    return text;
+  }
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const result2 = [];
+    seen.set(value, result2);
+    for (const item of value) result2.push(redactSecrets(item, secrets, seen));
+    return result2;
+  }
+  if (!isPlainObject(value)) return value;
+  const result = {};
+  seen.set(value, result);
+  for (const [key, item] of Object.entries(value)) {
+    if (isSecretVarName(key) && item !== void 0 && item !== null && item !== "") {
+      if (Array.isArray(item)) result[key] = item.map((entry) => entry !== null && typeof entry === "object" ? "***" : maskSecret(entry));
+      else if (typeof item === "object") result[key] = "***";
+      else result[key] = maskSecret(item);
+    } else {
+      result[key] = redactSecrets(item, secrets, seen);
+    }
+  }
+  return result;
 }
 function sanitizeSensitive(value, key = "", sensitiveNames = []) {
   return value;
@@ -1582,7 +1888,16 @@ function findKeySuggestion(key, allowed) {
 function looksLikeKeyTypo(key, allowed) {
   return findKeySuggestion(key, allowed) !== void 0;
 }
-var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter");
+var HTTP_STEP_KEYS = contract.scenario.stepKeys.filter((key) => key !== "name" && key !== "adapter" && key !== "always");
+function normalizeTags(tags, label) {
+  if (tags === void 0) return [];
+  invariant(Array.isArray(tags), `${label}\u7684 tags \u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u6570\u7EC4`);
+  const normalized = tags.map((tag, index) => {
+    invariant(nonEmptyString(tag), `${label}\u7684 tags \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32`);
+    return tag.trim();
+  });
+  return [...new Set(normalized)];
+}
 function unknownKeysMessage(label, unknownKeys, allowed, hint = "") {
   const described = unknownKeys.map((key) => {
     const suggestion = findKeySuggestion(key, allowed);
@@ -1647,7 +1962,7 @@ function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSe
           !TEMPLATE_OPERATOR_CHARS.test(expression),
           `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u5141\u8BB8\u4F7F\u7528\u8FD0\u7B97\u7B26\uFF1A${TEMPLATE_PATH_HINT}`
         );
-        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
+        invariant(false, `${trail} \u7684\u6A21\u677F {{${expression}}} \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF1A\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF08vars.a\u3001list[-1]\u3001vars["a>b"]\u3001items[*].id\uFF09\uFF0C\u4E0D\u5141\u8BB8\u7A7A\u4E0B\u6807\u6216\u672A\u95ED\u5408\u62EC\u53F7`);
         continue;
       }
       for (const token of tokens) {
@@ -1698,6 +2013,7 @@ function defineScenario(input) {
     unknownKeysMessage(`\u573A\u666F ${input.name}`, unknownScenarioKeys, contract.scenario.keys, "\uFF08\u573A\u666F\u9876\u5C42\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09")
   );
   assertNoReservedVars(input.vars, `\u573A\u666F ${input.name} \u7684 vars`);
+  const scenarioTags = normalizeTags(input.tags, `\u573A\u666F ${input.name}`);
   assertNoReservedVars(input.envVars, `\u573A\u666F ${input.name} \u7684 envVars`);
   assertTemplatePathsOnly(input, `\u573A\u666F ${input.name}`);
   let generatedVarIndex = 0;
@@ -1790,6 +2106,20 @@ function defineScenario(input) {
       invariant(Number.isInteger(maxAttempts) && maxAttempts >= 1, `\u6B65\u9AA4 ${step.name} \u7684 maxAttempts \u5FC5\u987B\u662F\u6B63\u6574\u6570`);
       invariant(Number.isFinite(intervalMs) && intervalMs >= 0, `\u6B65\u9AA4 ${step.name} \u7684 intervalMs \u4E0D\u80FD\u4E3A\u8D1F\u6570`);
       invariant(Number.isFinite(maxElapsedMs) && maxElapsedMs > 0, `\u6B65\u9AA4 ${step.name} \u7684 maxElapsedMs \u5FC5\u987B\u662F\u6B63\u6570`);
+      if (step.retryUntil.intervalFactor !== void 0) {
+        const intervalFactor = Number(step.retryUntil.intervalFactor);
+        invariant(
+          Number.isFinite(intervalFactor) && intervalFactor >= 1,
+          `\u6B65\u9AA4 ${step.name} \u7684 intervalFactor \u5FC5\u987B\u662F \u22651 \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.intervalFactor)}\uFF09`
+        );
+      }
+      if (step.retryUntil.maxIntervalMs !== void 0) {
+        const maxIntervalMs = Number(step.retryUntil.maxIntervalMs);
+        invariant(
+          Number.isFinite(maxIntervalMs) && maxIntervalMs >= intervalMs,
+          `\u6B65\u9AA4 ${step.name} \u7684 maxIntervalMs \u5FC5\u987B\u662F \u2265 intervalMs \u7684\u6709\u9650\u6570\u5B57\uFF08\u5F53\u524D ${String(step.retryUntil.maxIntervalMs)}\uFF0CintervalMs=${intervalMs}\uFF09`
+        );
+      }
       if (step.retryUntil.retryOn !== void 0) {
         invariant(
           Array.isArray(step.retryUntil.retryOn),
@@ -1802,6 +2132,9 @@ function defineScenario(input) {
           );
         }
       }
+    }
+    if (step.always !== void 0) {
+      invariant(typeof step.always === "boolean", `\u6B65\u9AA4 ${step.name} \u7684 always \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
     if (step.extract !== void 0) {
       invariant(Array.isArray(step.extract), `\u6B65\u9AA4 ${step.name} \u7684 extract \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -1830,7 +2163,7 @@ function defineScenario(input) {
         if (item.scope !== void 0) {
           invariant(
             contract.extract.scopes.includes(item.scope),
-            `${label} \u7684 scope \u53EA\u652F\u6301 ${contract.extract.scopes.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.scope)}\uFF0C\u7F3A\u7701\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09`
+            `${label} \u7684 scope \u53EA\u652F\u6301 ${contract.extract.scopes.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(item.scope)}\uFF0C\u7F3A\u7701 step \u4EC5\u5F53\u524D\u573A\u666F\u53EF\u89C1\uFF1Bsuite \u5199\u5165\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF09`
           );
         }
         if (item.header !== void 0) {
@@ -1854,7 +2187,7 @@ function defineScenario(input) {
         if (item.path !== void 0) {
           invariant(
             typeof item.path === "string" && !item.path.includes("{{") && (item.path === "" || tokenizePath(item.path) !== null),
-            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
+            `${label} \u7684 path \u4E0D\u662F\u5408\u6CD5\u8DEF\u5F84\u5199\u6CD5\uFF08\u652F\u6301 \u70B9\u6BB5/\u6574\u6570\u4E0B\u6807/\u5F15\u53F7\u952E/\u901A\u914D\u6BB5 [*]\uFF0C\u4E0D\u652F\u6301 {{ }} \u6A21\u677F\uFF1B\u5F53\u524D ${JSON.stringify(item.path)}\uFF09`
           );
         }
       });
@@ -1941,7 +2274,7 @@ function defineScenario(input) {
   });
   const failurePolicy = input.failurePolicy || "stop";
   invariant(contract.scenario.failurePolicies.includes(failurePolicy), "failurePolicy \u53EA\u80FD\u662F stop \u6216 continue");
-  return { ...input, failurePolicy, steps: [...input.steps] };
+  return { ...input, failurePolicy, tags: scenarioTags, steps: [...input.steps] };
 }
 function defineConfig(input) {
   invariant(isPlainObject(input), "\u914D\u7F6E\u5FC5\u987B\u662F\u5BF9\u8C61");
@@ -1952,9 +2285,14 @@ function defineConfig(input) {
   const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
     invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
     assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
+    if (env.vars !== void 0) {
+      invariant(isPlainObject(env.vars), `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      assertNoReservedVars(env.vars, `\u73AF\u5883 ${env.key || "(\u672A\u547D\u540D)"} \u7684 vars`);
+    }
     return {
       ...env,
-      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`)
+      globals: normalizeGlobals(env.globals, `\u73AF\u5883 ${env.key} \u7684`),
+      vars: env.vars ? { ...env.vars } : {}
     };
   }) : [];
   for (const env of envs) {
@@ -1975,7 +2313,7 @@ function defineConfig(input) {
     if (entry.manual !== void 0) {
       invariant(typeof entry.manual === "boolean", `\u573A\u666F ${id} \u7684 manual \u5FC5\u987B\u662F\u5E03\u5C14\u503C`);
     }
-    return { ...entry, id, name: entry.name || id, url };
+    return { ...entry, id, name: entry.name || id, url, tags: normalizeTags(entry.tags, `\u573A\u666F ${id}`) };
   });
   assertUnique(scenarios, "id", "\u573A\u666F id");
   const variables = Array.isArray(input.variables) ? input.variables.map((item, index) => {
@@ -2084,6 +2422,20 @@ function describeError(error) {
   const message = String(error?.message || error || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25");
   const causeDetail = error?.cause ? error.cause.code || error.cause.message || String(error.cause) : "";
   return causeDetail && !message.includes(causeDetail) ? `${message}\uFF08${causeDetail}\uFF09` : message;
+}
+function retryBackoffIntervalMs(retry, attempt, maxElapsedMs) {
+  const rawIntervalMs = Number(retry?.intervalMs);
+  const baseIntervalMs = Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3;
+  const rawFactor = Number(retry?.intervalFactor);
+  const intervalFactor = Number.isFinite(rawFactor) && rawFactor >= 1 ? rawFactor : 1;
+  const rawMaxIntervalMs = Number(retry?.maxIntervalMs);
+  const maxIntervalMs = Number.isFinite(rawMaxIntervalMs) && rawMaxIntervalMs >= 0 ? rawMaxIntervalMs : Infinity;
+  let computed = baseIntervalMs * Math.pow(intervalFactor, Math.max(0, attempt - 1));
+  if (!Number.isFinite(computed)) {
+    computed = Number.isFinite(maxIntervalMs) ? maxIntervalMs : maxElapsedMs;
+  }
+  computed = Math.min(computed, maxIntervalMs);
+  return Math.max(100, computed);
 }
 function delay(milliseconds, signal) {
   if (!milliseconds) return Promise.resolve();
@@ -2209,23 +2561,40 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
     if (!contract.generatedVars.types.includes(definition.type)) {
       throw new Error(`\u4E0D\u652F\u6301\u7684 generatedVars \u7C7B\u578B: ${definition.type}`);
     }
-    applyGeneratedVar(definition, vars, identifiers);
+    applyGeneratedVar(definition, vars, identifiers, { now: options.now, clock: options.clock });
   }
   return vars;
 }
 function createRuntime(scenario, options = {}) {
   const config = options.config || {};
-  return {
+  const suite = isPlainObject(options.suite) ? options.suite : isPlainObject(options.suiteVars) ? options.suiteVars : {};
+  const runtime = {
     vars: buildGeneratedVars(
       scenario,
-      { ...config.vars || {}, ...options.vars || {} },
-      options.environmentVariables || {}
+      { ...suite, ...config.vars || {}, ...options.vars || {} },
+      options.environmentVariables || {},
+      { now: options.now, clock: options.clock }
     ),
-    // suite 是本次 run 跨场景共享变量：同一对象引用会传给后续场景，写入顺序即场景执行顺序
-    suite: options.suite && typeof options.suite === "object" ? options.suite : {},
+    // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
+    // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
+    suite,
+    suiteVars: suite,
     lastResponse: null,
-    lastResponseBody: null
+    lastResponseBody: null,
+    // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
+    cookieJar: []
   };
+  return runtime;
+}
+function collectStepMissingVars(step, runtime, missing) {
+  collectMissingTemplateVars(step.path, runtime.vars, missing);
+  collectMissingTemplateVars(step.params, runtime.vars, missing);
+  collectMissingTemplateVars(step.request, runtime.vars, missing);
+  collectMissingTemplateVars(step.when, runtime.vars, missing);
+  collectMissingTemplateVars(step.assertions, runtime.vars, missing);
+  collectMissingTemplateVars(step.extract, runtime.vars, missing);
+  collectMissingTemplateVars(step.saveResponseAs, runtime.vars, missing);
+  return missing;
 }
 function chooseAdapter(step, adapters) {
   if (step.adapter !== void 0) {
@@ -2363,10 +2732,79 @@ function decoderForContentType(contentType) {
     return new TextDecoder();
   }
 }
+var SET_COOKIES = Symbol("scenario-test.setCookies");
+function defaultCookiePath(pathname) {
+  const index = String(pathname || "/").lastIndexOf("/");
+  if (index <= 0) return "/";
+  return String(pathname).slice(0, index) || "/";
+}
+function parseSetCookie(line, requestUrl) {
+  const text = String(line || "").trim();
+  if (!text) return null;
+  const parts = text.split(";");
+  const pair = parts.shift() || "";
+  const separator = pair.indexOf("=");
+  if (separator <= 0) return null;
+  const cookie = {
+    name: pair.slice(0, separator).trim(),
+    value: pair.slice(separator + 1).trim(),
+    domain: requestUrl.hostname.toLowerCase(),
+    path: defaultCookiePath(requestUrl.pathname),
+    expiresAt: Infinity,
+    secure: false
+  };
+  for (const attribute of parts) {
+    const eq = attribute.indexOf("=");
+    const key = (eq >= 0 ? attribute.slice(0, eq) : attribute).trim().toLowerCase();
+    const value = eq >= 0 ? attribute.slice(eq + 1).trim() : "";
+    if (key === "domain" && value) cookie.domain = value.replace(/^\./, "").toLowerCase();
+    else if (key === "path" && value.startsWith("/")) cookie.path = value;
+    else if (key === "max-age") {
+      const seconds = Number(value);
+      if (Number.isFinite(seconds)) cookie.expiresAt = Date.now() + seconds * 1e3;
+    } else if (key === "expires") {
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) cookie.expiresAt = timestamp;
+    } else if (key === "secure") cookie.secure = true;
+  }
+  return cookie;
+}
+function hostMatchesCookie(hostname, domain) {
+  const host = String(hostname || "").toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`);
+}
+function pathMatchesCookie(pathname, cookiePath) {
+  if (pathname === cookiePath) return true;
+  const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
+  return pathname.startsWith(prefix);
+}
+function activeJarCookies(jar, url) {
+  return (jar || []).filter((cookie) => cookie.expiresAt > Date.now() && hostMatchesCookie(url.hostname, cookie.domain) && pathMatchesCookie(url.pathname || "/", cookie.path) && (!cookie.secure || url.protocol === "https:"));
+}
+function storeSetCookies(runtime, lines, requestUrl) {
+  if (!lines || !lines.length) return;
+  if (!Array.isArray(runtime.cookieJar)) runtime.cookieJar = [];
+  for (const line of lines) {
+    const cookie = parseSetCookie(line, requestUrl);
+    if (!cookie) continue;
+    runtime.cookieJar = runtime.cookieJar.filter((item) => !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
+    if (cookie.expiresAt > Date.now()) runtime.cookieJar.push(cookie);
+  }
+}
+function applyCookieJar(headers, runtime, url) {
+  const explicitKey = Object.keys(headers).find((key) => key.toLowerCase() === "cookie");
+  const explicitText = explicitKey ? String(headers[explicitKey] || "") : "";
+  const explicitNames = new Set(explicitText.split(";").map((pair) => pair.split("=")[0].trim().toLowerCase()).filter(Boolean));
+  const jarText = activeJarCookies(runtime.cookieJar, url).filter((cookie) => !explicitNames.has(cookie.name.toLowerCase())).map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+  if (!jarText) return;
+  if (explicitKey) headers[explicitKey] = `${jarText}; ${explicitText}`;
+  else headers.Cookie = jarText;
+}
 async function readResponse(response, step, io, runtime, signal, options = {}) {
   const headers = headersToObject(response.headers);
   const contentType = String(headers["content-type"] || "");
   const maxResponseBytes = resolveMaxResponseBytes(options);
+  const setCookies = typeof response.headers?.getSetCookie === "function" ? response.headers.getSetCookie() : headers["set-cookie"] ? [headers["set-cookie"]] : [];
   if (step.saveResponseAs) {
     const relativePath = resolveString(step.saveResponseAs, runtime);
     const metadata = { contentType, headers, maxResponseBytes };
@@ -2376,7 +2814,9 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
         createSaveBodyStream(response.body, signal, maxResponseBytes),
         metadata
       );
-      return { status: response.status, headers, body: saved, bodyText: null };
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
     }
     if (io?.saveResponse) {
       const chunks2 = await readBodyChunks(response, signal, maxResponseBytes);
@@ -2390,13 +2830,17 @@ async function readResponse(response, step, io, runtime, signal, options = {}) {
         }
       }
       const saved = await io.saveResponse(relativePath, data, metadata);
-      return { status: response.status, headers, body: saved, bodyText: null };
+      const savedResponse = { status: response.status, headers, body: saved, bodyText: null };
+      if (setCookies.length) savedResponse[SET_COOKIES] = setCookies;
+      return savedResponse;
     }
   }
   const chunks = await readBodyChunks(response, signal, maxResponseBytes);
   const decoder = decoderForContentType(contentType);
   const bodyText = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode();
-  return { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
+  const responseData = { status: response.status, headers, body: parseBody(bodyText, contentType), bodyText };
+  if (setCookies.length) responseData[SET_COOKIES] = setCookies;
+  return responseData;
 }
 async function executeHttp(step, runtime, options) {
   const request = resolveClone(step.request || {}, runtime) || {};
@@ -2422,6 +2866,16 @@ async function executeHttp(step, runtime, options) {
   }
   if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
     headers.Authorization = options.authorization;
+  }
+  const requestUrl = joinUrl(options.baseUrl, requestPath);
+  let parsedRequestUrl = null;
+  if (options.cookieJar) {
+    try {
+      parsedRequestUrl = new URL(requestUrl);
+    } catch {
+      parsedRequestUrl = null;
+    }
+    if (parsedRequestUrl) applyCookieJar(headers, runtime, parsedRequestUrl);
   }
   const fetchOptions = { method, headers };
   if (request.credentials !== void 0) fetchOptions.credentials = request.credentials;
@@ -2452,8 +2906,11 @@ async function executeHttp(step, runtime, options) {
   const requestSignal = createRequestSignal(options.signal, timeoutMs);
   fetchOptions.signal = requestSignal.signal;
   try {
-    const response = await options.fetch(joinUrl(options.baseUrl, requestPath), fetchOptions);
+    const response = await options.fetch(requestUrl, fetchOptions);
     const responseData = await readResponse(response, step, options.io, runtime, requestSignal.signal, options);
+    if (options.cookieJar && parsedRequestUrl) {
+      storeSetCookies(runtime, responseData[SET_COOKIES], parsedRequestUrl);
+    }
     return { method, path: requestPath, request: { headers, body: request.body }, response: responseData };
   } catch (error) {
     if (error && typeof error === "object" && !error.scenarioContext) {
@@ -2586,6 +3043,7 @@ function createEngine(engineOptions = {}) {
     if (step.when !== void 0) {
       const shouldRun = evaluateWhen(step.when, runtime, { stepName: step.name });
       if (!shouldRun) {
+        const missing = collectMissingTemplateVars(step.when, runtime.vars, /* @__PURE__ */ new Set());
         return {
           name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
           method: "SKIP",
@@ -2594,8 +3052,9 @@ function createEngine(engineOptions = {}) {
           duration: now() - startedAt,
           passed: true,
           skipped: true,
+          always: step.always === true,
           error: "",
-          warnings: [],
+          warnings: missingTemplateVarWarnings(missing),
           assertions: [],
           request: null,
           response: null
@@ -2605,6 +3064,7 @@ function createEngine(engineOptions = {}) {
     let lastExecution;
     let assertions = [];
     let stepWarnings = [];
+    const missingVars = /* @__PURE__ */ new Set();
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
     const retryOn = new Set(
@@ -2640,6 +3100,7 @@ function createEngine(engineOptions = {}) {
         let attemptError = null;
         let attemptErrorType = "";
         try {
+          collectStepMissingVars(step, runtime, missingVars);
           const selection = chooseAdapter(step, adapters);
           const attemptStartedAt = now();
           const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
@@ -2651,7 +3112,7 @@ function createEngine(engineOptions = {}) {
           runtime.lastResponse = lastExecution.response;
           runtime.lastResponseBody = lastExecution.response.body;
           const extractResult = applyExtract(step, lastExecution.response, runtime);
-          stepWarnings = extractResult.warnings;
+          stepWarnings = [...missingTemplateVarWarnings(missingVars), ...extractResult.warnings];
           assertions = buildAssertions(step, lastExecution.response, runtime, { stepName: step.name });
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
@@ -2674,12 +3135,11 @@ function createEngine(engineOptions = {}) {
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
         if (!attemptError && (assertions.every((item) => item.passed) || attempt === totalAttempts || !retryOn.has("assertion"))) break;
-        const rawIntervalMs = Number(retry.intervalMs);
-        const intervalMs = Math.max(100, Number.isFinite(rawIntervalMs) ? rawIntervalMs : 2e3);
+        const intervalMs = retryBackoffIntervalMs(retry, attempt, maxElapsedMs);
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const remainingForWait = enforceAttemptDeadline ? Math.max(0, maxElapsedMs - (now() - retryStartTime)) : Infinity;
+        const remainingForWait = Math.max(0, maxElapsedMs - (now() - retryStartTime));
         const waitBeforeCallback = Math.max(0, Math.min(intervalMs, remainingForWait));
         const attemptCallback = runOptions.onAttempt ?? engineOptions.onAttempt;
         if (attemptCallback) {
@@ -2716,8 +3176,11 @@ function createEngine(engineOptions = {}) {
         if (enforceAttemptDeadline && now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
-        const waitMs = enforceAttemptDeadline ? Math.max(0, Math.min(intervalMs, maxElapsedMs - (now() - retryStartTime))) : intervalMs;
+        const remainingBeforeWait = maxElapsedMs - (now() - retryStartTime);
+        const waitMs = Math.max(0, Math.min(intervalMs, remainingBeforeWait));
+        const waitConsumesDeadline = enforceAttemptDeadline && intervalMs >= remainingBeforeWait;
         await delay(waitMs, options.signal);
+        if (waitConsumesDeadline) throw retryTimeoutError(attempt);
       }
       const failed = assertions.find((item) => !item.passed);
       return {
@@ -2727,6 +3190,7 @@ function createEngine(engineOptions = {}) {
         status: lastExecution.response.status,
         duration: now() - startedAt,
         passed: !failed,
+        always: step.always === true,
         error: failed?.name || "",
         warnings: stepWarnings,
         assertions,
@@ -2752,6 +3216,7 @@ function createEngine(engineOptions = {}) {
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
+        always: step.always === true,
         cancelled,
         timedOut,
         errorCode,
@@ -2771,12 +3236,46 @@ function createEngine(engineOptions = {}) {
     const runtime = createRuntime(scenario, {
       config,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
-      suite: runOptions.suite !== void 0 ? runOptions.suite : engineOptions.suite,
-      environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables
+      environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+      // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
+      suite: runOptions.suite !== void 0 ? runOptions.suite : runOptions.suiteVars !== void 0 ? runOptions.suiteVars : engineOptions.suite !== void 0 ? engineOptions.suite : engineOptions.suiteVars,
+      // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
+      now: runOptions.now ?? engineOptions.now,
+      clock: runOptions.clock ?? engineOptions.clock
     });
     const results = [];
+    let halted = false;
     for (let index = 0; index < scenario.steps.length; index += 1) {
-      const result = await runStep(scenario.steps[index], runtime, { ...runOptions, config });
+      const step = scenario.steps[index];
+      if (halted && step.always !== true) {
+        if (runOptions.signal?.aborted) break;
+        const skipped2 = {
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: "SKIP",
+          path: "",
+          status: "SKIPPED",
+          duration: 0,
+          passed: true,
+          skipped: true,
+          error: "",
+          warnings: ["\u524D\u7F6E\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\uFF0C\u975E always \u6B65\u9AA4\u672A\u6267\u884C"],
+          assertions: [],
+          request: null,
+          response: null,
+          stepNo: index + 1
+        };
+        results.push(skipped2);
+        try {
+          await (runOptions.onStep ?? engineOptions.onStep)?.(skipped2, index, runtime);
+        } catch (hookError) {
+          skipped2.passed = false;
+          skipped2.skipped = false;
+          skipped2.status = "ERROR";
+          skipped2.error = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        }
+        continue;
+      }
+      const result = await runStep(step, runtime, { ...runOptions, config });
       result.stepNo = index + 1;
       results.push(result);
       try {
@@ -2789,7 +3288,7 @@ function createEngine(engineOptions = {}) {
         result.error = message;
         result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
       }
-      if (!result.passed && scenario.failurePolicy !== "continue") break;
+      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
       if (runOptions.signal?.aborted) break;
     }
     const skipped = results.filter((item) => item.skipped).length;
@@ -2808,9 +3307,13 @@ function createEngine(engineOptions = {}) {
       failed,
       skipped,
       results,
+      // 取消导致未进入循环的剩余步骤（供 JUnit/报告标注）
+      unexecuted: scenario.steps.slice(results.length).map((step) => step.name || "\u672A\u547D\u540D\u6B65\u9AA4"),
       vars: runtime.vars,
       // 报告保留本次场景结束时的 suite 快照；共享对象继续被后续场景使用
-      suite: { ...runtime.suite }
+      // suiteVars 为 v16 兼容别名，与 suite 同内容
+      suite: { ...runtime.suite || runtime.suiteVars || {} },
+      suiteVars: { ...runtime.suite || runtime.suiteVars || {} }
     };
   }
   return { runStep, runScenario: runScenario2, createRuntime };
@@ -2834,7 +3337,8 @@ function buildCapabilities(inputContract = contract) {
       targets: [...assertions.targets || []],
       from: [...assertions.from || []],
       note: assertions.note,
-      numericOperators: [...assertions.numericOperators]
+      numericOperators: [...assertions.numericOperators],
+      ...assertions.shape ? { shape: { keys: [...assertions.shape.keys], types: [...assertions.shape.types] } } : {}
     },
     when: {
       sources: [...when.sources],
@@ -2844,10 +3348,10 @@ function buildCapabilities(inputContract = contract) {
     extract: {
       metaKeys: [...extract.metaKeys || []],
       from: [...extract.from],
+      scopes: [...extract.scopes || []],
       targets: [...extract.targets || []],
       required: extract.required,
       default: extract.default,
-      scopes: [...extract.scopes || []],
       scope: extract.scope,
       note: extract.note
     },
@@ -2868,7 +3372,8 @@ function buildCapabilities(inputContract = contract) {
         protocol: config.baseUrl.protocol,
         note: config.baseUrl.note
       },
-      manual: { ...config.manual }
+      manual: { ...config.manual },
+      tags: { ...config.tags || {} }
     },
     retryUntil: {
       keys: [...retryUntil.keys],
@@ -2879,7 +3384,9 @@ function buildCapabilities(inputContract = contract) {
     scenario: {
       keys: [...scenario.keys],
       stepKeys: [...scenario.stepKeys],
-      failurePolicies: [...scenario.failurePolicies]
+      failurePolicies: [...scenario.failurePolicies],
+      retryUntilKeys: [...scenario.retryUntilKeys || []],
+      ...scenario.note ? { note: scenario.note } : {}
     },
     cli: {
       commands: [...cli.commands],
@@ -2928,11 +3435,11 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`  ${capabilities.when.note}`);
   lines.push("");
   lines.push(`extract: from = ${capabilities.extract.from.join(" | ")}\uFF08\u9ED8\u8BA4 body\uFF09, required: ${capabilities.extract.required}`);
+  if (capabilities.extract.scopes?.length) {
+    lines.push(`  \u63D0\u53D6\u4F5C\u7528\u57DF scope: ${capabilities.extract.scopes.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.extract.scope}\uFF1Bsuite \u4E3A\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF09`);
+  }
   if (capabilities.extract.targets?.length) {
     lines.push(`  \u63D0\u53D6\u76EE\u6807 target: ${capabilities.extract.targets.join(" / ")}\uFF1B\u5141\u8BB8\u5B57\u6BB5: ${capabilities.extract.metaKeys.join(" / ")}`);
-  }
-  if (capabilities.extract.scopes?.length) {
-    lines.push(`  \u63D0\u53D6\u4F5C\u7528\u57DF scope: ${capabilities.extract.scopes.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.extract.scope}\uFF1Bsuite \u4E3A\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\uFF09`);
   }
   lines.push(`  ${capabilities.extract.note}`);
   lines.push("");
@@ -2953,6 +3460,7 @@ function renderCapabilitiesText(capabilities) {
     lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
     lines.push(`  ${capabilities.retryUntil.note}`);
   }
+  if (capabilities.scenario.note) lines.push(`  ${capabilities.scenario.note}`);
   lines.push("");
   lines.push("CLI \u547D\u4EE4:");
   for (const command of capabilities.cli.commands) {
@@ -3215,6 +3723,7 @@ function createApp() {
   PHONE_TEST_PREFIXES,
   RESERVED_VARS,
   SAVED_RESPONSE,
+  SECRET_VAR_PATTERN,
   TIMESTAMP_FORMAT_PATTERN,
   TIMESTAMP_OFFSET_UNITS,
   USCC_ALPHABET,
@@ -3233,6 +3742,8 @@ function createApp() {
   clearAdapters,
   clearScenarios,
   clone,
+  collectMissingTemplateVars,
+  collectSecretValues,
   contract,
   createApp,
   createEngine,
@@ -3242,6 +3753,7 @@ function createApp() {
   defineScenario,
   evalExpression,
   evaluateAssertion,
+  evaluateShape,
   evaluateWhen,
   executeDefinitionFile,
   formatAssertionContext,
@@ -3259,6 +3771,7 @@ function createApp() {
   headersToObject,
   isGlobalParam,
   isPlainObject,
+  isSecretVarName,
   joinUrl,
   listAdapters,
   loadConfigFile,
@@ -3267,6 +3780,7 @@ function createApp() {
   maskSecret,
   md5,
   mergeGlobals,
+  missingTemplateVarWarnings,
   normalizeByteLimit,
   normalizeEnumDefinition,
   normalizeGlobalParam,
@@ -3276,6 +3790,7 @@ function createApp() {
   pickWeightedIndex,
   queryKeys,
   queryPairs,
+  redactSecrets,
   registerAdapter,
   registerConfig,
   registerScenario,
@@ -3289,11 +3804,13 @@ function createApp() {
   seedToUnit,
   setRuntimeVar,
   splitUrlFragment,
+  templateExpressionRoot,
   tokenizePath,
   unregisterAdapter,
   usccCheckChar,
   validateAdapter,
   validateAdapterResponse,
-  validateAssertion
+  validateAssertion,
+  validateShapeSchema
 });
 //# sourceMappingURL=scenario-test.cjs.map
