@@ -90,6 +90,13 @@ test("d.ts RequestDefinition 覆盖 request.path 与 request.timeoutMs", () => {
     assert.ok(members.has("timeoutMs"), "d.ts RequestDefinition 缺少 request.timeoutMs");
 });
 
+test("d.ts RetryUntil 覆盖退避字段", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    const members = interfaceMembers(dts, "RetryUntil");
+    assert.ok(members.has("intervalFactor"), "d.ts RetryUntil 缺少 intervalFactor");
+    assert.ok(members.has("maxIntervalMs"), "d.ts RetryUntil 缺少 maxIntervalMs");
+});
+
 test("d.ts Assertion/WhenDefinition 接口属性必须覆盖 contract 全部断言操作符（防手写接口漏新增操作符）", () => {
     const dts = fs.readFileSync(dtsPath, "utf8");
     const operators = Object.keys(contract.assertions.operators);

@@ -5,11 +5,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 契约 v16
+
+- 断言新增 `shape`（jsonSchema-lite）：`type`/`required`/`properties`/`items`/`enum`/`additionalProperties`，失败明细按字段路径定位，可在 `each` 子断言内嵌套；未知 shape 键定义期拒绝。
+- 步骤新增 `always: true`：前置普通步骤失败（`failurePolicy: stop`）后仍执行清理步骤；用户取消时不执行，未执行的普通步骤在报告中标记 SKIP。
+- `extract` 新增 `scope: "suite"`：提取值写入本次 run 共享变量，后续场景可直接引用（如登录 token）。
+- 配置场景项/场景顶层新增 `tags`，`run --tag` 支持筛选（重复参数 OR、逗号分隔 AND）。
+- 环境新增 `envs[].vars`：优先级 `config.vars < env.vars < --vars`，浏览器切换环境同步生效。
+- CLI 新增 `--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--proxy-timeout`；`serve` 启动日志打印实际生效的代理空闲超时（默认/命令行来源）。
+
+### 修复
+
+- 敏感变量脱敏（#90）：`maskSecret` 接入 CLI 文本 diff、失败响应体、JUnit 与 `--json` 输出；`vars`/`authorization` 等命中变量名的值统一脱敏，浏览器复用同一变量名名单；变量面板仅对标量脱敏，避免对象被转成 `[object Object]`。
+- serve 代理按浏览器当前环境逐请求路由（#60），未知环境返回 502；同源请求的 `Origin`/`Referer` 改写为目标源（#67），外部来源原样转发。
+- 未定义模板变量不再静默：步骤级 `warnings` 提示 `vars.<name>`（#66），同一变量/重试轮次只报一次。
+- `run --cookie-jar`：单场景内存 Cookie Jar，支持 Domain/Path/Expires/Max-Age/Secure，显式 Cookie 同名优先，不落盘、不跨场景（#65）。
+
+### 测试与工程化
+
+- 新增 DSL/CLI/serve 特性测试；serve 拆为 `src/cli/serve-server.js` 以便单测（#33）。
+- `test:coverage` 只统计 `src/`（排除 dist/tests/scripts/browser），阈值 line 90 / branch 80（#48）。
+- 新增 GitHub Actions：Node 20/22 × Ubuntu/Windows 单测与行尾审计、覆盖率、Playwright 浏览器测试（#47）。
+- `npm test`/`test:unit`/`test:coverage` 改由 `scripts/run-tests.mjs` 枚举 `tests/*.test.js` 后传给 `node --test`：Windows PowerShell/cmd 与 Node 18/20 不展开 glob，修复 Windows + Node 20 CI 直接报 `Could not find '...\tests\*.test.js'` 的问题；测试集合与覆盖参数不变。
+- 上传相关测试的临时目录清理加 `maxRetries`/`retryDelay`，并在 Windows + Node 20 上对读取内容的用例回退到 `readFileSync`：`fs.openAsBlob` 的句柄在 Blob 被 GC 前不释放，避免递归删除偶发 `ENOTEMPTY`。
+- `generatedVars timestamp` 支持注入时钟（`options.now`），测试改为精确断言（#12）。
+
 ### DSL 与诊断
 
 - 配置未知键与 baseUrl 定义期校验（contract v12 → v13，issue #61）：`contract.config` 新增 `configKeys`，`defineConfig` 按契约对配置顶层、`envs[]`、`variables[]` 做未知键校验，`requestTimeoutsMs`/`baseUrll`/`require` 等拼写错误立即报错并提示正确字段名；`envs[].baseUrl` 与顶层 `baseUrl` 声明时必须是 `http(s)://` URL，并去首尾空白、纯空白按缺省处理（缺省时按顶层 `baseUrl` 回退，浏览器工作台仍可回退当前页面地址），`variables[].required`/`label` 补类型校验；浏览器工作台消费的 `storageKeys` 纳入白名单。历史配置中的顶层 `envVars` 保留兼容。`doctor` 新增 `config-keys`/`base-url` FAIL/WARN：未知键、非法 baseUrl 直接 FAIL，环境与顶层都缺 baseUrl 时 WARN 提示 `CLI run 需要 --base-url`；专项诊断只依据 defineConfig 写入的结构化错误码，不按错误消息子串误报。capabilities JSON/文本、`dist/scenario-test.d.ts` 与 contract 类型同步投射。`maxResponseBytes`/`maxUploadBytes` 同样纳入白名单，与引擎/CLI 实际消费的配置字段一致。
 
+- `extract` / 断言 / 模板共用的路径支持通配段 `[*]`（contract v13 → v14）：`items[*].id` 逐元素提取并产出数组（如 `[1,2,3]`），元素缺失该子路径时跳过、不产生 `undefined` 洞，空数组产出 `[]`；通配段只在数组上展开，非数组按路径缺失处理（`required`/`default`/warning 照常生效）；连续通配（如 `groups[*].members[*].id`）展平为一级数组。`a[0]`/`a[-1]`/引号键/原型链安全键等既有标量行为不变，纯标量路径仍走原热路径。断言 path 上的通配结果可直接配合 `each`/`length`/`includes` 使用；契约说明、capabilities、d.ts、AI Prompt/模式库/项目 README 模板与根 README 同步投射。
+
 ### CLI
+
+- 新增 `import` 子命令（contract v13 → v14，issue #89）：`--har <file>` 解析浏览器/抓包 HAR，过滤静态资源（JS/CSS/图片/字体等）与 OPTIONS 预检，为每个 API 请求生成标准场景步骤草稿；`--curl "<命令>"` 解析单条 curl（支持 `-X/-H/-d/--json/-G/-u/-b`、引号与续行），生成单步骤草稿。默认写入 `scenarios/imported-<ts>.js`，可用 `--output`/`--out` 指定；`--host` 过滤主机，`--max-entries` 限制导入条数（默认 50）。Authorization/Cookie 等敏感头及敏感 query 参数替换为 `{{vars.*}}` 占位并在场景 `vars` 中留空，二进制/multipart 请求体降级为注释，草稿可直接由 `run` 加载重放（status 占位需人工确认）。命令与选项同步投射 capabilities JSON/文本、`--help` 与 `dist/scenario-test.d.ts`。
 
 - 新增 `run --concurrency <N>`（contract v12 增量，`contract.cli.options` 投射）：多场景并发执行，
   默认 `1` 保持既有串行行为；场景内步骤仍严格串行。并发模式下每个场景的进度行先写入独立缓冲、
@@ -30,6 +59,8 @@ All notable changes to this project will be documented in this file.
 
 ### 引擎与断言
 
+- `generatedVars` timestamp 造数新增可注入时钟 seam：`createEngine`/`runScenario` 的 `now`（函数/固定毫秒）或 `clock`（`{ now() }`）会透传到与浏览器共用的 `core.applyGeneratedVar`；不注入时仍回落 `Date.now`，双端口径不变。timestamp `offset`/`unit`/`format` 测试改用固定时钟做精确断言，移除 ±2s/5s 容差窗口。
+- `retryUntil` 指数退避（contract v14 → v15，issue #8）：新增可选 `intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`，未声明不封顶）。第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶后仍应用 100ms 下限，并按 `maxElapsedMs` 剩余额度截断；所有 retryUntil 等待现在都受剩余总时限约束（此前仅显式 `error`/`timeout` 路径截断），不会在总时限后继续睡完整退避间隔。`onAttempt.intervalMs` 报告实际等待时长。定义期拒绝 `intervalFactor < 1`、`maxIntervalMs < intervalMs` 及非有限值；capabilities JSON/文本、`dist/scenario-test.d.ts`、AI Prompt/模式库、README 与内部指南同步投射。
 - `retryUntil.retryOn`（contract v12 → v13）：可选 `assertion`（默认）/`error`/`timeout`。包含 `error`/`timeout` 时，`executeHttp`/适配器抛出的网络错误（ECONNREFUSED、ENOTFOUND、TLS 等）与单次请求超时不再立即跳出轮询，而是记录最近一次错误后继续尝试，直到 `maxAttempts`/`maxElapsedMs` 用尽；用户取消始终立即终止。`maxElapsedMs` 超限的错误信息补充已尝试次数与最后错误；显式启用 `error`/`timeout` 时，重试等待间隔、单次在途执行与异步 `onAttempt` 均受剩余总时限约束（总时限后迟到的 HTTP 响应不再触发 `saveResponseAs` 落盘，也不让慢请求 PASS）；`onAttempt` 回调新增 `errorType`/`errorMessage`，CLI/工作台可显示连接失败进度；`retryUntil` 未知键定义期拒绝，避免拼错 `retryOn` 被静默忽略。未声明 `retryOn`（默认 assertion）时仅在尝试之间检查总时限，行为与旧版完全一致（耗时恰好等于 `maxElapsedMs` 仍发起下一次尝试，超过后返回的成功响应仍可通过）。
 
 - `equals`/`notEquals`/`includes`/`oneOf`/`each` 深比较支持 BigInt 等 JSON 不可表示值：`stableStringify` 以 `bigint:` 前缀标记区分 `1n`/`1`/`"1"`，此前遇 BigInt 抛 TypeError 使断言失败升级为步骤 ERROR，与 includes/oneOf 已修的口径不一致。
@@ -41,6 +72,8 @@ All notable changes to this project will be documented in this file.
 - `loadScenarioFile` 场景缓存按「id + 文件路径」判定：同进程加载同名 id 的另一个文件不再返回首个文件的陈旧场景，同名不同路径时重新执行文件、由 `registerScenario` 后注册覆盖。
 
 ### 浏览器工作台
+
+- adhoc 临时请求新增「转为步骤」（issue #91）：执行成功后可一键生成可粘贴进 `scenarios/*.js` 的 step 对象草稿，复用当次 method/path/params/headers/body 并将实际响应状态码写成 `status`；Authorization/Token/API Key/Cookie 等敏感请求头按 `SECRET_VAR_PATTERN` 转为 `{{vars.*}}` 占位，草稿同时自动复制到剪贴板并保留草稿区供手动复制。请求失败（ERROR/TIMEOUT 等无有效状态码）时拒绝生成，GET/HEAD 草稿自动省略会被定义期拒绝的请求体。
 
 - 报告面板隐藏期间（统计页签激活）`renderReportPanel` 只更新失败徽标与页签禁用态，跳过 `buildOverallReport` 与 innerHTML 重建——执行循环每步全量重建让报告构建退化为 O(n²)；页签切回或失败自动跳转时补一次全量渲染。`setSidePanelTab` 新增 `preservePanel` 选项供诊断面板（`showDiagnosticError`）跳过重建。
 - 移除 `runtime.js` 中被后定义遮蔽的重复 `expandStepDetails`（旧定义从不生效，属死代码）。

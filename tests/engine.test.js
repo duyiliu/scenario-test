@@ -774,6 +774,63 @@ test("extract required:true 路径不存在时步骤失败；默认路径缺失�
     assert.equal(relaxedReport.results[0].passed, true);
 });
 
+test("extract path [*] 通配提取数组列：空数组产 []、非数组按缺失触发 required/default", async () => {
+    const engine = createEngine({
+        baseUrl: "https://mock.local",
+        fetch: async (url) => {
+            if (String(url).endsWith("/empty")) return jsonResponse({ items: [] });
+            if (String(url).endsWith("/nonarray")) return jsonResponse({ items: { id: 1 } });
+            return jsonResponse({ items: [{ id: 1 }, { id: 2 }, { name: "缺少 id" }] });
+        }
+    });
+    const passing = await engine.runScenario(defineScenario({
+        name: "通配提取",
+        steps: [
+            {
+                name: "列表",
+                path: "list",
+                status: 200,
+                extract: [{ name: "ids", path: "items[*].id" }],
+                assertions: [{ path: "items[*].id", equals: [1, 2] }]
+            },
+            {
+                name: "空数组",
+                path: "empty",
+                status: 200,
+                extract: [{ name: "emptyIds", path: "items[*].id", required: true }],
+                assertions: [{ path: "items[*].id", length: 0 }]
+            }
+        ]
+    }));
+    assert.equal(passing.passed, true, JSON.stringify(passing.results.map((result) => result.assertions)));
+    assert.deepEqual(passing.vars.ids, [1, 2]);
+    assert.deepEqual(passing.vars.emptyIds, []);
+
+    const required = await engine.runScenario(defineScenario({
+        name: "通配非数组 required",
+        steps: [{
+            name: "非数组",
+            path: "nonarray",
+            status: 200,
+            extract: [{ name: "missing", path: "items[*].id", required: true }]
+        }]
+    }));
+    assert.equal(required.failed, 1);
+    assert.match(required.results[0].error, /提取 missing/);
+
+    const defaulted = await engine.runScenario(defineScenario({
+        name: "通配非数组 default",
+        steps: [{
+            name: "非数组",
+            path: "nonarray",
+            status: 200,
+            extract: [{ name: "fallback", path: "items[*].id", default: [] }]
+        }]
+    }));
+    assert.equal(defaulted.passed, true);
+    assert.deepEqual(defaulted.vars.fallback, []);
+});
+
 test("SKIP 统计：全跳过为 SKIPPED，部分跳过保持 PASSED，SKIP 不计 executed/passedSteps", async () => {
     const engine = createEngine({
         baseUrl: "https://mock.local",
@@ -1157,13 +1214,25 @@ test("generatedVars idcard：非法参数拒绝", async () => {
 
 // ==================== generatedVars timestamp 增强（offset/unit/format）与 uuid ====================
 
-function generatedVarEngine() {
-    return createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}) });
+// 固定本地时钟：时间造数断言不再依赖执行耗时/CI 负载；格式化期望按本地时间字段推导，
+// 因此不受运行机器时区影响（误用 UTC token 仍会与本地字段产生整时区偏差而失败）。
+const FIXED_NOW = new Date(2026, 4, 17, 13, 45, 30, 678).getTime();
+const pad2 = (value) => String(value).padStart(2, "0");
+const localDateText = (ms, separator) => {
+    const date = new Date(ms);
+    return `${date.getFullYear()}${separator}${pad2(date.getMonth() + 1)}${separator}${pad2(date.getDate())}`;
+};
+const localDateTimeText = (ms) => {
+    const date = new Date(ms);
+    return `${localDateText(ms, "-")} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+};
+
+function generatedVarEngine(options = {}) {
+    return createEngine({ baseUrl: "https://mock.local", fetch: async () => jsonResponse({}), ...options });
 }
 
-test("generatedVars timestamp：offset 六种单位与正负号相对当前时间偏移", async () => {
-    const before = Date.now();
-    const report = await generatedVarEngine().runScenario(defineScenario({
+test("generatedVars timestamp：offset 六种单位与正负号相对固定时钟偏移", async () => {
+    const report = await generatedVarEngine({ now: () => FIXED_NOW }).runScenario(defineScenario({
         name: "timestamp 偏移",
         generatedVars: [
             { name: "halfSecAgo", type: "timestamp", offset: "-500ms" },
@@ -1176,20 +1245,17 @@ test("generatedVars timestamp：offset 六种单位与正负号相对当前时�
         steps: [{ name: "s", path: "x" }]
     }));
     assert.equal(report.status, "PASSED");
-    // 容差 2s 覆盖测试执行耗时；极性判别：忽略/误解析 offset 的实现偏差为偏移量本身
-    // （500ms ~ 7 天），远超容差，必然失败
-    const near = (value, delta) => typeof value === "number" && Math.abs(value - (before + delta)) < 2000;
-    assert.ok(near(report.vars.halfSecAgo, -500), "-500ms");
-    assert.ok(near(report.vars.halfMinAgo, -30000), "-30s");
-    assert.ok(near(report.vars.fiveMinLater, 300000), "+5m");
-    assert.ok(near(report.vars.twoHoursAgo, -7200000), "-2h");
-    assert.ok(near(report.vars.weekLater, 691200000), "+8d");
-    assert.ok(near(report.vars.plainWeek, 604800000), "1w 缺省正号");
+    // 固定时钟下逐项精确断言；极性判别：忽略/误解析 offset 的实现偏差为偏移量本身
+    assert.equal(report.vars.halfSecAgo, FIXED_NOW - 500, "-500ms");
+    assert.equal(report.vars.halfMinAgo, FIXED_NOW - 30000, "-30s");
+    assert.equal(report.vars.fiveMinLater, FIXED_NOW + 300000, "+5m");
+    assert.equal(report.vars.twoHoursAgo, FIXED_NOW - 7200000, "-2h");
+    assert.equal(report.vars.weekLater, FIXED_NOW + 691200000, "+8d");
+    assert.equal(report.vars.plainWeek, FIXED_NOW + 604800000, "1w 缺省正号");
 });
 
 test("generatedVars timestamp：unit s 输出秒级数值，缺省毫秒保持向后兼容", async () => {
-    const before = Date.now();
-    const report = await generatedVarEngine().runScenario(defineScenario({
+    const report = await generatedVarEngine({ now: () => FIXED_NOW }).runScenario(defineScenario({
         name: "timestamp 粒度",
         generatedVars: [
             { name: "msVar", type: "timestamp" },
@@ -1197,14 +1263,12 @@ test("generatedVars timestamp：unit s 输出秒级数值，缺省毫秒保持�
         ],
         steps: [{ name: "s", path: "x" }]
     }));
-    assert.ok(Math.abs(report.vars.msVar - before) < 2000, "缺省输出毫秒（旧行为不变）");
-    assert.ok(Math.abs(report.vars.sVar * 1000 - before) < 2000, "秒级数值（极性：误按毫秒输出则乘 1000 后偏差 1000 倍）");
-    assert.ok(Math.abs(report.vars.sVar - report.vars.msVar) > 1000, "秒值与毫秒值不同数量级");
+    assert.equal(report.vars.msVar, FIXED_NOW, "缺省输出毫秒（旧行为不变）");
+    assert.equal(report.vars.sVar, Math.floor(FIXED_NOW / 1000), "秒级数值（极性：误按毫秒输出会相差 1000 倍）");
 });
 
 test("generatedVars timestamp：format 输出本地时间字符串，可与 offset 组合", async () => {
-    const before = Date.now();
-    const report = await generatedVarEngine().runScenario(defineScenario({
+    const report = await generatedVarEngine({ now: () => FIXED_NOW }).runScenario(defineScenario({
         name: "timestamp 格式化",
         generatedVars: [
             { name: "weekAgoText", type: "timestamp", offset: "-7d", format: "YYYY-MM-DD HH:mm:ss" },
@@ -1213,14 +1277,25 @@ test("generatedVars timestamp：format 输出本地时间字符串，可与 offs
         steps: [{ name: "s", path: "x" }]
     }));
     assert.equal(typeof report.vars.weekAgoText, "string", "极性：误输出数值必失败");
-    const parts = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(report.vars.weekAgoText);
-    assert.ok(parts, `完整时间格式: ${report.vars.weekAgoText}`);
-    const parsed = new Date(
-        Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]),
-        Number(parts[4]), Number(parts[5]), Number(parts[6])
-    ).getTime();
-    assert.ok(Math.abs(parsed - (before - 604800000)) < 5000, "解析回本地时间 ≈ now-7d（极性：误用 UTC token 偏差整时区）");
-    assert.match(report.vars.dayPath, /^\d{4}\/\d{2}\/\d{2}$/, "日期片段格式");
+    assert.equal(report.vars.weekAgoText, localDateTimeText(FIXED_NOW - 604800000), "固定时钟 -7d 的本地时间文本，误用 UTC token 偏差整时区");
+    assert.equal(report.vars.dayPath, localDateText(FIXED_NOW, "/"), "日期片段格式");
+});
+
+test("generatedVars timestamp：now/clock 可按单次运行覆盖且支持 clock 对象/固定值", async () => {
+    const scenario = defineScenario({
+        name: "timestamp 时钟注入",
+        generatedVars: [{ name: "t", type: "timestamp" }],
+        steps: [{ name: "s", path: "x" }]
+    });
+    const engine = generatedVarEngine({ now: () => FIXED_NOW });
+    const engineLevel = await engine.runScenario(scenario);
+    const runLevel = await engine.runScenario(scenario, { now: () => FIXED_NOW + 1000 });
+    const clockObject = await generatedVarEngine({ clock: { now: () => FIXED_NOW + 2000 } }).runScenario(scenario);
+    const fixedNumber = await generatedVarEngine({ now: FIXED_NOW + 3000 }).runScenario(scenario);
+    assert.equal(engineLevel.vars.t, FIXED_NOW);
+    assert.equal(runLevel.vars.t, FIXED_NOW + 1000, "runScenario 显式 now 覆盖引擎级");
+    assert.equal(clockObject.vars.t, FIXED_NOW + 2000, "clock 对象形态");
+    assert.equal(fixedNumber.vars.t, FIXED_NOW + 3000, "固定毫秒值形态");
 });
 
 test("generatedVars timestamp：非法 offset/unit/format 与 format+unit 互斥拒绝", async () => {
@@ -1845,6 +1920,7 @@ test("断言/extract 的 from、target、裸 path 定义期白名单与分词校
     define([{ from: "headers", path: "x-total", exists: true }]);
     define([{ from: "headers", path: ".X-TOTAL.length", equals: 2 }]);
     define([{ path: "list[-1]", equals: 1 }, { path: 'm["a>b"]', exists: true }]);
+    define([{ path: "items[*].id", length: 3 }]);
     define([{ path: "", exists: true }]);
     // 顶层 path 的 {{ }} 是死写法（path 按字面取键不解析）——定义期即拒，否则 exists:false 恒真假绿
     assert.throws(() => define([{ path: "{{vars.p}}", exists: true }]), /path 不支持 \{\{ \}\} 模板/);
@@ -1891,6 +1967,7 @@ test("extract 定义期校验：形状/name/保留名/required+default 互斥/fr
     assert.throws(() => define([{ name: "x", path: "a", required: "yes" }]), /required 必须是布尔值/);
     // 合法形态不抛
     define([{ name: "x", path: "a.b" }, { name: "y", header: "Content-Type", path: "length" }]);
+    define([{ name: "ids", path: "items[*].id" }]);
     define([{ name: "x", from: "response", path: "body.code" }]);
     define([{ name: "x", target: "status" }]);
     define([{ name: "x", path: "a", default: "{{vars.y}}" }]);
