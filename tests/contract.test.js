@@ -109,47 +109,38 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
     }
 });
 
-test("对外接入文档使用当前版本且只要求复制一次 Prompt", () => {
+test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     const scenarioPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
     const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
     assert.match(scenarioPrompt, /仓库预览/);
     assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
     assert.match(scenarioPrompt, /实际执行时，以.*项目.*文件为准/);
     assert.match(scenarioPrompt, /不复制完整模板和操作符名单/);
-    // 接入 Prompt 唯一权威在根目录 README（快速接入节内联），docs 不再维护独立副本
+    // README 是 Skill 查找固定版本安装脚本的入口，版本须与当前运行时一致。
     const readme = fs.readFileSync(path.resolve(import.meta.dirname, "../README.md"), "utf8");
-    assert.match(readme, /## 快速接入/);
-    assert.match(readme, /AI 接入 Prompt/);
-    assert.match(readme, /用户不需要再次复制/);
+    const skill = fs.readFileSync(path.resolve(import.meta.dirname, "../skills/scenario-test/SKILL.md"), "utf8");
+    const quickInstall = readme.match(/^## 快速接入\s*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/m)?.[0] ?? "";
+    assert.ok(quickInstall, "README 缺少 Skill 快速接入章节");
+    assert.match(readme, /npx skills add duyiliu\/scenario-test --skill scenario-test -g/);
+    assert.match(quickInstall, /Skill/);
+    assert.match(quickInstall, /doctor/);
+    assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
+    assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
+    assert.match(skill, /README「快速接入」/);
     assert.match(readme, /默认.*免 npm|免 npm.*默认/);
     assert.match(readme, /scenario-test-cli\.cjs/);
     assert.match(readme, /--library-url/);
-    assert.match(readme, /不混用/);
-    assert.match(readme, /Source`\/`SCENARIO_TEST_SOURCE|SCENARIO_TEST_SOURCE/);
-    assert.match(readme, /SCENARIO_TEST_USE_NPM|-UseNpm/);
-    assert.match(readme, /npm install -D @yc_yzkj\/scenario-test/);
+    assert.match(readme, /SCENARIO_TEST_SOURCE/);
     assert.match(readme, /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/);
-    const inlineInstallPrompt = readme.match(/## 快速接入[\s\S]*?```text\r?\n([\s\S]*?)```/)?.[1] ?? "";
-    assert.ok(inlineInstallPrompt, "README 快速接入缺少可复制 Prompt");
-    assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
-    assert.match(inlineInstallPrompt, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
-    assert.match(inlineInstallPrompt, /scenario-test-cli\.cjs/);
-    assert.match(inlineInstallPrompt, /只有用户明确要求使用 npm/);
-    assert.match(inlineInstallPrompt, /npm install -D @yc_yzkj\/scenario-test/);
-    assert.match(inlineInstallPrompt, /npx @yc_yzkj\/scenario-test init/);
-    assert.match(inlineInstallPrompt, /不要要求用户复制或粘贴/);
-    assert.match(inlineInstallPrompt, /npx @yc_yzkj\/scenario-test doctor --config/);
-    assert.match(inlineInstallPrompt, /scenario-test\/\.scenario-test\/AI_SCENARIO_PROMPT\.md/);
-    assert.match(inlineInstallPrompt, /你要测试哪个业务功能/);
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
     assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");
     // 示例快速开始必须坚持默认免 npm；不得把 npm install 或源码构建写成业务接入默认步骤
     assert.match(quickStart, /默认.*免 npm|免 npm.*默认/);
     assert.doesNotMatch(quickStart, /\bnpm\s+install\b|\bgit\s+clone\b|\bnpm\s+run\s+build\b/);
-    assert.match(quickStart, /AI 接入 Prompt|快速接入/);
+    assert.match(quickStart, /Skill/);
     assert.match(quickStart, /AI_SCENARIO_PROMPT\.md/);
-    assert.match(quickStart, /用户不需要再次复制/);
+    assert.match(quickStart, /无需复制/);
     assert.doesNotMatch(examplesIndex, /两次 Prompt/);
 
     // 一键安装脚本同时锁定两条路径：默认免 npm（npm Registry 固定版本 tarball → 本地 dist 初始化）

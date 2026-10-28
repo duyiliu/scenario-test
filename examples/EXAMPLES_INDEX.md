@@ -6,12 +6,12 @@
 
 默认采用免 npm 接入，不修改业务项目依赖：
 
-1. 在业务项目根目录打开 AI，将根目录 [README](../README.md) “快速接入”中的 AI 接入 Prompt 全文复制给它。
-2. AI 运行官方安装脚本，完成运行时下载、`init` 和 `doctor` 体检。
-3. 回答 AI 提出的业务功能问题，并提供页面、Controller、接口或已有测试入口。
-4. AI 生成场景后，双击 `scenario-test/start-scenario-test.cmd` 调试。
+1. 按根目录 [README](../README.md) “快速接入”安装全局 Skill，在业务项目根目录打开 AI。
+2. 提供要测试的业务功能，以及页面、Controller、接口或已有测试入口。
+3. 项目未接入时，Skill 自动初始化并运行 `doctor`；通过后生成场景。
+4. 确认目标环境和场景内容后，再明确要求运行测试或启动工作台。
 
-项目内生成的 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是后续场景设计规则，用户不需要再次复制。npm 仅在用户明确要求时作为可选安装方式；两种方式不混用、不自动切换。
+项目内生成的 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是后续场景设计规则，无需复制规则。npm 仅在用户明确要求时作为可选安装方式；两种方式不混用、不自动切换。
 
 ## 示例列表
 
@@ -104,7 +104,7 @@ node .\dist\scenario-test-cli.cjs `
 
 ## 相关文档
 
-- [主文档（含 AI 接入 Prompt）](../README.md)
+- [主文档（Skill 接入）](../README.md)
 - [场景规则预览](../docs/AI_SCENARIO_PROMPT.md)
 - [安全指南](../SECURITY.md)
 - [变更日志](../CHANGELOG.md)

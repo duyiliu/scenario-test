@@ -171,18 +171,17 @@ test("--timeout 覆盖配置 requestTimeoutMs，短超时使慢响应返回 TIME
                 steps: [{ name: "慢响应", path: "slow", status: 200 }]
             }));`, "utf8");
 
-            const startedAt = Date.now();
             const result = await runCli([
                 "run",
                 "--config", path.join(directory, "scenario.config.js"),
                 "--scenario", "slow",
                 "--timeout", "60"
             ]);
-            const elapsed = Date.now() - startedAt;
             assert.notEqual(result.code, 0);
             assert.match(result.stdout, /\[FAIL\] 慢响应/);
             assert.match(result.stdout, /TIMEOUT/);
-            assert.ok(elapsed < 800, `短超时应快速中断，实际耗时 ${elapsed}ms`);
+            // 慢响应会在 500ms 返回，配置超时为 10s；TIMEOUT 证明 CLI 的 60ms 覆盖生效。
+            // 不计子进程启动耗时，避免 CI 机器负载导致误报。
         });
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
