@@ -24,7 +24,7 @@ npx skills add duyiliu/scenario-test --skill scenario-test -g
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 18+ 和可访问的安装源；运行时保存在业务项目中，后续无需再次下载工具，执行测试仍需连接目标服务。
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 18+ 和可访问的安装源；运行时保存在业务项目中，后续使用无需再次下载工具（升级时除外），执行测试仍需连接目标服务。
 
 未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。全局 Skill 和各项目运行时分别升级，见[升级](#升级)。
 
@@ -41,7 +41,7 @@ Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md)
 
 ### Skill 使用的固定版本安装脚本
 
-以下命令是 Skill 自动初始化时读取的安装来源，通常无需手动执行。在业务项目根目录执行时，脚本下载固定版本运行时并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
+Skill 初始化时使用与本页相同的固定版本脚本，通常无需手动执行。在业务项目根目录执行时，脚本下载固定版本运行时并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
 
 ```powershell
 # Windows PowerShell
@@ -82,8 +82,25 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
   --port 4300
 ```
 
-> 手动指定 `--port` 默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+> `serve` 未指定 `--port` 时默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+>
 > 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
+>
+> 为便于内网联调，https 上游沿用本地开发代理的 `rejectUnauthorized: false`（不校验自签证书），不要将 serve 暴露到本机回环之外。
+
+#### 界面预览
+
+浏览器工作台支持查看场景列表、逐步执行接口请求，并实时展示执行进度与结果。
+
+![浏览器工作台执行中的场景](docs/images/4de29a29fae24d3a9f741c81e5240920.png)
+
+场景执行完成后，工作台会汇总成功、失败和跳过的步骤，并展示耗时与执行详情。
+
+![浏览器工作台执行完成](docs/images/864b439df03f4e4086f779ae394f05cc.png)
+
+AI 辅助生成场景后，也可以通过 CLI 执行并汇总结果。
+
+![AI 辅助设计与执行场景测试](docs/images/ac1142b74da24b0f88ee5d87b67fcac9.png)
 
 ### 执行场景
 
@@ -109,6 +126,8 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 ```
 
 `--vars key=value` 可重复，按出现顺序叠加（同名后者覆盖），优先级高于配置 `vars` 与环境变量，值支持 `{{ }}` 模板；`--timeout <ms>` 覆盖配置 `requestTimeoutMs`。`runId` / `runNo` 为保留变量，不能用 `--vars` 覆盖。
+
+`--scenario` 支持逗号分隔多选，并按 id/name/url 匹配；省略 `--env` 时使用配置的 `defaultEnvKey`（未配置则取第一个环境）。临时切换目标可用 `--base-url <url>`；认证信息优先通过 `SCENARIO_AUTH` 环境变量提供。
 
 以上命令从业务项目根目录运行；`local` 和 `health-check` 分别是环境 key 和场景 ID 示例，应替换为项目中实际配置的值。macOS / Linux 可使用以下命令：
 
@@ -153,7 +172,7 @@ scenarios: [
 ]
 ```
 
-导入输出中的路径相对于执行命令时的目录，若与配置文件目录不同，需要按配置文件的位置调整后再填写。确认目标环境和请求内容后，再执行该场景。
+若输出目录与配置文件目录不同，需要按配置文件位置调整 `url`。确认目标环境和请求内容后，再执行该场景。
 
 ### 体检
 
@@ -191,20 +210,6 @@ ScenarioTest.registerScenario("health-check", ScenarioTest.defineScenario({
 
 配置中的 `id` 必须与 `registerScenario` 的 ID 一致。之后可用上方 [执行场景](#执行场景) 中的命令运行。
 
-## 使用示例
-
-浏览器工作台支持查看场景列表、逐步执行接口请求，并实时展示执行进度与结果。
-
-![浏览器工作台执行中的场景](docs/images/4de29a29fae24d3a9f741c81e5240920.png)
-
-场景执行完成后，工作台会汇总成功、失败和跳过的步骤，并展示耗时与执行详情。
-
-![浏览器工作台执行完成](docs/images/864b439df03f4e4086f779ae394f05cc.png)
-
-也可以让 AI 根据项目中的接口和业务信息设计场景，并通过 CLI 执行场景测试、汇总测试结果。
-
-![AI 辅助设计与执行场景测试](docs/images/ac1142b74da24b0f88ee5d87b67fcac9.png)
-
 ## 自定义下载源
 
 安装脚本的 `-Source` / `SCENARIO_TEST_SOURCE` 使用可通过 HTTP(S) 访问的 URL 前缀，需提供以下 4 个运行时文件：
@@ -214,7 +219,7 @@ ScenarioTest.registerScenario("health-check", ScenarioTest.defineScenario({
 - `scenario-test.d.ts`
 - `scenario-test-capabilities.json`
 
-直接调用 `init` 时，`--library-url` 也是这些文件的下载 URL 前缀；CLI 优先使用本地运行时文件，缺少时才从该地址下载。`AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 由 `init` 生成，无需放在下载源。
+直接调用 `init` 时，`--library-url` 也是这些文件的下载 URL 前缀；CLI 优先使用本地运行时文件，缺少时才从该地址下载。`AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 由 `init` 生成在 `.scenario-test/`，无需放在下载源。
 
 ## 项目目录
 
@@ -234,35 +239,30 @@ scenario-test/
 /// <reference path="./.scenario-test/scenario-test.d.ts" />
 ```
 
+`scenario.config.js` 和 `scenarios/` 应随业务项目提交；`.scenario-test/` 是固定版本运行时副本，团队可选择一并提交以便 CI 直接运行，或在 CI 中先执行安装脚本。无论哪种方式，都不要把真实凭据写入这些文件。
+
 ## 核心能力
 
 ### 场景编写
 
-- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、本次 run 跨场景共享变量（`suite`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤。
-- `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`：服务刚启动时的 ECONNREFUSED、ENOTFOUND 等网络错误和单次请求超时也能继续轮询，`onAttempt` 回调透出 `errorType`/`errorMessage`；不配置时行为与旧版完全一致。
-- 跨场景共享上下文：`extract` 项加 `scope: "suite"` 时提取结果写入本次 run 的 `suite` 命名空间（默认仍写当前场景 `vars`），后续场景用 `{{suite.<name>}}` 引用；登录 token 等动态凭据只需获取一次。每个场景以启动时的 suite 快照运行、结束时整体合并：默认串行下写序即配置清单顺序；`--concurrency > 1` 时写序为完成顺序、同名键后完成者覆盖。`suite` 不跨 run、不建立显式依赖，前置场景失败不会自动跳过后续场景；缺失变量按空值解析并由断言暴露。浏览器工作台单场景执行时 `suite` 在该次执行内跨步骤共享，并在「运行时变量」面板以 `suite.` 前缀展示。
-- `retryUntil.intervalFactor`（≥1，默认 1 = 固定间隔）与 `maxIntervalMs`（单次等待上限，≥`intervalMs`）支持指数退避：第 n 次重试等待 = `intervalMs × intervalFactor^(n-1)`，封顶 `maxIntervalMs`（未声明不封顶），最终仍受 100ms 下限与 `maxElapsedMs` 总时限约束。
-
-- `from: "headers"` 配 `path` 时首段按 HTTP 头名大小写不敏感匹配：`{ from: "headers", path: "x-total", equals: "42" }` 可命中响应头 `X-Total`，与 `header` 简写、`extract` 的 `from: "headers"` 同口径；首段之后的子路径在头值上取，`from: "response"` 与模板 `lastResponse.headers.*` 仍按精确键匹配。
-- 路径支持通配段 `[*]`：`extract: [{ name: "ids", path: "items[*].id" }]` 产出 `[1,2,3]`；元素缺失该子路径时跳过、空数组产出 `[]`、非数组按路径缺失处理（`required`/`default` 照常生效）；连续通配（`groups[*].members[*].id`）展平为一级数组，结果可直接用于 `length`/`includes`/`each` 断言。
+- 声明式 HTTP 场景 DSL，支持变量、提取、断言、条件和重试；`when` 可基于已提取变量（`vars`）、本次 run 共享变量（`suite`）、上一步响应体（`lastResponse`）或状态码（`status` / `target: "status"`）跳过步骤。
+- `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`，服务刚启动时的网络错误和单次请求超时也能继续轮询；`intervalFactor` / `maxIntervalMs` 支持指数退避。
+- `extract` 支持 `scope: "suite"`，把登录 token 等结果写入本次 run 的共享命名空间，后续场景用 `{{suite.<name>}}` 引用；每个场景以启动时的快照运行，结束时合并（并发时按完成顺序，同名键后完成者覆盖）。`suite` 不跨 run、不建立显式依赖。
+- `from: "headers"` 的首段头名大小写不敏感；`path` 支持 `[*]` 通配段，可产出数组并直接用于 `length`/`includes`/`each` 断言。
 
 ### 工作台与运行
 
-- 浏览器工作台与 Node.js CLI 使用同一套场景。
-- `serve` 提供静态服务和同源接口代理：按浏览器当前环境逐请求路由（切换环境立即生效），同源请求的 `Origin`/`Referer` 会改写为目标源；上游空闲超时默认 30 秒，可用 `--proxy-timeout <ms>` 调整（1-600000）。为便于内网联调，https 上游沿用本地开发代理的 `rejectUnauthorized: false`（不校验自签证书），不要将 serve 暴露到本机回环之外。
+- 浏览器工作台与 Node.js CLI 使用同一套场景；`serve` 按浏览器当前环境逐请求路由，同源代理免 CORS。
+- `run` 支持 `--concurrency`、`--bail`、`--data`、`--junit`、`--cookie-jar`、`--tag`、`--fail-on-skip`；`manual: true` 场景默认不参与 `--all`。
+- `run --json` 输出结构化结果，stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
 
 ### 诊断与集成
 
-- `doctor` 校验配置、场景、运行时版本和 SHA256 指纹。
-- `capabilities --json` 输出机器可读能力清单。
-- `run --json` 输出结构化执行结果（单场景为 report，多场景为 `{ scenarios: [...] }`），stdout 纯净、进度与结论走 stderr，失败时仍输出完整 JSON 并返回非零退出码。
-- `import --har` / `import --curl` 把真实流量或后端 curl 示例转成标准场景草稿；静态资源与预检会被过滤，Authorization/Cookie 等敏感头替换为 `{{vars.*}}` 占位，二进制请求体降级为注释。
-- `--concurrency <N>` 并发执行多个独立场景，默认 `1` 保持串行；场景内步骤仍严格串行。并发模式下每场景进度整块输出（不交错），`--json` 报告仍按配置清单顺序排列。
-- `run --bail` 在首个失败场景后停止启动后续场景；`run --data <json|jsonl|csv>` 按行注入变量执行；`run --junit <file>` 输出 JUnit XML；`run --cookie-jar` 启用单场景内存 Cookie Jar。
-- `manual: true` 场景默认不参与 `--all`；场景清单可声明 `tags`，`run --tag smoke` 筛选（重复参数 OR，逗号分隔 AND）。
-- 支持 `--fail-on-skip`、`--vars key=value`（可重复临时覆盖变量）、`--timeout <ms>`（覆盖请求超时）、环境级 `envs[].vars`、`extract scope: "suite"` 跨场景复用（如登录 token）、`shape` 结构断言、`always` 清理步骤与 `retryUntil` 指数退避、文件上传、响应保存及自定义 Node 插件。
+- `doctor` 校验配置、场景、运行时版本和 SHA256 指纹；`capabilities --json` 输出机器可读能力清单。
+- `import --har` / `import --curl` 把真实流量或 curl 示例转成场景草稿；静态资源与预检会被过滤，敏感头和查询参数替换为 `{{vars.*}}` 占位，二进制/multipart 请求体会省略并注明。
+- 还支持 `shape` 结构断言、`always` 清理步骤、文件上传、响应保存和自定义 Node 插件。
 
-完整示例见 [`examples/complete`](examples/complete)，DSL 能力以 `src/contract.js` 和 `scenario-test-capabilities.json` 为准。
+完整示例见 [`examples/complete`](examples/complete)；DSL 能力以项目内 `.scenario-test/scenario-test-capabilities.json` 为准（本仓库由 `src/contract.js` 生成）。更多文档：[适配器指南](docs/ADAPTER_GUIDE.md)、[示例索引](examples/EXAMPLES_INDEX.md)。
 
 ## 安全
 
@@ -338,6 +338,8 @@ npm run test:browser     # Playwright 浏览器测试
 npm run check:all        # 构建 + unit + browser + ui-style + 行尾审计
 ```
 
-CI 在 GitHub Actions 上覆盖 Node 20/22 × Ubuntu/Windows 单测、覆盖率、浏览器测试与行尾审计，见 `.github/workflows/ci.yml`。
+CI 在 GitHub Actions 上覆盖 Node 20/22 × Ubuntu/Windows 的构建与单测、覆盖率、浏览器测试、视觉回归和行尾审计，见 `.github/workflows/ci.yml`。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
+
+本项目采用 MIT License。
