@@ -69,7 +69,17 @@ curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.9.1/scripts/inst
 
 ### 启动浏览器工作台
 
-推荐双击：
+跨平台 CLI 脚本（在业务项目根目录执行，**触发即启动本地 Server**，默认自动选择空闲端口；不会自动执行场景）：
+
+```bash
+node scenario-test/start-scenario-test.mjs
+# 指定端口（可选）
+node scenario-test/start-scenario-test.mjs --port 4300
+```
+
+脚本使用项目内 `.scenario-test/scenario-test-cli.cjs serve`，前台运行并输出访问地址；按 `Ctrl+C` 停止，支持 Windows、macOS、Linux。
+
+Windows 仍可双击：
 
 ```text
 scenario-test/start-scenario-test.cmd
@@ -231,7 +241,8 @@ scenario-test/
 ├─ plugins/                        # 可选：项目专属 Node 插件（按需创建）
 ├─ scenario.config.js              # 环境、变量和场景清单（init 生成骨架）
 ├─ index.html                      # 浏览器工作台入口（init 生成）
-└─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成）
+├─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成）
+└─ start-scenario-test.mjs         # 跨平台命令行启动 Server（init 生成）
 ```
 
 初始化配置使用项目内类型声明，npm 与免 npm 均可获得提示：
