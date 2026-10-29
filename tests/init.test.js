@@ -584,3 +584,51 @@ test("init 源码远程升级：全部下载成功时刷新副本并重写版本
         fs.rmSync(project, { recursive: true, force: true });
     }
 });
+
+
+// 跨平台脚本应在任意工作目录可直接启动项目内的工作台 Server，且不执行任何 HTTP 场景。
+test("init 生成的 Node CLI 启动脚本可触发工作台 Server", async () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-start-cli-"));
+    const initialized = runInit(project);
+    assert.equal(initialized.status, 0, initialized.stderr);
+
+    const script = path.join(project, "scenario-test", "start-scenario-test.mjs");
+    const child = spawn(process.execPath, [script], {
+        cwd: os.tmpdir(), stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+    try {
+        const url = await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                reject(new Error("启动脚本超时，stdout=" + stdout + " stderr=" + stderr));
+            }, 10000);
+            function acceptUrl() {
+                const match = stdout.match(/场景测试工作台:\s*(http:\/\/127\.0\.0\.1:\d+\/)/);
+                if (!match) return;
+                clearTimeout(timer);
+                resolve(match[1]);
+            }
+            child.stdout.on("data", (chunk) => {
+                stdout += chunk;
+                acceptUrl();
+            });
+            child.once("error", (error) => { clearTimeout(timer); reject(error); });
+            child.once("close", (code) => {
+                clearTimeout(timer);
+                reject(new Error("启动脚本过早退出: " + code + " " + stderr));
+            });
+        });
+        const response = await fetch(new URL("index.html", url));
+        assert.equal(response.status, 200);
+        assert.match(await response.text(), /__SCENARIO_TEST_SERVE_PROXY__/);
+    } finally {
+        child.kill("SIGTERM");
+        if (child.exitCode === null && child.signalCode === null) {
+            await new Promise((resolve) => child.once("close", resolve));
+        }
+        fs.rmSync(project, { recursive: true, force: true });
+    }
+});
