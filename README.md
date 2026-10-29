@@ -18,10 +18,20 @@
 
 在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中按用户安装一次，即可在多个业务项目中使用：
 
+**官方安装：**
+
 ```bash
 # 用户级全局安装；按提示选择你使用的 Agent
 npx skills add duyiliu/scenario-test --skill scenario-test -g
 ```
+
+**国内网络加速安装（第三方 `skills-cn`）：**
+
+```bash
+npx skills-cn@latest add duyiliu/scenario-test --skill scenario-test -g -y
+```
+
+两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
