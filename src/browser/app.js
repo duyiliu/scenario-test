@@ -29,6 +29,7 @@ function toRuntimeConfig(config) {
             theme: `${prefix}.theme`,
             scenarioVars: `${prefix}.scenarioVars`,
             pinnedScenarios: `${prefix}.pinnedScenarios`,
+            scenarioListWidth: `${prefix}.scenarioListWidth`,
             ...(config.storageKeys || {})
         }
     };

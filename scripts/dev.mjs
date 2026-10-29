@@ -181,6 +181,16 @@ function renderIndexHtml(serverPort) {
                 </div>
                 <a class="btn" href="/examples/security-best-practices/">进入 Security 工作台 →</a>
             </div>
+
+            <div class="card">
+                <div>
+                    <span class="badge badge-blue">目录结构</span>
+                    <h2>4. 多层目录示例</h2>
+                    <p class="summary">场景按 common/auth/order/refund/task 多级目录组织，用于验证左侧目录树的层级、折叠与排序。</p>
+                    <div class="notes">复用 Basic 的本地 Mock（dev 自动同源代理）</div>
+                </div>
+                <a class="btn" href="/examples/tree-demo/">进入目录树工作台 →</a>
+            </div>
         </div>
 
         <footer>

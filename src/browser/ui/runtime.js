@@ -188,7 +188,8 @@ export function createWorkbenchRuntime(options) {
             environment: keys.environment || 'scenario.testing.environment',
             theme: keys.theme || 'scenario.testing.theme',
             scenarioVars: keys.scenarioVars || 'scenario.testing.scenarioVars',
-            pinnedScenarios: keys.pinnedScenarios || 'scenario.testing.pinnedScenarios'
+            pinnedScenarios: keys.pinnedScenarios || 'scenario.testing.pinnedScenarios',
+            scenarioListWidth: keys.scenarioListWidth || 'scenario.testing.scenarioListWidth'
         };
     }
 
@@ -229,6 +230,97 @@ export function createWorkbenchRuntime(options) {
         } catch (e) {
             return [];
         }
+    }
+
+    // ===== 场景列表宽度拖拽 =====
+    function getScenarioListWidth() {
+        try {
+            var value = Number(window.localStorage.getItem(getStorageKeys().scenarioListWidth));
+            return isFinite(value) && value >= 180 && value <= 420 ? value : 0;
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    function applyScenarioListWidth(width) {
+        var grid = document.querySelector('.scenario-grid');
+        if (!grid) return;
+        if (width) grid.style.setProperty('--scenario-list-width', Math.round(width) + 'px');
+        else grid.style.removeProperty('--scenario-list-width');
+    }
+
+    function bindScenarioListResizer() {
+        var resizer = document.getElementById('scenarioListResizer');
+        var pane = document.querySelector('.scenario-pane--scenarios');
+        var grid = document.querySelector('.scenario-grid');
+        if (!resizer || !pane || !grid) return;
+        applyScenarioListWidth(getScenarioListWidth());
+
+        var dragging = false;
+        var startX = 0;
+        var startWidth = 0;
+
+        function clampWidth(width) {
+            return Math.min(420, Math.max(180, width));
+        }
+
+        function onPointerMove(event) {
+            if (!dragging) return;
+            grid.style.setProperty('--scenario-list-width', Math.round(clampWidth(startWidth + event.clientX - startX)) + 'px');
+        }
+
+        function stopDragging() {
+            if (!dragging) return;
+            dragging = false;
+            resizer.classList.remove('is-dragging');
+            document.body.classList.remove('scenario-list-resizing');
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', stopDragging);
+            window.removeEventListener('pointercancel', stopDragging);
+            persistSetting(getStorageKeys().scenarioListWidth, String(Math.round(pane.getBoundingClientRect().width)));
+        }
+
+        resizer.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            dragging = true;
+            startX = event.clientX;
+            startWidth = pane.getBoundingClientRect().width;
+            resizer.classList.add('is-dragging');
+            document.body.classList.add('scenario-list-resizing');
+            if (typeof resizer.setPointerCapture === 'function') {
+                try {
+                    resizer.setPointerCapture(event.pointerId);
+                } catch (error) {
+                    // 指针已失效时忽略，window 监听仍可完成本次拖动
+                }
+            }
+            window.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', stopDragging);
+            window.addEventListener('pointercancel', stopDragging);
+        });
+
+        resizer.addEventListener('dblclick', function () {
+            applyScenarioListWidth(0);
+            persistSetting(getStorageKeys().scenarioListWidth, '');
+        });
+
+        resizer.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            var width = clampWidth(pane.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? -16 : 16));
+            grid.style.setProperty('--scenario-list-width', Math.round(width) + 'px');
+            persistSetting(getStorageKeys().scenarioListWidth, String(Math.round(width)));
+        });
+    }
+
+    // 视图侧按 file→order 映射判断置顶与排序（localStorage 里存的是有序数组）
+    function getPinnedScenarioOrder() {
+        var order = {};
+        getPinnedScenarioFiles().forEach(function (file, index) {
+            order[file] = index;
+        });
+        return order;
     }
 
     function toggleScenarioPin(file) {
@@ -434,7 +526,7 @@ export function createWorkbenchRuntime(options) {
 
     // ===== 视图重绘桥接函数 =====
     function renderScenarioSelect() {
-        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioFiles(), state.scenarioTag);
+        uiView.renderScenarioSelect(state.discoveredFiles, state.scenarioFile, state.scenarioSearch, getPinnedScenarioOrder(), state.scenarioTag);
     }
 
     // 标签筛选（#68）：选项来自配置清单，选择后仅展示含该标签的场景
@@ -1705,6 +1797,7 @@ export function createWorkbenchRuntime(options) {
         bindStepCurlActions();
         bindCodeCopyActions();
         bindGlobalShortcuts();
+        bindScenarioListResizer();
 
         uiAdhoc.bindAdhocRequestEvents(
             function (idx) {
@@ -1760,6 +1853,11 @@ export function createWorkbenchRuntime(options) {
         scenarioList.addEventListener('click', function (event) {
             if (event.target.closest('[data-clear-scenario-search]')) {
                 clearScenarioSearch();
+                return;
+            }
+            var dirToggle = event.target.closest('[data-scenario-dir-toggle]');
+            if (dirToggle) {
+                uiView.toggleScenarioDir(dirToggle);
                 return;
             }
             var pinTarget = event.target.closest('[data-pin-file]');

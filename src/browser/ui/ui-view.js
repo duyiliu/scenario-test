@@ -209,10 +209,6 @@ const workbenchView = (function () {
                                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                                 <span>场景列表</span>
                             </div>
-                            <button id="quickAdhocBtn" type="button" class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-95 shadow-2xs">
-                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                                <span>新建场景</span>
-                            </button>
                         </div>
                         <div class="relative mt-2">
                             <svg class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" style="top:50%;transform:translateY(-50%)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -227,6 +223,7 @@ const workbenchView = (function () {
                     </div>
                     <div id="scenarioList" class="p-2 space-y-1 overflow-y-auto flex-1 min-h-0"></div>
                 </aside>
+                <div id="scenarioListResizer" class="scenario-list-resizer" role="separator" aria-orientation="vertical" aria-label="调整场景列表宽度" tabindex="0" title="拖动调整宽度，双击恢复默认"></div>
                 <div class="scenario-pane scenario-pane--steps bg-white rounded-lg shadow-xs border border-slate-200 flex flex-col overflow-hidden h-full min-h-0">
                     <div id="scenarioHeaderBar" class="px-4 py-2.5 border-b border-slate-100 bg-white flex items-center justify-between flex-shrink-0">
                         <div class="min-w-0">
@@ -603,10 +600,260 @@ const workbenchView = (function () {
         return params;
     }
 
+    // ===== 场景目录树 =====
+    // 左侧列表按配置清单里的文件路径还原目录层级：目录可折叠、目录优先排序，
+    // 置顶场景单独成组，避免场景数量变多后平铺列表难以定位。
+    // 构建部分是纯函数（不触 DOM），导出给 Node 单测；渲染部分只消费树结构。
+    var scenarioNameCollator = (function () {
+        try {
+            return new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+        } catch (error) {
+            return null;
+        }
+    })();
+
+    // 折叠状态按目录完整路径记录；搜索/标签筛选时忽略折叠状态强制展开，
+    // 避免命中的场景被折叠目录藏起来。
+    var collapsedScenarioDirs = {};
+
+    function compareScenarioNames(left, right) {
+        if (scenarioNameCollator) return scenarioNameCollator.compare(left, right);
+        return left < right ? -1 : (left > right ? 1 : 0);
+    }
+
+    function normalizeScenarioFile(file) {
+        return String(file === undefined || file === null ? '' : file)
+            .replace(/\\/g, '/')
+            .replace(/^\.\//, '')
+            .replace(/\/{2,}/g, '/');
+    }
+
+    function scenarioPathSegments(file) {
+        return normalizeScenarioFile(file).split('/').filter(function (segment) {
+            return segment && segment !== '.';
+        });
+    }
+
+    // 所有场景文件的公共目录前缀：作为树的根节点，避免每层都重复
+    // scenario-test/scenarios 这类固定前缀，同时保留“从场景根目录开始”的层级感。
+    function commonScenarioDir(segmentList) {
+        if (!segmentList.length) return [];
+        var prefix = segmentList[0].slice(0, -1);
+        for (var i = 1; i < segmentList.length && prefix.length; i++) {
+            var dirs = segmentList[i].slice(0, -1);
+            var limit = Math.min(prefix.length, dirs.length);
+            var matched = 0;
+            while (matched < limit && prefix[matched] === dirs[matched]) matched++;
+            prefix = prefix.slice(0, matched);
+        }
+        return prefix;
+    }
+
+    // 兼容两种置顶入参：有序文件名数组（localStorage 原样）与 file→order 映射
+    function normalizePinOrder(pinOrder) {
+        var order = {};
+        if (Array.isArray(pinOrder)) {
+            pinOrder.forEach(function (file, index) {
+                if (typeof file === 'string' && file) order[file] = index;
+            });
+        } else if (pinOrder && typeof pinOrder === 'object') {
+            Object.keys(pinOrder).forEach(function (file) {
+                order[file] = pinOrder[file];
+            });
+        }
+        return order;
+    }
+
+    function normalizeScenarioItem(item) {
+        var file = item && item.file !== undefined && item.file !== null ? String(item.file) : '';
+        var segments = scenarioPathSegments(file);
+        var rawName = item && item.name !== undefined && item.name !== null ? String(item.name).trim() : '';
+        var baseName = segments.length ? segments[segments.length - 1] : file;
+        // 清单未提供显示名、或 name 直接就是完整路径时，用文件名作节点标题，
+        // 完整路径放在 title 属性里，避免树节点里出现重复长路径。
+        var name = !rawName || normalizeScenarioFile(rawName) === normalizeScenarioFile(file) ? baseName : rawName;
+        return {
+            name: name || file,
+            file: file,
+            tags: Array.isArray(item && item.tags) ? item.tags.slice() : [],
+            segments: segments
+        };
+    }
+
+    function countScenarioFiles(nodes) {
+        return nodes.reduce(function (total, node) {
+            return total + (node.type === 'dir' ? countScenarioFiles(node.children) : 1);
+        }, 0);
+    }
+
+    function sortScenarioTree(nodes) {
+        nodes.sort(function (left, right) {
+            if (left.type !== right.type) return left.type === 'dir' ? -1 : 1;
+            var byName = compareScenarioNames(left.name, right.name);
+            if (byName !== 0) return byName;
+            return compareScenarioNames(left.path || left.file, right.path || right.file);
+        });
+        nodes.forEach(function (node) {
+            if (node.type === 'dir') sortScenarioTree(node.children);
+        });
+    }
+
+    function applyScenarioDirCounts(nodes) {
+        nodes.forEach(function (node) {
+            if (node.type !== 'dir') return;
+            node.count = countScenarioFiles(node.children);
+            applyScenarioDirCounts(node.children);
+        });
+    }
+
+    function insertScenarioFile(nodes, segments, item, depth, parentPath, fullRelative) {
+        var head = segments[0];
+        var relative = fullRelative || segments;
+        if (segments.length === 1) {
+            nodes.push({
+                type: 'file',
+                name: item.name || head,
+                fileName: head,
+                file: item.file,
+                relativePath: relative.join('/'),
+                dirPath: relative.slice(0, -1).join('/'),
+                tags: item.tags,
+                depth: depth,
+                pinned: false
+            });
+            return;
+        }
+        var dirPath = parentPath ? parentPath + '/' + head : head;
+        var dir = null;
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].type === 'dir' && nodes[i].name === head) {
+                dir = nodes[i];
+                break;
+            }
+        }
+        if (!dir) {
+            dir = { type: 'dir', name: head, path: dirPath, depth: depth, children: [] };
+            nodes.push(dir);
+        }
+        insertScenarioFile(dir.children, segments.slice(1), item, depth + 1, dirPath, relative);
+    }
+
+    function buildScenarioTree(allFiles, visibleFiles, pinOrder) {
+        var order = normalizePinOrder(pinOrder);
+        var allItems = (allFiles || []).map(normalizeScenarioItem);
+        var visibleItems = (visibleFiles || allItems).map(normalizeScenarioItem);
+        var prefix = commonScenarioDir(allItems.map(function (item) { return item.segments; }));
+        var rootPath = prefix.join('/');
+        var root = null;
+        var topNodes = [];
+        if (prefix.length) {
+            root = { type: 'dir', name: prefix[prefix.length - 1], path: rootPath, depth: 0, children: [] };
+            topNodes = root.children;
+        }
+        var pinned = [];
+        visibleItems.forEach(function (item) {
+            if (!item.segments.length) return;
+            var relative = item.segments.slice(prefix.length);
+            if (!relative.length) return;
+            if (Object.prototype.hasOwnProperty.call(order, item.file)) {
+                pinned.push({
+                    type: 'file',
+                    name: item.name,
+                    fileName: relative[relative.length - 1],
+                    file: item.file,
+                    relativePath: relative.join('/'),
+                    dirPath: relative.slice(0, -1).join('/'),
+                    tags: item.tags,
+                    depth: 1,
+                    pinned: true
+                });
+                return;
+            }
+            insertScenarioFile(topNodes, relative, item, prefix.length ? 1 : 0, rootPath, relative);
+        });
+        pinned.sort(function (left, right) {
+            return order[left.file] - order[right.file];
+        });
+        sortScenarioTree(topNodes);
+        applyScenarioDirCounts(topNodes);
+        if (root) {
+            root.count = countScenarioFiles(root.children);
+            if (!root.children.length) root = null;
+        }
+        return { root: root, pinned: pinned, nodes: topNodes };
+    }
+
+    function scenarioFileNodeHtml(item, options) {
+        var active = options.activeFile === item.file;
+        var pinned = Boolean(options.pinned);
+        // 树内是紧凑行：名称优先，文件名作次要信息；目录层级已表达模块，
+        // 标签只在顶部筛选器使用，不在窄栏行内重复展示
+        var fileName = item.name === item.fileName ? '' : item.fileName;
+        var pinLabel = pinned ? '取消置顶' : '置顶';
+        return '<div class="scenario-tree-item' + (active ? ' is-active' : '') + '">' +
+            '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (8 + item.depth * 14) + 'px">' +
+                '<svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                '<span class="scenario-tree-item__name">' + esc(item.name) + '</span>' +
+                (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + '</span>' : '') +
+            '</button>' +
+            '<button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? ' scenario-pin-control--active' : '') + '">' +
+                '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>' +
+            '</button>' +
+            '</div>';
+    }
+
+    function scenarioDirNodeHtml(node, options) {
+        var key = 'dir:' + node.path;
+        var collapsed = !options.expandAll && Boolean(collapsedScenarioDirs[key]);
+        var children = node.children.map(function (child) {
+            return child.type === 'dir'
+                ? scenarioDirNodeHtml(child, options)
+                : scenarioFileNodeHtml(child, { activeFile: options.activeFile, pinned: false });
+        }).join('');
+        return '<div class="scenario-tree-dir">' +
+            '<button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 14) + 'px">' +
+                '<svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
+                '<svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
+                '<span class="scenario-tree-dir__name">' + esc(node.name) + '</span>' +
+                '<span class="scenario-tree-dir__count">' + node.count + '</span>' +
+            '</button>' +
+            '<div class="scenario-tree-children"' + (collapsed ? ' hidden' : '') + '>' + children + '</div>' +
+        '</div>';
+    }
+
+    function pinnedScenarioGroupHtml(pinned, options) {
+        var key = 'pinned';
+        var collapsed = !options.expandAll && Boolean(collapsedScenarioDirs[key]);
+        var children = pinned.map(function (item) {
+            return scenarioFileNodeHtml(item, { activeFile: options.activeFile, pinned: true });
+        }).join('');
+        return '<div class="scenario-tree-dir scenario-tree-dir--pinned">' +
+            '<button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + key + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" title="置顶场景">' +
+                '<svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
+                '<svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z"></path></svg>' +
+                '<span class="scenario-tree-dir__name">置顶</span>' +
+                '<span class="scenario-tree-dir__count">' + pinned.length + '</span>' +
+            '</button>' +
+            '<div class="scenario-tree-children"' + (collapsed ? ' hidden' : '') + '>' + children + '</div>' +
+        '</div>';
+    }
+
+    function toggleScenarioDir(button) {
+        if (!button) return;
+        var key = button.getAttribute('data-scenario-dir-toggle');
+        if (!key) return;
+        var expanded = button.getAttribute('aria-expanded') !== 'false';
+        var next = !expanded;
+        if (next) delete collapsedScenarioDirs[key];
+        else collapsedScenarioDirs[key] = true;
+        button.setAttribute('aria-expanded', next ? 'true' : 'false');
+        var children = button.nextElementSibling;
+        if (children && children.classList.contains('scenario-tree-children')) children.hidden = !next;
+    }
+
     function renderScenarioSelect(discoveredFiles, scenarioFile, keyword, pinOrder, tagFilter) {
         var list = document.getElementById('scenarioList');
         if (!list) return;
-        pinOrder = pinOrder || {};
         var normalizedKeyword = String(keyword || '').trim().toLowerCase();
         var clearSearchButton = document.getElementById('scenarioSearchClearBtn');
         if (clearSearchButton) clearSearchButton.hidden = !normalizedKeyword;
@@ -615,45 +862,28 @@ const workbenchView = (function () {
             var keywordMatch = !normalizedKeyword || text.indexOf(normalizedKeyword) >= 0;
             var tagMatch = !tagFilter || (Array.isArray(item.tags) && item.tags.indexOf(tagFilter) >= 0);
             return keywordMatch && tagMatch;
-        }).sort(function (left, right) {
-            var leftOrder = Object.prototype.hasOwnProperty.call(pinOrder, left.file) ? pinOrder[left.file] : Number.MAX_SAFE_INTEGER;
-            var rightOrder = Object.prototype.hasOwnProperty.call(pinOrder, right.file) ? pinOrder[right.file] : Number.MAX_SAFE_INTEGER;
-            return leftOrder - rightOrder;
         });
-        if (!items.length) {
+        var tree = buildScenarioTree(discoveredFiles || [], items, pinOrder);
+        if (!tree.pinned.length && !tree.nodes.length) {
             var emptyText = normalizedKeyword || tagFilter ? '未找到匹配场景' : '暂无可用场景';
             list.innerHTML = '<div class="scenario-search-empty" role="status"><span>' + esc(emptyText) + '</span>'
                 + (normalizedKeyword ? '<button type="button" data-clear-scenario-search>清除搜索</button>' : '')
                 + '</div>';
             return;
         }
-        list.innerHTML = items.map(function (item) {
-            var name = item.name || item.file;
-            var active = scenarioFile === item.file;
-            var pinned = Object.prototype.hasOwnProperty.call(pinOrder, item.file);
-            var classes = active
-                ? 'bg-blue-50/80 border-blue-200/90 text-blue-900 shadow-2xs font-semibold'
-                : 'bg-white border-transparent text-slate-700 hover:bg-slate-50 hover:border-slate-200/60';
-            var pinLabel = pinned ? '取消置顶' : '置顶';
-            return '<div class="flex items-center gap-1 rounded-lg border transition-all ' + classes + '">' +
-                '<button type="button" data-scenario-file="' + esc(item.file) + '" title="' + esc(item.file) + '" class="min-w-0 flex-1 text-left px-2.5 py-2 flex items-center gap-2">' +
-                    '<svg class="w-3.5 h-3.5 ' + (active ? 'text-blue-500' : 'text-slate-400') + ' flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
-                    '<div class="min-w-0 flex-1">' +
-                        '<div class="text-xs font-semibold truncate leading-snug">' + esc(name) + '</div>' +
-                        '<div class="mt-0.5 text-[10px] font-mono truncate ' + (active ? 'text-blue-500/80' : 'text-slate-400') + '">' + esc(item.file) + '</div>' +
-                        (Array.isArray(item.tags) && item.tags.length
-                            ? '<div class="mt-1 flex flex-wrap gap-1">' + item.tags.map(function (tag) {
-                                return '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-[9px] font-medium text-slate-500">' + esc(tag) + '</span>';
-                            }).join('') + '</div>'
-                            : '') +
-                    '</div>' +
-                    (active ? '<svg class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>' : '') +
-                '</button>' +
-                '<button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? ' scenario-pin-control--active' : '') + '">' +
-                    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>' +
-                '</button>' +
-                '</div>';
-        }).join('');
+        var options = { activeFile: scenarioFile, expandAll: Boolean(normalizedKeyword || tagFilter) };
+        var parts = [];
+        if (tree.pinned.length) parts.push(pinnedScenarioGroupHtml(tree.pinned, options));
+        if (tree.root) {
+            parts.push(scenarioDirNodeHtml(tree.root, options));
+        } else {
+            tree.nodes.forEach(function (node) {
+                parts.push(node.type === 'dir'
+                    ? scenarioDirNodeHtml(node, options)
+                    : scenarioFileNodeHtml(node, { activeFile: scenarioFile, pinned: false }));
+            });
+        }
+        list.innerHTML = '<div class="scenario-tree">' + parts.join('') + '</div>';
     }
 
     function renderStatsAll(steps, iterations, scenario, scenarioFile) {
@@ -1343,6 +1573,8 @@ const workbenchView = (function () {
         setStepLoading: setStepLoading,
         buildSkeleton: buildSkeleton,
         renderScenarioSelect: renderScenarioSelect,
+        buildScenarioTree: buildScenarioTree,
+        toggleScenarioDir: toggleScenarioDir,
         renderStatsAll: renderStatsAll,
         renderFilterAll: renderFilterAll,
         renderPendingSteps: renderPendingSteps,
@@ -1359,3 +1591,4 @@ export default workbenchView;
 // 具名导出供 Node 侧单测直接消费（浏览器入口仍走默认导出，形状不变）
 export const buildMarkdownReport = workbenchView.buildMarkdownReport;
 export const eachDetailRows = workbenchView.eachDetailRows;
+export const buildScenarioTree = workbenchView.buildScenarioTree;

@@ -555,7 +555,7 @@ const workbenchStyle = (function () {
                 border-radius: 8px !important;
                 background: color-mix(in srgb, var(--workspace-hover) 50%, transparent) !important;
                 border: 1px dashed var(--workspace-line) !important;
-                margin: 8px 0;
+                margin: 8px 6px;
             }
             .scenario-search-empty button {
                 padding: 4px 8px;
@@ -645,52 +645,138 @@ const workbenchStyle = (function () {
             .steps-filter-empty button:active {
                 transform: translateY(0) scale(0.98);
             }
-            #scenarioList { padding: 6px !important; gap: 4px !important; }
-            #scenarioList > div {
-                border-radius: 7px !important;
-                border: 1px solid transparent !important;
-                box-shadow: none !important;
-                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            .scenario-list-resizer {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: calc(var(--scenario-list-width, var(--scenario-list-default-width, 260px)) - 4px);
+                z-index: 7;
+                width: 8px;
+                cursor: col-resize;
+                touch-action: none;
             }
-            #scenarioList > div:hover {
-                background: var(--workspace-hover) !important;
-                border-color: color-mix(in srgb, var(--workspace-line) 80%, transparent) !important;
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04) !important;
+            .scenario-list-resizer::after {
+                content: "";
+                position: absolute;
+                top: 8px;
+                left: 3px;
+                bottom: 8px;
+                width: 2px;
+                border-radius: 999px;
+                background: color-mix(in srgb, var(--workspace-line) 65%, transparent);
+                transition: background-color .15s ease;
             }
-            #scenarioList > div:active {
-                transform: translateY(0);
-                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-                transition-duration: 0.1s;
+            .scenario-list-resizer:hover::after,
+            .scenario-list-resizer:focus-visible::after,
+            .scenario-list-resizer.is-dragging::after { background: color-mix(in srgb, var(--workspace-primary) 45%, transparent); }
+            body.scenario-list-resizing { cursor: col-resize; user-select: none; }
+            body.scenario-list-resizing #scenario-test-root * { cursor: col-resize !important; }
+            #scenarioList { padding: 6px 0 !important; gap: 2px !important; }
+            #scenarioList .scenario-tree { display: flex; flex-direction: column; gap: 2px; }
+            #scenarioList .scenario-tree-dir { display: flex; flex-direction: column; gap: 0; }
+            #scenarioList .scenario-tree-dir__toggle {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                width: 100%;
+                padding: 7px 8px;
+                border: 0;
+                border-radius: 0;
+                background: transparent;
+                color: var(--workspace-muted);
+                font-size: 13px;
+                font-weight: 600;
+                text-align: left;
+                cursor: pointer;
+                transition: background-color .12s ease, color .12s ease;
             }
-            #scenarioList > div.bg-slate-100 {
-                background: var(--workspace-selected) !important;
-                border-color: var(--workspace-selected-line) !important;
-                box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px color-mix(in srgb, var(--workspace-primary) 20%, transparent) !important;
+            #scenarioList .scenario-tree-dir__toggle:hover { background: var(--workspace-hover); color: var(--workspace-text); }
+            #scenarioList .scenario-tree-dir__chevron { width: 13px; height: 13px; flex: 0 0 auto; transition: transform .12s ease; }
+            #scenarioList .scenario-tree-dir__toggle[aria-expanded="false"] .scenario-tree-dir__chevron { transform: rotate(-90deg); }
+            #scenarioList .scenario-tree-dir__folder { width: 14px; height: 14px; flex: 0 0 auto; color: #94a3b8; }
+            #scenarioList .scenario-tree-dir__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            #scenarioList .scenario-tree-dir__count {
+                margin-left: auto;
+                padding: 0 2px;
+                color: var(--workspace-muted);
+                font-size: 11px;
+                font-weight: 500;
+                opacity: .8;
             }
-            #scenarioList > div:has([data-scenario-file]) { min-height: 56px; }
-            #scenarioList [data-scenario-file] { padding: 8px 10px !important; }
-            #scenarioList [data-scenario-file] > div:first-child { font-size: 12.5px !important; font-weight: 600 !important; line-height: 1.35 !important; color: var(--workspace-text); }
-            #scenarioList [data-scenario-file] > div:last-child { margin-top: 3px !important; font-size: 10.5px !important; line-height: 1.3 !important; }
+            #scenarioList .scenario-tree-children { display: flex; flex-direction: column; gap: 0; }
+            #scenarioList .scenario-tree-children[hidden] { display: none; }
+            #scenarioList .scenario-tree-dir--pinned .scenario-tree-dir__toggle,
+            #scenarioList .scenario-tree-dir--pinned .scenario-tree-dir__folder { color: #0d9488; }
+            #scenarioList .scenario-tree-item {
+                position: relative;
+                min-height: 34px;
+                border-radius: 0;
+                transition: background-color .12s ease, color .12s ease;
+            }
+            #scenarioList .scenario-tree-item:hover { background: var(--workspace-hover); }
+            #scenarioList .scenario-tree-item.is-active {
+                background: color-mix(in srgb, var(--workspace-primary) 12%, transparent);
+                box-shadow: inset 2px 0 0 var(--workspace-primary);
+            }
+            #scenarioList .scenario-tree-item__main {
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                width: 100%;
+                min-width: 0;
+                padding: 7px 34px 7px 8px;
+                border: 0;
+                background: transparent;
+                text-align: left;
+                cursor: pointer;
+            }
+            #scenarioList .scenario-tree-item__icon { width: 14px; height: 14px; flex: 0 0 auto; color: #94a3b8; }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__icon { color: var(--workspace-primary); }
+            #scenarioList .scenario-tree-item__name {
+                flex: 1 1 auto;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--workspace-text);
+            }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__name { font-weight: 600; }
+            #scenarioList .scenario-tree-item__file {
+                flex: 0 1 auto;
+                min-width: 0;
+                max-width: 42%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                font-size: 11px;
+                color: var(--workspace-muted);
+            }
             #scenarioList .scenario-pin-control {
+                position: absolute;
+                right: 8px;
+                top: 50%;
                 display: inline-flex;
-                flex: 0 0 auto;
                 align-items: center;
                 justify-content: center;
-                align-self: center;
-                width: 24px;
-                height: 24px;
-                margin-right: 6px;
+                width: 22px;
+                height: 22px;
+                padding: 0;
+                transform: translateY(-50%);
                 border: 0;
                 border-radius: 4px;
                 background: transparent;
                 color: #94a3b8;
                 opacity: 0;
                 cursor: pointer;
-                transition: all 0.15s ease;
+                transition: opacity .12s ease, background-color .12s ease, color .12s ease;
             }
             #scenarioList .scenario-pin-control svg { width: 13px; height: 13px; }
-            #scenarioList > div:hover .scenario-pin-control, #scenarioList .scenario-pin-control--active { opacity: 1; }
+            #scenarioList .scenario-tree-item:hover .scenario-pin-control,
+            #scenarioList .scenario-pin-control:focus-visible,
+            #scenarioList .scenario-pin-control--active { opacity: 1; }
             #scenarioList .scenario-pin-control:hover { background: var(--workspace-hover); color: var(--workspace-text); }
             #scenarioList .scenario-pin-control--active { color: #0d9488; }
             #scenarioList .scenario-pin-control--active:hover { background: rgba(13, 148, 136, 0.1); color: #0f766e; }
@@ -1248,8 +1334,10 @@ const workbenchStyle = (function () {
             #configModal, #adhocModal { background: var(--workspace-overlay) !important; }
 
             .scenario-grid {
+                --scenario-list-default-width: 280px;
+                position: relative;
                 display: grid;
-                grid-template-columns: minmax(200px, 260px) 1fr minmax(250px, 290px);
+                grid-template-columns: var(--scenario-list-width, var(--scenario-list-default-width)) 1fr minmax(250px, 290px);
                 gap: 8px;
                 height: 100%;
                 min-height: 0;
@@ -1264,13 +1352,15 @@ const workbenchStyle = (function () {
 
             @media (min-width: 1440px) {
                 .scenario-grid {
-                    grid-template-columns: minmax(220px, 270px) 1fr minmax(260px, 300px) !important;
+                    --scenario-list-default-width: 300px;
+                    grid-template-columns: var(--scenario-list-width, var(--scenario-list-default-width)) 1fr minmax(260px, 300px) !important;
                 }
             }
 
             @media (max-width: 1439px) and (min-width: 1080px) {
                 .scenario-grid {
-                    grid-template-columns: minmax(190px, 230px) 1fr minmax(240px, 270px) !important;
+                    --scenario-list-default-width: 250px;
+                    grid-template-columns: var(--scenario-list-width, var(--scenario-list-default-width)) 1fr minmax(240px, 270px) !important;
                 }
             }
 
@@ -1287,6 +1377,7 @@ const workbenchStyle = (function () {
                 .scenario-pane--scenarios { height: min(30vh, 260px); }
                 .scenario-pane--steps { height: max(500px, 60vh); }
                 .scenario-pane--stats { height: auto; }
+                .scenario-list-resizer { display: none; }
             }
 
             @media (max-width: 820px) {
@@ -1340,8 +1431,8 @@ const workbenchStyle = (function () {
                 }
                 .scenario-header-button:hover,
                 .scenario-header-button:active,
-                #scenarioList > div:hover,
-                #scenarioList > div:active,
+                #scenarioList .scenario-tree-item:hover,
+                #scenarioList .scenario-tree-item:active,
                 .stats-action-btn:hover,
                 .stats-action-btn:active,
                 .scenario-side-tab:hover,
@@ -1406,13 +1497,13 @@ const workbenchStyle = (function () {
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { box-shadow: 0 4px 18px rgba(25, 40, 75, 0.05) !important; }
             #scenario-test-root.theme-zcode .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList { padding: 8px !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div:hover { transform: none; box-shadow: none !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div.bg-slate-100 { box-shadow: inset 3px 0 0 var(--workspace-primary) !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item:hover { transform: none; box-shadow: none !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item.is-active { box-shadow: inset 3px 0 0 var(--workspace-primary) !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #stepsList > li > div:first-child { min-height: 48px; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-header-select:focus-within { box-shadow: 0 0 0 3px var(--workspace-focus) !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) :is(button, input, select, textarea, [role="button"]):focus-visible { outline: 2px solid var(--workspace-primary) !important; outline-offset: 2px; }
             @media (prefers-reduced-motion: reduce) {
-                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div,
+                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item,
                 #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { transition: none !important; }
             }
         `;

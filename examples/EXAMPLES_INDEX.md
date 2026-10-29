@@ -54,6 +54,18 @@
 
 使用前请阅读 [安全指南](../SECURITY.md)。
 
+### Tree Demo：多层目录
+
+路径：[`examples/tree-demo/`](tree-demo/)
+
+覆盖：
+
+- 多级目录（`common` / `auth` / `order/refund` / `task`）；
+- 工作台左侧目录树的层级、折叠与排序；
+- 登录、订单、任务轮询等可执行场景。
+
+详细步骤见 [多层目录示例说明](tree-demo/README.md)。
+
 ## 运行仓库内示例
 
 仓库示例使用本地构建产物，适合公共库维护者。先按 [发布与构建说明](../docs/RELEASING.md) 完成依赖安装和构建。
@@ -88,6 +100,7 @@ node .\dist\scenario-test-cli.cjs `
 | 了解最小配置和基础请求 | Basic |
 | 查看认证、多步骤编排和重试 | Complete |
 | 检查凭据、路径与错误处理 | Security Best Practices |
+| 验证场景目录树与多级目录 | Tree Demo |
 
 示例仅用于学习，不能直接作为生产测试配置。复制到业务项目后，需要重新确认环境地址、认证方式、请求字段、响应结构、测试数据和清理条件。
 
