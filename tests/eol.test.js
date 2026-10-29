@@ -74,7 +74,7 @@ test(
         try {
             problems = auditRepository(root);
         } catch (error) {
-            // 环境无 git 命令时跳过，避免非仓库消费方（npm 包解包）误报
+            // 环境无 git 命令时跳过，避免非仓库消费方（发布产物解包）误报
             if (error.code === "GIT_UNAVAILABLE") return;
             throw error;
         }

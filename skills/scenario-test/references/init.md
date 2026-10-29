@@ -17,7 +17,7 @@
 3. 重新探测，再使用项目内 CLI 运行 `doctor --config <config>`；任何检查失败时停止并报告。
 4. 用户明确拒绝自动安装、设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或项目不完整时，不自动初始化或修复；只询问能力时不安装。
 
-Skill 自带运行时的发布版本与来源见 `runtime/release.json`。用户明确要求升级已有项目时，先核对当前版本与目标版本；仅当 Skill 自带版本符合用户指定的目标且不会降级时，备份并告知将更新运行时副本和 AI 规则，再使用 Skill CLI 的 `init --no-input`，不可使用 `--force`。不能满足目标版本时先更新 Skill；需要降级须获用户明确要求。需要其他发布版本时先更新或安装对应版本的 Skill，不使用项目源码构建产物。内网或 npm 等特殊接入仅按用户明确要求处理。
+Skill 自带运行时的发布版本与来源见 `runtime/release.json`。用户明确要求升级已有项目时，先核对当前版本与目标版本；仅当 Skill 自带版本符合用户指定的目标且不会降级时，备份并告知将更新运行时副本和 AI 规则，再使用 Skill CLI 的 `init --no-input`，不可使用 `--force`。不能满足目标版本时先更新 Skill；需要降级须获用户明确要求。需要其他发布版本时先更新或安装对应版本的 Skill，不使用项目源码构建产物。内网接入（`-Source` / `SCENARIO_TEST_SOURCE` 或 `--library-url` 指向制品目录）仅按用户明确要求处理；npm 包不再是分发渠道，不要建议 `npm install`。
 
 ## 幂等与覆盖语义
 
@@ -26,7 +26,7 @@ Skill 自带运行时的发布版本与来源见 `runtime/release.json`。用户
 ## 安装后的确认
 
 1. 重新运行探测脚本，确认 `status=installed`。
-2. 执行 `node <cli> doctor --config <config>`，其中 `<cli>` 为探测结果中的项目内 CLI。存在 FAIL 时停止并报告，不进入场景编写/执行。禁止悄悄更换 npm/免 npm 模式。
+2. 执行 `node <cli> doctor --config <config>`，其中 `<cli>` 为探测结果中的项目内 CLI。存在 FAIL 时停止并报告，不进入场景编写/执行。禁止悄悄更换接入方式。
 3. 通过后加载 `<scenarioDir>/.scenario-test/AI_SCENARIO_PROMPT.md`，如用户已提供业务功能与入口可接着进入编写阶段；若没有业务目标，只问用户要测试哪个业务功能（页面、Controller、接口或已有测试任一入口）。
 
 该工作流不执行 HTTP 测试、不启动工作台、不需要业务凭据。

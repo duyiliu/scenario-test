@@ -143,21 +143,19 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     assert.match(quickStart, /无需复制/);
     assert.doesNotMatch(examplesIndex, /两次 Prompt/);
 
-    // 一键安装脚本同时锁定两条路径：默认免 npm（npm Registry 固定版本 tarball → 本地 dist 初始化）
-    // 与显式 npm 可选路径（-UseNpm / SCENARIO_TEST_USE_NPM → npm install + npx init/doctor）。
+    // 一键安装脚本锁定免 npm 单一路径：按固定 GitHub Tag 经 jsDelivr 下载发布版 dist/
+    // 四个运行时文件后初始化；npm 已不再是分发渠道，脚本不得再出现 npm 安装分支。
     const installSh = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.sh"), "utf8");
     const installPs1 = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.ps1"), "utf8");
     for (const script of [installSh, installPs1]) {
         assert.match(script, /scenario-test-cli\.cjs/);
-        assert.match(script, /registry\.npmjs\.org/);
-        assert.match(script, new RegExp(VERSION.replaceAll(".", "\\.")), "默认 tarball 应固定到当前版本");
+        assert.match(script, /cdn\.jsdelivr\.net\/gh\/duyiliu\/scenario-test@v/, "默认下载源应固定到 GitHub Tag 的 jsDelivr dist");
+        assert.match(script, new RegExp(VERSION.replaceAll(".", "\\.")), "默认版本应固定到当前版本");
         assert.doesNotMatch(script, /api\.github\.com/);
+        assert.doesNotMatch(script, /registry\.npmjs\.org/);
         assert.match(script, /SCENARIO_TEST_SOURCE|Source/);
-        assert.match(script, /SCENARIO_TEST_USE_NPM|-UseNpm/);
-        // npm 分支仍完整保留（仅显式开关开启时使用）
-        assert.match(script, /npm install/);
-        assert.match(script, /@yc_yzkj\/scenario-test/);
-        assert.match(script, /npx @yc_yzkj\/scenario-test init/);
-        assert.match(script, /npx @yc_yzkj\/scenario-test doctor/);
+        assert.doesNotMatch(script, /SCENARIO_TEST_USE_NPM|-UseNpm/);
+        assert.doesNotMatch(script, /npm install/);
+        assert.doesNotMatch(script, /npx @yc_yzkj\/scenario-test/);
     }
 });

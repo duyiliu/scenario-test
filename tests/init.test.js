@@ -78,7 +78,7 @@ function assertGeneratedLayout(project, directory = "scenario-test") {
     return { publicDir, frameworkDir };
 }
 
-test("init 创建 npm-only 项目入口，且默认不覆盖项目文件", () => {
+test("init 创建项目内运行时副本入口，且默认不覆盖项目文件", () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-init-"));
     try {
         const first = runInit(project);
@@ -107,7 +107,8 @@ test("init 创建 npm-only 项目入口，且默认不覆盖项目文件", () =>
 
         const readme = fs.readFileSync(path.join(publicDir, "README.md"), "utf8");
         assert.match(readme, /不需要再次复制任何 Prompt/);
-        assert.match(readme, /npx @yc_yzkj\/scenario-test/);
+        assert.match(readme, /不安装 npm 包/);
+        assert.doesNotMatch(readme, /npx @yc_yzkj\/scenario-test|npm install -D/);
         assert.match(readme, /AI 负责维护 `scenario\.config\.js` 和 `scenarios\/`/);
         assert.match(readme, /一次只处理一个业务功能/);
 

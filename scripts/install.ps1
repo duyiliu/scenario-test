@@ -4,10 +4,10 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    默认免 npm 安装：从 npm Registry 下载固定版本 tarball，解压后从本地 dist 初始化，
-    不安装 npm 包、不改 package.json；显式指定 -UseNpm 时才通过 npm 安装运行时。
-    指定 -Source 时改从内网目录下载全部运行时文件。两种方式都会把固定版本运行时副本
-    落到项目 .scenario-test/ 并执行健康检查。
+    免 npm 安装：按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/ 运行时文件，
+    放入临时目录后由 CLI 初始化；不安装 npm 包、不改 package.json。
+    指定 -Source 时改用内网运行时目录（GitLab Raw 或制品目录）。
+    运行时副本落到项目 .scenario-test/ 并执行健康检查。
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -18,16 +18,13 @@
 .PARAMETER SkipDoctor
     跳过健康检查
 
-.PARAMETER UseNpm
-    显式使用 npm 安装方式（npm install -D + npx init/doctor）。默认不指定即为免 npm 模式。
-
 .PARAMETER Source
-    可选的内网运行时目录（GitLab Raw 或制品目录）。不指定时从 npm Registry 下载固定版本 tarball。
+    可选的内网运行时目录（GitLab Raw 或制品目录，需包含全部 4 个运行时文件）。
+    不指定时按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/。
 
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
-    .\install.ps1 -UseNpm
     .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.10.0/dist"
     irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.10.0/scripts/install.ps1 | iex
 #>
@@ -36,13 +33,12 @@ param(
     [string]$ProjectDir = ".",
     [string]$TargetDir = "scenario-test",
     [switch]$SkipDoctor,
-    [switch]$UseNpm,
     [string]$Source = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ScenarioTestVersion = "0.10.0"
-$PackageTarball = "https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-$ScenarioTestVersion.tgz"
+$DefaultSource = "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/dist"
 $RuntimeFiles = @(
     "scenario-test-cli.cjs",
     "scenario-test.umd.js",
@@ -67,11 +63,7 @@ function Invoke-NativeCapture {
 }
 
 Write-Host "`n=== scenario-test 一键安装 ===" -ForegroundColor Magenta
-if ($UseNpm) {
-    Write-Host "模式: npm 安装（显式 -UseNpm）`n" -ForegroundColor Magenta
-} else {
-    Write-Host "模式: 免 npm 下载（默认）`n" -ForegroundColor Magenta
-}
+Write-Host "模式: 免 npm 下载（GitHub Tag 固定版本）`n" -ForegroundColor Magenta
 
 # 1. 检查 Node.js 版本
 Write-Info "检查 Node.js 版本..."
@@ -88,15 +80,15 @@ try {
 
         if ($major -lt 18) {
             Write-Error-Custom "需要 Node.js 18+，当前版本：$nodeVersionOutput"
-            Write-Info "请访问 https://nodejs.org/ 下载最新 LTS 版本"
+            Write-Info "请访问 https://nodejs.org/ 安装 Node.js 18+"
             exit 1
         }
         Write-Success "Node.js 版本检查通过：$nodeVersionOutput"
     } else {
-        Write-Warning-Custom "无法解析 Node.js 版本，继续执行..."
+        Write-Warning-Custom "无法解析 Node.js 版本：$nodeVersionOutput（继续安装）"
     }
 } catch {
-    Write-Error-Custom "Node.js 检查失败：$_"
+    Write-Error-Custom "Node.js 未安装或不在 PATH 中"
     Write-Info "请访问 https://nodejs.org/ 安装 Node.js 18+"
     exit 1
 }
@@ -115,71 +107,39 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 Push-Location $ProjectDir
 try {
-    if (-not $UseNpm) {
-        $runtimeDir = Join-Path $tempRoot "runtime"
-        New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+    $runtimeDir = Join-Path $tempRoot "runtime"
+    New-Item -ItemType Directory -Path $runtimeDir | Out-Null
 
-        if ($Source) {
-            Write-Info "免 npm 安装模式，内网下载源：$Source ..."
-            foreach ($fileName in $RuntimeFiles) {
-                $fileUrl = "$($Source.TrimEnd('/'))/$fileName"
-                try {
-                    Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $runtimeDir $fileName) -UseBasicParsing
-                } catch {
-                    throw "运行时文件下载失败: $fileUrl`n$_"
-                }
-            }
-        } else {
-            Write-Info "免 npm 安装模式，从 npm Registry 下载固定版本 $ScenarioTestVersion ..."
-            $tarballPath = Join-Path $tempRoot "scenario-test.tgz"
-            try {
-                Invoke-WebRequest -Uri $PackageTarball -OutFile $tarballPath -UseBasicParsing
-                tar -xzf "$tarballPath" -C "$tempRoot"
-                if ($LASTEXITCODE -ne 0) { throw "tar 解压退出码 $LASTEXITCODE" }
-            } catch {
-                throw "npm Registry tarball 下载或解压失败: $PackageTarball`n$_"
-            }
-            $runtimeDir = Join-Path $tempRoot "package/dist"
+    $downloadSource = if ($Source) { $Source.TrimEnd('/') } else { $DefaultSource }
+    Write-Info "免 npm 安装模式，下载源：$downloadSource ..."
+    foreach ($fileName in $RuntimeFiles) {
+        $fileUrl = "$downloadSource/$fileName"
+        try {
+            Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $runtimeDir $fileName) -UseBasicParsing
+        } catch {
+            throw "运行时文件下载失败: $fileUrl`n$_"
         }
-
-        foreach ($fileName in $RuntimeFiles) {
-            if (-not (Test-Path (Join-Path $runtimeDir $fileName) -PathType Leaf)) {
-                throw "下载内容不完整，缺少运行时文件：$fileName"
-            }
-        }
-        Write-Success "固定版本运行时下载成功"
-
-        Write-Info "初始化场景测试目录：$fullTargetPath ..."
-        $tempCli = Join-Path $runtimeDir "scenario-test-cli.cjs"
-
-        # --no-input：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时），
-        # 避免 install 脚本在"已存在"时进入被捕获输出吞掉的交互确认而静默卡死。
-        # 实时回显 init 输出，避免长时间黑屏；stdin 喂 $null 让非交互判定稳定。
-        $initOutput = Invoke-NativeCapture { node "$tempCli" init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
-            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ } }
-        if ($LASTEXITCODE -ne 0) {
-            throw "init 命令失败`n$initOutput"
-        }
-        Write-Success "初始化完成"
-    } else {
-        # 显式 npm 模式：通过 npm 安装运行时（失败即退出，不静默切换）
-        Write-Info "通过 npm 安装运行时：@yc_yzkj/scenario-test ..."
-        $installOutput = Invoke-NativeCapture { npm install --save-dev "@yc_yzkj/scenario-test" 2>&1 }
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm 安装失败`n$installOutput"
-        }
-        Write-Success "npm 安装成功"
-
-        # 4. 执行 init（--no-input：目录已存在时保留配置与场景，避免脚本卡在交互确认）
-        Write-Info "初始化场景测试目录：$fullTargetPath ..."
-
-        $initOutput = Invoke-NativeCapture { npx @yc_yzkj/scenario-test init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
-            ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ } }
-        if ($LASTEXITCODE -ne 0) {
-            throw "init 命令失败`n$initOutput"
-        }
-        Write-Success "初始化完成"
     }
+
+    foreach ($fileName in $RuntimeFiles) {
+        if (-not (Test-Path (Join-Path $runtimeDir $fileName) -PathType Leaf)) {
+            throw "下载内容不完整，缺少运行时文件：$fileName"
+        }
+    }
+    Write-Success "固定版本运行时下载成功"
+
+    Write-Info "初始化场景测试目录：$fullTargetPath ..."
+    $tempCli = Join-Path $runtimeDir "scenario-test-cli.cjs"
+
+    # --no-input：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时），
+    # 避免 install 脚本在"已存在"时进入被捕获输出吞掉的交互确认而静默卡死。
+    # 实时回显 init 输出，避免长时间黑屏；stdin 喂 $null 让非交互判定稳定。
+    $initOutput = Invoke-NativeCapture { node "$tempCli" init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
+        ForEach-Object { Write-Host $_ -ForegroundColor Gray; $_ } }
+    if ($LASTEXITCODE -ne 0) {
+        throw "init 命令失败`n$initOutput"
+    }
+    Write-Success "初始化完成"
 
     # 5. 检查生成的文件
     Write-Info "验证生成的文件..."
@@ -236,12 +196,7 @@ try {
         Write-Info "`n执行健康检查..."
 
         $configPath = Join-Path $fullTargetPath "scenario.config.js"
-
-        if ($UseNpm) {
-            $doctorOutput = Invoke-NativeCapture { npx @yc_yzkj/scenario-test doctor --config "$configPath" 2>&1 }
-        } else {
-            $doctorOutput = Invoke-NativeCapture { node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config "$configPath" 2>&1 }
-        }
+        $doctorOutput = Invoke-NativeCapture { node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config "$configPath" 2>&1 }
         $doctorExitCode = $LASTEXITCODE
 
         Write-Host $doctorOutput -ForegroundColor Gray
@@ -271,6 +226,7 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 
 $relativeTargetDir = $TargetDir -replace '\\', '/'
 $configRelative = "$relativeTargetDir/scenario.config.js"
+$cliRelative = "$relativeTargetDir/.scenario-test/scenario-test-cli.cjs"
 
 Write-Host "`n📖 接下来的步骤：`n"
 
@@ -281,25 +237,13 @@ Write-Host "   为 `"<业务功能名称>`" 设计场景测试。" -ForegroundCo
 Write-Host "   入口：<页面、Controller、接口或已有测试路径>`n" -ForegroundColor Cyan
 
 Write-Host "2. 启动浏览器工作台（可视化调试）：" -ForegroundColor Yellow
-if ($UseNpm) {
-    Write-Host "   npx @yc_yzkj/scenario-test serve --config $configRelative`n" -ForegroundColor Cyan
-} else {
-    Write-Host "   双击 $relativeTargetDir/start-scenario-test.cmd`n" -ForegroundColor Cyan
-}
+Write-Host "   双击 $relativeTargetDir/start-scenario-test.cmd`n" -ForegroundColor Cyan
 
 Write-Host "3. 命令行执行场景：" -ForegroundColor Yellow
-if ($UseNpm) {
-    Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-    Write-Host "   npx @yc_yzkj/scenario-test run --config $configRelative --env local --all`n" -ForegroundColor Cyan
-    Write-Host "   # 执行指定场景" -ForegroundColor Gray
-    Write-Host "   npx @yc_yzkj/scenario-test run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
-} else {
-    $cliRelative = "$relativeTargetDir/.scenario-test/scenario-test-cli.cjs"
-    Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
-    Write-Host "   node $cliRelative run --config $configRelative --env local --all`n" -ForegroundColor Cyan
-    Write-Host "   # 执行指定场景" -ForegroundColor Gray
-    Write-Host "   node $cliRelative run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
-}
+Write-Host "   # 执行所有非 manual 场景" -ForegroundColor Gray
+Write-Host "   node $cliRelative run --config $configRelative --env local --all`n" -ForegroundColor Cyan
+Write-Host "   # 执行指定场景" -ForegroundColor Gray
+Write-Host "   node $cliRelative run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
 
 Write-Host "4. 文档位置：" -ForegroundColor Yellow
 Write-Host "   README:  $relativeTargetDir/README.md" -ForegroundColor Cyan

@@ -1,63 +1,47 @@
 # 发布流程
 
 > ⚠️ **内部/历史文档**：本指南是仓库维护者的发布流程。对外接入默认**免 npm**
-> （官方安装脚本从 npm Registry 下载固定版本 tarball，在本地解压后初始化，不修改业务项目依赖），
-> 对外安装指引见 [README](../README.md)（“快速接入”内联 AI 接入 Prompt）。
+> （官方安装脚本按固定 GitHub Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件，
+> 在本地初始化，不修改业务项目依赖）。对外安装指引见 [README](../README.md)（"快速接入"内联 AI 接入 Prompt）。
 > 仓库内的 `scripts/publish-release.mjs`（GitLab CI）仅用于内部镜像发布。
 
-`master` 只包含可发布代码。`dist/` 随版本提交，npm tarball 也必须包含完整 `dist/`。消费者默认免 npm：官方 `install.ps1` / `install.sh` 从固定版本 npm Registry tarball 下载并解压运行时到项目 `.scenario-test/`；npm（`@yc_yzkj/scenario-test`）为显式可选方式（`-UseNpm` / `SCENARIO_TEST_USE_NPM=true`）。内网可通过 `Source` / `SCENARIO_TEST_SOURCE` 改用 GitLab Raw 或制品目录。
+`master` 只包含可发布代码。`dist/` 随版本提交，**GitHub Tag 就是唯一发布产物**：
+Tag 的源码归档已包含完整 `dist/`，安装脚本经 jsDelivr 按 Tag 下载 `dist/` 下 4 个
+运行时文件（`scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.d.ts`、
+`scenario-test-capabilities.json`）到项目 `.scenario-test/`。
+**npm Registry 不再是分发渠道**：`package.json` 已标记 `private`，不再执行 `npm publish`；
+Registry 上的存量 `@yc_yzkj/scenario-test` 停留在旧版本，不为新版本更新。
+内网可通过 `Source` / `SCENARIO_TEST_SOURCE` 改用 GitLab Raw 或制品目录。
 
 ## 发布步骤
 
-1. 修改 `package.json` 版本号，遵循语义化版本；同步更新 `package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1` / `scripts/install.sh` 中的固定版本与 npm tarball URL，以及 README / AI Prompt 中固定 Tag 的 jsDelivr 安装脚本 URL。构建后确认 `src/version.generated.js`、`dist/` 和 `npm pack` 内容版本一致。
-2. 本地运行：
+1. 修改 `package.json` 版本号，遵循语义化版本；同步更新 `package-lock.json`、
+   `CHANGELOG.md`、`scripts/install.ps1` / `scripts/install.sh` 中的固定版本与
+   jsDelivr dist URL，以及 README / AI Prompt 中固定 Tag 的 jsDelivr 安装脚本 URL。
+   构建后确认 `src/version.generated.js`、`dist/` 版本一致。
+2. 同步 Skill 发布版运行时（详见下文「Skill 发布版运行时同步」）：从刚构建的 `dist/`
+   复制 4 个运行时文件到 `skills/scenario-test/runtime/`，更新 `release.json` 的
+   `version`、`source`（指向新 Tag）与 4 个文件的 SHA-256。
+3. 本地运行：
 
    ```powershell
    npm run check:all
    npm run test:coverage
+   node --test tests/skill-runtime.test.js
    npm audit   # 期望 0 vulnerabilities；运行时依赖链上不允许遗留，devDependencies 链上遗留需在 issue 中登记
    ```
 
-3. 提交版本变更并推送 `master`。
-4. 创建并推送同名 Tag：
+4. 提交版本变更（含 `runtime/` 与 `release.json` 同步）并推送 `master`。
+5. 创建并推送同名 Tag：
 
    ```powershell
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push github vX.Y.Z
    ```
 
-5. 发布到 npm（scoped 包需 `--access public` 或私有 org）：
-
-   ```powershell
-   npm run build
-   npm publish --access public
-   ```
-
-   > **npm 认证（2026-10 起生效）**：npm 政策要求发包账号开启 2FA，或使用带 **bypass 2FA** 权限的 Granular Access Token。`duyiliu` 账号当前未开 2FA，直接 publish 会 403。流程：
-   >
-   > 1. 到 https://www.npmjs.com/settings/duyiliu/tokens/create 生成 Granular Access Token：权限 Read and write、勾选 bypass 2FA、包范围限定 `@yc_yzkj/scenario-test`；
-   > 2. 写入认证（用完即删，token 不落仓库）：
-   >
-   >    ```bash
-   >    printf '//registry.npmjs.org/:_authToken=npm_xxx\n' >> ~/.npmrc
-   >    npm whoami   # 应输出 duyiliu
-   >    ```
-   >
-   > 3. publish 成功后立即撤销该 token 并从 `~/.npmrc` 删除对应行（`sed -i '/_authToken/d' ~/.npmrc`）。
-   >
-   > 注意：npm 官方已宣布 2027-01 起 bypass 2FA token 的直接 publish 权限将废止，届时迁移 Trusted Publishing（CI OIDC 免 token 方案）。
-
-   `files` 必须包含 `dist`、`scripts/install.ps1`、`scripts/install.sh` 与 `scripts/start-scenario-test.ps1`；`bin` 指向 `dist/scenario-test-cli.cjs`（带 shebang，支持 `npx @yc_yzkj/scenario-test`）。安装脚本依赖 npm tarball 中的完整 `dist/`，发布前需用 `npm pack --dry-run` 核对。
-
-   Windows 浏览器工作台也可直接使用发行版中的启动脚本。脚本默认读取业务项目根目录下的 `scenario-test/scenario.config.js`，默认只启动服务；传入 `-OpenBrowser` 才会自动打开浏览器：
-
-   ```powershell
-   & ".\start-scenario-test.ps1" -Project . -OpenBrowser
-   ```
-
-   GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
-
-6. 创建正式 GitHub Release。此步骤是发版必选项，不得只推送 Tag 或只发布 npm。先根据对应版本的 `CHANGELOG.md` 准备临时 `RELEASE_NOTES.md`，发布完成后删除该临时文件，不提交到仓库：
+6. 创建正式 GitHub Release。此步骤是发版必选项——GitHub Release 即正式发布记录，
+   Tag 归档即分发产物。先根据对应版本的 `CHANGELOG.md` 准备临时 `RELEASE_NOTES.md`，
+   发布完成后删除该临时文件，不提交到仓库：
 
    ```powershell
    gh release create vX.Y.Z `
@@ -67,21 +51,31 @@
      --notes-file RELEASE_NOTES.md
    ```
 
-   Release 说明应基于对应版本的 `CHANGELOG.md`，至少包含主要变更、固定版本安装命令、npm 包版本和验证结果。Release 必须满足：
+   Release 说明应基于对应版本的 `CHANGELOG.md`，至少包含主要变更、固定版本安装命令
+   和验证结果。Release 必须满足：
 
    - Tag 与版本号一致，格式为 `vX.Y.Z`；
    - 非 Draft、非 Prerelease；
    - 正式版本标记为 Latest Release；
    - 不覆盖或重建已发布 Tag；修复必须发布新的 patch 版本。
 
-   创建后必须验证：
+   创建后必须验证（GitHub Release、Git Tag 与安装脚本下载源三处一致）：
 
    ```powershell
    gh release view vX.Y.Z --json url,isDraft,isPrerelease,tagName,name
-   npm view @yc_yzkj/scenario-test@X.Y.Z version dist-tags.latest dist.shasum
+   # 安装脚本默认下载源可访问（应全部 200）：
+   # https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@vX.Y.Z/dist/scenario-test-cli.cjs
    ```
 
-   只有 GitHub Release、npm Registry 与 Git Tag 三处版本一致，发版才算完成。免 npm 默认下载源仍是 npm Registry 固定版本 tarball（`https://registry.npmjs.org/@yc_yzkj/scenario-test/-/scenario-test-vX.Y.Z.tgz`），GitHub Release 用于提供正式发布记录和源码归档，无需重复上传 npm tarball。内网可把 `Source` / `SCENARIO_TEST_SOURCE` 指向 GitLab Raw 或制品目录（需包含全部运行时文件）。
+   Windows 浏览器工作台也可直接使用发行版中的启动脚本。脚本默认读取业务项目根目录下
+   的 `scenario-test/scenario.config.js`，默认只启动服务；传入 `-OpenBrowser` 才会自动
+   打开浏览器：
+
+   ```powershell
+   & ".\start-scenario-test.ps1" -Project . -OpenBrowser
+   ```
+
+   GitLab Release 同步提供 `start-scenario-test.ps1` 下载资产，脚本与该版本的 CLI、UMD 保持一致。
 
 业务项目由 `init` 生成 `index.html`，引用项目内运行时副本：
 
@@ -89,7 +83,12 @@
 <script src="./.scenario-test/scenario-test.umd.js"></script>
 ```
 
-`init` 优先从本机 `dist/` 拷贝运行时副本（CLI 自身复制 + UMD/d.ts/能力清单同目录拷贝）；本机没有 `dist` 时可用 `--library-url <目录>` 指定包含全部运行时文件的目录（默认指向固定版本 GitHub Tag 的 `dist/` Raw 目录，仅作兜底）。安装脚本（install.ps1/install.sh）会先下载固定版本 npm tarball 并解压出完整 `dist/`，因此正常安装路径不触发远程兜底下载。人工场景测试通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面 `baseUrl` 留空即走代理），无需后端放行 CORS。
+`init` 优先从本机 `dist/` 拷贝运行时副本（CLI 自身复制 + UMD/d.ts/能力清单同目录拷贝）；
+本机没有 `dist` 时可用 `--library-url <目录>` 指定包含全部运行时文件的目录（默认指向
+固定版本 GitHub Tag 的 `dist/` jsDelivr 目录，仅作兜底）。安装脚本会先下载固定版本
+`dist/` 文件到临时目录再执行 init，因此正常安装路径不触发远程兜底下载。人工场景测试
+通过 `start-scenario-test.cmd` 启动，`serve` 把接口请求代理到环境 `baseUrl`（页面
+`baseUrl` 留空即走代理），无需后端放行 CORS。
 
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。
 
@@ -97,4 +96,19 @@ GitHub Pages 仅在需要公开文档或在线 Mock Demo 时启用，不作为 C
 
 ## Skill 发布版运行时同步
 
-发布后，从已发布的 npm 固定版本 tarball 提取 CLI、UMD、d.ts 和 capabilities 到 `skills/scenario-test/runtime/`，更新 `release.json` 的版本、npm integrity 与四个文件的 SHA-256。运行 `node --test tests/skill-runtime.test.js`，确认 Skill 的离线初始化、项目内 CLI 的 doctor 和运行时校验通过。项目不要求与 Skill 版本一致，升级项目需用户明确要求。不要用未发布的构建产物冒充发布版。
+`skills/scenario-test/runtime/` 内嵌发布版运行时，供 Skill 对未接入项目执行离线初始化。
+**同步是发版提交的一部分**：在版本构建之后、发布提交之前，从本地 `dist/` 复制
+`scenario-test-cli.cjs`、`scenario-test.umd.js`、`scenario-test.d.ts`、
+`scenario-test-capabilities.json` 到 `runtime/`，并更新 `release.json`：
+
+- `version`：与 `package.json` 一致；
+- `source`：指向本次发布 Tag，如 `https://github.com/duyiliu/scenario-test/tree/vX.Y.Z`；
+- `sha256`：4 个文件各自的 SHA-256 十六进制值。
+
+同步前先确认本地 `dist/` 是本次版本 `npm run build` 的产物（`src/version.generated.js`
+版本与 `package.json` 一致）；不要用旧构建或手工拼接的产物。同步后运行
+`node --test tests/skill-runtime.test.js`，确认 Skill 的离线初始化、项目内 CLI 的
+doctor 和运行时校验通过，再随发布提交一起推送。
+
+项目不要求与 Skill 版本一致，升级项目需用户明确要求。存量 npm 包冻结不更新；
+需要 npm 安装方式的团队只能固定到 Registry 上已发布的旧版本，不作为推荐路径。

@@ -64,7 +64,7 @@ irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.10.0/scripts/install.ps
 curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.10.0/scripts/install.sh | bash -s -- . scenario-test
 ```
 
-默认脚本从 npm Registry 下载固定版本 tarball，在临时目录解压后从本地 `dist/` 初始化；不会执行 `npm install` 或访问 GitHub API。内网下载源的指定方式和文件要求见[自定义下载源](#自定义下载源)。
+默认脚本按固定 GitHub Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件，在临时目录就位后由 CLI 初始化；不会执行 `npm install` 或访问 GitHub API。内网下载源的指定方式和文件要求见[自定义下载源](#自定义下载源)。
 
 ## 常用操作
 
@@ -244,7 +244,7 @@ scenario-test/
 └─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成）
 ```
 
-初始化配置使用项目内类型声明，npm 与免 npm 均可获得提示：
+初始化配置使用项目内类型声明，接入后即可获得提示：
 
 ```js
 /// <reference path="./.scenario-test/scenario-test.d.ts" />
@@ -313,14 +313,7 @@ Skill 会先确认当前项目、现有版本锁、目标发布版本和安装�
 
 ### 手动升级与内网备用
 
-需要手动操作时，先核对目标发布版本和现有接入方式：`package.json` 包含 `@yc_yzkj/scenario-test` 依赖通常表示 npm 接入；两种接入方式都会生成 `scenario-test/.scenario-test/`，不能仅凭该目录判断。以下命令以 `0.10.0` 为例，实际升级时请替换为确认的目标版本。
-
-免 npm 接入可在项目根目录重跑[固定版本安装脚本](#skill-使用的固定版本安装脚本)；npm 接入可执行：
-
-```powershell
-npm install -D @yc_yzkj/scenario-test@0.10.0
-npx @yc_yzkj/scenario-test init --project . --dir "scenario-test"
-```
+需要手动操作时，先核对目标发布版本，在业务项目根目录重跑[固定版本安装脚本](#skill-使用的固定版本安装脚本)（`--no-input` 保留配置与场景，仅刷新运行时和 AI 规则）。存量 `package.json` 中若有 `@yc_yzkj/scenario-test` 依赖，那是旧的 npm 接入方式——npm 包已冻结不再更新，请改用安装脚本并移除该依赖。
 
 无外网时，先准备对应版本的安装脚本及[内网运行时文件](#自定义下载源)，例如：
 

@@ -44,6 +44,4 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs capabilities
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs capabilities --json
 ```
 
-npm 模式可将项目内 CLI 替换为 `npx @yc_yzkj/scenario-test`。
-
 不要依据本预览、旧版本文档或模型记忆手抄能力名单。

@@ -73,7 +73,7 @@ test("CLI capabilities --json：stdout 纯净且可直接解析，与 build 产�
     const distPath = path.join(root, "dist", "scenario-test-capabilities.json");
     if (fs.existsSync(distPath)) {
         const distCaps = JSON.parse(fs.readFileSync(distPath, "utf8"));
-        // capabilities 文件是发布产物；本地仅在与当前源码版本同步时比对，避免旧 dist 干扰 npm-only 布局测试
+        // capabilities 文件是发布产物；本地仅在与当前源码版本同步时比对，避免旧 dist 干扰运行时副本布局测试
         if (distCaps.version === contract.runtimeVersion) {
             assert.deepEqual(parsed, distCaps);
         }
