@@ -41,7 +41,7 @@ function runCliAsync(cliPath, args, nodeArgs = []) {
 function assertGeneratedLayout(project, directory = "scenario-test") {
     const publicDir = path.join(project, ...directory.split("/"));
     const frameworkDir = path.join(publicDir, ".scenario-test");
-    assert.deepEqual(fs.readdirSync(publicDir).sort(), [".scenario-test", "README.md", "index.html", "scenario.config.js", "start-scenario-test.cmd"]);
+    assert.deepEqual(fs.readdirSync(publicDir).sort(), [".scenario-test", "README.md", "index.html", "scenario.config.js", "start-scenario-test.cmd", "start-scenario-test.mjs"]);
     // src 环境运行 init：CLI 副本从本机 dist 兜底拷贝，其余运行时副本与版本锁落盘
     assert.deepEqual(fs.readdirSync(frameworkDir).sort(), [
         ".scenario-test-version.json",
@@ -56,6 +56,13 @@ function assertGeneratedLayout(project, directory = "scenario-test") {
         fs.readFileSync(path.join(publicDir, "index.html"), "utf8"),
         /src="\.\/\.scenario-test\/scenario-test\.umd\.js"/
     );
+    const cliStarter = fs.readFileSync(path.join(publicDir, "start-scenario-test.mjs"), "utf8");
+    assert.match(cliStarter, /scenario-test-cli\.cjs/);
+    assert.match(cliStarter, /"serve"/);
+    assert.match(cliStarter, /spawn\(process\.execPath/);
+    assert.match(cliStarter, /pickFreePort/);
+    assert.match(cliStarter, /"127\.0\.0\.1"/);
+    assert.match(cliStarter, /"SIGINT", "SIGTERM"/);
     const startScript = fs.readFileSync(path.join(publicDir, "start-scenario-test.cmd"), "utf8");
     assert.ok(startScript.includes('"%~dp0.scenario-test\\scenario-test-cli.cjs" serve'), "cmd 应调用 .scenario-test 内 CLI 副本");
     assert.match(startScript, /scenario\.config\.js/);
@@ -106,6 +113,7 @@ test("init 创建 npm-only 项目入口，且默认不覆盖项目文件", () =>
         assert.match(patterns, /不同验证路径使用独立场景/);
 
         const readme = fs.readFileSync(path.join(publicDir, "README.md"), "utf8");
+        assert.match(readme, /start-scenario-test\.mjs/);
         assert.match(readme, /不需要再次复制任何 Prompt/);
         assert.match(readme, /npx @yc_yzkj\/scenario-test/);
         assert.match(readme, /AI 负责维护 `scenario\.config\.js` 和 `scenarios\/`/);
