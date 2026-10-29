@@ -398,7 +398,7 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 
 ## 浏览器工作台
 
-命令行启动（Windows / macOS / Linux）：在项目根目录执行 \`node scenario-test/start-scenario-test.mjs\`，可通过 \`--port 4300\` 指定端口。默认自动分配本机空闲端口，终端输出工作台 URL；按 \`Ctrl+C\` 停止 Server，不会自动执行任何测试场景。
+命令行启动（Windows / macOS / Linux）：在项目根目录执行 \`node ${directory}/start-scenario-test.mjs\`，可通过 \`--port 4300\` 指定端口。默认自动分配本机空闲端口，终端输出工作台 URL；按 \`Ctrl+C\` 停止 Server，不会自动执行任何测试场景。
 
 双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
 
