@@ -23,7 +23,7 @@ All notable changes to this project will be documented in this file.
 
 - **npm Registry 不再是分发渠道**：`package.json` 标记 `private`，不再执行 `npm publish`；GitHub Tag/Release 成为唯一发布产物，安装脚本按固定 Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件。存量 `@yc_yzkj/scenario-test` npm 包冻结在旧版本。
 - `scripts/install.ps1` / `scripts/install.sh`：默认下载源由 npm Registry tarball 改为 `cdn.jsdelivr.net/gh/duyiliu/scenario-test@v<版本>/dist` 的四个运行时文件；移除 `-UseNpm` / `SCENARIO_TEST_USE_NPM` npm 安装分支与 `npx` 用法；保留 `-Source` / `SCENARIO_TEST_SOURCE` 内网下载源覆盖。
-- `init --library-url` 兜底默认源改为 jsDelivr 按 Tag 的 `dist/` 目录；修复原默认值指向不存在组织（`youzhikeji`）的问题。
+- `init --library-url` 兜底默认源改为 jsDelivr 按 Tag 的 `dist/` 目录；统一仓库 owner 为 `duyiliu`（历史文档写的是组织 `youzhikeji`，仓库已转移至个人账号，GitHub 仍会重定向但两处写法不一致容易混淆）。
 - Skill 安装改为**钉版本**：`npx skills add duyiliu/scenario-test#v0.10.1 --skill scenario-test -g`，省略 `#` 时跟随默认分支；`SKILL.md` 增加 `metadata.version`，`contract.test.js` 断言其与运行时版本一致，防止「Skill 壳新、内置运行时旧」。
 - Skill 离线初始化不变（Skill 自带 `runtime/` 副本），但 `release.json` 的 `source` 改为记录 GitHub Tag 来源与文件 SHA-256，不再引用 npm tarball integrity。
 - 生成的项目 README / AI_SCENARIO_PROMPT / Skill 文档移除 npm 模式接入说明；`docs/RELEASING.md` 发布流程改为「构建 → Skill 运行时同步 → Tag → GitHub Release」。
