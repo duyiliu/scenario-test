@@ -671,115 +671,144 @@ const workbenchStyle = (function () {
             .scenario-list-resizer.is-dragging::after { background: color-mix(in srgb, var(--workspace-primary) 45%, transparent); }
             body.scenario-list-resizing { cursor: col-resize; user-select: none; }
             body.scenario-list-resizing #scenario-test-root * { cursor: col-resize !important; }
-            #scenarioList { padding: 6px 0 !important; gap: 2px !important; }
-            #scenarioList .scenario-tree { display: flex; flex-direction: column; gap: 2px; }
-            #scenarioList .scenario-tree-dir { display: flex; flex-direction: column; gap: 0; }
+            #scenarioList { padding: 8px !important; gap: 4px !important; }
+            #scenarioList .scenario-tree { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+            #scenarioList .scenario-tree-dir { display: flex; flex-direction: column; min-width: 0; }
             #scenarioList .scenario-tree-dir__toggle {
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: 8px;
                 width: 100%;
-                padding: 7px 8px;
+                min-height: 32px;
+                padding: 4px 8px;
                 border: 0;
-                border-radius: 0;
+                border-radius: 6px;
                 background: transparent;
                 color: var(--workspace-muted);
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 600;
+                line-height: 20px;
                 text-align: left;
                 cursor: pointer;
-                transition: background-color .12s ease, color .12s ease;
+                transition: background-color .15s ease, color .15s ease;
             }
             #scenarioList .scenario-tree-dir__toggle:hover { background: var(--workspace-hover); color: var(--workspace-text); }
-            #scenarioList .scenario-tree-dir__chevron { width: 13px; height: 13px; flex: 0 0 auto; transition: transform .12s ease; }
+            #scenarioList .scenario-tree-dir__chevron { width: 16px; height: 16px; flex: 0 0 auto; transition: transform .15s ease; }
             #scenarioList .scenario-tree-dir__toggle[aria-expanded="false"] .scenario-tree-dir__chevron { transform: rotate(-90deg); }
-            #scenarioList .scenario-tree-dir__folder { width: 14px; height: 14px; flex: 0 0 auto; color: #94a3b8; }
+            #scenarioList .scenario-tree-dir__folder { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
+            #scenarioList .scenario-tree-dir__toggle[aria-expanded="true"] .scenario-tree-dir__folder { color: var(--workspace-primary); }
             #scenarioList .scenario-tree-dir__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             #scenarioList .scenario-tree-dir__count {
+                flex: 0 0 auto;
                 margin-left: auto;
-                padding: 0 2px;
+                min-width: 20px;
+                padding: 0 4px;
+                border-radius: 4px;
+                background: color-mix(in srgb, var(--workspace-muted) 8%, transparent);
                 color: var(--workspace-muted);
-                font-size: 11px;
+                font-size: 10px;
                 font-weight: 500;
-                opacity: .8;
+                line-height: 20px;
+                text-align: center;
+                font-variant-numeric: tabular-nums;
             }
-            #scenarioList .scenario-tree-children { display: flex; flex-direction: column; gap: 0; }
+            #scenarioList .scenario-tree-children { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+            #scenarioList .scenario-tree-children::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                bottom: 8px;
+                left: var(--tree-guide, 16px);
+                width: 1px;
+                background: color-mix(in srgb, var(--workspace-line) 65%, transparent);
+                pointer-events: none;
+            }
             #scenarioList .scenario-tree-children[hidden] { display: none; }
-            #scenarioList .scenario-tree-dir--pinned .scenario-tree-dir__toggle,
-            #scenarioList .scenario-tree-dir--pinned .scenario-tree-dir__folder { color: #0d9488; }
+            #scenarioList .scenario-tree-dir--pinned { margin-bottom: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--workspace-line); }
+            #scenarioList .scenario-tree-dir--pinned > .scenario-tree-dir__toggle,
+            #scenarioList .scenario-tree-dir--pinned > .scenario-tree-dir__toggle .scenario-tree-dir__folder { color: var(--workspace-primary); }
             #scenarioList .scenario-tree-item {
                 position: relative;
-                min-height: 34px;
-                border-radius: 0;
-                transition: background-color .12s ease, color .12s ease;
+                min-width: 0;
+                border-radius: 6px;
+                transition: background-color .15s ease;
             }
             #scenarioList .scenario-tree-item:hover { background: var(--workspace-hover); }
             #scenarioList .scenario-tree-item.is-active {
-                background: color-mix(in srgb, var(--workspace-primary) 12%, transparent);
+                background: color-mix(in srgb, var(--workspace-primary) 10%, var(--workspace-surface));
                 box-shadow: inset 2px 0 0 var(--workspace-primary);
             }
             #scenarioList .scenario-tree-item__main {
                 display: flex;
                 align-items: center;
-                gap: 7px;
+                gap: 8px;
                 width: 100%;
                 min-width: 0;
-                padding: 7px 34px 7px 8px;
+                min-height: 48px;
+                padding: 8px 32px 8px 32px;
                 border: 0;
+                border-radius: inherit;
                 background: transparent;
+                color: var(--workspace-text);
                 text-align: left;
                 cursor: pointer;
             }
-            #scenarioList .scenario-tree-item__icon { width: 14px; height: 14px; flex: 0 0 auto; color: #94a3b8; }
+            #scenarioList .scenario-tree-item__icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
             #scenarioList .scenario-tree-item.is-active .scenario-tree-item__icon { color: var(--workspace-primary); }
+            #scenarioList .scenario-tree-item__text { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 2px; }
             #scenarioList .scenario-tree-item__name {
-                flex: 1 1 auto;
+                display: block;
                 min-width: 0;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                font-size: 13px;
+                font-size: 12px;
+                line-height: 18px;
                 font-weight: 500;
                 color: var(--workspace-text);
             }
-            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__name { font-weight: 600; }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__name { font-weight: 600; color: var(--workspace-primary); }
             #scenarioList .scenario-tree-item__file {
-                flex: 0 1 auto;
+                display: block;
                 min-width: 0;
-                max-width: 42%;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-                font-size: 11px;
+                font-size: 10px;
+                line-height: 14px;
                 color: var(--workspace-muted);
             }
             #scenarioList .scenario-pin-control {
                 position: absolute;
-                right: 8px;
+                right: 4px;
                 top: 50%;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 22px;
-                height: 22px;
+                width: 24px;
+                height: 24px;
                 padding: 0;
                 transform: translateY(-50%);
                 border: 0;
                 border-radius: 4px;
                 background: transparent;
-                color: #94a3b8;
+                color: var(--workspace-muted);
                 opacity: 0;
                 cursor: pointer;
-                transition: opacity .12s ease, background-color .12s ease, color .12s ease;
+                transition: opacity .15s ease, background-color .15s ease, color .15s ease;
             }
-            #scenarioList .scenario-pin-control svg { width: 13px; height: 13px; }
+            #scenarioList .scenario-pin-control svg { width: 14px; height: 14px; }
             #scenarioList .scenario-tree-item:hover .scenario-pin-control,
-            #scenarioList .scenario-pin-control:focus-visible,
+            #scenarioList .scenario-tree-item:focus-within .scenario-pin-control,
             #scenarioList .scenario-pin-control--active { opacity: 1; }
-            #scenarioList .scenario-pin-control:hover { background: var(--workspace-hover); color: var(--workspace-text); }
-            #scenarioList .scenario-pin-control--active { color: #0d9488; }
-            #scenarioList .scenario-pin-control--active:hover { background: rgba(13, 148, 136, 0.1); color: #0f766e; }
+            #scenarioList .scenario-pin-control:hover { background: var(--workspace-selected); color: var(--workspace-primary); }
+            #scenarioList .scenario-pin-control--active { color: var(--workspace-primary); }
+            #scenarioList :is(.scenario-tree-dir__toggle, .scenario-tree-item__main, .scenario-pin-control):focus-visible {
+                outline: 2px solid var(--workspace-primary);
+                outline-offset: -2px;
+            }
+            @media (hover: none) { #scenarioList .scenario-pin-control { opacity: 1; } }
 
             .stats-action-btn {
                 display: inline-flex;
