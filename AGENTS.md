@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-`@yc_yzkj/scenario-test` 是一个可复用的 HTTP 场景测试库。它提供声明式 DSL 来描述 HTTP 场景（变量、提取、断言、条件、重试），并附带浏览器工作台和一个 Node.js CLI，二者运行同一套场景。消费方通常**不经 npm 集成**：安装脚本下载固定版本的 tarball，并在各项目内初始化一个包含运行时副本的 `scenario-test/` 目录，因此本仓库的 `dist/` 才是业务项目真正消费的产物。
+`@yc_yzkj/scenario-test` 是一个可复用的 HTTP 场景测试库。它提供声明式 DSL 来描述 HTTP 场景（变量、提取、断言、条件、重试），并附带浏览器工作台和一个 Node.js CLI，二者运行同一套场景。消费方通常**不经 npm 集成**：Skill 自带发布版运行时，安装脚本按固定 GitHub Tag 经 jsDelivr 下载 `dist/` 运行时文件，并在各项目内初始化一个包含运行时副本的 `scenario-test/` 目录，因此本仓库的 `dist/` 才是业务项目真正消费的产物。
 
 本仓库的注释、文档和用户可见消息大多使用**中文**。编写代码注释或 CLI/UI 文案时请保持一致。
 
@@ -67,11 +67,11 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 - `src/version.generated.js`（来自 `package.json` 的版本号）
 - `src/browser/tailwind.generated.js`
-- `dist/*`（umd/esm/cjs/cli/d.ts/capabilities.json）——`dist/` 已提交并随 npm tarball 发布
+- `dist/*`（umd/esm/cjs/cli/d.ts/capabilities.json）——`dist/` 已提交并随 GitHub Tag 分发
 - `dist/scenario-test-capabilities.json` 与 `dist/scenario-test.d.ts`（`contract.js` 的投射）
 
 若修改了 `package.json` 的版本号或 DSL，请运行 `npm run build` 以一致地重新生成。
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交。升级版本意味着更新 `package.json`、`package-lock.json`、`CHANGELOG.md`、`scripts/install.ps1`/`install.sh` 中固定的版本号/tarball URL，以及 `README.md`/`docs/AI_SCENARIO_PROMPT.md` 中的 jsDelivr 安装 URL，然后执行 `npm run check`（已含浏览器测试），打 tag `vX.Y.Z`，再 `npm publish`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留可发布的代码；`dist/` 已提交，**GitHub Tag 就是分发产物**（jsDelivr 按 Tag 取 `dist/`）。npm Registry 不再是分发渠道：`package.json` 为 `private`，不执行 `npm publish`。发版意味着更新 `package.json`/`package-lock.json`/`CHANGELOG.md`/`scripts/install.ps1`/`install.sh`/`README.md` 中的版本号与 jsDelivr Tag URL，同步 `skills/scenario-test/runtime/` 并重算 `release.json` 哈希与 `SKILL.md` 的 `metadata.version`，`npm run build` 后执行 `npm run check:all`，提交、打 tag `vX.Y.Z`、推送，最后 `gh release create`。完整步骤见 `docs/RELEASING.md`。
