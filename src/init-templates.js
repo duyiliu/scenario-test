@@ -195,6 +195,54 @@ if errorlevel 1 (
     pause
 )
 `,
+        [`${directory}/start-scenario-test.mjs`]: `#!/usr/bin/env node
+// 跨平台一键启动业务项目工作台；复用现有 serve，不运行任何测试场景。
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectDir = path.dirname(fileURLToPath(import.meta.url));
+const runtimeCli = path.join(projectDir, ".scenario-test", "scenario-test-cli.cjs");
+const configPath = path.join(projectDir, "scenario.config.js");
+
+function pickFreePort() {
+    return new Promise((resolve, reject) => {
+        const listener = net.createServer();
+        listener.once("error", reject);
+        listener.listen(0, "127.0.0.1", () => {
+            const port = listener.address().port;
+            listener.close((error) => error ? reject(error) : resolve(port));
+        });
+    });
+}
+
+if (!fs.existsSync(runtimeCli) || !fs.existsSync(configPath)) {
+    console.error("启动失败：缺少 scenario.config.js 或项目内 CLI 运行时；请先初始化 scenario-test。");
+    process.exitCode = 1;
+} else {
+    try {
+        const options = process.argv.slice(2);
+        const portOptions = options.includes("--port") ? [] : ["--port", String(await pickFreePort())];
+        const child = spawn(process.execPath, [runtimeCli, "serve", "--config", configPath, ...portOptions, ...options], {
+            cwd: projectDir,
+            stdio: "inherit"
+        });
+        for (const signal of ["SIGINT", "SIGTERM"]) {
+            process.on(signal, () => { if (!child.killed) child.kill(signal); });
+        }
+        child.on("error", (error) => {
+            console.error("启动失败：" + error.message);
+            process.exitCode = 1;
+        });
+        child.on("exit", (code) => { process.exitCode = code ?? 1; });
+    } catch (error) {
+        console.error("启动失败：" + error.message);
+        process.exitCode = 1;
+    }
+}
+`,
         [`${directory}/scenario.config.js`]: `/// <reference path="./.scenario-test/scenario-test.d.ts" />
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
@@ -243,7 +291,8 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
 | \`index.html\` | 浏览器工作台入口 | 通常不需要 |
-| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后启动 HTTP Server 并打开工作台 | 通常不需要 |
+| \`start-scenario-test.cmd\` | Windows 双击启动工作台并打开浏览器 | 通常不需要 |
+| \`start-scenario-test.mjs\` | 跨平台 CLI 启动工作台 Server；随机端口，可用 --port 指定 | 通常不需要 |
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
@@ -348,6 +397,8 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
 
 ## 浏览器工作台
+
+命令行启动（Windows / macOS / Linux）：在项目根目录执行 \`node scenario-test/start-scenario-test.mjs\`，可通过 \`--port 4300\` 指定端口。默认自动分配本机空闲端口，终端输出工作台 URL；按 \`Ctrl+C\` 停止 Server，不会自动执行任何测试场景。
 
 双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
 
