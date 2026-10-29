@@ -156,6 +156,8 @@ const workbenchView = (function () {
                     <select id="themeSelect" class="sr-only" aria-label="切换界面风格" tabindex="-1">
                         <option value="default" selected>现代简约</option>
                         <option value="claude-code">温暖纸韵</option>
+                        <option value="zcode">ZCode 暗夜</option>
+                        <option value="zcode-light">ZCode 皓白</option>
                     </select>
                 </div>
                 </div>

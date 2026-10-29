@@ -3726,6 +3726,144 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 border-bottom-color: var(--workspace-line) !important;
             }
 
+            /* ZCode \u7693\u767D\uFF1A\u6D45\u8272\u7248\uFF0C\u51B7\u8C03\u767D\u5E95 + \u540C\u6B3E\u7535\u84DD\u7D2B\u5F3A\u8C03 */
+            #scenario-test-root.theme-zcode-light {
+                --workspace-bg: #f5f6fa;
+                --workspace-surface: #ffffff;
+                --workspace-text: #1a2233;
+                --workspace-text-soft: #4a5568;
+                --workspace-muted: #6b7280;
+                --workspace-line: #e3e6f0;
+                --workspace-hover: #eef1f8;
+                --workspace-selected: #e4e9fb;
+                --workspace-selected-line: #c7d3f5;
+                --workspace-primary: #4f7cff;
+                --workspace-primary-hover: #3d6bef;
+                --workspace-danger: #e11d48;
+                --workspace-success: #10b981;
+                --workspace-warning: #d97706;
+                --workspace-focus: rgba(79, 124, 255, 0.25);
+                --workspace-overlay: rgba(26, 34, 51, 0.4);
+                --workspace-code: #1a2233;
+                --workspace-radius: 8px;
+            }
+
+            #scenario-test-root.theme-zcode-light > header {
+                background: #ffffff !important;
+                box-shadow: 0 1px 3px rgba(79, 124, 255, 0.08) !important;
+                border-bottom-color: var(--workspace-line) !important;
+            }
+
+            /* ZCode \u6697\u591C\uFF1A\u6DF1\u8272\u7F16\u8F91\u5668\u98CE\uFF08\u7535\u84DD\u7D2B\u5F3A\u8C03\uFF09\uFF0C\u6D45\u8272\u5DE5\u5177\u7C7B\u6309\u8BED\u4E49\u91CD\u6620\u5C04 */
+            #scenario-test-root.theme-zcode {
+                color-scheme: dark;
+                --workspace-bg: #0a0d13;
+                --workspace-surface: #131722;
+                --workspace-text: #e6e9f2;
+                --workspace-text-soft: #b7bfd0;
+                --workspace-muted: #8a92a6;
+                --workspace-line: #252c3d;
+                --workspace-hover: #1b2130;
+                --workspace-selected: #222b42;
+                --workspace-selected-line: #35446b;
+                --workspace-primary: #4f7cff;
+                --workspace-primary-hover: #648cff;
+                --workspace-danger: #f2555a;
+                --workspace-success: #2fbf8f;
+                --workspace-warning: #e8b339;
+                --workspace-focus: rgba(79, 124, 255, 0.32);
+                --workspace-overlay: rgba(4, 6, 11, 0.62);
+                --workspace-code: #dbe2f0;
+                --workspace-radius: 8px;
+            }
+
+            #scenario-test-root.theme-zcode > header {
+                background: var(--workspace-surface) !important;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+            }
+
+            .theme-zcode .bg-white,
+            .theme-zcode .bg-slate-50,
+            .theme-zcode .bg-slate-50\\/50,
+            .theme-zcode .bg-slate-50\\/60,
+            .theme-zcode .bg-slate-50\\/70 { background-color: var(--workspace-surface) !important; }
+            .theme-zcode .bg-slate-100,
+            .theme-zcode .bg-slate-100\\/80 { background-color: var(--workspace-hover) !important; }
+            .theme-zcode .bg-slate-200\\/80,
+            .theme-zcode .bg-slate-300 { background-color: var(--workspace-selected) !important; }
+            .theme-zcode .bg-slate-400 { background-color: var(--workspace-selected-line) !important; }
+            .theme-zcode .bg-slate-950\\/30,
+            .theme-zcode .bg-slate-950\\/40 { background-color: var(--workspace-overlay) !important; }
+
+            .theme-zcode .text-slate-700,
+            .theme-zcode .text-slate-800,
+            .theme-zcode .text-slate-900 { color: var(--workspace-text) !important; }
+            .theme-zcode .text-slate-600 { color: var(--workspace-text-soft) !important; }
+            .theme-zcode .text-slate-400,
+            .theme-zcode .text-slate-500 { color: var(--workspace-muted) !important; }
+            .theme-zcode .placeholder-slate-400::placeholder,
+            .theme-zcode .placeholder-slate-500::placeholder { color: var(--workspace-muted) !important; }
+            .theme-zcode .hover\\:text-slate-600:hover { color: var(--workspace-text-soft) !important; }
+            .theme-zcode .hover\\:text-slate-700:hover,
+            .theme-zcode .hover\\:text-slate-900:hover { color: var(--workspace-text) !important; }
+            .theme-zcode .group:hover .group-hover\\:text-slate-600 { color: var(--workspace-text-soft) !important; }
+
+            .theme-zcode .border-slate-100,
+            .theme-zcode .border-slate-200,
+            .theme-zcode .border-slate-200\\/60,
+            .theme-zcode .border-slate-200\\/70,
+            .theme-zcode .border-slate-200\\/80,
+            .theme-zcode .border-slate-300 { border-color: var(--workspace-line) !important; }
+            .theme-zcode .border-slate-700,
+            .theme-zcode .border-slate-800 { border-color: var(--workspace-selected-line) !important; }
+            .theme-zcode .hover\\:border-slate-300:hover { border-color: var(--workspace-selected-line) !important; }
+            .theme-zcode .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--workspace-line) !important; }
+
+            .theme-zcode .hover\\:bg-slate-50:hover,
+            .theme-zcode .hover\\:bg-slate-100:hover,
+            .theme-zcode .hover\\:bg-slate-700:hover,
+            .theme-zcode .hover\\:bg-slate-800:hover { background-color: var(--workspace-hover) !important; }
+            .theme-zcode .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
+            .theme-zcode .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
+
+            .theme-zcode .bg-emerald-50,
+            .theme-zcode .bg-emerald-50\\/60,
+            .theme-zcode .bg-emerald-100 { background-color: rgba(47, 191, 143, 0.12) !important; }
+            .theme-zcode .text-emerald-600,
+            .theme-zcode .text-emerald-600\\/70,
+            .theme-zcode .text-emerald-700,
+            .theme-zcode .text-emerald-800 { color: #34d399 !important; }
+            .theme-zcode .border-emerald-200,
+            .theme-zcode .border-emerald-200\\/80 { border-color: rgba(47, 191, 143, 0.35) !important; }
+            .theme-zcode .bg-rose-50,
+            .theme-zcode .bg-rose-50\\/40,
+            .theme-zcode .bg-rose-50\\/60,
+            .theme-zcode .bg-rose-50\\/80 { background-color: rgba(242, 85, 90, 0.12) !important; }
+            .theme-zcode .text-rose-500,
+            .theme-zcode .text-rose-600,
+            .theme-zcode .text-rose-600\\/70,
+            .theme-zcode .text-rose-700,
+            .theme-zcode .text-rose-800,
+            .theme-zcode .text-rose-900 { color: #fb7185 !important; }
+            .theme-zcode .border-rose-100,
+            .theme-zcode .border-rose-200,
+            .theme-zcode .border-rose-200\\/80 { border-color: rgba(242, 85, 90, 0.35) !important; }
+            .theme-zcode .bg-amber-50,
+            .theme-zcode .bg-yellow-50 { background-color: rgba(232, 179, 57, 0.10) !important; }
+            .theme-zcode .text-amber-600,
+            .theme-zcode .text-yellow-600 { color: #e8b339 !important; }
+            .theme-zcode .border-amber-200\\/80,
+            .theme-zcode .border-yellow-200\\/80 { border-color: rgba(232, 179, 57, 0.35) !important; }
+            .theme-zcode .bg-blue-50,
+            .theme-zcode .bg-blue-50\\/80 { background-color: rgba(79, 124, 255, 0.10) !important; }
+            .theme-zcode .text-blue-500,
+            .theme-zcode .text-blue-500\\/80,
+            .theme-zcode .text-blue-600,
+            .theme-zcode .text-blue-900 { color: #7aa2ff !important; }
+            .theme-zcode .bg-indigo-50 { background-color: rgba(129, 140, 248, 0.10) !important; }
+            .theme-zcode .text-indigo-600 { color: #818cf8 !important; }
+            .theme-zcode .border-indigo-200\\/80 { border-color: rgba(129, 140, 248, 0.35) !important; }
+
             .scenario-workspace { height: calc(100vh - 48px); padding: 8px !important; }
             .scenario-grid { height: 100%; gap: 8px !important; margin: 0 !important; }
             .scenario-pane {
@@ -4907,6 +5045,30 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 background: color-mix(in srgb, #d9af8d 85%, transparent);
                 background-clip: padding-box;
             }
+            #scenario-test-root.theme-zcode ::-webkit-scrollbar-thumb {
+                background: color-mix(in srgb, #35446b 70%, transparent);
+                background-clip: padding-box;
+            }
+            #scenario-test-root.theme-zcode ::-webkit-scrollbar-thumb:hover {
+                background: color-mix(in srgb, #4f7cff 70%, transparent);
+                background-clip: padding-box;
+            }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) { --workspace-radius: 10px; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) > header { min-height: 52px; padding-inline: 20px !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-workspace { height: calc(100vh - 52px); padding: 12px !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-grid { gap: 12px !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { box-shadow: 0 4px 18px rgba(25, 40, 75, 0.05) !important; }
+            #scenario-test-root.theme-zcode .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList { padding: 8px !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div:hover { transform: none; box-shadow: none !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div.bg-slate-100 { box-shadow: inset 3px 0 0 var(--workspace-primary) !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #stepsList > li > div:first-child { min-height: 48px; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-header-select:focus-within { box-shadow: 0 0 0 3px var(--workspace-focus) !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) :is(button, input, select, textarea, [role="button"]):focus-visible { outline: 2px solid var(--workspace-primary) !important; outline-offset: 2px; }
+            @media (prefers-reduced-motion: reduce) {
+                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList > div,
+                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { transition: none !important; }
+            }
         `;
     }
     function getClaudeStyleBlock() {
@@ -4921,10 +5083,16 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       document.head.appendChild(style);
     }
     function applyTheme(theme) {
-      var selectedTheme = theme === "claude-code" ? "claude-code" : "default";
+      var selectedTheme = theme === "claude-code" || theme === "zcode" || theme === "zcode-light" ? theme : "default";
       var root = document.getElementById("scenario-test-root");
-      if (root) root.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
+      if (root) {
+        root.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
+        root.classList.toggle("theme-zcode", selectedTheme === "zcode");
+        root.classList.toggle("theme-zcode-light", selectedTheme === "zcode-light");
+      }
       document.body.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
+      document.body.classList.toggle("theme-zcode", selectedTheme === "zcode");
+      document.body.classList.toggle("theme-zcode-light", selectedTheme === "zcode-light");
       var select = document.getElementById("themeSelect");
       if (select) {
         select.value = selectedTheme;
@@ -5058,6 +5226,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                     <select id="themeSelect" class="sr-only" aria-label="\u5207\u6362\u754C\u9762\u98CE\u683C" tabindex="-1">
                         <option value="default" selected>\u73B0\u4EE3\u7B80\u7EA6</option>
                         <option value="claude-code">\u6E29\u6696\u7EB8\u97F5</option>
+                        <option value="zcode">ZCode \u6697\u591C</option>
+                        <option value="zcode-light">ZCode \u7693\u767D</option>
                     </select>
                 </div>
                 </div>

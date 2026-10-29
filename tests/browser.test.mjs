@@ -70,6 +70,13 @@ try {
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
         assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f5f0ea");
         assert.match(await page.locator(".scenario-header-actions").textContent(), /风格/);
+        for (const theme of ["zcode", "zcode-light"]) {
+            await page.locator("#themeSelect").selectOption(theme);
+            assert.equal(await page.locator("#scenario-test-root").evaluate((node, name) => node.classList.contains(`theme-${name}`), theme), true);
+            assert.equal(await page.locator("body").evaluate((node, name) => node.classList.contains(`theme-${name}`), theme), true);
+            assert.equal(await page.locator(".scenario-pane").first().evaluate((node) => getComputedStyle(node).borderRadius), "10px");
+        }
+        await page.locator("#themeSelect").selectOption("claude-code");
 
         if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
             await page.locator("#configToggleBtn").click();

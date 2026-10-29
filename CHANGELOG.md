@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### 新增
+
+- 浏览器工作台新增「ZCode 暗夜」「ZCode 皓白」两套界面风格：暗夜为深色编辑器风（#0a0d13 底 + 电蓝紫强调），皓白为冷调白底 + 同款电蓝紫强调；暗夜版将浅色 Tailwind 工具类按语义重映射为深色变量（surface/text/line/hover/selected），状态色（emerald/rose/amber/blue/indigo）改为深色底 + 亮色文字，滚动条与原生控件切换 dark color-scheme；主题持久化沿用 `storageKeys.theme`。
+
+
 ## [0.9.1] - 2026-10-29
 
 ### Skill 编写规则
