@@ -1,0 +1,11 @@
+{
+  "version": "0.10.0",
+  "package": "@yc_yzkj/scenario-test",
+  "integrity": "sha512-6LQYwuluLSDu1Mfb5h1+ZZPaSRTKSoqGNkuoNX8McLyuHTw9ZmHZUQR9xPFPEixXf2eLEpuDFH/gC6cpALp5BQ==",
+  "sha256": {
+    "scenario-test-cli.cjs": "2d81f6148618b7f3c83955208fc1066b31f9208ae7c07aedda4232359428fedc",
+    "scenario-test.umd.js": "cf8257385c17cbe60f8be160778a751f6edfc07a658ad8eedf6bb79a35779159",
+    "scenario-test.d.ts": "3aa7167c2cce306bbc878657fa1828ca9a275bce32927175663d901f1f7831bb",
+    "scenario-test-capabilities.json": "5f75348d51674da010dc61a0335349d4da769f71237127a6c8a03f675c7ea8ab"
+  }
+}

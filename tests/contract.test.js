@@ -126,7 +126,7 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     assert.match(quickInstall, /doctor/);
     assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
     assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
-    assert.match(skill, /README「快速接入」/);
+    assert.match(skill, /已接入项目的诊断、执行与工作台使用项目内 CLI/);
     assert.match(readme, /默认.*免 npm|免 npm.*默认/);
     assert.match(readme, /scenario-test-cli\.cjs/);
     assert.match(readme, /--library-url/);

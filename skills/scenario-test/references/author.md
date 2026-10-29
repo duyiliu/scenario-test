@@ -2,7 +2,7 @@
 
 仅在 `status=installed` 且项目文件可读时进入。日常使用**不再安装、不自动升级**。结构探测不等于 doctor PASS；遇到版本锁或文件异常时先诊断，正常编写无需每次重新初始化。
 
-1. 使用探测脚本返回的**同一个项目**的路径读取：`AI_SCENARIO_PROMPT.md`、`SCENARIO_PATTERNS.md`、`scenario-test-capabilities.json`、`scenario.config.js`、项目场景文件。不要使用全局缓存中的 DSL 规则或别的项目的文件。存在能力疑问时，在当前项目执行 `node <cli> capabilities --json`，并以项目实际支持能力为准。
+1. 使用探测脚本返回的**同一个项目**的路径读取：`AI_SCENARIO_PROMPT.md`、`SCENARIO_PATTERNS.md`、`scenario-test-capabilities.json`、`scenario.config.js`、项目场景文件。不要使用全局缓存中的 DSL 规则或别的项目的文件。存在能力疑问时，执行 `node <cli> capabilities --json`（`<cli>` 为项目内 CLI），并以项目实际支持能力为准。
 2. 只定位本次业务目标涉及的 Controller、OpenAPI、前端 API、接口文档或已有测试；有功能名称和入口就直接工作，缺少定位依据时询问**最小的必要信息**。不要遍历整个业务仓库生成所有场景。
 3. 严格按项目内 AI 规则先得到功能卡片与场景矩阵；有不确定字段/枚举/认证/响应时列待确认项。按有证据的验证路径编写或修改 `scenario.config.js` 与 `scenarios/`，保留已有场景、ID 和团队改动，不修改业务代码、公共运行时或项目依赖。
 4. 用项目本身支持的 DSL 编排独立场景，保持断言可验证、测试数据隔离与精确清理。代码证据不足时不要猜测路径、状态码、响应字段或写入值。

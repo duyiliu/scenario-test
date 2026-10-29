@@ -35,9 +35,9 @@ npx skills-cn@latest add duyiliu/scenario-test --skill scenario-test -g -y
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 18+ 和可访问的安装源；运行时保存在业务项目中，后续使用无需再次下载工具（升级时除外），执行测试仍需连接目标服务。
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 18+；Skill 自带发布版运行时，初始化时将运行时复制到业务项目；日常使用项目内版本，后续使用无需再次下载工具，执行测试仍需连接目标服务。
 
-未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。全局 Skill 和各项目运行时分别升级，见[升级](#升级)。
+未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。全局 Skill 和各项目运行时分别升级；已接入项目使用自己的 CLI，不要求与 Skill 版本一致，见[升级](#升级)。
 
 Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md) 和 [`detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。探测只检查文件是否存在；配置与运行时完整性以 `doctor` 结果为准。
 
@@ -45,14 +45,14 @@ Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md)
 
 1. 如果尚未安装全局 Skill，先完成上一节；然后在业务项目根目录打开支持 Agent Skills 的 AI 助手。
 2. 告诉 AI 需要测试的业务功能，并提供页面、Controller、接口或已有测试中的任一入口。例如：`为 OrderController 生成 HTTP 场景测试`。
-3. 项目尚未接入时，Skill 会确认项目根目录和环境，使用下方固定版本脚本初始化，再执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
+3. 项目尚未接入时，Skill 会确认项目根目录和环境，使用 Skill 自带的发布版初始化，再执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
 4. AI 根据项目证据维护 `scenario.config.js` 和 `scenarios/`。生成阶段不会调用业务接口；需要执行时，请明确提出并确认目标环境和场景内容。
 
 初始场景清单为空。场景准备好后，可用[浏览器工作台](#启动浏览器工作台)或 [CLI](#执行场景)运行；工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
 
 ### Skill 使用的固定版本安装脚本
 
-Skill 初始化时使用与本页相同的固定版本脚本，通常无需手动执行。在业务项目根目录执行时，脚本下载固定版本运行时并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
+Skill 初始化时使用自身携带的发布版运行时。以下脚本供需要手动接入的用户使用。在业务项目根目录执行时，脚本下载固定版本运行时并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
 
 ```powershell
 # Windows PowerShell

@@ -2,6 +2,7 @@
 // 只读取当前工作目录及其父目录；不扫描其它项目、不访问网络、不修改文件。
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ROOT_MARKERS = ['.git', 'pom.xml', 'settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts', 'package.json', 'go.mod', 'Cargo.toml', 'pyproject.toml'];
 const REQUIRED_FILES = [
@@ -77,6 +78,7 @@ function inspect({ cwd, directory, explicitProject }) {
     status, projectRoot: root, scenarioDir: target,
     config: path.join(target, 'scenario.config.js'),
     cli: path.join(target, '.scenario-test', 'scenario-test-cli.cjs'),
+    skillCli: fileURLToPath(new URL('../runtime/scenario-test-cli.cjs', import.meta.url)),
     authoringPrompt: path.join(target, '.scenario-test', 'AI_SCENARIO_PROMPT.md'),
     capabilities: path.join(target, '.scenario-test', 'scenario-test-capabilities.json'),
     detectedBy, missing,

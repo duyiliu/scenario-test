@@ -94,3 +94,7 @@
 已发布 Tag 不覆盖重推。修复通过新的 patch Tag 发布。
 
 GitHub Pages 仅在需要公开文档或在线 Mock Demo 时启用，不作为 CLI/UMD 的生产分发地址。
+
+## Skill 发布版运行时同步
+
+发布后，从已发布的 npm 固定版本 tarball 提取 CLI、UMD、d.ts 和 capabilities 到 `skills/scenario-test/runtime/`，更新 `release.json` 的版本、npm integrity 与四个文件的 SHA-256。运行 `node --test tests/skill-runtime.test.js`，确认 Skill 的离线初始化、项目内 CLI 的 doctor 和运行时校验通过。项目不要求与 Skill 版本一致，升级项目需用户明确要求。不要用未发布的构建产物冒充发布版。
