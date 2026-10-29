@@ -487,7 +487,7 @@ async function initCommand(args) {
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
     console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    console.log("提示: 双击 start-scenario-test.cmd 启动工作台；serve 会自动启用同源接口代理，绕开浏览器 CORS。");
+    console.log("提示: 执行 node " + path.join(directory, "start-scenario-test.mjs") + " 启动工作台 Server；Windows 也可双击 start-scenario-test.cmd 打开浏览器。");
 }
 
 function resolveConfigPath(value) {
