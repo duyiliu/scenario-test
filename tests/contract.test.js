@@ -121,7 +121,9 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     const skill = fs.readFileSync(path.resolve(import.meta.dirname, "../skills/scenario-test/SKILL.md"), "utf8");
     const quickInstall = readme.match(/^## 快速接入\s*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/m)?.[0] ?? "";
     assert.ok(quickInstall, "README 缺少 Skill 快速接入章节");
-    assert.match(readme, /npx skills add duyiliu\/scenario-test --skill scenario-test -g/);
+    assert.match(readme, /npx skills add duyiliu\/scenario-test#v[\d.]+ --skill scenario-test -g/);
+    assert.match(readme, new RegExp(`duyiliu/scenario-test#v${VERSION.replaceAll(".", "\\.")}`), "README 应钉住当前发布版本的 Skill Tag");
+    assert.match(skill, new RegExp(`version: "${VERSION.replaceAll(".", "\\.")}"`), "SKILL.md metadata.version 须与运行时版本一致");
     assert.match(quickInstall, /Skill/);
     assert.match(quickInstall, /doctor/);
     assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
