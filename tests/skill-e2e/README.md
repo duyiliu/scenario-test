@@ -35,7 +35,7 @@ bash tests/skill-e2e/docker/run-java-test.sh
 
 - **Python**：4 个只读场景全部通过（health / 用户详情 / 用户列表 / 未知路径 404）
 - **Java**：登录、错误凭据、用户详情、无 token 401、订单建-查-删-验 404 全部通过（约 11 步）
-- 版本锁应为当前发布版（runtime 0.9.0 / contract 17 起）
+- 版本锁应为当前发布版（runtime 0.9.1 / contract 17 起）
 - 场景应使用项目 `capabilities` 中支持的能力（如 `shape`/`each`/`tags`），不发明字段
 
 ## 模型
