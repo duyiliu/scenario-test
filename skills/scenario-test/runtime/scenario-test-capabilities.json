@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
-  "version": "0.10.3",
-  "contractVersion": 17,
+  "version": "0.11.0",
+  "contractVersion": 18,
   "assertions": {
     "operators": {
       "exists": {
@@ -281,6 +281,18 @@
       "adapter",
       "always"
     ],
+    "requestKeys": [
+      "method",
+      "path",
+      "params",
+      "headers",
+      "body",
+      "fileUpload",
+      "timeoutMs",
+      "credentials",
+      "redirect",
+      "useEnvironmentAuthorization"
+    ],
     "failurePolicies": [
       "stop",
       "continue"
@@ -336,6 +348,10 @@
         "kind": "value",
         "description": "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）",
         "parse": "number"
+      },
+      "insecure": {
+        "kind": "flag",
+        "description": "serve 代理跳过上游 https 证书校验（默认校验；仅内网自签联调环境使用）"
       },
       "data": {
         "kind": "value",

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.10.3 */
+/*! scenario-test v0.11.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -278,6 +278,7 @@ __export(node_exports, {
   clone: () => clone,
   collectMissingTemplateVars: () => collectMissingTemplateVars,
   collectSecretValues: () => collectSecretValues,
+  completeProtocolRelativeUrl: () => completeProtocolRelativeUrl,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -324,6 +325,7 @@ __export(node_exports, {
   pickWeightedIndex: () => pickWeightedIndex,
   queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
+  randomUuid: () => randomUuid,
   redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -352,10 +354,11 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.10.3";
+var VERSION = "0.11.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 17;
+var CONTRACT_VERSION = 18;
+var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -528,7 +531,7 @@ var contract = Object.freeze({
     })
   }),
   retryUntil: Object.freeze({
-    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    keys: RETRY_UNTIL_KEYS,
     // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
     retryOn: Object.freeze(["assertion", "error", "timeout"]),
     defaultRetryOn: Object.freeze(["assertion"]),
@@ -553,8 +556,22 @@ var contract = Object.freeze({
       "always"
     ]),
     failurePolicies: Object.freeze(["stop", "continue"]),
-    // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
-    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    // step.request 对象允许的键：拼错（request.heders/bodyy）此前被运行期静默忽略，
+    // 造成「以为带了认证头/请求体，实际没带」的假象；定义期按此名单拒绝
+    requestKeys: Object.freeze([
+      "method",
+      "path",
+      "params",
+      "headers",
+      "body",
+      "fileUpload",
+      "timeoutMs",
+      "credentials",
+      "redirect",
+      "useEnvironmentAuthorization"
+    ]),
+    // retryUntil 允许的键；直接复用 contract.retryUntil.keys（同一冻结数组）
+    retryUntilKeys: RETRY_UNTIL_KEYS,
     note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
@@ -573,6 +590,7 @@ var contract = Object.freeze({
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
       "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
+      insecure: { kind: "flag", prop: "insecure", description: "serve \u4EE3\u7406\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08\u9ED8\u8BA4\u6821\u9A8C\uFF1B\u4EC5\u5185\u7F51\u81EA\u7B7E\u8054\u8C03\u73AF\u5883\u4F7F\u7528\uFF09" },
       data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
       junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       tag: {
@@ -786,7 +804,7 @@ function resolveString(value, runtime) {
   for (let depth = 0; depth < 10; depth += 1) {
     if (seen.has(current)) return current;
     seen.add(current);
-    const whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+    const whole = current.match(/^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/);
     if (whole) {
       const direct = evalExpression(whole[1], runtime);
       if (direct === void 0) return "";
@@ -794,12 +812,12 @@ function resolveString(value, runtime) {
       current = direct;
       continue;
     }
-    const replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expression) => {
+    const replaced = current.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, expression) => {
       const resolved = evalExpression(expression, runtime);
       if (resolved === void 0 || resolved === null) return "";
       return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
     });
-    if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+    if (replaced === current || !/\{\{\s*[^{}]+?\s*\}\}/.test(replaced)) return replaced;
     current = replaced;
   }
   return current;
@@ -815,6 +833,7 @@ function templateExpressionRoot(expression) {
   const text = String(expression || "").trim();
   if (!text || text === "vars") return null;
   if (text.startsWith("lastResponse")) return null;
+  if (text === "suite" || text.startsWith("suite.") || text.startsWith("suite[")) return null;
   let pathText;
   if (text.startsWith("vars.")) pathText = text.slice(5);
   else if (text.startsWith("vars[")) pathText = text.slice(4);
@@ -941,6 +960,17 @@ function joinUrl(baseUrl, requestPath) {
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const tail = String(requestPath || "").replace(/^\/+/, "");
   return base ? `${base}/${tail}` : tail;
+}
+function completeProtocolRelativeUrl(url, baseUrl) {
+  const text = String(url || "");
+  if (!text.startsWith("//")) return text;
+  let protocol = "https:";
+  try {
+    const baseProtocol = new URL(String(baseUrl || "")).protocol;
+    if (baseProtocol === "http:" || baseProtocol === "https:") protocol = baseProtocol;
+  } catch {
+  }
+  return `${protocol}${text}`;
 }
 function queryPairs(key, value) {
   const encodedKey = encodeURIComponent(key);
@@ -1189,6 +1219,11 @@ function validateAssertion(definition, context, options = {}) {
   }
   if (!operators.length) {
     throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
+  }
+  if (definition.exists !== void 0 && typeof definition.exists !== "boolean") {
+    throw new TypeError(
+      `${prefix}: exists \u53EA\u63A5\u53D7 boolean\uFF08\u5F53\u524D ${JSON.stringify(definition.exists)}\uFF09\uFF1B\u5B57\u7B26\u4E32\u3001\u6570\u5B57\u4E0E {{ }} \u6A21\u677F\u90FD\u4F1A\u88AB\u5F53\u6210\u771F\u503C\uFF0C\u8BF7\u6539\u7528\u5E03\u5C14\u5B57\u9762\u91CF\u6216\u6539\u7528 when \u6761\u4EF6\u63A7\u5236\u6B65\u9AA4`
+    );
   }
   if (definition.target !== void 0 && !contract.assertions.targets.includes(definition.target)) {
     throw new TypeError(`${prefix}: target \u53EA\u652F\u6301 ${contract.assertions.targets.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(definition.target)}\uFF09`);
@@ -1526,7 +1561,9 @@ function applyExtract(step, response, runtime) {
     else if (definition.from === "bodyText") source = response.bodyText;
     else if (definition.from === "response") source = response;
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
-    if (value === void 0) {
+    const emptyBodyWithoutPath = value === null && !definition.path && (definition.from === void 0 || definition.from === "body") && (response.bodyText === null || response.bodyText === void 0 || response.bodyText === "");
+    const missing = value === void 0 || emptyBodyWithoutPath;
+    if (missing) {
       if (hasDefault) {
         store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
         continue;
@@ -1703,9 +1740,17 @@ function normalizeEnumDefinition(definition) {
   }
   return { values, weights: normalized };
 }
+function randomUuid() {
+  const crypto3 = globalThis.crypto;
+  if (typeof crypto3?.randomUUID === "function") return crypto3.randomUUID();
+  const bytes = typeof crypto3?.getRandomValues === "function" ? crypto3.getRandomValues(new Uint8Array(16)) : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 function defaultUuidHex() {
-  if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-  return globalThis.crypto.randomUUID().replace(/-/g, "");
+  return randomUuid().replace(/-/g, "");
 }
 function resolveNowSource(deps = {}) {
   const candidate = deps.now ?? deps.clock;
@@ -1739,8 +1784,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     return;
   }
   if (definition.type === "uuid") {
-    if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
+    setRuntimeVar(vars, name, randomUuid());
     return;
   }
   if (definition.type === "uuidHex") {
@@ -2376,6 +2420,13 @@ function defineScenario(input) {
         inheritedRequestKey === null,
         `${stepLabel} \u7684 request \u5305\u542B\u7EE7\u627F\u7684\u53EF\u679A\u4E3E\u5B57\u6BB5 "${inheritedRequestKey}"\uFF08\u8FD0\u884C\u671F clone \u53EA\u4FDD\u7559\u81EA\u6709\u5B57\u6BB5\uFF0C\u4F1A\u9759\u9ED8\u4E22\u5931\uFF1B\u8BF7\u6539\u4E3A\u5BF9\u8C61\u81EA\u6709\u5B57\u6BB5\uFF09`
       );
+      if (step.adapter === void 0) {
+        const unknownRequestKeys = describeUnknownKeys(step.request, contract.scenario.requestKeys);
+        invariant(
+          unknownRequestKeys.length === 0,
+          unknownKeysMessage(`${stepLabel} \u7684 request`, unknownRequestKeys, contract.scenario.requestKeys)
+        );
+      }
       if (step.request.params !== void 0) {
         invariant(
           isPlainObject(step.request.params),
@@ -2616,6 +2667,9 @@ function defineConfig(input) {
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
   const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
+  if (input.envs !== void 0) {
+    invariant(Array.isArray(input.envs), `\u914D\u7F6E envs \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u5F53\u524D ${describeValue(input.envs)}\uFF09`);
+  }
   const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
     invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
     assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
@@ -2634,12 +2688,22 @@ function defineConfig(input) {
     env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
+  if (input.scenarios !== void 0) {
+    invariant(Array.isArray(input.scenarios), `\u914D\u7F6E scenarios \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u5F53\u524D ${describeValue(input.scenarios)}\uFF09`);
+  }
+  const scenarioItemKeys = [...contract.config.scenarioItemKeys, "file", "path"];
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
     if (typeof entry === "string") {
       invariant(nonEmptyString(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u5730\u5740\u4E0D\u80FD\u4E3A\u7A7A`);
       return { id: entry, name: entry, url: entry };
     }
     invariant(isPlainObject(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u6E05\u5355\u9879\u65E0\u6548`);
+    assertKnownKeys(
+      entry,
+      scenarioItemKeys,
+      `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u6E05\u5355\u9879`,
+      `\uFF08\u6E05\u5355\u9879\u53EA\u63A5\u53D7 ${scenarioItemKeys.join("/")}\uFF0C\u62FC\u9519 manual \u4F1A\u4F7F --all \u8BEF\u628A\u624B\u52A8\u573A\u666F\u5F53\u81EA\u52A8\u573A\u666F\u6267\u884C\uFF09`
+    );
     const url = entry.url || entry.file || entry.path || "";
     const id = entry.id || url || `scenario-${index + 1}`;
     invariant(nonEmptyString(id), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u7F3A\u5C11 id`);
@@ -2857,17 +2921,21 @@ function createRequestSignal(parentSignal, timeoutMs) {
 }
 function createRunIdentifiers() {
   const timestamp = String(Date.now());
-  const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+  const random = randomUuid().replace(/-/g, "").slice(0, 8);
   return {
     runId: `${timestamp}-${random}`,
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
 }
-function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
+function buildGeneratedVars(scenario, layers, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
+  const suiteVars = layers.suite || {};
+  const configVars = layers.configVars || {};
+  const optionVars = layers.optionVars || {};
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
-  assertNoReservedVars(baseVars, "\u914D\u7F6E/\u9009\u9879 vars");
-  const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
+  assertNoReservedVars(configVars, "\u914D\u7F6E vars");
+  assertNoReservedVars(optionVars, "\u9009\u9879 vars");
+  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...identifiers };
   const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
@@ -2905,7 +2973,7 @@ function createRuntime(scenario, options = {}) {
   const runtime = {
     vars: buildGeneratedVars(
       scenario,
-      { ...suite, ...config.vars || {}, ...options.vars || {} },
+      { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
       options.environmentVariables || {},
       { now: options.now, clock: options.clock }
     ),
@@ -2940,6 +3008,7 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
+var HTTP_EXECUTION_KEYS = ["method", "path", "params", "request", "status", "timeoutMs", "saveResponseAs"];
 function readBodyChunks(response, signal, maxBytes = 0) {
   if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
@@ -3107,6 +3176,68 @@ function hostMatchesCookie(hostname, domain) {
   const host = String(hostname || "").toLowerCase();
   return host === domain || host.endsWith(`.${domain}`);
 }
+var PUBLIC_SUFFIXES = /* @__PURE__ */ new Set([
+  "com",
+  "net",
+  "org",
+  "edu",
+  "gov",
+  "mil",
+  "int",
+  "arpa",
+  "cn",
+  "uk",
+  "jp",
+  "kr",
+  "de",
+  "fr",
+  "ru",
+  "br",
+  "in",
+  "au",
+  "ca",
+  "us",
+  "hk",
+  "tw",
+  "sg",
+  "nz",
+  "mx",
+  "tr",
+  "io",
+  "co",
+  "me",
+  "dev",
+  "app",
+  "test",
+  "local",
+  "internal",
+  "localhost",
+  "co.uk",
+  "com.cn",
+  "net.cn",
+  "org.cn",
+  "gov.cn",
+  "com.hk",
+  "com.tw",
+  "co.jp",
+  "com.au",
+  "co.kr",
+  "com.sg",
+  "com.br",
+  "co.in",
+  "co.nz",
+  "com.mx",
+  "com.tr",
+  "com.ru"
+]);
+function isCookieDomainAllowed(requestHost, domain) {
+  const host = String(requestHost || "").toLowerCase();
+  const value = String(domain || "").toLowerCase();
+  if (!host || !value) return false;
+  if (host === value) return true;
+  if (!hostMatchesCookie(host, value)) return false;
+  return !PUBLIC_SUFFIXES.has(value) && value.includes(".");
+}
 function pathMatchesCookie(pathname, cookiePath) {
   if (pathname === cookiePath) return true;
   const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
@@ -3121,6 +3252,7 @@ function storeSetCookies(runtime, lines, requestUrl) {
   for (const line of lines) {
     const cookie = parseSetCookie(line, requestUrl);
     if (!cookie) continue;
+    if (!isCookieDomainAllowed(requestUrl.hostname, cookie.domain)) continue;
     runtime.cookieJar = runtime.cookieJar.filter((item) => !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
     if (cookie.expiresAt > Date.now()) runtime.cookieJar.push(cookie);
   }
@@ -3201,7 +3333,7 @@ async function executeHttp(step, runtime, options) {
   if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
     headers.Authorization = options.authorization;
   }
-  const requestUrl = joinUrl(options.baseUrl, requestPath);
+  const requestUrl = completeProtocolRelativeUrl(joinUrl(options.baseUrl, requestPath), options.baseUrl);
   let parsedRequestUrl = null;
   if (options.cookieJar) {
     try {
@@ -3398,13 +3530,14 @@ function createEngine(engineOptions = {}) {
     let lastExecution;
     let assertions = [];
     let stepWarnings = [];
+    const selection = chooseAdapter(step, adapters);
     const missingVars = /* @__PURE__ */ new Set();
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
     const retryOn = new Set(
       retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
     );
-    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
+    const enforceAttemptDeadline = Boolean(retry);
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     let lastAttemptError = null;
@@ -3418,12 +3551,16 @@ function createEngine(engineOptions = {}) {
       );
     };
     try {
+      if (!selection && !HTTP_EXECUTION_KEYS.some((key) => step[key] !== void 0)) {
+        throw new Error(
+          `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u672A\u5339\u914D\u4EFB\u4F55\u9002\u914D\u5668\uFF0C\u4E14\u7F3A\u5C11 HTTP \u6267\u884C\u5B57\u6BB5\uFF08${HTTP_EXECUTION_KEYS.join("/")}\uFF09\u2014\u2014 \u8BF7\u68C0\u67E5 adapter \u540D\u4E0E\u63D2\u4EF6\u662F\u5426\u5DF2\u52A0\u8F7D\uFF0C\u6216\u8865\u5168 path/request \u7B49\u8BF7\u6C42\u5B57\u6BB5`
+        );
+      }
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
         if (retry) {
           const elapsedMs = now() - retryStartTime;
-          const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
-          if (expired) throw retryTimeoutError(attempt - 1);
+          if (elapsedMs >= maxElapsedMs) throw retryTimeoutError(attempt - 1);
         }
         let attemptDeadline = null;
         if (enforceAttemptDeadline) {
@@ -3435,7 +3572,6 @@ function createEngine(engineOptions = {}) {
         let attemptErrorType = "";
         try {
           collectStepMissingVars(step, runtime, missingVars);
-          const selection = chooseAdapter(step, adapters);
           const attemptStartedAt = now();
           const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
           const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
@@ -3451,7 +3587,7 @@ function createEngine(engineOptions = {}) {
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
           if (options.signal?.aborted) throw error;
-          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          if (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs) {
             throw retryTimeoutError(attempt);
           }
           const errorType = isTimeoutError(error) ? "timeout" : "error";
@@ -3464,7 +3600,7 @@ function createEngine(engineOptions = {}) {
         } finally {
           attemptDeadline?.dispose();
         }
-        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+        if (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
@@ -3724,6 +3860,7 @@ function buildCapabilities(inputContract = contract) {
     scenario: {
       keys: [...scenario.keys],
       stepKeys: [...scenario.stepKeys],
+      requestKeys: [...scenario.requestKeys || []],
       failurePolicies: [...scenario.failurePolicies],
       retryUntilKeys: [...scenario.retryUntilKeys || []],
       ...scenario.note ? { note: scenario.note } : {}
@@ -3799,6 +3936,7 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
+  lines.push(`request \u5B57\u6BB5: ${capabilities.scenario.requestKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
   if (capabilities.retryUntil) {
     lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
@@ -4017,8 +4155,10 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
 var import_node_fs3 = __toESM(require("node:fs"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
 var import_node_vm = __toESM(require("node:vm"), 1);
-function executeDefinitionFile(filePath, api) {
+var DEFAULT_DEFINITION_TIMEOUT_MS = 1e4;
+function executeDefinitionFile(filePath, api, options = {}) {
   const absolutePath = import_node_path3.default.resolve(filePath);
+  const timeout = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_DEFINITION_TIMEOUT_MS;
   const moduleObject = { exports: {} };
   const windowObject = { ScenarioTest: api };
   const context = {
@@ -4035,12 +4175,20 @@ function executeDefinitionFile(filePath, api) {
   context.global = context;
   context.globalThis = context;
   import_node_vm.default.createContext(context);
-  import_node_vm.default.runInContext(import_node_fs3.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath });
+  try {
+    import_node_vm.default.runInContext(import_node_fs3.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath, timeout });
+  } catch (error) {
+    if (error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+      error.message = `\u5B9A\u4E49\u6587\u4EF6\u6267\u884C\u8D85\u65F6\uFF08${timeout}ms\uFF0C\u7591\u4F3C\u6B7B\u5FAA\u73AF\uFF09: ${absolutePath}
+${error.message}`;
+    }
+    throw error;
+  }
   return { context, window: windowObject, exports: moduleObject.exports };
 }
-function loadConfigFile(filePath, api) {
+function loadConfigFile(filePath, api, options = {}) {
   const previousConfig = getConfig();
-  const loaded = executeDefinitionFile(filePath, api);
+  const loaded = executeDefinitionFile(filePath, api, options);
   const exported = loaded.exports?.default || loaded.exports;
   const registeredConfig = getConfig();
   const config = (registeredConfig !== previousConfig ? registeredConfig : null) || (exported && Object.keys(exported).length ? exported : null);
@@ -4048,11 +4196,11 @@ function loadConfigFile(filePath, api) {
   return api.defineConfig(config);
 }
 var loadedScenarioPaths = /* @__PURE__ */ new Map();
-function loadScenarioFile(filePath, id, api) {
+function loadScenarioFile(filePath, id, api, options = {}) {
   const absolutePath = import_node_path3.default.resolve(filePath);
   const existing = getScenario(id);
   if (existing && loadedScenarioPaths.get(id) === absolutePath) return existing;
-  const loaded = executeDefinitionFile(absolutePath, api);
+  const loaded = executeDefinitionFile(absolutePath, api, options);
   let scenario = getScenario(id);
   const exported = loaded.exports?.default || loaded.exports;
   if (!scenario && exported && Array.isArray(exported.steps)) scenario = registerScenario(id, exported);
@@ -4090,7 +4238,7 @@ var AUTHORING_PROMPT = `# AI \u4E1A\u52A1\u529F\u80FD\u573A\u666F\u751F\u6210\u8
 2. \u4E1A\u52A1\u529F\u80FD\u662F\u8BBE\u8BA1\u8FB9\u754C\uFF0C\u573A\u666F\u662F\u8BE5\u529F\u80FD\u4E0B\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84\u3002\u6309\u8BC1\u636E\u8986\u76D6\u6210\u529F\u8DEF\u5F84\u3001\u4E1A\u52A1\u89C4\u5219/\u53C2\u6570\u6821\u9A8C\u3001\u6743\u9650\u3001\u8FB9\u754C\u503C\u3001\u91CD\u590D\u64CD\u4F5C\u6216\u5E42\u7B49\u3001\u5408\u6CD5\u4E0E\u975E\u6CD5\u72B6\u6001\u6D41\u8F6C\uFF1B\u6CA1\u6709\u8BC1\u636E\u7684\u7C7B\u522B\u4E0D\u751F\u6210\u3002\u4E00\u4E2A\u573A\u666F\u53EF\u4EE5\u5305\u542B\u51C6\u5907\u3001\u6267\u884C\u3001\u67E5\u8BE2\u9A8C\u8BC1\u548C\u7CBE\u786E\u6E05\u7406\u7B49\u591A\u4E2A HTTP \u6B65\u9AA4\uFF0C\u4F46\u8FD9\u4E9B\u6B65\u9AA4\u53EA\u670D\u52A1\u4E8E\u76EE\u6807\u529F\u80FD\uFF0C\u4E0D\u628A\u591A\u4E2A\u4E1A\u52A1\u529F\u80FD\u4E32\u6210\u4E00\u4E2A\u5927\u573A\u666F\u3002\u8BA4\u8BC1\u7B49\u516C\u5171\u524D\u7F6E\u53EA\u4F5C\u4E3A\u51C6\u5907\u6B65\u9AA4\uFF0C\u4E0D\u6539\u53D8\u573A\u666F\u5F52\u5C5E\u3002
 3. \u5728 \`scenario.config.js\` \u7EF4\u62A4 \`envs\`\u3001\`vars\`\u3001\`variables\` \u548C \`scenarios\`\u3002\u79C1\u6709\u9879\u76EE\u53EF\u5728 \`vars\` \u4FDD\u5B58\u8054\u8C03\u51ED\u636E\uFF1B\`variables\` \u53EA\u58F0\u660E\u6807\u7B7E\u3001\`required\` \u4E0E\u53EF\u9009 \`env\` \u6620\u5C04\u3002\u6E90\u7801\u80FD\u786E\u8BA4\u8BF7\u6C42\u5B57\u6BB5\u4F46\u4E0D\u80FD\u786E\u8BA4\u5FC5\u586B\u53D6\u503C\u65F6\uFF0C\u5728\u914D\u7F6E \`vars\` \u4E2D\u7559\u7A7A\uFF0C\u5E76\u5728 \`variables\` \u4E2D\u58F0\u660E\u4E3A \`required: true\`\uFF1B\u573A\u666F\u53EA\u5F15\u7528\u8BE5\u53D8\u91CF\uFF0C\u7981\u6B62\u586B\u5165\u731C\u6D4B\u503C\u6216\u6D4B\u8BD5\u6807\u8BB0\u3002\u4E34\u65F6\u8054\u8C03\u53EF\u7528 \`--vars key=value\`\uFF08\u53EF\u91CD\u590D\uFF0C\u4F18\u5148\u7EA7\u6700\u9AD8\uFF0C\u503C\u652F\u6301 \`{{ }}\` \u6A21\u677F\uFF09\u8986\u76D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u7528 \`--timeout <ms>\` \u8986\u76D6\u914D\u7F6E \`requestTimeoutMs\`\uFF0C\u4E0D\u5FC5\u590D\u5236\u6216\u4FEE\u6539\u914D\u7F6E\u3002
 4. \u5148\u53C2\u7167 \`SCENARIO_PATTERNS.md\` \u7684\u6B65\u9AA4\u7EC4\u5408\u6A21\u5F0F\uFF0C\u518D\u6309\u672C\u9879\u76EE\u8BC1\u636E\u66FF\u6362\u8DEF\u5F84\u3001\u5B57\u6BB5\u548C\u54CD\u5E94\u65AD\u8A00\uFF1B\u6A21\u5F0F\u4E2D\u7684\u5C16\u62EC\u53F7\u5360\u4F4D\u5185\u5BB9\u4E0D\u5F97\u76F4\u63A5\u5199\u5165\u573A\u666F\u3002\u573A\u666F\u5FC5\u987B\u4F7F\u7528 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`\uFF0C\u914D\u7F6E\u4E2D\u7684\u573A\u666F id\u3001\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002
-5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u53EA\u80FD\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF0C\u4E0D\u80FD\u5199\u6210 \`request.params\`\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`scope: "suite"\` \u7684\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF0C\u540E\u7EED\u573A\u666F\u6A21\u677F\u7528 \`{{suite.<name>}}\` \u5F15\u7528\uFF08\u5178\u578B\u5982\u767B\u5F55 token\uFF1B\u9ED8\u8BA4\u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u517C\u5BB9\u7528 \`{{vars.<name>}}\` \u8BFB\u53D6\uFF09\u3002\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 \`shape: { type: "object", required: [...], properties: {...} }\`\uFF08jsonSchema-lite\uFF1Atype \u652F\u6301 ${SHAPE_TYPES_TEXT}\uFF0C\u952E\u652F\u6301 ${SHAPE_KEYS_TEXT}\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\uFF09\uFF0C\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "suite"\`\uFF08\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
+5. \u6BCF\u4E00\u6B65\u5199 \`name\`\u3001\`method\`\u3001\`path\`\u3001\`status\`\uFF0C\u5E76\u4E3A\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 \`assertions\`\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 \`params\`\uFF08\u4E5F\u53EF\u7528 \`request.params\`\uFF0C\u4F46\u540C\u4E00\u6B65\u9AA4\u4E0D\u80FD\u4E24\u5904\u540C\u65F6\u58F0\u660E\uFF0C\u5B9A\u4E49\u671F\u5373\u62A5\u9519\uFF09\uFF1BGET/HEAD \u4E0D\u80FD\u643A\u5E26\u8BF7\u6C42\u4F53\uFF08\`request.body\`\u3001\`request.fileUpload\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u8BF7\u6C42\u53C2\u6570\u4E00\u5F8B\u653E \`params\`\u3002\u7528 \`extract\` \u4FDD\u5B58\u54CD\u5E94 ID\u3001Token \u6216\u72B6\u6001\uFF0C\u518D\u7528 \`{{vars.name}}\` \u4E32\u8054\u540E\u7EED\u6B65\u9AA4\uFF1B\`scope: "suite"\` \u7684\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF0C\u540E\u7EED\u573A\u666F\u6A21\u677F\u7528 \`{{suite.<name>}}\` \u5F15\u7528\uFF08\u5178\u578B\u5982\u767B\u5F55 token\uFF1B\u9ED8\u8BA4\u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u517C\u5BB9\u7528 \`{{vars.<name>}}\` \u8BFB\u53D6\uFF09\u3002\`from: "headers"\` \u7684 path \u9996\u6BB5\u6309\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4EFB\u610F\u5927\u5C0F\u5199\u547D\u4E2D\u540C\u4E00\u54CD\u5E94\u5934\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u4E4B\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_BACKTICK}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 \`shape: { type: "object", required: [...], properties: {...} }\`\uFF08jsonSchema-lite\uFF1Atype \u652F\u6301 ${SHAPE_TYPES_TEXT}\uFF0C\u952E\u652F\u6301 ${SHAPE_KEYS_TEXT}\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\uFF09\uFF0C\u6570\u503C\u6BD4\u8F83\uFF08\u5982\u603B\u6570\u5B57\u6BB5\u4E0D\u5C11\u4E8E 5\uFF09\u7528 \`gte: 5\`\uFF08\u4EC5\u6570\u5B57\u4E0D\u505A\u5B57\u7B26\u4E32\u8F6C\u6362\uFF09\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 \`length: N\`\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF0C\u975E\u5BB9\u5668\u7C7B\u578B\u76F4\u63A5\u5931\u8D25\uFF09\uFF0C"\u975E\u8D1F\u6574\u6570"\u8FD9\u7C7B\u683C\u5F0F\u6821\u9A8C\u7528 \`matches: "^\\\\d+$"\`\uFF0C\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 \`{ target: "duration", lte: 800 }\`\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002\`extract\` \u9879\u53EF\u52A0 \`required: true\`\uFF0C\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u8BE5\u6B65\u9AA4\u5931\u8D25\uFF1B\u53EF\u52A0 \`default\` \u7ED9\u53EF\u9009\u5B57\u6BB5\u58F0\u660E\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\uFF0C\u4E0E required \u4E92\u65A5\uFF0C\u58F0\u660E\u540E\u7F3A\u5931\u4E0D\u4EA7\u751F warning\uFF09\u3002\u8DEF\u5F84\u4E2D\u7684\u6570\u7EC4\u4E0B\u6807\u652F\u6301\u8D1F\u6570\u53D6\u5012\u6570\u9879\uFF08\u5982 \`records[-1]\` \u4E3A\u672B\u9879\uFF0C\`records[-2]\` \u4E3A\u5012\u6570\u7B2C\u4E8C\u9879\uFF09\u3002\u8DEF\u5F84\u8FD8\u652F\u6301\u901A\u914D\u6BB5 \`[*]\`\uFF1A\`items[*].id\` \u9010\u5143\u7D20\u63D0\u53D6\u5E76\u4EA7\u51FA\u6570\u7EC4\uFF08\u5143\u7D20\u7F3A\u5931\u8BE5\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\uFF0C\u7A7A\u6570\u7EC4\u4EA7 \`[]\`\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF09\uFF0C\u8FDE\u7EED\u901A\u914D\uFF08\u5982 \`groups[*].members[*].id\`\uFF09\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002\`when\` \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A \`from: "vars"\`\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001\`from: "suite"\`\uFF08\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u53D8\u91CF\uFF09\u3001\`from: "lastResponse"\`\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF0Cpath \u5B50\u8DEF\u5F84\u53D6\u503C\u540C extract from:"body"\uFF09\u6216 \`from: "status"\`\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF0C\u6570\u503C\uFF09\uFF0C\u4E5F\u53EF\u7528 \`target: "status"\` \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6309\u6765\u6E90\u7F3A\u5931\u5904\u7406\u3001\u6761\u4EF6\u4E0D\u6210\u7ACB\uFF0C\u4E0D\u4E2D\u65AD\u573A\u666F\u3002\u6A21\u677F \`{{ }}\` \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83\u3001\u4E09\u5143\u3001\u903B\u8F91\u8FD0\u7B97\u6216\u51FD\u6570\u8C03\u7528\uFF08\u5982 \`{{vars.a > 0}}\` \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 \`assertions\` \u6216 \`when\` \u5BF9\u8C61\u5F62\u5F0F\u3002
 6. \u8BA4\u8BC1\u662F\u666E\u901A\u9879\u76EE\u6B65\u9AA4\uFF1A\u786E\u8BA4\u767B\u5F55\u63A5\u53E3\u65F6\u5148\u767B\u5F55\u5E76\u63D0\u53D6 Token\uFF1B\u65E0\u6CD5\u786E\u8BA4\u65F6\u4EC5\u58F0\u660E\u53D8\u91CF\u5E76\u5728\u5177\u4F53 Header\u3001Query \u6216 Body \u4E2D\u5F15\u7528\uFF0C\u4E0D\u865A\u6784\u6846\u67B6\u7EA7\u8BA4\u8BC1\u3002\u6D4F\u89C8\u5668 Cookie \u4F1A\u8BDD\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u5E76\u663E\u5F0F\u8BBE\u7F6E request.credentials \u4E3A include\uFF1BCLI \u9700\u8981\u81EA\u52A8\u7EF4\u6301\u4F1A\u8BDD\u65F6\u53EF\u52A0 \`run --cookie-jar\`\uFF08\u5355\u573A\u666F\u5185\u5B58 Jar\uFF0C\u4E0D\u843D\u76D8\uFF09\u3002
 7. \`runId\` \u548C \`runNo\` \u662F\u6BCF\u6B21\u6267\u884C\u81EA\u52A8\u751F\u6210\u7684\u5185\u7F6E\u53D8\u91CF\uFF0C\u7981\u6B62\u5728\u914D\u7F6E vars\u3001\u573A\u666F vars\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u91CD\u65B0\u5B9A\u4E49\u6216\u8986\u76D6\u3002\u5199\u5165\u573A\u666F\u4F7F\u7528 \`scenario-{{vars.runNo}}\` \u7B49\u6D4B\u8BD5\u6807\u8BB0\u3002\u6E05\u7406\u53EA\u80FD\u6309\u521A\u63D0\u53D6\u7684 ID \u6216\u6D4B\u8BD5\u6807\u8BB0\u7CBE\u786E\u5B9A\u4F4D\uFF0C\u5E76\u7528 \`when\` \u9632\u6B62\u7A7A\u503C\u5220\u9664\uFF1B\u65E0\u6CD5\u786E\u8BA4\u5B89\u5168\u6E05\u7406\u6761\u4EF6\u65F6\u4E0D\u751F\u6210\u5220\u9664\u6B65\u9AA4\u3002 \u9700\u8981\u552F\u4E00\u8BC1\u4EF6/\u5361\u53F7/\u53F7\u7801\u7684\u6D4B\u8BD5\u6570\u636E\uFF08\u8EAB\u4EFD\u8BC1\u53F7\u3001\u94F6\u884C\u5361\u53F7\u3001\u624B\u673A\u53F7\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801\u7B49\u5E26\u683C\u5F0F\u6216\u6821\u9A8C\u4F4D\u7EA6\u675F\u7684\u5B57\u6BB5\uFF09\u7528 \`generatedVars\` \u6309\u8F6E\u6B21\u751F\u6210\uFF1A\`idcard\`\uFF08\u58F0\u660E birthDate \u4E0E gender\uFF09\u3001\`luhn\`\uFF08\u53EF\u9009 length/prefix\uFF09\u3001\`phone\`\uFF08\u53EF\u9009 prefix\uFF09\u3001\`uscc\`\uFF08\u53EF\u9009 regionCode\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u56FA\u5B9A\u6216\u771F\u5B9E\u53F7\u7801\u5BFC\u81F4\u91CD\u8DD1\u649E\u552F\u4E00\u6027\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\uFF08startTime\u3001expiredAt \u7B49\uFF09\u7528 \`timestamp\` \u7C7B\u578B\u76F8\u5BF9\u5F53\u524D\u65F6\u95F4\u751F\u6210\uFF1A\`offset\`\uFF08\u5982 "-7d"\u3001"+8d"\uFF0C\u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF09\u3001\`unit: 's'\` \u79D2\u7EA7\u6570\u503C\u3001\`format: 'YYYY-MM-DD HH:mm:ss'\` \u672C\u5730\u65F6\u95F4\u5B57\u7B26\u4E32\uFF08format \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5916\u90E8\u811A\u672C\u62FC\u503C\u6216\u5199\u6B7B\u8FC7\u671F\u65F6\u95F4\u3002\u4E1A\u52A1\u4E3B\u952E\u4E3A UUID \u7684\u5B57\u6BB5\u7528 \`uuid\` \u7C7B\u578B\uFF08\u5E26\u8FDE\u5B57\u7B26\u6807\u51C6\u5F62\u6001\uFF09\uFF0C\u65E0\u8FDE\u5B57\u7B26 32 \u4F4D\u7528 \`uuidHex\`\u3002\u6E20\u9053\u3001\u72B6\u6001\u7B49\u679A\u4E3E\u7C7B\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 \`enum\` \u7C7B\u578B\uFF1A\`values\` \u5019\u9009\u6570\u7EC4 + \u53EF\u9009 \`weights\` \u975E\u8D1F\u6743\u91CD\uFF08\u7F3A\u7701\u7B49\u6743\uFF0C\u6743\u91CD\u4E3A 0 \u7684\u5019\u9009\u6C38\u4E0D\u88AB\u9009\u4E2D\uFF09\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF08\u8F6E\u5185\u7A33\u5B9A\u3001\u8DE8\u8F6E\u53D8\u5316\uFF09\uFF1B\u679A\u4E3E\u53D6\u503C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u7F16\u9020\u5019\u9009\u3002
 8. \u9ED8\u8BA4\u4FDD\u6301 \`failurePolicy: "stop"\`\u3002\u4E0D\u540C\u9A8C\u8BC1\u76EE\u6807\u62C6\u6210\u72EC\u7ACB\u573A\u666F\uFF1B\u53EA\u6709\u540C\u4E00\u9A8C\u8BC1\u8DEF\u5F84\u786E\u5B9E\u9700\u8981\u7EE7\u7EED\u6536\u96C6\u540E\u7EED\u6B65\u9AA4\u7ED3\u679C\u65F6\u624D\u8BBE\u7F6E \`failurePolicy: "continue"\`\u3002\u5199\u6570\u636E\u573A\u666F\u7684\u6E05\u7406\u6B65\u9AA4\u53EF\u58F0\u660E \`always: true\`\uFF1A\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\u540E\u4ECD\u4F1A\u6267\u884C\uFF08\u7528\u6237\u53D6\u6D88\u65F6\u4E0D\u6267\u884C\uFF09\u3002\u53EA\u6709\u5728\u5B8C\u6210\u72B6\u6001\u5B57\u6BB5\u548C\u7EC8\u6001\u503C\u90FD\u6709\u8BC1\u636E\u65F6\u624D\u4F7F\u7528 \`retryUntil\`\uFF0C\u4E14 assertions \u5FC5\u987B\u65AD\u8A00\u8BE5\u7EC8\u6001\u503C\uFF1B\u53EA\u65AD\u8A00\u5B57\u6BB5\u5B58\u5728\u4F1A\u7ACB\u5373\u901A\u8FC7\uFF0C\u7981\u6B62\u914D\u5408 \`retryUntil\`\u3002\u5B8C\u6210\u72B6\u6001\u672A\u77E5\u65F6\u6700\u591A\u751F\u6210\u4E00\u6B21\u72B6\u6001\u67E5\u8BE2\u3002\u4E0D\u8981\u5199\u56FA\u5B9A sleep\u3002\u670D\u52A1/\u5BB9\u5668\u521A\u542F\u52A8\u3001\u9996\u6B21\u8F6E\u8BE2\u53EF\u80FD\u8FDE\u63A5\u5931\u8D25\u65F6\uFF0C\u53EF\u58F0\u660E \`retryUntil.retryOn: ["assertion", "error", "timeout"]\` \u8BA9\u7F51\u7EDC\u9519\u8BEF\u4E0E\u5355\u6B21\u8BF7\u6C42\u8D85\u65F6\u53C2\u4E0E\u91CD\u8BD5\uFF08\u9ED8\u8BA4 \`["assertion"]\`\uFF0C\u4E0E\u65E7\u8BED\u4E49\u4E00\u81F4\uFF09\uFF1B\u7528\u6237\u53D6\u6D88\u59CB\u7EC8\u7ACB\u5373\u7EC8\u6B62\uFF0C\u975E\u5E42\u7B49\u5199\u64CD\u4F5C\u5F00\u542F\u91CD\u8BD5\u524D\u5FC5\u987B\u5148\u786E\u8BA4\u5B89\u5168\u3002\u957F\u8F6E\u8BE2\u9700\u8981\u6307\u6570\u9000\u907F\u65F6\uFF0C\u6309\u8BC1\u636E\u58F0\u660E \`retryUntil.intervalFactor\`\uFF08\u22651\uFF0C\u9ED8\u8BA4 1 = \u56FA\u5B9A\u95F4\u9694\uFF0C\u7B2C n \u6B21\u91CD\u8BD5\u7B49\u5F85 = intervalMs \xD7 intervalFactor^(n-1)\uFF09\u4E0E\u53EF\u9009 \`maxIntervalMs\`\uFF08\u5355\u6B21\u7B49\u5F85\u4E0A\u9650\uFF0C\u2265intervalMs\uFF09\uFF1B\u672A\u58F0\u660E\u4E0A\u9650\u4E0D\u5C01\u9876\uFF0C\u6700\u7EC8\u4ECD\u53D7 100ms \u4E0B\u9650\u4E0E maxElapsedMs \u603B\u65F6\u9650\u7EA6\u675F\u3002
@@ -4112,7 +4260,7 @@ var SCENARIO_PATTERNS = [
   "4. \u5EFA\u8BAE\u4F7F\u7528 scenarios/<\u529F\u80FD\u6807\u8BC6>/<\u9A8C\u8BC1\u8DEF\u5F84>.js \u7EC4\u7EC7\u6587\u4EF6\uFF0C\u5E76\u4F7F\u7528 <\u529F\u80FD\u6807\u8BC6>-<\u9A8C\u8BC1\u8DEF\u5F84> \u4F5C\u4E3A\u7A33\u5B9A\u573A\u666F id\uFF0C\u4F8B\u5982 order-review-success\u3001order-review-forbidden\uFF1B\u8FD0\u884C\u65F6\u4ECD\u4F7F\u7528\u6241\u5E73 scenarios \u6E05\u5355\uFF0C\u4E0D\u9700\u8981\u65B0\u589E\u529F\u80FD\u5206\u7EC4\u5B57\u6BB5\u3002",
   "5. \u6BCF\u4E2A\u573A\u666F\u72EC\u7ACB\u8FD0\u884C\uFF1A\u81EA\u5DF1\u6EE1\u8DB3\u524D\u7F6E\u6761\u4EF6\u6216\u8BFB\u53D6\u914D\u7F6E\u53D8\u91CF\uFF0C\u81EA\u5DF1\u63D0\u53D6 ID\uFF0C\u4E0D\u80FD\u4F9D\u8D56\u5176\u4ED6\u573A\u666F\u6216\u4E0A\u6B21\u8FD0\u884C\u7559\u4E0B\u7684\u6570\u636E\u3002\u786E\u9700\u590D\u7528\u516C\u5171\u524D\u7F6E\u4EA7\u7269\uFF08\u5982\u767B\u5F55 token\uFF09\u65F6\uFF0C\u524D\u7F6E\u573A\u666F\u7528 extract \u7684 scope: 'suite' \u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF0C\u540E\u7EED\u573A\u666F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u8FD9\u662F\u540C\u4E00\u6B21 run \u5185\u7684\u663E\u5F0F\u5171\u4EAB\uFF0C\u4E0D\u8DE8 run\uFF0C\u4E5F\u4E0D\u5EFA\u7ACB\u5931\u8D25\u4F9D\u8D56\u2014\u2014\u524D\u7F6E\u573A\u666F\u5931\u8D25\u65F6\u540E\u7EED\u573A\u666F\u7167\u5E38\u6267\u884C\uFF0C\u7F3A\u5931\u7684 suite \u53D8\u91CF\u6309\u7A7A\u503C\u89E3\u6790\u5E76\u7531\u65AD\u8A00\u66B4\u9732\u3002",
   "6. \u786E\u8BA4\u573A\u666F\u5185\u6BCF\u4E2A\u63A5\u53E3\u7684\u65B9\u6CD5\u3001\u8DEF\u5F84\u3001\u8BA4\u8BC1\u4F4D\u7F6E\u3001\u8BF7\u6C42\u5B57\u6BB5\u3001\u54CD\u5E94\u7ED3\u6784\u3001\u662F\u5426\u5199\u6570\u636E\u548C\u5B89\u5168\u6E05\u7406\u65B9\u5F0F\u3002\u5728 scenario.config.js \u6CE8\u518C\u573A\u666F id\u3001\u540D\u79F0\u548C\u6587\u4EF6\u5730\u5740\uFF1B\u6587\u4EF6\u6CE8\u518C id \u5FC5\u987B\u4E00\u81F4\u3002",
-  "7. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\uFF1Bfrom: 'headers' \u7684 path \u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF0C\u4E0D\u5199 request.params\uFF1BGET/HEAD \u4E0D\u5199\u8BF7\u6C42\u4F53\uFF08request.body\u3001request.fileUpload \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u53C2\u6570\u4E00\u5F8B\u653E params\u3002",
+  "7. \u6BCF\u4E00\u6B65\u90FD\u5199 name\u3001method\u3001path\u3001status\uFF1B\u5173\u952E\u4E1A\u52A1\u7ED3\u679C\u5199 assertions\uFF1B\u8DE8\u6B65\u9AA4\u6570\u636E\u901A\u8FC7 extract \u4FDD\u5B58\uFF1Bfrom: 'headers' \u7684 path \u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002Query \u53C2\u6570\u5199\u5728\u6B65\u9AA4\u9876\u5C42 params\uFF08\u4E5F\u53EF\u7528 request.params\uFF0C\u540C\u4E00\u6B65\u9AA4\u53EA\u80FD\u4E8C\u9009\u4E00\uFF0C\u53CC\u5199\u5B9A\u4E49\u671F\u5373\u62A5\u9519\uFF09\uFF1BGET/HEAD \u4E0D\u5199\u8BF7\u6C42\u4F53\uFF08request.body\u3001request.fileUpload \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u53C2\u6570\u4E00\u5F8B\u653E params\u3002",
   "8. runId \u548C runNo \u7531\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\uFF0C\u4E0D\u8981\u5728 vars\u3001variables\u3001envVars\u3001generatedVars \u6216 extract \u4E2D\u5B9A\u4E49\u3002\u6A21\u5F0F\u4E2D\u7684\u72B6\u6001\u3001\u683C\u5F0F\u3001\u9519\u8BEF\u7801\u548C\u54CD\u5E94\u5B57\u6BB5\u90FD\u662F\u7ED3\u6784\u5360\u4F4D\uFF0C\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u624D\u80FD\u91C7\u7528\u3002 \u9700\u8981\u552F\u4E00\u53F7\u7801/\u8BC1\u53F7\u7684\u6D4B\u8BD5\u6570\u636E\u5728 generatedVars \u58F0\u660E\uFF1A\u8EAB\u4EFD\u8BC1 { name, type: 'idcard', birthDate, gender }\u3001\u94F6\u884C\u5361 { name, type: 'luhn', length, prefix }\u3001\u624B\u673A\u53F7 { name, type: 'phone', prefix }\u3001\u7EDF\u4E00\u793E\u4F1A\u4FE1\u7528\u4EE3\u7801 { name, type: 'uscc', regionCode }\uFF0C\u5F15\u64CE\u6309\u8F6E\u6B21\u751F\u6210\u6821\u9A8C\u4F4D\u5408\u6CD5\u4E14\u8DE8\u8F6E\u552F\u4E00\u7684\u503C\uFF0C\u7528 {{vars.<name>}} \u5F15\u7528\u3002 \u65F6\u95F4\u7A97/\u8FC7\u671F\u7C7B\u53C2\u6570\u7528 timestamp \u7C7B\u578B\uFF1A{ name, type: 'timestamp', offset: '-7d', unit: 's' } \u6216 { name, type: 'timestamp', offset: '+30d', format: 'YYYY-MM-DD HH:mm:ss' }\uFF08offset \u6570\u5B57+\u5355\u4F4D ms/s/m/h/d/w\uFF1Bformat \u4E0E unit \u4E92\u65A5\uFF09\uFF0C\u7981\u6B62\u5199\u6B7B\u65F6\u95F4\u6233\u6216\u65E5\u671F\u5B57\u7B26\u4E32\u3002\u4E1A\u52A1\u4E3B\u952E UUID \u7528 { name, type: 'uuid' }\uFF08\u5E26\u8FDE\u5B57\u7B26\uFF09\uFF0C32 \u4F4D\u65E0\u8FDE\u5B57\u7B26\u7528 uuidHex\u3002\u6E20\u9053/\u72B6\u6001\u7B49\u679A\u4E3E\u53C2\u6570\u9700\u8981\u968F\u673A\u4F46\u53EF\u590D\u73B0\u7684\u53D6\u503C\u65F6\u7528 enum\uFF1A{ name, type: 'enum', values: [<\u5019\u9009>], weights: [<\u975E\u8D1F\u6743\u91CD\uFF0C\u53EF\u9009>] }\uFF0C\u7F3A\u7701\u7B49\u6743\u3001\u6743\u91CD 0 \u7684\u5019\u9009\u6C38\u4E0D\u9009\u4E2D\uFF0C\u6309\u8F6E\u6B21\u786E\u5B9A\u6027\u62BD\u53D6\uFF1B\u5019\u9009\u5FC5\u987B\u6709\u9879\u76EE\u8BC1\u636E\u3002",
   "9. \u65E0\u6CD5\u786E\u8BA4\u7684\u5FC5\u586B\u8BF7\u6C42\u503C\u653E\u5165\u914D\u7F6E vars \u7559\u7A7A\uFF0C\u5E76\u5728 variables \u58F0\u660E required: true\uFF1B\u4E0D\u5F97\u7528 PDF\u3001pdf\u3001SUCCESS \u6216 scenario-{{vars.runNo}} \u5145\u5F53\u672A\u77E5\u679A\u4E3E\u3002",
   `10. \u65AD\u8A00\u64CD\u4F5C\u7B26\uFF1A${OPERATORS_TEXT}\uFF1B\u7ED3\u6784\u6821\u9A8C\u7528 shape: { type: 'object', required: [...], properties: {...} }\uFF08jsonSchema-lite\uFF1Atype \u652F\u6301 ${SHAPE_TYPES_TEXT}\uFF0C\u952E\u652F\u6301 ${SHAPE_KEYS_TEXT}\uFF0C\u5931\u8D25\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\uFF09\uFF1B\u6570\u503C\u6BD4\u8F83\uFF08\u6761\u6570\u4E0D\u5C11\u4E8E N\uFF09\u7528 gte: N\uFF0C\u683C\u5F0F\u6821\u9A8C\uFF08\u975E\u8D1F\u6574\u6570\uFF09\u7528 matches: '^\\\\d+$'\uFF0C\u5217\u8868\u6761\u6570/\u5B57\u7B26\u4E32\u957F\u5EA6/\u5BF9\u8C61\u952E\u6570\u7528 length: N\uFF08\u6570\u7EC4\u5143\u7D20\u6570\u3001\u5B57\u7B26\u4E32\u5B57\u7B26\u6570\u3001\u5BF9\u8C61\u952E\u6570\uFF09\u3002\u63A5\u53E3\u8017\u65F6\u4E0A\u9650\u7528 { target: 'duration', lte: 800 }\uFF08\u6BEB\u79D2\uFF0C\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF09\u3002when \u5BF9\u8C61\u5F62\u5F0F\u6765\u6E90\u4E3A from: 'vars'\uFF08\u5DF2\u63D0\u53D6\u53D8\u91CF\uFF09\u3001from: 'suite'\uFF08\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u53D8\u91CF\uFF09\u3001from: 'lastResponse'\uFF08\u4E0A\u4E00\u6B65\u54CD\u5E94 body\uFF09\u6216 from: 'status'\uFF08\u4E0A\u4E00\u6B65 HTTP \u72B6\u6001\u7801\uFF09\uFF0C\u4E5F\u53EF\u7528 target: 'status' \u8BFB\u4E0A\u4E00\u6B65\u72B6\u6001\u7801\uFF1B\u7B2C\u4E00\u6B65\u65E0\u4E0A\u4E00\u6B65\u54CD\u5E94\u65F6\u6761\u4EF6\u4E0D\u6210\u7ACB\u3001\u4E0D\u4E2D\u65AD\u573A\u666F\u3002extract \u53EF\u52A0 required: true \u5F3A\u5236\u8DEF\u5F84\u5B58\u5728\uFF1Bpath \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF08items[*].id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7 []\uFF0C\u975E\u6570\u7EC4\u6309\u7F3A\u5931\u5904\u7406\uFF0C\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\uFF09\u4E14\u7ED3\u679C\u53EF\u76F4\u63A5\u7528 length/includes/each \u65AD\u8A00\uFF1Bscope: 'suite' \u7684\u63D0\u53D6\u503C\u5199\u5165\u672C\u6B21 run \u8DE8\u573A\u666F\u5171\u4EAB\u547D\u540D\u7A7A\u95F4\uFF08\u540E\u7EED\u573A\u666F\u7528 {{suite.<name>}} \u5F15\u7528\uFF0C\u9ED8\u8BA4\u5199\u5F53\u524D\u573A\u666F vars\uFF1B\u540E\u7EED\u573A\u666F\u4E5F\u517C\u5BB9\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u5982\u767B\u5F55 token\uFF09\u3002from: 'headers' \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u6309\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: 'headers'\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF0C\u65E0\u9700\u4E3A\u5927\u5C0F\u5199\u53D8\u4F53\u91CD\u590D\u914D\u7F6E\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\u3002\u6A21\u677F {{ }} \u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF0C\u4E0D\u652F\u6301\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u8FD0\u7B97/\u51FD\u6570\u8C03\u7528\uFF08\u5982 {{vars.a > 0}} \u5B9A\u4E49\u671F\u5373\u88AB\u62D2\uFF09\uFF0C\u6761\u4EF6\u5224\u65AD\u7528 assertions \u6216 when \u5BF9\u8C61\u5F62\u5F0F\u3002`,
@@ -5000,7 +5148,9 @@ function parseCsv(text) {
   let row = [];
   let cell = "";
   let quoted = false;
+  let closedQuote = false;
   const source = String(text).replace(/^\uFEFF/, "");
+  const position = () => `\u7B2C ${rows.length + 1} \u884C\u7B2C ${row.length + 1} \u5217`;
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
     if (quoted) {
@@ -5008,16 +5158,27 @@ function parseCsv(text) {
         if (source[index + 1] === '"') {
           cell += '"';
           index += 1;
-        } else quoted = false;
+        } else {
+          quoted = false;
+          closedQuote = true;
+        }
       } else {
         cell += char;
       }
       continue;
     }
     if (char === '"') {
+      if (cell.length > 0) {
+        throw new Error(`CSV ${position()}\uFF1A\u5F15\u53F7\u53EA\u80FD\u51FA\u73B0\u5728\u5B57\u6BB5\u5F00\u5934\uFF08\u5F53\u524D\u5B57\u6BB5\u5DF2\u542B\u5185\u5BB9 ${JSON.stringify(cell)}\uFF09`);
+      }
       quoted = true;
+      closedQuote = false;
       continue;
     }
+    if (closedQuote && char !== "," && char !== "\n" && char !== "\r") {
+      throw new Error(`CSV ${position()}\uFF1A\u5F15\u53F7\u5305\u88F9\u7684\u5B57\u6BB5\u7ED3\u675F\u540E\u5B58\u5728\u975E\u6CD5\u5B57\u7B26 ${JSON.stringify(char)}`);
+    }
+    closedQuote = false;
     if (char === ",") {
       row.push(cell);
       cell = "";
@@ -5032,6 +5193,9 @@ function parseCsv(text) {
       continue;
     }
     cell += char;
+  }
+  if (quoted) {
+    throw new Error(`CSV ${position()}\uFF1A\u5F15\u53F7\u672A\u95ED\u5408\uFF08\u5B57\u6BB5\u5185\u5BB9 ${JSON.stringify(cell)}\uFF09`);
   }
   row.push(cell);
   rows.push(row);
@@ -5186,6 +5350,18 @@ function buildJUnitXml(reports, options = {}) {
 ${cases.join("\n")}${cases.length ? "\n" : ""}  </testsuite>`
     );
   }
+  for (const skippedEntry of options.notRun || []) {
+    const id = skippedEntry.id || skippedEntry.name || "scenario";
+    const suiteName = skippedEntry.row ? `${id}#row-${skippedEntry.row}` : id;
+    const reason = skippedEntry.reason === "bail" ? "--bail \u540E\u672A\u6267\u884C" : "\u672A\u6267\u884C";
+    totalTests += 1;
+    totalSkipped += 1;
+    suites.push(
+      `  <testsuite name="${escapeXml(suiteName)}" tests="1" failures="0" skipped="1" time="0.000">
+    <testcase name="${escapeXml(skippedEntry.name || "\u672A\u6267\u884C\u573A\u666F")}" classname="${escapeXml(suiteName)}" time="0.000"><skipped message="${escapeXml(reason)}"/></testcase>
+  </testsuite>`
+    );
+  }
   const name = options.name || "scenario-test";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="${escapeXml(name)}" tests="${totalTests}" failures="${totalFailures}" skipped="${totalSkipped}" time="${seconds(totalTime)}">
@@ -5250,6 +5426,9 @@ function serveStaticFile(response, filePath) {
       response.writeHead(200, headers);
       stream.pipe(response);
     });
+    response.on("close", () => {
+      if (!response.writableEnded) stream.destroy();
+    });
     return;
   }
   import_node_fs8.default.readFile(filePath, "utf8", function(error, html) {
@@ -5271,6 +5450,35 @@ function isAllowedServeHost(hostHeader, port) {
   const host = String(hostHeader || "").trim().toLowerCase();
   return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
 }
+function isProxyOriginAllowed(headers, hostHeader, port) {
+  const localHosts = new Set([
+    String(hostHeader || "").trim().toLowerCase(),
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    `[::1]:${port}`,
+    "127.0.0.1",
+    "localhost",
+    "[::1]"
+  ].filter(Boolean));
+  const check = (raw, label) => {
+    const text = String(raw || "").trim();
+    if (!text || text === "null") return !text;
+    let parsed;
+    try {
+      parsed = new URL(text);
+    } catch {
+      return false;
+    }
+    return localHosts.has(parsed.host.toLowerCase());
+  };
+  const origin = headers.origin;
+  const referer = headers.referer || headers.referrer;
+  if (origin !== void 0) {
+    return String(origin).split(/\s+/).filter(Boolean).every((item) => check(item, "Origin"));
+  }
+  if (referer !== void 0) return check(referer, "Referer");
+  return true;
+}
 function connectionNamedHeaders(connectionValue) {
   return String(connectionValue || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
@@ -5278,6 +5486,9 @@ function trimUrl(url) {
   return String(url || "").replace(/\/+$/, "");
 }
 function resolveStartupProxyTarget(config, envKey, baseUrlOverride) {
+  if (envKey && !config.envs?.length) {
+    return { error: `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u65E0\u6CD5\u4F7F\u7528 --env ${envKey}` };
+  }
   if (config.envs?.length) {
     const selectedKey = envKey || config.defaultEnvKey;
     const environment = config.envs.find((item) => item.key === selectedKey);
@@ -5375,6 +5586,7 @@ function buildProxyRequestHeaders(request, targetUrl) {
 }
 function proxyRequest(request, response, targetUrl, options = {}) {
   const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_PROXY_TIMEOUT_MS;
+  const verifyUpstreamCert = options.insecure !== true;
   const transport = proxyTransport(targetUrl);
   if (!transport) {
     respondProxyError(
@@ -5390,9 +5602,9 @@ function proxyRequest(request, response, targetUrl, options = {}) {
     upstream = transport.request(targetUrl + request.url, {
       method: request.method,
       headers,
-      // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-      // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-      ...transport === import_node_https.default ? { rejectUnauthorized: false } : {}
+      // serve 是本地联调代理：内网自签证书需显式 --insecure 才跳过校验，
+      // 默认按 Node 默认策略校验证书（#119）
+      ...transport === import_node_https.default ? { rejectUnauthorized: verifyUpstreamCert } : {}
     }, (upstreamResponse) => {
       const responseHeaders = {};
       const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
@@ -5415,6 +5627,10 @@ function proxyRequest(request, response, targetUrl, options = {}) {
   upstream.on("error", () => {
     respondProxyError(response, "Bad Gateway: \u65E0\u6CD5\u8FDE\u63A5\u63A5\u53E3\u4EE3\u7406\u76EE\u6807\u6216\u4EE3\u7406\u8D85\u65F6");
   });
+  request.on("aborted", () => upstream.destroy());
+  response.on("close", () => {
+    if (!response.writableEnded) upstream.destroy();
+  });
   request.pipe(upstream);
 }
 function createServeServer(options) {
@@ -5425,7 +5641,8 @@ function createServeServer(options) {
     config,
     defaultTarget,
     overrideBaseUrl = "",
-    proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS
+    proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS,
+    insecure = false
   } = options;
   return import_node_http.default.createServer((request, response) => {
     try {
@@ -5457,6 +5674,11 @@ function createServeServer(options) {
             response.end("Not Found");
             return;
           }
+          if (!isProxyOriginAllowed(request.headers, request.headers.host, port)) {
+            response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+            response.end("Forbidden: \u4EE3\u7406\u53EA\u63A5\u53D7\u672C\u673A\u5DE5\u4F5C\u53F0\u6765\u6E90\u7684\u8BF7\u6C42");
+            return;
+          }
           let target;
           try {
             target = resolveRequestProxyTarget({
@@ -5470,7 +5692,7 @@ function createServeServer(options) {
             respondProxyError(response, `Bad Gateway: ${targetError.message}`);
             return;
           }
-          proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs });
+          proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs, insecure });
           return;
         }
         serveStaticFile(response, filePath);
@@ -5582,7 +5804,18 @@ function isEmpty(value) {
   return value === void 0 || value === null || value === "";
 }
 function safeText(value) {
-  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\u2028\u2029]/g, " ").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+}
+var HTTP_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+function normalizeMethod(raw, label = "\u8BF7\u6C42\u65B9\u6CD5") {
+  const method = safeText(String(raw ?? "GET")).toUpperCase();
+  if (!HTTP_TOKEN_PATTERN.test(method)) {
+    throw new ImportError(
+      `${label}\u4E0D\u662F\u5408\u6CD5\u7684 HTTP \u65B9\u6CD5: ${JSON.stringify(safeText(method))}`,
+      "\u65B9\u6CD5\u540D\u53EA\u80FD\u662F RFC 7230 token\uFF08\u5B57\u6BCD/\u6570\u5B57/- \u7B49\uFF09\uFF0C\u62D2\u7EDD\u7A7A\u767D\u3001\u5192\u53F7\u4E0E\u884C\u7EC8\u6B62\u7B26\u3002"
+    );
+  }
+  return method;
 }
 function normalizeHeaders(headers) {
   const pairs = [];
@@ -5607,6 +5840,12 @@ function normalizeHeaders(headers) {
   for (const [rawName, rawValue] of pairs) {
     const name = rawName.trim();
     if (!name || name.startsWith(":") || IGNORED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
+    if (!HTTP_TOKEN_PATTERN.test(name)) {
+      throw new ImportError(
+        `\u8BF7\u6C42\u5934\u540D\u4E0D\u5408\u6CD5: ${JSON.stringify(safeText(name))}`,
+        "\u5934\u540D\u53EA\u80FD\u662F RFC 7230 token\uFF08\u4E0D\u542B\u7A7A\u767D\u3001\u5192\u53F7\u3001\u6362\u884C\u4E0E U+2028/U+2029\uFF09\u3002"
+      );
+    }
     const lower = name.toLowerCase();
     const value = rawValue.trim();
     if (seen.has(lower)) {
@@ -5776,7 +6015,7 @@ function removeContentType(headers) {
 }
 function harEntryToStep(entry, index) {
   const request = entry?.request || {};
-  const method = String(request.method || "GET").toUpperCase();
+  const method = normalizeMethod(request.method, `HAR \u7B2C ${index + 1} \u6761\u8BF7\u6C42\u7684\u65B9\u6CD5`);
   const parsed = parseHttpUrl(request.url, `HAR \u7B2C ${index + 1} \u6761\u8BF7\u6C42`);
   const query = queryFromUrl(parsed);
   const maskedQuery = maskQueryParams(query);
@@ -6069,6 +6308,7 @@ function createCurlDraft(command, options = {}) {
   if (!method) method = isHead ? "HEAD" : hasData ? "POST" : "GET";
   if (isGet && !methodExplicit) method = "GET";
   if (isHead) method = "HEAD";
+  method = normalizeMethod(method, "curl -X \u65B9\u6CD5");
   if (isGet && method === "GET") hasData = true;
   let parsed = parseHttpUrl(url, "curl \u547D\u4EE4\u4E2D\u7684 URL");
   if (parsed.username || parsed.password) {
@@ -6280,7 +6520,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, insecure: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -6448,6 +6688,9 @@ ${optionHelp}
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
   const target = import_node_path10.default.resolve(projectRoot, relativePath);
+  if (!isRealPathWithinRoot(projectRoot, target)) {
+    throw new Error(`\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916\u8DEF\u5F84\uFF08\u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF09: ${relativePath}`);
+  }
   if (import_node_fs10.default.existsSync(target) && !force) return false;
   import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
   import_node_fs10.default.writeFileSync(target, content, "utf8");
@@ -6457,8 +6700,11 @@ function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
   const target = import_node_path10.default.resolve(projectRoot, directory);
   const relative = import_node_path10.default.relative(projectRoot, target);
-  if (!directory || import_node_path10.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) {
-    throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55");
+  if (!directory || !relative || import_node_path10.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) {
+    throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55\uFF08\u4E0D\u80FD\u662F\u9879\u76EE\u6839\u672C\u8EAB\uFF09");
+  }
+  if (!isRealPathWithinRoot(projectRoot, target)) {
+    throw new Error(`--dir \u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF0C\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916: ${directory}`);
   }
   return directory;
 }
@@ -6575,6 +6821,9 @@ async function initCommand(args) {
   const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
+  if (!isRealPathWithinRoot(projectRoot, import_node_path10.default.join(projectRoot, directory, frameworkDirectory))) {
+    throw new Error(`\u76EE\u6807\u76EE\u5F55\u4E2D\u7684 ${frameworkDirectory} \u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF0C\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916`);
+  }
   let force = args.force;
   if (!force && import_node_fs10.default.existsSync(import_node_path10.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
@@ -6670,7 +6919,15 @@ async function transformScenario(scenario, context, plugins) {
   return transformed;
 }
 function selectEnvironment(config, key) {
-  if (!config.envs.length) return { key: "default", name: "\u9ED8\u8BA4", baseUrl: config.baseUrl || "" };
+  if (!config.envs.length) {
+    if (key) {
+      throw new CliUsageError(
+        `\u914D\u7F6E\u672A\u58F0\u660E envs\uFF0C\u65E0\u6CD5\u4F7F\u7528 --env ${key}`,
+        "\u8BF7\u5148\u5728\u914D\u7F6E\u4E2D\u58F0\u660E envs \u4E0E\u5BF9\u5E94\u73AF\u5883 key\uFF0C\u6216\u53BB\u6389 --env \u53C2\u6570\u3002"
+      );
+    }
+    return { key: "default", name: "\u9ED8\u8BA4", baseUrl: config.baseUrl || "" };
+  }
   const selectedKey = key || config.defaultEnvKey;
   const environment = config.envs.find((item) => item.key === selectedKey);
   if (!environment) {
@@ -6812,6 +7069,12 @@ ${choices.join("\n")}${remaining > 0 ? `
     skippedTotal += report.skipped;
   };
   const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
+  const markDataRow = (report, entry, rowIndex, datasetEnabled) => {
+    if (!datasetEnabled || !report) return report;
+    report.dataRow = rowIndex + 1;
+    report.scenarioId = `${entry.id}#row-${rowIndex + 1}`;
+    return report;
+  };
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
@@ -6863,7 +7126,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           for (const item of detail || []) {
             if (!item) continue;
             if (!Array.isArray(item.assertions) || item.index === void 0) {
-              print(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+              entryPrint(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
               continue;
             }
             const label = `${prefix}${item.path !== void 0 && item.path !== null && item.path !== "" ? item.path : `\u7B2C ${item.index + 1} \u9879`}`;
@@ -6915,6 +7178,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           continue;
         }
         const report = await runEntry(entries[index], print);
+        markDataRow(report, entries[index], rowIndex, dataset);
         rowReports[index] = report;
         reports.push(report);
         accumulateReport(report);
@@ -6936,6 +7200,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
           try {
             const report = await runEntry(entries[index], bufferedPrint);
+            markDataRow(report, entries[index], rowIndex, dataset);
             rowReports[index] = report;
             accumulateReport(report);
             bufferedPrint(reportSummary(report));
@@ -7067,7 +7332,9 @@ async function serveCommand(args) {
     defaultTarget: startup,
     // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
     overrideBaseUrl: args.baseUrl || "",
-    proxyTimeoutMs: args.proxyTimeout ?? void 0
+    proxyTimeoutMs: args.proxyTimeout ?? void 0,
+    // 默认校验上游 https 证书；只有显式 --insecure 才放宽（自签联调环境）
+    insecure: args.insecure === true
   });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
@@ -7085,6 +7352,7 @@ async function serveCommand(args) {
     if (startup.target) {
       console.log(`\u63A5\u53E3\u4EE3\u7406: ${startup.key} -> ${startup.target}`);
       console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);
+      if (args.insecure === true) console.log("\u63A5\u53E3\u4EE3\u7406: \u5DF2\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08--insecure\uFF09");
     }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
   });

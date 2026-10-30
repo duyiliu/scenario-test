@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.11.0] - 2026-10-31
 
 本批修复来自代码审计 issue #110–#125（#107/#108 需真实业务仓库取证，未处理）。行为修正集中在
 「静默失败/假绿」与安全默认值，契约版本升至 **v18**（新增 `scenario.requestKeys`）。
