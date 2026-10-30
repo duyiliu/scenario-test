@@ -16,6 +16,7 @@ import {
     evaluateWhen,
     appendGlobalQuery,
     normalizeByteLimit,
+    randomUuid,
     resolve,
     resolveClone,
     resolveString,
@@ -195,9 +196,8 @@ function createRequestSignal(parentSignal, timeoutMs) {
 
 function createRunIdentifiers() {
     const timestamp = String(Date.now());
-    const random = globalThis.crypto?.randomUUID
-        ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8)
-        : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    // Node 18 没有 crypto.randomUUID（有 getRandomValues），统一走 core.randomUuid 降级链
+    const random = randomUuid().replace(/-/g, "").slice(0, 8);
     return {
         runId: `${timestamp}-${random}`,
         runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`

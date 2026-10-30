@@ -38,7 +38,8 @@ test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 
         assert.equal(upload.omitContentType, true);
         assert.ok(upload.body instanceof FormData);
         const file = upload.body.get("attachment");
-        assert.ok(file instanceof File, "字段应是 File");
+        // Node 18 无全局 File（20+ 才有）：断言文件对象行为而非构造函数身份
+        assert.equal(typeof file.text, "function", "字段应是文件对象");
         assert.equal(file.name, "renamed.txt");
         assert.equal(await file.text(), "upload-payload");
         // 附加字段值统一转字符串
@@ -58,7 +59,7 @@ test("createUploadBody：字符串定义回退 file 字段与 basename 文件名
         const io = createNodeIo(workspace);
         const upload = await io.createUploadBody("sample.txt");
         const file = upload.body.get("file");
-        assert.ok(file instanceof File);
+        assert.equal(typeof file.text, "function", "字段应是文件对象");
         assert.equal(file.name, "sample.txt");
         assert.equal(await file.text(), "upload-payload");
     } finally {
@@ -183,7 +184,7 @@ test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超�
             fields: { note: "hello" }
         });
         const file = upload.body.get("attachment");
-        assert.ok(file instanceof File);
+        assert.equal(typeof file.text, "function", "字段应是文件对象");
         assert.equal(file.name, "renamed.txt");
         assert.equal(await file.text(), "upload-payload");
         assert.equal(upload.body.get("note"), "hello");

@@ -325,6 +325,7 @@ __export(node_exports, {
   pickWeightedIndex: () => pickWeightedIndex,
   queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
+  randomUuid: () => randomUuid,
   redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -1739,9 +1740,20 @@ function normalizeEnumDefinition(definition) {
   }
   return { values, weights: normalized };
 }
+function randomUuid() {
+  const crypto3 = globalThis.crypto;
+  if (typeof crypto3?.randomUUID === "function") return crypto3.randomUUID();
+  if (typeof crypto3?.getRandomValues === "function") {
+    const bytes = crypto3.getRandomValues(new Uint8Array(16));
+    bytes[6] = bytes[6] & 15 | 64;
+    bytes[8] = bytes[8] & 63 | 128;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID/getRandomValues");
+}
 function defaultUuidHex() {
-  if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-  return globalThis.crypto.randomUUID().replace(/-/g, "");
+  return randomUuid().replace(/-/g, "");
 }
 function resolveNowSource(deps = {}) {
   const candidate = deps.now ?? deps.clock;
@@ -1775,8 +1787,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     return;
   }
   if (definition.type === "uuid") {
-    if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
+    setRuntimeVar(vars, name, randomUuid());
     return;
   }
   if (definition.type === "uuidHex") {
@@ -2913,7 +2924,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
 }
 function createRunIdentifiers() {
   const timestamp = String(Date.now());
-  const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+  const random = randomUuid().replace(/-/g, "").slice(0, 8);
   return {
     runId: `${timestamp}-${random}`,
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`

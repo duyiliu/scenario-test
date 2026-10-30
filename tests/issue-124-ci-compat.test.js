@@ -20,13 +20,14 @@ function listFiles(dir, extension) {
 }
 
 test("#124：Node 18 运行时兼容——src 不使用 import.meta.dirname（20.11+ 才有）", () => {
+    const selfPath = fileURLToPath(import.meta.url);
     const offenders = listFiles(path.join(root, "src"), ".js")
-        .filter((file) => file !== fileURLToPath(import.meta.url) && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
+        .filter((file) => file !== selfPath && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
         .map((file) => path.relative(root, file));
     assert.deepEqual(offenders, [], `Node 18 不支持 import.meta.dirname: ${offenders.join(", ")}`);
     // 测试同样要在 Node 18 下能跑（CI unit 矩阵含 18）
     const testOffenders = listFiles(path.join(root, "tests"), ".js")
-        .filter((file) => file !== import.meta.filename && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
+        .filter((file) => file !== selfPath && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
         .map((file) => path.relative(root, file));
     assert.deepEqual(testOffenders, [], `Node 18 测试不支持 import.meta.dirname: ${testOffenders.join(", ")}`);
 });

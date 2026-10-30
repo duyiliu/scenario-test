@@ -1476,9 +1476,24 @@ export function normalizeEnumDefinition(definition) {
     return { values, weights: normalized };
 }
 
+// UUID v4：Node 18 的 globalThis.crypto 有 getRandomValues 但还没有 randomUUID
+// （randomUUID 仅 node:crypto 导出）；用 getRandomValues 按 RFC 4122 手工组装，
+// 保持浏览器 / Node 18+ 同一降级链，避免 generatedVars uuid 在 Node 18 直接抛错
+export function randomUuid() {
+    const crypto = globalThis.crypto;
+    if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+    if (typeof crypto?.getRandomValues === "function") {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+    throw new Error("当前环境不支持 crypto.randomUUID/getRandomValues");
+}
+
 function defaultUuidHex() {
-    if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-    return globalThis.crypto.randomUUID().replace(/-/g, "");
+    return randomUuid().replace(/-/g, "");
 }
 
 // 时间源 seam：默认系统时钟；测试可注入 now 函数、clock 对象（{ now() }）或固定毫秒值。
@@ -1529,8 +1544,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     }
     if (definition.type === "uuid") {
         // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
-        if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-        setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
+        setRuntimeVar(vars, name, randomUuid());
         return;
     }
     if (definition.type === "uuidHex") {

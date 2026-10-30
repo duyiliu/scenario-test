@@ -201,7 +201,7 @@ async function createFailingPluginFixture(directory, ids) {
     fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
     fs.mkdirSync(path.join(directory, "plugins"), { recursive: true });
     fs.writeFileSync(
-        path.join(directory, "plugins/throw-plugin.js"),
+        path.join(directory, "plugins/throw-plugin.mjs"),
         `export default {
             async transformScenario(scenario) {
                 const mode = process.env.SCENARIO_ISSUE34_THROW;
@@ -217,7 +217,7 @@ async function createFailingPluginFixture(directory, ids) {
     fs.writeFileSync(
         path.join(directory, "scenario.config.js"),
         `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-            nodePlugins: ["plugins/throw-plugin.js"],
+            nodePlugins: ["plugins/throw-plugin.mjs"],
             envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:1" }],
             scenarios: [${ids.map((id) => `{ id: "${id}", name: "${id}", url: "scenarios/${id}.js" }`).join(", ")}]
         }));`,
@@ -316,7 +316,7 @@ test("并发中某场景钩子拒绝后：在途场景完成收尾、不再调�
         fs.writeFileSync(
             path.join(directory, "scenario.config.js"),
             `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-                nodePlugins: ["plugins/reject-plugin.js"],
+                nodePlugins: ["plugins/reject-plugin.mjs"],
                 envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:${port}" }],
                 scenarios: [
                     { id: "blocked", name: "Blocked", url: "scenarios/blocked.js" },
@@ -328,7 +328,7 @@ test("并发中某场景钩子拒绝后：在途场景完成收尾、不再调�
         );
         fs.mkdirSync(path.join(directory, "plugins"), { recursive: true });
         fs.writeFileSync(
-            path.join(directory, "plugins/reject-plugin.js"),
+            path.join(directory, "plugins/reject-plugin.mjs"),
             `export default {
                 async afterScenario(report) {
                     if (report.scenarioName === "Reject") throw new Error("afterScenario reject");
