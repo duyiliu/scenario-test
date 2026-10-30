@@ -1,4 +1,4 @@
-/*! scenario-test v0.10.2 */
+/*! scenario-test v0.10.3 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -342,7 +342,7 @@ var ScenarioTest = (() => {
   var import_blueimp_md5 = __toESM(require_md5(), 1);
 
   // src/version.generated.js
-  var VERSION = "0.10.2";
+  var VERSION = "0.10.3";
 
   // src/contract.js
   var CONTRACT_VERSION = 17;
@@ -3678,6 +3678,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             }
 
             #scenario-test-root { height: 100%; }
+            #scenario-test-root.is-theme-switching,
+            #scenario-test-root.is-theme-switching *,
+            #scenario-test-root.is-theme-switching *::before,
+            #scenario-test-root.is-theme-switching *::after { transition: none !important; }
 
             #scenario-test-root {
                 min-width: 0;
@@ -3728,6 +3732,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
 
             /* ZCode \u7693\u767D\uFF1A\u6D45\u8272\u7248\uFF0C\u51B7\u8C03\u767D\u5E95 + \u540C\u6B3E\u7535\u84DD\u7D2B\u5F3A\u8C03 */
             #scenario-test-root.theme-zcode-light {
+                color-scheme: light;
                 --workspace-bg: #f5f6fa;
                 --workspace-surface: #ffffff;
                 --workspace-text: #1a2233;
@@ -4331,7 +4336,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             #scenarioList .scenario-tree-dir__toggle {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 4px;
                 width: 100%;
                 min-height: 32px;
                 padding: 4px 8px;
@@ -4347,7 +4352,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 transition: background-color .15s ease, color .15s ease;
             }
             #scenarioList .scenario-tree-dir__toggle:hover { background: var(--workspace-hover); color: var(--workspace-text); }
-            #scenarioList .scenario-tree-dir__chevron { width: 16px; height: 16px; flex: 0 0 auto; transition: transform .15s ease; }
+            #scenarioList .scenario-tree-dir__chevron { width: 12px; height: 12px; flex: 0 0 auto; transition: transform .15s ease; }
             #scenarioList .scenario-tree-dir__toggle[aria-expanded="false"] .scenario-tree-dir__chevron { transform: rotate(-90deg); }
             #scenarioList .scenario-tree-dir__folder { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
             #scenarioList .scenario-tree-dir__toggle[aria-expanded="true"] .scenario-tree-dir__folder { color: var(--workspace-primary); }
@@ -4366,16 +4371,24 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 text-align: center;
                 font-variant-numeric: tabular-nums;
             }
-            #scenarioList .scenario-tree-children { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+            #scenarioList .scenario-tree-children { position: relative; display: flex; flex-direction: column; gap: 0; min-width: 0; }
             #scenarioList .scenario-tree-children::before {
                 content: "";
                 position: absolute;
                 top: 0;
                 bottom: 8px;
-                left: var(--tree-guide, 16px);
+                left: var(--tree-guide, 14px);
                 width: 1px;
-                background: color-mix(in srgb, var(--workspace-line) 65%, transparent);
+                background: color-mix(in srgb, var(--workspace-line) 35%, transparent);
                 pointer-events: none;
+                transition: background-color .15s ease;
+            }
+            #scenarioList .scenario-tree-dir:has(> .scenario-tree-dir__toggle:hover) > .scenario-tree-children::before,
+            #scenarioList .scenario-tree-children:has(> .scenario-tree-item.is-active)::before {
+                background: color-mix(in srgb, var(--workspace-primary) 25%, transparent);
+            }
+            #scenarioList .scenario-tree-dir:has(.scenario-tree-item.is-active) > .scenario-tree-dir__toggle .scenario-tree-dir__name {
+                color: var(--workspace-text);
             }
             #scenarioList .scenario-tree-children[hidden] { display: none; }
             #scenarioList .scenario-tree-dir--pinned { margin-bottom: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--workspace-line); }
@@ -4395,11 +4408,11 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             #scenarioList .scenario-tree-item__main {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 6px;
                 width: 100%;
                 min-width: 0;
-                min-height: 48px;
-                padding: 8px 32px 8px 32px;
+                min-height: 32px;
+                padding: 6px 32px 6px 28px;
                 border: 0;
                 border-radius: inherit;
                 background: transparent;
@@ -4407,7 +4420,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 text-align: left;
                 cursor: pointer;
             }
-            #scenarioList .scenario-tree-item__icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
+            #scenarioList .scenario-tree-item__icon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--workspace-muted); }
             #scenarioList .scenario-tree-item.is-active .scenario-tree-item__icon { color: var(--workspace-primary); }
             #scenarioList .scenario-tree-item__text { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 2px; }
             #scenarioList .scenario-tree-item__name {
@@ -4422,8 +4435,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 color: var(--workspace-text);
             }
             #scenarioList .scenario-tree-item.is-active .scenario-tree-item__name { font-weight: 600; color: var(--workspace-primary); }
+            /* \u6587\u4EF6\u540D\u7559\u7ED9\u5F53\u524D\u573A\u666F\uFF1B\u60AC\u505C\u7528\u539F\u751F\u63D0\u793A\u67E5\u770B\u5B8C\u6574\u8DEF\u5F84\uFF0C\u907F\u514D\u884C\u9AD8\u8DF3\u52A8\u3002 */
             #scenarioList .scenario-tree-item__file {
-                display: block;
+                display: none;
                 min-width: 0;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -4433,6 +4447,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 line-height: 14px;
                 color: var(--workspace-muted);
             }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__file { display: block; }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__main { min-height: 48px; }
             #scenarioList .scenario-pin-control {
                 position: absolute;
                 right: 4px;
@@ -4463,6 +4479,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 outline-offset: -2px;
             }
             @media (hover: none) { #scenarioList .scenario-pin-control { opacity: 1; } }
+            @media (prefers-reduced-motion: reduce) {
+                #scenarioList .scenario-tree * { transition: none !important; }
+                #scenarioList .scenario-tree-children::before { transition: none; }
+            }
 
             .stats-action-btn {
                 display: inline-flex;
@@ -5206,6 +5226,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       var selectedTheme = theme === "claude-code" || theme === "zcode" || theme === "zcode-light" ? theme : "default";
       var root = document.getElementById("scenario-test-root");
       if (root) {
+        root.classList.add("is-theme-switching");
         root.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
         root.classList.toggle("theme-zcode", selectedTheme === "zcode");
         root.classList.toggle("theme-zcode-light", selectedTheme === "zcode-light");
@@ -5221,6 +5242,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         if (themeLabel) themeLabel.textContent = selectedOption ? selectedOption.textContent : "-";
       }
       injectStyles();
+      if (root) {
+        void root.offsetWidth;
+        root.classList.remove("is-theme-switching");
+      }
     }
     return {
       getClaudeStyleBlock,
@@ -5916,7 +5941,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       var pinned = Boolean(options.pinned);
       var fileName = item.name === item.fileName ? "" : item.fileName;
       var pinLabel = pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876";
-      return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (32 + item.depth * 16) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + "</span>" : "") + '</span></button><button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
+      return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + "</span>" : "") + '</span></button><button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
     }
     function scenarioDirNodeHtml(node, options) {
       var key = "dir:" + node.path;
@@ -5924,7 +5949,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       var children = node.children.map(function(child) {
         return child.type === "dir" ? scenarioDirNodeHtml(child, options) : scenarioFileNodeHtml(child, { activeFile: options.activeFile, pinned: false });
       }).join("");
-      return '<div class="scenario-tree-dir"><button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? "false" : "true") + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 16) + 'px"><svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="scenario-tree-dir__name">' + esc(node.name) + '</span><span class="scenario-tree-dir__count">' + node.count + '</span></button><div class="scenario-tree-children" style="--tree-guide:' + (16 + node.depth * 16) + 'px"' + (collapsed ? " hidden" : "") + ">" + children + "</div></div>";
+      return '<div class="scenario-tree-dir"><button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? "false" : "true") + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 12) + 'px"><svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="scenario-tree-dir__name">' + esc(node.name) + '</span><span class="scenario-tree-dir__count">' + node.count + '</span></button><div class="scenario-tree-children" style="--tree-guide:' + (14 + node.depth * 12) + 'px"' + (collapsed ? " hidden" : "") + ">" + children + "</div></div>";
     }
     function pinnedScenarioGroupHtml(pinned, options) {
       var key = "pinned";

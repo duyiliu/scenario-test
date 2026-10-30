@@ -32,6 +32,19 @@ try {
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
     await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 5);
 
+    // 暗转亮后应立即完成配色，不能让白底上的控件继续插值为灰色。
+    await page.locator("#themeSelect").selectOption("zcode");
+    await page.waitForTimeout(250);
+    await page.locator("#themeSelect").selectOption("zcode-light");
+    const lightInput = await page.locator("#scenarioSearchInput").evaluate((el) => ({
+        background: getComputedStyle(el).backgroundColor,
+        scheme: getComputedStyle(el).colorScheme
+    }));
+    assert.equal(lightInput.background, "rgb(255, 255, 255)", "皓白输入框不应残留暗色过渡");
+    assert.equal(lightInput.scheme, "light", "皓白原生控件应使用浅色配色");
+    await page.screenshot({ path: path.join(root, "test-results/light-theme-fixed.png") });
+    await page.locator("#themeSelect").selectOption("default");
+
     // 1. 主按钮：悬停抬升过渡已声明
     const runBtnTransition = await page.locator("#runBtn").evaluate((el) => getComputedStyle(el).transition);
     assert.match(runBtnTransition, /transform/, "主按钮应声明 transform 过渡（悬停抬升）");

@@ -24,6 +24,10 @@ const workbenchStyle = (function () {
             }
 
             #scenario-test-root { height: 100%; }
+            #scenario-test-root.is-theme-switching,
+            #scenario-test-root.is-theme-switching *,
+            #scenario-test-root.is-theme-switching *::before,
+            #scenario-test-root.is-theme-switching *::after { transition: none !important; }
 
             #scenario-test-root {
                 min-width: 0;
@@ -74,6 +78,7 @@ const workbenchStyle = (function () {
 
             /* ZCode 皓白：浅色版，冷调白底 + 同款电蓝紫强调 */
             #scenario-test-root.theme-zcode-light {
+                color-scheme: light;
                 --workspace-bg: #f5f6fa;
                 --workspace-surface: #ffffff;
                 --workspace-text: #1a2233;
@@ -677,7 +682,7 @@ const workbenchStyle = (function () {
             #scenarioList .scenario-tree-dir__toggle {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 4px;
                 width: 100%;
                 min-height: 32px;
                 padding: 4px 8px;
@@ -693,7 +698,7 @@ const workbenchStyle = (function () {
                 transition: background-color .15s ease, color .15s ease;
             }
             #scenarioList .scenario-tree-dir__toggle:hover { background: var(--workspace-hover); color: var(--workspace-text); }
-            #scenarioList .scenario-tree-dir__chevron { width: 16px; height: 16px; flex: 0 0 auto; transition: transform .15s ease; }
+            #scenarioList .scenario-tree-dir__chevron { width: 12px; height: 12px; flex: 0 0 auto; transition: transform .15s ease; }
             #scenarioList .scenario-tree-dir__toggle[aria-expanded="false"] .scenario-tree-dir__chevron { transform: rotate(-90deg); }
             #scenarioList .scenario-tree-dir__folder { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
             #scenarioList .scenario-tree-dir__toggle[aria-expanded="true"] .scenario-tree-dir__folder { color: var(--workspace-primary); }
@@ -712,16 +717,24 @@ const workbenchStyle = (function () {
                 text-align: center;
                 font-variant-numeric: tabular-nums;
             }
-            #scenarioList .scenario-tree-children { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+            #scenarioList .scenario-tree-children { position: relative; display: flex; flex-direction: column; gap: 0; min-width: 0; }
             #scenarioList .scenario-tree-children::before {
                 content: "";
                 position: absolute;
                 top: 0;
                 bottom: 8px;
-                left: var(--tree-guide, 16px);
+                left: var(--tree-guide, 14px);
                 width: 1px;
-                background: color-mix(in srgb, var(--workspace-line) 65%, transparent);
+                background: color-mix(in srgb, var(--workspace-line) 35%, transparent);
                 pointer-events: none;
+                transition: background-color .15s ease;
+            }
+            #scenarioList .scenario-tree-dir:has(> .scenario-tree-dir__toggle:hover) > .scenario-tree-children::before,
+            #scenarioList .scenario-tree-children:has(> .scenario-tree-item.is-active)::before {
+                background: color-mix(in srgb, var(--workspace-primary) 25%, transparent);
+            }
+            #scenarioList .scenario-tree-dir:has(.scenario-tree-item.is-active) > .scenario-tree-dir__toggle .scenario-tree-dir__name {
+                color: var(--workspace-text);
             }
             #scenarioList .scenario-tree-children[hidden] { display: none; }
             #scenarioList .scenario-tree-dir--pinned { margin-bottom: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--workspace-line); }
@@ -741,11 +754,11 @@ const workbenchStyle = (function () {
             #scenarioList .scenario-tree-item__main {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 6px;
                 width: 100%;
                 min-width: 0;
-                min-height: 48px;
-                padding: 8px 32px 8px 32px;
+                min-height: 32px;
+                padding: 6px 32px 6px 28px;
                 border: 0;
                 border-radius: inherit;
                 background: transparent;
@@ -753,7 +766,7 @@ const workbenchStyle = (function () {
                 text-align: left;
                 cursor: pointer;
             }
-            #scenarioList .scenario-tree-item__icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--workspace-muted); }
+            #scenarioList .scenario-tree-item__icon { width: 14px; height: 14px; flex: 0 0 auto; color: var(--workspace-muted); }
             #scenarioList .scenario-tree-item.is-active .scenario-tree-item__icon { color: var(--workspace-primary); }
             #scenarioList .scenario-tree-item__text { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 2px; }
             #scenarioList .scenario-tree-item__name {
@@ -768,8 +781,9 @@ const workbenchStyle = (function () {
                 color: var(--workspace-text);
             }
             #scenarioList .scenario-tree-item.is-active .scenario-tree-item__name { font-weight: 600; color: var(--workspace-primary); }
+            /* 文件名留给当前场景；悬停用原生提示查看完整路径，避免行高跳动。 */
             #scenarioList .scenario-tree-item__file {
-                display: block;
+                display: none;
                 min-width: 0;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -779,6 +793,8 @@ const workbenchStyle = (function () {
                 line-height: 14px;
                 color: var(--workspace-muted);
             }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__file { display: block; }
+            #scenarioList .scenario-tree-item.is-active .scenario-tree-item__main { min-height: 48px; }
             #scenarioList .scenario-pin-control {
                 position: absolute;
                 right: 4px;
@@ -809,6 +825,10 @@ const workbenchStyle = (function () {
                 outline-offset: -2px;
             }
             @media (hover: none) { #scenarioList .scenario-pin-control { opacity: 1; } }
+            @media (prefers-reduced-motion: reduce) {
+                #scenarioList .scenario-tree * { transition: none !important; }
+                #scenarioList .scenario-tree-children::before { transition: none; }
+            }
 
             .stats-action-btn {
                 display: inline-flex;
@@ -1556,6 +1576,7 @@ const workbenchStyle = (function () {
         var selectedTheme = (theme === 'claude-code' || theme === 'zcode' || theme === 'zcode-light') ? theme : 'default';
         var root = document.getElementById('scenario-test-root');
         if (root) {
+            root.classList.add('is-theme-switching');
             root.classList.toggle('theme-claude-code', selectedTheme === 'claude-code');
             root.classList.toggle('theme-zcode', selectedTheme === 'zcode');
             root.classList.toggle('theme-zcode-light', selectedTheme === 'zcode-light');
@@ -1571,6 +1592,11 @@ const workbenchStyle = (function () {
             if (themeLabel) themeLabel.textContent = selectedOption ? selectedOption.textContent : '-';
         }
         injectStyles();
+        if (root) {
+            // 在禁用过渡时提交整棵界面的新配色，避免暗色控件在白底上逐渐变亮。
+            void root.offsetWidth;
+            root.classList.remove('is-theme-switching');
+        }
     }
 
     return {

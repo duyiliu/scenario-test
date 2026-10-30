@@ -791,7 +791,7 @@ const workbenchView = (function () {
         var fileName = item.name === item.fileName ? '' : item.fileName;
         var pinLabel = pinned ? '取消置顶' : '置顶';
         return '<div class="scenario-tree-item' + (active ? ' is-active' : '') + '">' +
-            '<button type="button" data-scenario-file="' + esc(item.file) + '"' + (active ? ' aria-current="true"' : '') + ' title="' + esc(item.name + '\n' + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (32 + item.depth * 16) + 'px">' +
+            '<button type="button" data-scenario-file="' + esc(item.file) + '"' + (active ? ' aria-current="true"' : '') + ' title="' + esc(item.name + '\n' + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px">' +
                 '<svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
                 '<span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc(item.name) + '</span>' +
                 (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + '</span>' : '') +
@@ -812,13 +812,13 @@ const workbenchView = (function () {
                 : scenarioFileNodeHtml(child, { activeFile: options.activeFile, pinned: false });
         }).join('');
         return '<div class="scenario-tree-dir">' +
-            '<button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 16) + 'px">' +
+            '<button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 12) + 'px">' +
                 '<svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
                 '<svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
                 '<span class="scenario-tree-dir__name">' + esc(node.name) + '</span>' +
                 '<span class="scenario-tree-dir__count">' + node.count + '</span>' +
             '</button>' +
-            '<div class="scenario-tree-children" style="--tree-guide:' + (16 + node.depth * 16) + 'px"' + (collapsed ? ' hidden' : '') + '>' + children + '</div>' +
+            '<div class="scenario-tree-children" style="--tree-guide:' + (14 + node.depth * 12) + 'px"' + (collapsed ? ' hidden' : '') + '>' + children + '</div>' +
         '</div>';
     }
 
