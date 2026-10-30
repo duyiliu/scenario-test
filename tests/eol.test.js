@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
     auditEntries,
@@ -8,7 +9,7 @@ import {
     parseLsFilesEol
 } from "../scripts/check-eol.mjs";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function attributeRules() {
     return fs.readFileSync(path.join(root, ".gitattributes"), "utf8")

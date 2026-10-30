@@ -4,6 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildCapabilities, CONTRACT_VERSION, contract, renderCapabilitiesText } from "../src/index.js";
 
@@ -12,7 +13,7 @@ for (const key of Object.keys(process.env)) {
     if (key.toUpperCase().startsWith("SCENARIO_")) delete process.env[key];
 }
 
-const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
 
 function runCli(args) {
     return new Promise((resolve, reject) => {
@@ -39,7 +40,7 @@ async function withServer(handler, run) {
 }
 
 test("contract v17（v12 引入 --vars/--timeout）与 --help 投射 --vars/--timeout", () => {
-    assert.equal(CONTRACT_VERSION, 17);
+    assert.ok(CONTRACT_VERSION >= 17, "该能力自 contract v17 起可用，后续版本继续保留");
     assert.equal(contract.cli.options.vars.kind, "value");
     assert.equal(contract.cli.options.vars.repeatable, true);
     assert.match(contract.cli.options.vars.description, /key=value/);

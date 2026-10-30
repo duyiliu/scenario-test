@@ -7,25 +7,41 @@ function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// RFC 4180 风格解析：支持双引号包裹、"" 转义与单元格内换行
+// RFC 4180 风格解析：支持双引号包裹、"" 转义与单元格内换行。
+// 严格模式（#122）：未闭合引号、非字段起始位置的引号、引号闭合后的非法字符都直接报错。
+// 此前「a,b 换行 1,"oops」（引号未闭合）会被静默解析成 ["1","oops"]，数据驱动场景拿到被改写的值。
 export function parseCsv(text) {
     const rows = [];
     let row = [];
     let cell = "";
     let quoted = false;
+    // 刚结束引号包裹的字段：后面只允许逗号/换行/文件结尾
+    let closedQuote = false;
     const source = String(text).replace(/^\uFEFF/, "");
+    const position = () => `第 ${rows.length + 1} 行第 ${row.length + 1} 列`;
     for (let index = 0; index < source.length; index += 1) {
         const char = source[index];
         if (quoted) {
             if (char === '"') {
                 if (source[index + 1] === '"') { cell += '"'; index += 1; }
-                else quoted = false;
+                else { quoted = false; closedQuote = true; }
             } else {
                 cell += char;
             }
             continue;
         }
-        if (char === '"') { quoted = true; continue; }
+        if (char === '"') {
+            if (cell.length > 0) {
+                throw new Error(`CSV ${position()}：引号只能出现在字段开头（当前字段已含内容 ${JSON.stringify(cell)}）`);
+            }
+            quoted = true;
+            closedQuote = false;
+            continue;
+        }
+        if (closedQuote && char !== "," && char !== "\n" && char !== "\r") {
+            throw new Error(`CSV ${position()}：引号包裹的字段结束后存在非法字符 ${JSON.stringify(char)}`);
+        }
+        closedQuote = false;
         if (char === ",") { row.push(cell); cell = ""; continue; }
         if (char === "\n" || char === "\r") {
             if (char === "\r" && source[index + 1] === "\n") index += 1;
@@ -36,6 +52,9 @@ export function parseCsv(text) {
             continue;
         }
         cell += char;
+    }
+    if (quoted) {
+        throw new Error(`CSV ${position()}：引号未闭合（字段内容 ${JSON.stringify(cell)}）`);
     }
     row.push(cell);
     rows.push(row);

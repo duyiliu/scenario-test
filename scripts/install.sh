@@ -105,6 +105,49 @@ for file in "${RUNTIME_FILES[@]}"; do
         exit 1
     fi
 done
+
+# 完整性校验（#120）：下载文件必须与发布版 release.json 的 SHA-256 一致，
+# 否则 init 写入的版本锁只能证明"文件没变"，不能证明"文件就是发布产物"。
+# 清单默认取同一 Tag 的 Skill 运行时目录；内网源可用 SCENARIO_TEST_RELEASE_JSON 覆盖。
+MANIFEST_FILE="$LOG_DIR/release.json"
+MANIFEST_URL="${SCENARIO_TEST_RELEASE_JSON:-https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${SCENARIO_TEST_VERSION}/skills/scenario-test/runtime/release.json}"
+if curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_FILE" 2>/dev/null; then
+    if SCENARIO_TEST_VERSION="$SCENARIO_TEST_VERSION" node -e '
+const fs = require("fs"), path = require("path"), crypto = require("crypto");
+const args = process.argv.slice(1);
+const manifest = JSON.parse(fs.readFileSync(args[0], "utf8"));
+const dir = args[1];
+const expectedVersion = process.env.SCENARIO_TEST_VERSION || "";
+if (expectedVersion && manifest.version && manifest.version !== expectedVersion) {
+    console.error("release.json 版本不匹配: " + manifest.version + " != " + expectedVersion);
+    process.exit(1);
+}
+for (const file of args.slice(2)) {
+    const want = String((manifest.sha256 || {})[file] || "").toLowerCase();
+    if (!want) { console.error("release.json 缺少 " + file + " 的 SHA256"); process.exit(1); }
+    const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, file))).digest("hex");
+    if (actual !== want) {
+        console.error("运行时文件校验失败: " + file + "
+期望 " + want + "
+实际 " + actual);
+        process.exit(1);
+    }
+}
+' "$MANIFEST_FILE" "$RUNTIME_DIR" "${RUNTIME_FILES[@]}"; then
+        print_success "运行时文件 SHA-256 校验通过"
+    else
+        print_error "运行时文件校验失败：下载内容与发布版 release.json 不一致，已中止安装"
+        exit 1
+    fi
+else
+    if [ -n "$SOURCE" ]; then
+        print_warning "未获取到 release.json，跳过哈希校验（自定义源：$SOURCE）"
+    else
+        print_error "无法获取发布版 release.json（$MANIFEST_URL）"
+        print_info "请检查网络，或用 SCENARIO_TEST_RELEASE_JSON 指向可信清单后重试"
+        exit 1
+    fi
+fi
 print_success "固定版本运行时下载成功"
 
 print_info "初始化场景测试目录：$FULL_TARGET_PATH ..."

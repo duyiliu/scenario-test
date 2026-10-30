@@ -37,7 +37,7 @@ function alwaysFailEngine() {
 }
 
 test("contract v17 声明 retryUntil 退避键并投射到 capabilities/AI Prompt", () => {
-    assert.equal(CONTRACT_VERSION, 17);
+    assert.ok(CONTRACT_VERSION >= 17, "该能力自 contract v17 起可用，后续版本继续保留");
     assert.deepEqual(contract.retryUntil.keys, [
         "maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"
     ]);

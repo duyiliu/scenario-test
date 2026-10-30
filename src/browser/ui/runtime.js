@@ -660,6 +660,26 @@ export function createWorkbenchRuntime(options) {
         });
     }
 
+    // 跳过结果形状与 engine.runScenario 的未执行步骤一致（skipped 优先于 passed，
+    // 不计入通过/失败统计），使工作台报告与 CLI 报告可直接对比
+    function buildSkippedStepResult(step, index) {
+        return {
+            name: step.name || '未命名步骤',
+            method: 'SKIP',
+            path: '',
+            status: 'SKIPPED',
+            duration: 0,
+            passed: true,
+            skipped: true,
+            error: '',
+            warnings: ['前置步骤失败（failurePolicy: stop），非 always 步骤未执行'],
+            assertions: [],
+            request: null,
+            response: null,
+            stepNo: index + 1
+        };
+    }
+
     function getRequestGlobals() {
         var globals = getEffectiveGlobals();
         // #60：代理模式把当前环境 key 带给 serve，由服务端按请求解析真实目标；
@@ -1025,11 +1045,27 @@ export function createWorkbenchRuntime(options) {
         renderStepsAll();
         setSidePanelTab('stats');
 
+        // #116：与 engine.runScenario 同口径的 stop/always 调度——失败后仍执行 always:true
+        // 清理步骤，其余步骤记为 SKIPPED；用户取消时不再补跑任何步骤（含 always）
+        var halted = false;
         try {
             for (var i = 0; i < list.length; i += 1) {
+                var currentStep = list[i];
+                if (halted && currentStep.always !== true) {
+                    if (runtime.abortController.signal.aborted) break;
+                    var skippedResult = buildSkippedStepResult(currentStep, i);
+                    state.steps.push(skippedResult);
+                    state.varsTrail[i] = { ...runtime.vars };
+                    state.suiteTrail[i] = { ...runtime.suite };
+                    renderStatsAll();
+                    renderFilterAll();
+                    uiView.appendStepResult(skippedResult, i, list, state.executionMode, buildVarsView(i));
+                    renderReportPanel();
+                    continue;
+                }
                 highlightActiveStep(i);
                 rememberDebugRuntime(i, runtime);
-                var result = await executeStep(list[i], runtime, cfg);
+                var result = await executeStep(currentStep, runtime, cfg);
                 result.stepNo = i + 1;
                 state.steps.push(result);
                 state.varsTrail[i] = { ...runtime.vars };
@@ -1038,9 +1074,11 @@ export function createWorkbenchRuntime(options) {
                 renderFilterAll();
                 uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
                 renderReportPanel();
-                // 与 engine.runScenario 对齐：stop 策略失败即停；取消信号中止时不论本步成败都停。
+                // 与 engine.runScenario 对齐：stop 策略失败后标记 halted（后续 always 仍执行），
+                // 取消信号中止时不论本步成败都停。
                 // 此前条件把「信号已中止但本步通过」漏进下一轮，会多产生一条引擎不会有的 CANCELLED 步骤
-                if ((!result.passed && failurePolicy !== 'continue') || runtime.abortController.signal.aborted) break;
+                if (!result.passed && failurePolicy !== 'continue') halted = true;
+                if (runtime.abortController.signal.aborted) break;
             }
             clearActiveStepHighlight();
             finishExecutionState(runtime);

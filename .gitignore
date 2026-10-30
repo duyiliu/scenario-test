@@ -15,3 +15,6 @@ dist.trash-*/
 dist.restore-*/
 .tmp/
 .playwright-mcp/
+
+# 临时测试标记文件
+SYMPHONY-E2E*.txt

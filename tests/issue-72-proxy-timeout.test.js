@@ -3,6 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { buildCapabilities, CONTRACT_VERSION, contract, renderCapabilitiesText } from "../src/index.js";
@@ -15,7 +16,7 @@ for (const key of Object.keys(process.env)) {
     if (key.toUpperCase().startsWith("SCENARIO_")) delete process.env[key];
 }
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "src/cli.js");
 
 const serveOutputBuffers = new WeakMap();
@@ -87,7 +88,7 @@ function makeProject(backendPort) {
 }
 
 test("contract v17 投射 --proxy-timeout 到 capabilities 与 --help", () => {
-    assert.equal(CONTRACT_VERSION, 17);
+    assert.ok(CONTRACT_VERSION >= 17, "该能力自 contract v17 起可用，后续版本继续保留");
     const option = contract.cli.options["proxy-timeout"];
     assert.equal(option.kind, "value");
     assert.equal(option.prop, "proxyTimeout");

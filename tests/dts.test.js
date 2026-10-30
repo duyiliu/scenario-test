@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
 import * as esmExports from "../src/index.js";
 import { contract } from "../src/index.js";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dtsPath = path.join(root, "dist", "scenario-test.d.ts");
 
 function parseUnion(dts, typeName) {
@@ -84,11 +85,60 @@ test("d.ts 覆盖公共 API 与 UMD 全局声明", () => {
     assert.match(dts, /errorMessage: string;/);
 });
 
-test("d.ts RequestDefinition 覆盖 request.path 与 request.timeoutMs", () => {
+test("d.ts RequestDefinition 覆盖 request.path/request.timeoutMs/request.params", () => {
     const dts = fs.readFileSync(dtsPath, "utf8");
     const members = interfaceMembers(dts, "RequestDefinition");
     assert.ok(members.has("path"), "d.ts RequestDefinition 缺少 request.path（合法写法会被 TS 对象字面量检查拒绝）");
     assert.ok(members.has("timeoutMs"), "d.ts RequestDefinition 缺少 request.timeoutMs");
+    // registry/engine 正式支持 request.params（且禁止与 step.params 双写），d.ts 必须同步声明
+    assert.ok(members.has("params"), "d.ts RequestDefinition 缺少 request.params");
+});
+
+// 按花括号深度提取接口顶层成员（跳过 JSDoc 注释中的 {{ }} 与嵌套对象类型），
+// 用于重复成员检测：嵌套结构里的同名键不是重复声明
+function interfaceTopLevelMembers(dts, name) {
+    const start = dts.indexOf(`export interface ${name} {`);
+    assert.ok(start >= 0, `d.ts 缺少 interface ${name}`);
+    const lines = dts.slice(start + `export interface ${name} {`.length).split("\n");
+    const members = [];
+    let depth = 0;
+    let inBlockComment = false;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (inBlockComment) {
+            if (trimmed.includes("*/")) inBlockComment = false;
+            continue;
+        }
+        if (trimmed.startsWith("/*")) {
+            if (!trimmed.includes("*/", 2)) inBlockComment = true;
+            continue;
+        }
+        if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+        if (depth === 0 && trimmed === "}") break;
+        if (depth === 0) {
+            const member = /^(\w+)\?*[(:]/.exec(trimmed);
+            if (member) members.push(member[1]);
+        }
+        for (const char of trimmed) {
+            if (char === "{" || char === "(") depth += 1;
+            else if (char === "}" || char === ")") depth -= 1;
+        }
+    }
+    return members;
+}
+
+test("d.ts 接口成员不重复（重复成员会让 tsc 报 TS2300，发布物不可用）", () => {
+    const dts = fs.readFileSync(dtsPath, "utf8");
+    const duplicates = [];
+    for (const match of dts.matchAll(/^export interface (\w+) \{/gm)) {
+        const name = match[1];
+        const seen = new Set();
+        for (const member of interfaceTopLevelMembers(dts, name)) {
+            if (seen.has(member)) duplicates.push(`${name}.${member}`);
+            seen.add(member);
+        }
+    }
+    assert.deepEqual(duplicates, [], `d.ts 接口成员重复（tsc 会报 TS2300）: ${duplicates.join(", ")}`);
 });
 
 test("d.ts RetryUntil 覆盖退避字段", () => {
@@ -140,12 +190,32 @@ test("d.ts 声明的公共导出符号（value）必须存在于 ESM 与 CJS 实
     }
 });
 
+const localTsc = path.join(root, "node_modules", "typescript", "bin", "tsc");
+
 function runTsc(args) {
-    // Windows 上 tsc 是 .cmd 包装，需要 shell 执行
+    // 优先本地 devDependency（CI 与开发机版本一致）；缺失时回退全局 tsc
+    if (fs.existsSync(localTsc)) {
+        return spawnSync(process.execPath, [localTsc, ...args], { encoding: "utf8" });
+    }
+    // Windows 上全局 tsc 是 .cmd 包装，需要 shell 执行
     return process.platform === "win32"
         ? spawnSync("tsc", args, { encoding: "utf8", shell: true })
         : spawnSync("tsc", args, { encoding: "utf8" });
 }
+
+test("d.ts 自身可通过 tsc --noEmit（发布物类型声明必须可编译）", (t) => {
+    const probe = runTsc(["--version"]);
+    if (probe.status !== 0) {
+        t.skip("未找到 tsc（请安装 devDependencies），跳过 d.ts 自编译验证");
+        return;
+    }
+    const result = runTsc([
+        "--noEmit", "--strict", "--target", "es2020", "--module", "esnext",
+        "--moduleResolution", "bundler", "--lib", "es2020,dom", dtsPath
+    ]);
+    const output = `${result.stdout}\n${result.stderr}`;
+    assert.equal(result.status, 0, `tsc 编译 dist/scenario-test.d.ts 失败（发布物类型声明无法编译）:\n${output}`);
+});
 
 test("tsc --noEmit 验证最小 JS 用例（全局 tsc 可用时）", (t) => {
     const check = runTsc(["--version"]);

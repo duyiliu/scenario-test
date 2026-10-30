@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import test from "node:test";
 import { createEngine, defineScenario, pickWeightedIndex, registerAdapter, unregisterAdapter } from "../src/index.js";
 
@@ -999,7 +999,7 @@ test("浏览器环境（无 process 全局）下 runScenario/createRuntime 不�
     `;
     const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
-            cwd: path.resolve(import.meta.dirname, ".."),
+            cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
             stdio: ["ignore", "pipe", "pipe"]
         });
         let stdout = "";
@@ -1032,7 +1032,7 @@ test("浏览器环境（无 process 全局）下缺少 envVars 的错误消息�
     `;
     const result = await new Promise((resolve, reject) => {
         const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
-            cwd: path.resolve(import.meta.dirname, ".."),
+            cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
             stdio: ["ignore", "pipe", "pipe"]
         });
         let stdout = "";

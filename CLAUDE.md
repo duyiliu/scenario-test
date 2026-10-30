@@ -43,7 +43,7 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 按目标环境的入口：
 
 - `index.js`（浏览器 + 中性环境）重新导出公共 API；`node.js` 增加仅 Node 的 `createNodeIo`、`loadConfigFile`、`loadScenarioFile`；`cli.js` 为 CLI。
-- **`browser/`** — 工作台。`app.js`（`createApp`）委托给 `browser/ui/runtime.js`（`createWorkbenchRuntime`），后者是**同一套** `engine.js` + `core.js` 之上的薄 UI 层。`tests/parity.test.js` 保证浏览器与引擎保持同步。`browser/tailwind.generated.js` 中的 Tailwind CSS 由 `ui/ui-view.js`、`ui-adhoc.js`、`runtime.js` 生成。
+- **`browser/`** — 工作台。`app.js`（`createApp`）委托给 `browser/ui/runtime.js`（`createWorkbenchRuntime`），后者是**同一套** `engine.js` + `core.js` 之上的薄 UI 层：步骤执行直接调用 `engine.runStep`，`always`/stop/SKIP 调度与 `engine.runScenario` 同口径。`tests/parity.test.js` 对拍 core 断言与 resolve 语义，执行调度由 `tests/browser.test.mjs` 覆盖（不保证全量执行语义对拍）。`browser/tailwind.generated.js` 中的 Tailwind CSS 由 `ui/ui-view.js`、`ui-adhoc.js`、`runtime.js` 生成。
 
 值得内化的执行模型：
 

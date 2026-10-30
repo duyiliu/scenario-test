@@ -207,16 +207,14 @@ export interface RetryUntil {
     /** 单次等待间隔上限（毫秒，必须 >= intervalMs）；未声明时不封顶；最终仍受 100ms 下限与 maxElapsedMs 约束 */
     maxIntervalMs?: number;
     maxElapsedMs?: number;
-    /** 指数退避因子（≥1）：第 n 次重试间隔 = intervalMs * intervalFactor^(n-1) */
-    intervalFactor?: number;
-    /** 退避间隔上限（毫秒），不能小于 intervalMs */
-    maxIntervalMs?: number;
     /** 参与重试的失败类型，默认 ["assertion"]；包含 error/timeout 时网络错误与单次请求超时也会继续轮询 */
     retryOn?: RetryOn[];
 }
 
 export interface RequestDefinition {
     headers?: Record<string, string>;
+    /** Query 参数（step.params 优先；两者同时声明定义期即报错） */
+    params?: Record<string, unknown>;
     /** 请求路径（step.path 优先）；支持 {{ }} 模板 */
     path?: string;
     /** HTTP 方法（缺省 GET）；支持 {{ }} 模板——动态方法写这里（step.method 不做模板解析） */
@@ -519,6 +517,7 @@ export declare const contract: {
     scenario: {
         keys: readonly string[];
         stepKeys: readonly string[];
+        requestKeys: readonly string[];
         failurePolicies: readonly FailurePolicy[];
         retryUntilKeys: readonly string[];
         note: string;

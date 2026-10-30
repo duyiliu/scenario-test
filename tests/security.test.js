@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 test("公共库和产物不包含业务环境与已知密钥", () => {
-    const root = path.resolve(import.meta.dirname, "..");
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const files = [];
     // 注意: examples 目录包含安全教学的反面教材（注释中的错误示范），因此排除
     for (const folder of ["src", "dist"]) {

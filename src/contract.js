@@ -11,8 +11,12 @@
 import { VERSION } from "./version.generated.js";
 
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
-// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）
-export const CONTRACT_VERSION = 17;
+// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）
+export const CONTRACT_VERSION = 18;
+
+// retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
+// 避免两份名单只改一处（v18 起消除重复列表）
+const RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 
 export const contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -191,7 +195,7 @@ export const contract = Object.freeze({
     }),
 
     retryUntil: Object.freeze({
-        keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+        keys: RETRY_UNTIL_KEYS,
         // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
         retryOn: Object.freeze(["assertion", "error", "timeout"]),
         defaultRetryOn: Object.freeze(["assertion"]),
@@ -207,8 +211,14 @@ export const contract = Object.freeze({
             "saveResponseAs", "adapter", "always"
         ]),
         failurePolicies: Object.freeze(["stop", "continue"]),
-        // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
-        retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+        // step.request 对象允许的键：拼错（request.heders/bodyy）此前被运行期静默忽略，
+        // 造成「以为带了认证头/请求体，实际没带」的假象；定义期按此名单拒绝
+        requestKeys: Object.freeze([
+            "method", "path", "params", "headers", "body", "fileUpload",
+            "timeoutMs", "credentials", "redirect", "useEnvironmentAuthorization"
+        ]),
+        // retryUntil 允许的键；直接复用 contract.retryUntil.keys（同一冻结数组）
+        retryUntilKeys: RETRY_UNTIL_KEYS,
         note: "always: true 的步骤在前置普通步骤失败（failurePolicy: stop）后仍会执行，用于 teardown；用户取消执行时不运行。retryUntil 第 n 次重试间隔 = intervalMs * intervalFactor^(n-1)，封顶 maxIntervalMs，且不低于 100ms"
     }),
 
@@ -228,6 +238,7 @@ export const contract = Object.freeze({
             },
             timeout: { kind: "value", prop: "timeout", parse: "number", description: "本次执行全局请求超时（毫秒），覆盖配置 requestTimeoutMs" },
             "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）" },
+            insecure: { kind: "flag", prop: "insecure", description: "serve 代理跳过上游 https 证书校验（默认校验；仅内网自签联调环境使用）" },
             data: { kind: "value", prop: "dataFile", description: "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景" },
             junit: { kind: "value", prop: "junit", description: "输出 JUnit XML 报告到指定文件" },
             tag: {

@@ -6,6 +6,7 @@ import {
     buildAssertions,
     buildUrl,
     collectMissingTemplateVars,
+    completeProtocolRelativeUrl,
     hasHeader,
     headersToObject,
     isPlainObject,
@@ -15,6 +16,7 @@ import {
     evaluateWhen,
     appendGlobalQuery,
     normalizeByteLimit,
+    randomUuid,
     resolve,
     resolveClone,
     resolveString,
@@ -194,9 +196,8 @@ function createRequestSignal(parentSignal, timeoutMs) {
 
 function createRunIdentifiers() {
     const timestamp = String(Date.now());
-    const random = globalThis.crypto?.randomUUID
-        ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8)
-        : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+    // Node 18 没有 crypto.randomUUID（有 getRandomValues），统一走 core.randomUuid 降级链
+    const random = randomUuid().replace(/-/g, "").slice(0, 8);
     return {
         runId: `${timestamp}-${random}`,
         runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
@@ -205,12 +206,17 @@ function createRunIdentifiers() {
 
 // generatedVars 各类型造数实现收敛在 core.js（applyGeneratedVar），
 // 与浏览器工作台共用同一实现——本文件只负责 vars 的组装顺序
-function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
+function buildGeneratedVars(scenario, layers, environmentVariables, options = {}) {
     const identifiers = createRunIdentifiers();
+    const suiteVars = layers.suite || {};
+    const configVars = layers.configVars || {};
+    const optionVars = layers.optionVars || {};
     // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
     assertNoReservedVars(scenario.vars, "场景 vars");
-    assertNoReservedVars(baseVars, "配置/选项 vars");
-    const vars = { ...(scenario.vars || {}), ...(baseVars || {}), ...identifiers };
+    assertNoReservedVars(configVars, "配置 vars");
+    assertNoReservedVars(optionVars, "选项 vars");
+    // 优先级（低 → 高）：suite 提取值 < 场景 vars < 配置 vars < 选项 vars
+    const vars = { ...suiteVars, ...(scenario.vars || {}), ...configVars, ...optionVars, ...identifiers };
 
     // ✅ 是否在错误消息中显示详细信息（仅开发模式）
     // 浏览器产物（UMD/ESM）无 process 全局，必须先探测再读取，否则 runScenario 调用即崩
@@ -256,14 +262,14 @@ function buildGeneratedVars(scenario, baseVars, environmentVariables, options = 
 export function createRuntime(scenario, options = {}) {
     const config = options.config || {};
     // run 级共享命名空间（#69）：suite 提取产物作为最低优先级基底并入 vars，
-    // 兼容 v16 的 {{vars.<name>}} 写法；配置/场景 vars 同名时优先。
+    // 兼容 v16 的 {{vars.<name>}} 写法；场景/配置/选项 vars 同名时一律优先于 suite（#113）。
     const suite = isPlainObject(options.suite)
         ? options.suite
         : (isPlainObject(options.suiteVars) ? options.suiteVars : {});
     const runtime = {
         vars: buildGeneratedVars(
             scenario,
-            { ...suite, ...(config.vars || {}), ...(options.vars || {}) },
+            { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
             options.environmentVariables || {},
             { now: options.now, clock: options.clock }
         ),
@@ -305,6 +311,11 @@ function chooseAdapter(step, adapters) {
     }
     return null;
 }
+
+// 无适配器命中时，步骤至少要声明一个 HTTP 执行字段；否则 executeHttp 会用空
+// path 请求 baseUrl 根路径，根路径返回 2xx 就 PASSED——适配器名/插件加载拼错会
+// 变成假绿（#115）。
+const HTTP_EXECUTION_KEYS = ["method", "path", "params", "request", "status", "timeoutMs", "saveResponseAs"];
 
 // 读取响应体并支持中途取消：fetch 的 signal abort 是否传播给 body 流随实现而异，
 // 这里显式监听 signal，保证"读体"阶段同样受超时/取消控制。
@@ -498,6 +509,28 @@ function hostMatchesCookie(hostname, domain) {
     return host === domain || host.endsWith(`.${domain}`);
 }
 
+// 公共后缀简表（不内嵌完整 PSL）：Domain 落到这些后缀上等于把 cookie 挂给整片站点，
+// 浏览器同样拒绝（#119）
+const PUBLIC_SUFFIXES = new Set([
+    "com", "net", "org", "edu", "gov", "mil", "int", "arpa",
+    "cn", "uk", "jp", "kr", "de", "fr", "ru", "br", "in", "au", "ca", "us",
+    "hk", "tw", "sg", "nz", "mx", "tr", "io", "co", "me", "dev", "app", "test",
+    "local", "internal", "localhost",
+    "co.uk", "com.cn", "net.cn", "org.cn", "gov.cn", "com.hk", "com.tw", "co.jp",
+    "com.au", "co.kr", "com.sg", "com.br", "co.in", "co.nz", "com.mx", "com.tr", "com.ru"
+]);
+
+// Cookie Domain 必须是请求主机本身或其可注册父域：拒绝跨站 Domain（api.example.com
+// 设 Domain=victim.com 会把 cookie 发往 victim.com）与公共后缀（Domain=com）
+function isCookieDomainAllowed(requestHost, domain) {
+    const host = String(requestHost || "").toLowerCase();
+    const value = String(domain || "").toLowerCase();
+    if (!host || !value) return false;
+    if (host === value) return true;
+    if (!hostMatchesCookie(host, value)) return false;
+    return !PUBLIC_SUFFIXES.has(value) && value.includes(".");
+}
+
 function pathMatchesCookie(pathname, cookiePath) {
     if (pathname === cookiePath) return true;
     const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
@@ -518,6 +551,8 @@ function storeSetCookies(runtime, lines, requestUrl) {
     for (const line of lines) {
         const cookie = parseSetCookie(line, requestUrl);
         if (!cookie) continue;
+        // 跨站/公共后缀 Domain 直接丢弃，避免把凭据 cookie 带到其他站点
+        if (!isCookieDomainAllowed(requestUrl.hostname, cookie.domain)) continue;
         runtime.cookieJar = runtime.cookieJar.filter((item) =>
             !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
         // Max-Age<=0 / 已过期：删除同名 Cookie，不写入
@@ -621,7 +656,9 @@ async function executeHttp(step, runtime, options) {
     if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
         headers.Authorization = options.authorization;
     }
-    const requestUrl = joinUrl(options.baseUrl, requestPath);
+    // 协议相对 URL（//host/path）在浏览器可用，Node 原生 fetch 会报 Failed to parse URL；
+    // 按 baseUrl 的协议补全，双端行为一致（#121）
+    const requestUrl = completeProtocolRelativeUrl(joinUrl(options.baseUrl, requestPath), options.baseUrl);
     let parsedRequestUrl = null;
     if (options.cookieJar) {
         try { parsedRequestUrl = new URL(requestUrl); } catch { parsedRequestUrl = null; }
@@ -863,6 +900,9 @@ export function createEngine(engineOptions = {}) {
         let lastExecution;
         let assertions = [];
         let stepWarnings = [];
+        // 适配器选择不随尝试变化，先算一次；无适配器命中时守住「至少声明一个 HTTP
+        // 执行字段」的底线（实际拦截在 try 内，按步骤 ERROR 归一化，不 reject 整个 run）
+        const selection = chooseAdapter(step, adapters);
         // 未定义模板变量告警跨 retryUntil 尝试累积（同一变量只报一次）
         const missingVars = new Set();
         const retry = step.retryUntil || null;
@@ -878,9 +918,11 @@ export function createEngine(engineOptions = {}) {
                     .filter((type) => contract.retryUntil.retryOn.includes(type))
                 : []
         );
-        // 只有显式启用 error/timeout 重试的路径才把 maxElapsedMs 扩展到在途执行、
-        // 异步回调与迟到响应；默认/仅 assertion 路径保持旧语义（只在尝试之间检查总时限）。
-        const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
+        // maxElapsedMs 是 retryUntil 轮询的总时限（硬约束，契约 note 同口径，#121）：
+        // 在途执行、异步 onAttempt 回调与退避等待都并入同一截止 signal 竞速，
+        // 不再只对 retryOn 含 error/timeout 的路径生效——默认 assertion 重试下
+        // 慢请求/挂起的回调同样可能在总时限后 PASSED。
+        const enforceAttemptDeadline = Boolean(retry);
         // ✅ 添加重试超时保护
         const retryStartTime = now();
         const maxElapsedMs = retry?.maxElapsedMs || 300000; // 默认 5 分钟
@@ -896,18 +938,19 @@ export function createEngine(engineOptions = {}) {
             );
         };
         try {
+            // 无适配器命中又无 HTTP 执行字段：拼错的适配器私有键会静默 GET 根路径并 PASSED
+            if (!selection && !HTTP_EXECUTION_KEYS.some((key) => step[key] !== undefined)) {
+                throw new Error(
+                    `步骤 ${step.name || "未命名步骤"} 未匹配任何适配器，且缺少 HTTP 执行字段（${HTTP_EXECUTION_KEYS.join("/")}）—— 请检查 adapter 名与插件是否已加载，或补全 path/request 等请求字段`
+                );
+            }
             for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
                 if (options.signal?.aborted) throw abortReason(options.signal);
 
-                // ✅ 检查总耗时（同样标记为结构化超时，报告状态为 TIMEOUT 而非 ERROR）
-                // 默认/仅 assertion 路径保持旧实现严格大于（耗时恰好等于 maxElapsedMs 仍发起下一次尝试）；
-                // 显式 error/timeout 重试路径在到达总时限（>=）时立即结束。
+                // ✅ 检查总耗时（结构化超时 → 报告状态 TIMEOUT 而非 ERROR）；到达总时限即结束
                 if (retry) {
                     const elapsedMs = now() - retryStartTime;
-                    const expired = enforceAttemptDeadline
-                        ? elapsedMs >= maxElapsedMs
-                        : elapsedMs > maxElapsedMs;
-                    if (expired) throw retryTimeoutError(attempt - 1);
+                    if (elapsedMs >= maxElapsedMs) throw retryTimeoutError(attempt - 1);
                 }
 
                 // 单次执行也必须受总时限约束：在途请求可能跑得比剩余 maxElapsedMs 更久
@@ -925,7 +968,6 @@ export function createEngine(engineOptions = {}) {
                 try {
                     // 每次尝试前扫描模板：首次解析时才可能发现新缺失；Set 去重保证 retryUntil 只报一次
                     collectStepMissingVars(step, runtime, missingVars);
-                    const selection = chooseAdapter(step, adapters);
                     const attemptStartedAt = now();
                     const attemptOptions = attemptDeadline
                         ? { ...options, signal: attemptDeadline.signal }
@@ -955,9 +997,8 @@ export function createEngine(engineOptions = {}) {
                     if (options.signal?.aborted) throw error;
                     // 总时限到期中断在途执行：按 retryUntil 超时返回 TIMEOUT，而不是把
                     // 截止 signal 的 abort 当成普通网络错误继续重试。
-                    if (enforceAttemptDeadline
-                        && (attemptDeadline?.timedOut()
-                            || (now() - retryStartTime) >= maxElapsedMs)) {
+                    if (attemptDeadline?.timedOut()
+                        || (now() - retryStartTime) >= maxElapsedMs) {
                         throw retryTimeoutError(attempt);
                     }
                     const errorType = isTimeoutError(error) ? "timeout" : "error";
@@ -975,8 +1016,8 @@ export function createEngine(engineOptions = {}) {
 
                 // 即使执行成功，只要实际耗时已达到总时限也不能通过（fetch/适配器可能
                 // 忽略 abort 后才返回）；按总时限返回 TIMEOUT。
-                if (enforceAttemptDeadline && (attemptDeadline?.timedOut()
-                    || (now() - retryStartTime) >= maxElapsedMs)) {
+                if (attemptDeadline?.timedOut()
+                    || (now() - retryStartTime) >= maxElapsedMs) {
                     throw retryTimeoutError(attempt);
                 }
 

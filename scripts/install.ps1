@@ -21,6 +21,8 @@
 .PARAMETER Source
     可选的内网运行时目录（GitLab Raw 或制品目录，需包含全部 4 个运行时文件）。
     不指定时按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/。
+    指定后若该目录没有 release.json，安装脚本会跳过 SHA-256 校验并给出警告；
+    需要强制校验时用 SCENARIO_TEST_RELEASE_JSON 指向可信清单。
 
 .EXAMPLE
     .\install.ps1
@@ -125,6 +127,47 @@ try {
         if (-not (Test-Path (Join-Path $runtimeDir $fileName) -PathType Leaf)) {
             throw "下载内容不完整，缺少运行时文件：$fileName"
         }
+    }
+
+    # 完整性校验（#120）：下载文件必须与发布版 release.json 的 SHA-256 一致，
+    # 否则 init 写入的版本锁只能证明"文件没变"，不能证明"文件就是发布产物"。
+    # 清单默认取同一 Tag 的 Skill 运行时目录；内网源可用 -ReleaseManifest 或
+    # 环境变量 SCENARIO_TEST_RELEASE_JSON 覆盖。
+    $manifestCandidates = @()
+    if ($env:SCENARIO_TEST_RELEASE_JSON) { $manifestCandidates += $env:SCENARIO_TEST_RELEASE_JSON }
+    $manifestCandidates += "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/skills/scenario-test/runtime/release.json"
+    if ($Source) { $manifestCandidates += "$downloadSource/release.json" }
+    $manifest = $null
+    $manifestUsed = ""
+    foreach ($candidate in $manifestCandidates) {
+        try {
+            $manifest = Invoke-RestMethod -Uri $candidate -UseBasicParsing
+            $manifestUsed = $candidate
+            break
+        } catch {
+            $manifest = $null
+        }
+    }
+    if ($null -ne $manifest) {
+        if ($manifest.version -and $manifest.version -ne $ScenarioTestVersion) {
+            throw "release.json 版本不匹配: $($manifest.version) != $ScenarioTestVersion（$manifestUsed）"
+        }
+        foreach ($fileName in $RuntimeFiles) {
+            $property = $manifest.sha256.PSObject.Properties[$fileName]
+            $want = if ($property) { [string]$property.Value } else { "" }
+            if (-not $want) {
+                throw "release.json 缺少 $fileName 的 SHA256（$manifestUsed）"
+            }
+            $actual = (Get-FileHash -Path (Join-Path $runtimeDir $fileName) -Algorithm SHA256).Hash
+            if ($actual.ToLower() -ne $want.ToLower()) {
+                throw "运行时文件校验失败: $fileName`n期望 $want`n实际 $actual"
+            }
+        }
+        Write-Success "运行时文件 SHA-256 校验通过"
+    } elseif ($Source) {
+        Write-Warning-Custom "未获取到 release.json，跳过哈希校验（自定义源：$Source）"
+    } else {
+        throw "无法获取发布版 release.json（$($manifestCandidates[0])），请检查网络后重试"
     }
     Write-Success "固定版本运行时下载成功"
 

@@ -57,9 +57,27 @@ function isEmpty(value) {
 function safeText(value) {
     return String(value ?? "")
         .replace(/\r\n?/g, "\n")
+        // U+2028/U+2029 在 JS 中是行终止符（JSON 不受影响）：
+        // 直接拼进 // 注释会让后继内容变成可执行语句（HAR 头名/URL 可由服务端控制）
+        .replace(/[\u2028\u2029]/g, " ")
         .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ")
         .replace(/\n+/g, " ")
         .trim();
+}
+
+// RFC 7230 token：HTTP 方法名与头名只能是这些字符；行终止符/空格/冒号
+// 会让生成的场景头名失效，甚至把内容拼进注释形成注入。
+const HTTP_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+function normalizeMethod(raw, label = "请求方法") {
+    const method = safeText(String(raw ?? "GET")).toUpperCase();
+    if (!HTTP_TOKEN_PATTERN.test(method)) {
+        throw new ImportError(
+            `${label}不是合法的 HTTP 方法: ${JSON.stringify(safeText(method))}`,
+            "方法名只能是 RFC 7230 token（字母/数字/- 等），拒绝空白、冒号与行终止符。"
+        );
+    }
+    return method;
 }
 
 function normalizeHeaders(headers) {
@@ -86,6 +104,13 @@ function normalizeHeaders(headers) {
     for (const [rawName, rawValue] of pairs) {
         const name = rawName.trim();
         if (!name || name.startsWith(":") || IGNORED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
+        // 非法头名直接拒绝：拼进草稿后要么被运行期静默忽略，要么变成无效注入面
+        if (!HTTP_TOKEN_PATTERN.test(name)) {
+            throw new ImportError(
+                `请求头名不合法: ${JSON.stringify(safeText(name))}`,
+                "头名只能是 RFC 7230 token（不含空白、冒号、换行与 U+2028/U+2029）。"
+            );
+        }
         const lower = name.toLowerCase();
         const value = rawValue.trim();
         if (seen.has(lower)) {
@@ -284,7 +309,7 @@ function removeContentType(headers) {
 
 function harEntryToStep(entry, index) {
     const request = entry?.request || {};
-    const method = String(request.method || "GET").toUpperCase();
+    const method = normalizeMethod(request.method, `HAR 第 ${index + 1} 条请求的方法`);
     const parsed = parseHttpUrl(request.url, `HAR 第 ${index + 1} 条请求`);
     const query = queryFromUrl(parsed);
     const maskedQuery = maskQueryParams(query);
@@ -581,6 +606,7 @@ export function createCurlDraft(command, options = {}) {
     if (!method) method = isHead ? "HEAD" : (hasData ? "POST" : "GET");
     if (isGet && !methodExplicit) method = "GET";
     if (isHead) method = "HEAD";
+    method = normalizeMethod(method, "curl -X 方法");
     if (isGet && method === "GET") hasData = true;
     let parsed = parseHttpUrl(url, "curl 命令中的 URL");
     if (parsed.username || parsed.password) {

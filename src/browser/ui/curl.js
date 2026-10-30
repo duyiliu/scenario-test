@@ -51,7 +51,8 @@ export function buildStepCurl(step, options) {
         else headers.Cookie = mergedCookie;
     }
 
-    var fullUrl = core.joinUrl(opts.baseUrl || '', requestPath);
+    // 与引擎同口径：协议相对 URL 按 baseUrl 协议补全（#121）
+    var fullUrl = core.completeProtocolRelativeUrl(core.joinUrl(opts.baseUrl || '', requestPath), opts.baseUrl);
     var parts = ['curl -X ' + method + ' ' + shellSingleQuote(fullUrl)];
 
     Object.keys(headers).forEach(function (key) {

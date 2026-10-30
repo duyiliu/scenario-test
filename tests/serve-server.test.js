@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import http from "node:http";
 import test from "node:test";
 import {
@@ -110,7 +111,7 @@ test("#60/#67 serve 按请求环境路由并重写 Origin/Referer，未知环境
     const port = await freePort();
     const server = createServeServer({
         workspace,
-        libraryDist: path.join(path.resolve(import.meta.dirname, ".."), "dist"),
+        libraryDist: path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), "dist"),
         port,
         config,
         defaultTarget
@@ -133,9 +134,11 @@ test("#60/#67 serve 按请求环境路由并重写 Origin/Referer，未知环境
         assert.equal(bRequest.headers.origin, `http://127.0.0.1:${b.port}`);
         assert.equal(bRequest.headers.referer, `http://127.0.0.1:${b.port}/index.html?x=1`);
 
+        // #119：跨站来源的代理请求一律 403，且不触达上游（写请求同样被拦）
+        const receivedBeforeExternal = a.received.length;
         const external = await rawRequest(port, "/api/probe", { Origin: "https://evil.example" });
-        assert.equal(external.status, 200);
-        assert.equal(a.received.at(-1).headers.origin, "https://evil.example");
+        assert.equal(external.status, 403);
+        assert.equal(a.received.length, receivedBeforeExternal, "跨站请求不应触达上游");
 
         const unknown = await fetch(`http://127.0.0.1:${port}/api/probe`, { headers: { "X-Scenario-Test-Env": "nope" } });
         assert.equal(unknown.status, 502);
@@ -170,7 +173,7 @@ test("#33 serve 代理：无效目标与非静态请求回退转发", async () =
         const port = await freePort();
         const server = createServeServer({
             workspace,
-            libraryDist: path.join(path.resolve(import.meta.dirname, ".."), "dist"),
+            libraryDist: path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), "dist"),
             port,
             config,
             defaultTarget: { key: "default", envKey: "default", target: "192.168.1.5:8080" }

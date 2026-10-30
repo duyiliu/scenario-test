@@ -3,6 +3,45 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+本批修复来自代码审计 issue #110–#125（#107/#108 需真实业务仓库取证，未处理）。行为修正集中在
+「静默失败/假绿」与安全默认值，契约版本升至 **v18**（新增 `scenario.requestKeys`）。
+
+### 修复
+
+- **#110 类型声明 P0**：`scenario-test.d.ts` 移除 `RetryUntil` 重复成员（`intervalFactor`/`maxIntervalMs` 曾重复声明导致 `tsc` 报错），`RequestDefinition` 补 `params`；新增 d.ts 自编译与重复成员检测测试。
+- **#111 断言**：`exists` 只接受 boolean，`exists: "true"` 之类字符串在定义期报错，避免恒真/恒假的假绿。
+- **#112 模板解析**：同一字符串内多个 `{{vars.x}}` 模板整串拼接解析（此前只替换首个或就地失效）；`suite.*` 不再被误报为缺失变量。
+- **#113 变量优先级（行为修正）**：`generatedVars` 优先级改为 suite < 场景 `vars` < 配置 `vars` < 选项 `--vars`，与文档声明一致；此前 suite 会覆盖更高优先级来源。需要固定值的场景请显式提高来源层级。
+- **#114 配置校验**：`envs`/`scenarios` 非数组、场景清单项未知键（含 `file`/`path` 兼容）、无 `envs` 时显式 `--env` 均在定义期/启动期报错，不再静默忽略。
+- **#115 适配器守卫**：既未匹配任何适配器、又未声明 HTTP 字段的步骤直接报错（步骤 ERROR），不再发出无 body/无头部的空请求而假通过。
+- **#116 工作台调度**：浏览器工作台补齐 `halted`/`always`/`SKIPPED` 调度，与引擎同形状（失败中断后仍执行 cleanup 步骤）；示例场景新增 `always-cleanup.js`。
+- **#117 导入安全**：HAR/cURL 导入剥离 U+2028/U+2029，HTTP 方法与请求头名按 token 校验，非法条目走 `filteredInvalid`；URL 中的行终止符被百分号编码，避免生成器注入。
+- **#118 初始化路径**：`init --dir` 拒绝归一化到项目根、符号链接越界与 `.scenario-test` 目录越界写入（真实路径校验）。
+- **#119 serve 与 Cookie 安全**：
+  - 代理仅接受与本机 serve 同源的请求（`Origin`/`Referer` 校验，跨站 403，`null` 拒绝）；
+  - https 上游**默认校验证书**，自签环境需显式 `--insecure`；
+  - 客户端断开时销毁上游请求与静态文件流，避免连接泄漏；
+  - Cookie Jar 丢弃跨站与公共后缀（`com`/`co.uk` 等）的 `Domain` Cookie，防止凭据被发往第三方域。
+- **#120 定义文件与安装脚本**：
+  - `node:vm` 执行配置/场景文件加 10s 超时（库内可用 `options.timeoutMs` 覆盖），超时报错带文件路径，死循环不再挂死 CLI；
+  - `install.sh`/`install.ps1` 下载后按 `release.json` 校验 4 个运行时文件 SHA-256，不匹配即中止；默认源缺失清单直接失败。
+- **#121 重试/提取/URL 边界**：
+  - `retryUntil.maxElapsedMs` 对所有重试路径都是硬时限（含成功判定路径）；
+  - 响应体为空且未指定 path 时按缺失处理（`required: true` 会失败），JSON 字面量 `null` 仍视为有效；
+  - 协议相对 URL（`//host/path`）按 `baseUrl` 协议补全，Node 与 cURL 预览一致。
+- **#122 输出与数据**：并发 shape 失败明细写入各自场景缓冲（不再串行错位）；JUnit 数据行使用 `scenarioId#row-N` 命名，`--bail` 后未执行用例输出 `<skipped>`；CSV 未闭合引号/引号后杂字符按行列报错。
+- **#123 清理**：移除 `SYMPHONY-E2E*.txt` 临时文件并入 `.gitignore`；文档统一「免 npm」接入（`node scenario-test/.scenario-test/scenario-test-cli.cjs`）与 `nodePlugins:` 写法。
+- **#124 测试与 CI**：Node 18 兼容（移除 `import.meta.dirname`）、CI 矩阵补 18 与 dist 新鲜度/`tsc --noEmit` 类型检查；浏览器测试改用动态端口与 Playwright 内置 chromium（`SCENARIO_TEST_BROWSER_CHANNEL=chrome` 可切系统 Chrome）。
+- **#125 契约**：新增 `scenario.requestKeys` 白名单，`request.heders`/`request.bodyy` 等拼写在定义期报错并给出近似字段建议（显式 `adapter` 步骤的私有键不受限）；`scenario.retryUntilKeys` 直接复用 `retryUntil.keys`，消除重复名单。
+
+### 升级提示
+
+- `serve` 默认不再信任自签证书：内网 https 上游请加 `--insecure`。
+- 跨站页面无法再借用本地 serve 代理（浏览器工作台同源访问不受影响）。
+- `generatedVars` 变量优先级与文档对齐；依赖旧覆盖顺序的场景需调整来源层级。
+
 ## [0.10.3] - 2026-10-30
 
 ### 界面

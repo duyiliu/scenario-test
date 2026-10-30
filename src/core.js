@@ -226,7 +226,7 @@ export function resolveString(value, runtime) {
     for (let depth = 0; depth < 10; depth += 1) {
         if (seen.has(current)) return current;
         seen.add(current);
-        const whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+        const whole = current.match(/^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/);
         if (whole) {
             const direct = evalExpression(whole[1], runtime);
             if (direct === undefined) return "";
@@ -234,12 +234,12 @@ export function resolveString(value, runtime) {
             current = direct;
             continue;
         }
-        const replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expression) => {
+        const replaced = current.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, expression) => {
             const resolved = evalExpression(expression, runtime);
             if (resolved === undefined || resolved === null) return "";
             return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
         });
-        if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+        if (replaced === current || !/\{\{\s*[^{}]+?\s*\}\}/.test(replaced)) return replaced;
         current = replaced;
     }
     return current;
@@ -260,8 +260,10 @@ export function resolve(value, runtime) {
 export function templateExpressionRoot(expression) {
     const text = String(expression || "").trim();
     if (!text || text === "vars") return null;
-    // 响应级来源不是变量缺失
+    // 响应级来源与 suite 命名空间不是变量缺失（suite 为本次 run 跨场景共享变量，
+    // {{suite.x}} 的根是命名空间而非 vars.suite）
     if (text.startsWith("lastResponse")) return null;
+    if (text === "suite" || text.startsWith("suite.") || text.startsWith("suite[")) return null;
     let pathText;
     if (text.startsWith("vars.")) pathText = text.slice(5);
     else if (text.startsWith("vars[")) pathText = text.slice(4);
@@ -424,6 +426,19 @@ export function joinUrl(baseUrl, requestPath) {
     const base = String(baseUrl || "").replace(/\/+$/, "");
     const tail = String(requestPath || "").replace(/^\/+/, "");
     return base ? `${base}/${tail}` : tail;
+}
+
+// 协议相对 URL（//host/path）按 baseUrl 的协议补全：浏览器 fetch 可直接用，
+// Node 原生 fetch 会报 Failed to parse URL；引擎与 cURL 预览共用，双端口径一致（#121）
+export function completeProtocolRelativeUrl(url, baseUrl) {
+    const text = String(url || "");
+    if (!text.startsWith("//")) return text;
+    let protocol = "https:";
+    try {
+        const baseProtocol = new URL(String(baseUrl || "")).protocol;
+        if (baseProtocol === "http:" || baseProtocol === "https:") protocol = baseProtocol;
+    } catch { /* baseUrl 非法/缺失时按 https 补全 */ }
+    return `${protocol}${text}`;
 }
 
 // 单个查询参数（含数组值）序列化为 key=value 对：数组展开为重复 key（tags=1&tags=2），
@@ -722,6 +737,14 @@ export function validateAssertion(definition, context, options = {}) {
     }
     if (!operators.length) {
         throw new TypeError(`${prefix}: 必须至少包含一个操作符（${ASSERTION_OPERATORS.join("/")}）`);
+    }
+    // exists 只接受 boolean：运行期是 Boolean(definition.exists) 的直判，
+    // "false"/0 这类非空值会被当成 true，模板也不会解析——两条都是假绿入口
+    if (definition.exists !== undefined && typeof definition.exists !== "boolean") {
+        throw new TypeError(
+            `${prefix}: exists 只接受 boolean（当前 ${JSON.stringify(definition.exists)}）；` +
+            `字符串、数字与 {{ }} 模板都会被当成真值，请改用布尔字面量或改用 when 条件控制步骤`
+        );
     }
     // from/target 白名单：未识别值在 assertionActual 里静默落到 body 分支——
     // 拼错（"statu"/"bodyy"）会让断言在错误来源上求值，同名字段存在时产生假绿
@@ -1179,7 +1202,15 @@ export function applyExtract(step, response, runtime) {
         const value = definition.path
             ? (definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path))
             : source;
-        if (value === undefined) {
+        // 空响应体（204/空 body 经 parseBody 得到 null）按「路径缺失」处理：此前
+        // required: true 会把 null 当成有效值写入并 PASS（#121）；JSON 字面量 null
+        // 的 bodyText 非空，仍视为真实响应值
+        const emptyBodyWithoutPath = value === null
+            && !definition.path
+            && (definition.from === undefined || definition.from === "body")
+            && (response.bodyText === null || response.bodyText === undefined || response.bodyText === "");
+        const missing = value === undefined || emptyBodyWithoutPath;
+        if (missing) {
             if (hasDefault) {
                 // 声明默认值即显式兜底：模板照常解析（可引用先提取的变量），缺失不再产生 warning；
                 // 仅 undefined 判定缺失——JSON null 是真实响应值，不触发兜底
@@ -1445,9 +1476,24 @@ export function normalizeEnumDefinition(definition) {
     return { values, weights: normalized };
 }
 
+// UUID v4：Node 18 的 globalThis.crypto 可能整体缺失（webcrypto 全局需要更新版本或
+// --experimental-global-webcrypto），且没有 randomUUID；这里按 RFC 4122 手工组装，
+// 随机源优先 randomUUID → getRandomValues → Math.random。
+// Math.random 兜底只服务于测试造数/运行标识（非安全用途），保证 Node 18 不直接抛错。
+export function randomUuid() {
+    const crypto = globalThis.crypto;
+    if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+    const bytes = typeof crypto?.getRandomValues === "function"
+        ? crypto.getRandomValues(new Uint8Array(16))
+        : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function defaultUuidHex() {
-    if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-    return globalThis.crypto.randomUUID().replace(/-/g, "");
+    return randomUuid().replace(/-/g, "");
 }
 
 // 时间源 seam：默认系统时钟；测试可注入 now 函数、clock 对象（{ now() }）或固定毫秒值。
@@ -1498,8 +1544,7 @@ export function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     }
     if (definition.type === "uuid") {
         // 标准带连字符 UUID v4（uuidHex 为 32 位无连字符形式），适配以 UUID 为业务主键的接口
-        if (!globalThis.crypto?.randomUUID) throw new Error("当前环境不支持 crypto.randomUUID");
-        setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
+        setRuntimeVar(vars, name, randomUuid());
         return;
     }
     if (definition.type === "uuidHex") {

@@ -271,6 +271,7 @@ __export(node_exports, {
   clone: () => clone,
   collectMissingTemplateVars: () => collectMissingTemplateVars,
   collectSecretValues: () => collectSecretValues,
+  completeProtocolRelativeUrl: () => completeProtocolRelativeUrl,
   contract: () => contract,
   createApp: () => createApp,
   createEngine: () => createEngine,
@@ -317,6 +318,7 @@ __export(node_exports, {
   pickWeightedIndex: () => pickWeightedIndex,
   queryKeys: () => queryKeys,
   queryPairs: () => queryPairs,
+  randomUuid: () => randomUuid,
   redactSecrets: () => redactSecrets,
   registerAdapter: () => registerAdapter,
   registerConfig: () => registerConfig,
@@ -349,7 +351,8 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.10.3";
 
 // src/contract.js
-var CONTRACT_VERSION = 17;
+var CONTRACT_VERSION = 18;
+var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
@@ -522,7 +525,7 @@ var contract = Object.freeze({
     })
   }),
   retryUntil: Object.freeze({
-    keys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    keys: RETRY_UNTIL_KEYS,
     // 可重试的失败类型：assertion=断言未通过（历史默认），error=网络/适配器执行异常，timeout=单次请求超时
     retryOn: Object.freeze(["assertion", "error", "timeout"]),
     defaultRetryOn: Object.freeze(["assertion"]),
@@ -547,8 +550,22 @@ var contract = Object.freeze({
       "always"
     ]),
     failurePolicies: Object.freeze(["stop", "continue"]),
-    // retryUntil 允许的键；intervalFactor/maxIntervalMs 控制指数退避
-    retryUntilKeys: Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]),
+    // step.request 对象允许的键：拼错（request.heders/bodyy）此前被运行期静默忽略，
+    // 造成「以为带了认证头/请求体，实际没带」的假象；定义期按此名单拒绝
+    requestKeys: Object.freeze([
+      "method",
+      "path",
+      "params",
+      "headers",
+      "body",
+      "fileUpload",
+      "timeoutMs",
+      "credentials",
+      "redirect",
+      "useEnvironmentAuthorization"
+    ]),
+    // retryUntil 允许的键；直接复用 contract.retryUntil.keys（同一冻结数组）
+    retryUntilKeys: RETRY_UNTIL_KEYS,
     note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
@@ -567,6 +584,7 @@ var contract = Object.freeze({
       },
       timeout: { kind: "value", prop: "timeout", parse: "number", description: "\u672C\u6B21\u6267\u884C\u5168\u5C40\u8BF7\u6C42\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF09\uFF0C\u8986\u76D6\u914D\u7F6E requestTimeoutMs" },
       "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
+      insecure: { kind: "flag", prop: "insecure", description: "serve \u4EE3\u7406\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08\u9ED8\u8BA4\u6821\u9A8C\uFF1B\u4EC5\u5185\u7F51\u81EA\u7B7E\u8054\u8C03\u73AF\u5883\u4F7F\u7528\uFF09" },
       data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
       junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       tag: {
@@ -780,7 +798,7 @@ function resolveString(value, runtime) {
   for (let depth = 0; depth < 10; depth += 1) {
     if (seen.has(current)) return current;
     seen.add(current);
-    const whole = current.match(/^\s*\{\{\s*(.+?)\s*\}\}\s*$/);
+    const whole = current.match(/^\s*\{\{\s*([^{}]+?)\s*\}\}\s*$/);
     if (whole) {
       const direct = evalExpression(whole[1], runtime);
       if (direct === void 0) return "";
@@ -788,12 +806,12 @@ function resolveString(value, runtime) {
       current = direct;
       continue;
     }
-    const replaced = current.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expression) => {
+    const replaced = current.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, expression) => {
       const resolved = evalExpression(expression, runtime);
       if (resolved === void 0 || resolved === null) return "";
       return typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
     });
-    if (replaced === current || !/\{\{\s*.+?\s*\}\}/.test(replaced)) return replaced;
+    if (replaced === current || !/\{\{\s*[^{}]+?\s*\}\}/.test(replaced)) return replaced;
     current = replaced;
   }
   return current;
@@ -809,6 +827,7 @@ function templateExpressionRoot(expression) {
   const text = String(expression || "").trim();
   if (!text || text === "vars") return null;
   if (text.startsWith("lastResponse")) return null;
+  if (text === "suite" || text.startsWith("suite.") || text.startsWith("suite[")) return null;
   let pathText;
   if (text.startsWith("vars.")) pathText = text.slice(5);
   else if (text.startsWith("vars[")) pathText = text.slice(4);
@@ -935,6 +954,17 @@ function joinUrl(baseUrl, requestPath) {
   const base = String(baseUrl || "").replace(/\/+$/, "");
   const tail = String(requestPath || "").replace(/^\/+/, "");
   return base ? `${base}/${tail}` : tail;
+}
+function completeProtocolRelativeUrl(url, baseUrl) {
+  const text = String(url || "");
+  if (!text.startsWith("//")) return text;
+  let protocol = "https:";
+  try {
+    const baseProtocol = new URL(String(baseUrl || "")).protocol;
+    if (baseProtocol === "http:" || baseProtocol === "https:") protocol = baseProtocol;
+  } catch {
+  }
+  return `${protocol}${text}`;
 }
 function queryPairs(key, value) {
   const encodedKey = encodeURIComponent(key);
@@ -1183,6 +1213,11 @@ function validateAssertion(definition, context, options = {}) {
   }
   if (!operators.length) {
     throw new TypeError(`${prefix}: \u5FC5\u987B\u81F3\u5C11\u5305\u542B\u4E00\u4E2A\u64CD\u4F5C\u7B26\uFF08${ASSERTION_OPERATORS.join("/")}\uFF09`);
+  }
+  if (definition.exists !== void 0 && typeof definition.exists !== "boolean") {
+    throw new TypeError(
+      `${prefix}: exists \u53EA\u63A5\u53D7 boolean\uFF08\u5F53\u524D ${JSON.stringify(definition.exists)}\uFF09\uFF1B\u5B57\u7B26\u4E32\u3001\u6570\u5B57\u4E0E {{ }} \u6A21\u677F\u90FD\u4F1A\u88AB\u5F53\u6210\u771F\u503C\uFF0C\u8BF7\u6539\u7528\u5E03\u5C14\u5B57\u9762\u91CF\u6216\u6539\u7528 when \u6761\u4EF6\u63A7\u5236\u6B65\u9AA4`
+    );
   }
   if (definition.target !== void 0 && !contract.assertions.targets.includes(definition.target)) {
     throw new TypeError(`${prefix}: target \u53EA\u652F\u6301 ${contract.assertions.targets.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(definition.target)}\uFF09`);
@@ -1520,7 +1555,9 @@ function applyExtract(step, response, runtime) {
     else if (definition.from === "bodyText") source = response.bodyText;
     else if (definition.from === "response") source = response;
     const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
-    if (value === void 0) {
+    const emptyBodyWithoutPath = value === null && !definition.path && (definition.from === void 0 || definition.from === "body") && (response.bodyText === null || response.bodyText === void 0 || response.bodyText === "");
+    const missing = value === void 0 || emptyBodyWithoutPath;
+    if (missing) {
       if (hasDefault) {
         store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
         continue;
@@ -1697,9 +1734,17 @@ function normalizeEnumDefinition(definition) {
   }
   return { values, weights: normalized };
 }
+function randomUuid() {
+  const crypto = globalThis.crypto;
+  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  const bytes = typeof crypto?.getRandomValues === "function" ? crypto.getRandomValues(new Uint8Array(16)) : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 function defaultUuidHex() {
-  if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-  return globalThis.crypto.randomUUID().replace(/-/g, "");
+  return randomUuid().replace(/-/g, "");
 }
 function resolveNowSource(deps = {}) {
   const candidate = deps.now ?? deps.clock;
@@ -1733,8 +1778,7 @@ function applyGeneratedVar(definition, vars, identifiers, deps = {}) {
     return;
   }
   if (definition.type === "uuid") {
-    if (!globalThis.crypto?.randomUUID) throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID");
-    setRuntimeVar(vars, name, globalThis.crypto.randomUUID());
+    setRuntimeVar(vars, name, randomUuid());
     return;
   }
   if (definition.type === "uuidHex") {
@@ -2149,6 +2193,13 @@ function defineScenario(input) {
         inheritedRequestKey === null,
         `${stepLabel} \u7684 request \u5305\u542B\u7EE7\u627F\u7684\u53EF\u679A\u4E3E\u5B57\u6BB5 "${inheritedRequestKey}"\uFF08\u8FD0\u884C\u671F clone \u53EA\u4FDD\u7559\u81EA\u6709\u5B57\u6BB5\uFF0C\u4F1A\u9759\u9ED8\u4E22\u5931\uFF1B\u8BF7\u6539\u4E3A\u5BF9\u8C61\u81EA\u6709\u5B57\u6BB5\uFF09`
       );
+      if (step.adapter === void 0) {
+        const unknownRequestKeys = describeUnknownKeys(step.request, contract.scenario.requestKeys);
+        invariant(
+          unknownRequestKeys.length === 0,
+          unknownKeysMessage(`${stepLabel} \u7684 request`, unknownRequestKeys, contract.scenario.requestKeys)
+        );
+      }
       if (step.request.params !== void 0) {
         invariant(
           isPlainObject(step.request.params),
@@ -2389,6 +2440,9 @@ function defineConfig(input) {
   assertTemplatePathsOnly(input, "\u914D\u7F6E");
   const baseUrl = normalizeBaseUrl(input.baseUrl, "\u914D\u7F6E\u9876\u5C42 baseUrl");
   const globals = normalizeGlobals(input.globals, "\u5168\u5C40");
+  if (input.envs !== void 0) {
+    invariant(Array.isArray(input.envs), `\u914D\u7F6E envs \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u5F53\u524D ${describeValue(input.envs)}\uFF09`);
+  }
   const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
     invariant(isPlainObject(env), `\u7B2C ${index + 1} \u4E2A\u73AF\u5883\u5B9A\u4E49\u65E0\u6548`);
     assertKnownKeys(env, contract.config.environmentKeys, `\u7B2C ${index + 1} \u4E2A\u73AF\u5883`, "\uFF08\u73AF\u5883\u53EA\u63A5\u53D7\u5951\u7EA6\u58F0\u660E\u7684\u5B57\u6BB5\uFF09");
@@ -2407,12 +2461,22 @@ function defineConfig(input) {
     env.baseUrl = normalizeBaseUrl(env.baseUrl, `\u73AF\u5883 ${env.key} \u7684 baseUrl`);
   }
   assertUnique(envs, "key", "\u73AF\u5883 key");
+  if (input.scenarios !== void 0) {
+    invariant(Array.isArray(input.scenarios), `\u914D\u7F6E scenarios \u5FC5\u987B\u662F\u6570\u7EC4\uFF08\u5F53\u524D ${describeValue(input.scenarios)}\uFF09`);
+  }
+  const scenarioItemKeys = [...contract.config.scenarioItemKeys, "file", "path"];
   const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
     if (typeof entry === "string") {
       invariant(nonEmptyString(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u5730\u5740\u4E0D\u80FD\u4E3A\u7A7A`);
       return { id: entry, name: entry, url: entry };
     }
     invariant(isPlainObject(entry), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u6E05\u5355\u9879\u65E0\u6548`);
+    assertKnownKeys(
+      entry,
+      scenarioItemKeys,
+      `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u6E05\u5355\u9879`,
+      `\uFF08\u6E05\u5355\u9879\u53EA\u63A5\u53D7 ${scenarioItemKeys.join("/")}\uFF0C\u62FC\u9519 manual \u4F1A\u4F7F --all \u8BEF\u628A\u624B\u52A8\u573A\u666F\u5F53\u81EA\u52A8\u573A\u666F\u6267\u884C\uFF09`
+    );
     const url = entry.url || entry.file || entry.path || "";
     const id = entry.id || url || `scenario-${index + 1}`;
     invariant(nonEmptyString(id), `\u7B2C ${index + 1} \u4E2A\u573A\u666F\u7F3A\u5C11 id`);
@@ -2630,17 +2694,21 @@ function createRequestSignal(parentSignal, timeoutMs) {
 }
 function createRunIdentifiers() {
   const timestamp = String(Date.now());
-  const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 8) : Math.random().toString(16).slice(2, 10).padEnd(8, "0");
+  const random = randomUuid().replace(/-/g, "").slice(0, 8);
   return {
     runId: `${timestamp}-${random}`,
     runNo: `${timestamp.slice(-6)}-${random.slice(0, 4)}`
   };
 }
-function buildGeneratedVars(scenario, baseVars, environmentVariables, options = {}) {
+function buildGeneratedVars(scenario, layers, environmentVariables, options = {}) {
   const identifiers = createRunIdentifiers();
+  const suiteVars = layers.suite || {};
+  const configVars = layers.configVars || {};
+  const optionVars = layers.optionVars || {};
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
-  assertNoReservedVars(baseVars, "\u914D\u7F6E/\u9009\u9879 vars");
-  const vars = { ...scenario.vars || {}, ...baseVars || {}, ...identifiers };
+  assertNoReservedVars(configVars, "\u914D\u7F6E vars");
+  assertNoReservedVars(optionVars, "\u9009\u9879 vars");
+  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...identifiers };
   const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
@@ -2678,7 +2746,7 @@ function createRuntime(scenario, options = {}) {
   const runtime = {
     vars: buildGeneratedVars(
       scenario,
-      { ...suite, ...config.vars || {}, ...options.vars || {} },
+      { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
       options.environmentVariables || {},
       { now: options.now, clock: options.clock }
     ),
@@ -2713,6 +2781,7 @@ function chooseAdapter(step, adapters) {
   }
   return null;
 }
+var HTTP_EXECUTION_KEYS = ["method", "path", "params", "request", "status", "timeoutMs", "saveResponseAs"];
 function readBodyChunks(response, signal, maxBytes = 0) {
   if (signal?.aborted) return Promise.reject(abortReason(signal));
   if (!response.body) return Promise.resolve([]);
@@ -2880,6 +2949,68 @@ function hostMatchesCookie(hostname, domain) {
   const host = String(hostname || "").toLowerCase();
   return host === domain || host.endsWith(`.${domain}`);
 }
+var PUBLIC_SUFFIXES = /* @__PURE__ */ new Set([
+  "com",
+  "net",
+  "org",
+  "edu",
+  "gov",
+  "mil",
+  "int",
+  "arpa",
+  "cn",
+  "uk",
+  "jp",
+  "kr",
+  "de",
+  "fr",
+  "ru",
+  "br",
+  "in",
+  "au",
+  "ca",
+  "us",
+  "hk",
+  "tw",
+  "sg",
+  "nz",
+  "mx",
+  "tr",
+  "io",
+  "co",
+  "me",
+  "dev",
+  "app",
+  "test",
+  "local",
+  "internal",
+  "localhost",
+  "co.uk",
+  "com.cn",
+  "net.cn",
+  "org.cn",
+  "gov.cn",
+  "com.hk",
+  "com.tw",
+  "co.jp",
+  "com.au",
+  "co.kr",
+  "com.sg",
+  "com.br",
+  "co.in",
+  "co.nz",
+  "com.mx",
+  "com.tr",
+  "com.ru"
+]);
+function isCookieDomainAllowed(requestHost, domain) {
+  const host = String(requestHost || "").toLowerCase();
+  const value = String(domain || "").toLowerCase();
+  if (!host || !value) return false;
+  if (host === value) return true;
+  if (!hostMatchesCookie(host, value)) return false;
+  return !PUBLIC_SUFFIXES.has(value) && value.includes(".");
+}
 function pathMatchesCookie(pathname, cookiePath) {
   if (pathname === cookiePath) return true;
   const prefix = cookiePath.endsWith("/") ? cookiePath : `${cookiePath}/`;
@@ -2894,6 +3025,7 @@ function storeSetCookies(runtime, lines, requestUrl) {
   for (const line of lines) {
     const cookie = parseSetCookie(line, requestUrl);
     if (!cookie) continue;
+    if (!isCookieDomainAllowed(requestUrl.hostname, cookie.domain)) continue;
     runtime.cookieJar = runtime.cookieJar.filter((item) => !(item.name === cookie.name && item.domain === cookie.domain && item.path === cookie.path));
     if (cookie.expiresAt > Date.now()) runtime.cookieJar.push(cookie);
   }
@@ -2974,7 +3106,7 @@ async function executeHttp(step, runtime, options) {
   if (options.authorization && allowEnvironmentAuthorization && !hasHeader(headers, "Authorization")) {
     headers.Authorization = options.authorization;
   }
-  const requestUrl = joinUrl(options.baseUrl, requestPath);
+  const requestUrl = completeProtocolRelativeUrl(joinUrl(options.baseUrl, requestPath), options.baseUrl);
   let parsedRequestUrl = null;
   if (options.cookieJar) {
     try {
@@ -3171,13 +3303,14 @@ function createEngine(engineOptions = {}) {
     let lastExecution;
     let assertions = [];
     let stepWarnings = [];
+    const selection = chooseAdapter(step, adapters);
     const missingVars = /* @__PURE__ */ new Set();
     const retry = step.retryUntil || null;
     const totalAttempts = retry ? Math.max(1, Number(retry.maxAttempts || 10)) : 1;
     const retryOn = new Set(
       retry ? (retry.retryOn === void 0 ? contract.retryUntil.defaultRetryOn : Array.isArray(retry.retryOn) ? retry.retryOn : []).filter((type) => contract.retryUntil.retryOn.includes(type)) : []
     );
-    const enforceAttemptDeadline = retryOn.has("error") || retryOn.has("timeout");
+    const enforceAttemptDeadline = Boolean(retry);
     const retryStartTime = now();
     const maxElapsedMs = retry?.maxElapsedMs || 3e5;
     let lastAttemptError = null;
@@ -3191,12 +3324,16 @@ function createEngine(engineOptions = {}) {
       );
     };
     try {
+      if (!selection && !HTTP_EXECUTION_KEYS.some((key) => step[key] !== void 0)) {
+        throw new Error(
+          `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u672A\u5339\u914D\u4EFB\u4F55\u9002\u914D\u5668\uFF0C\u4E14\u7F3A\u5C11 HTTP \u6267\u884C\u5B57\u6BB5\uFF08${HTTP_EXECUTION_KEYS.join("/")}\uFF09\u2014\u2014 \u8BF7\u68C0\u67E5 adapter \u540D\u4E0E\u63D2\u4EF6\u662F\u5426\u5DF2\u52A0\u8F7D\uFF0C\u6216\u8865\u5168 path/request \u7B49\u8BF7\u6C42\u5B57\u6BB5`
+        );
+      }
       for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
         if (options.signal?.aborted) throw abortReason(options.signal);
         if (retry) {
           const elapsedMs = now() - retryStartTime;
-          const expired = enforceAttemptDeadline ? elapsedMs >= maxElapsedMs : elapsedMs > maxElapsedMs;
-          if (expired) throw retryTimeoutError(attempt - 1);
+          if (elapsedMs >= maxElapsedMs) throw retryTimeoutError(attempt - 1);
         }
         let attemptDeadline = null;
         if (enforceAttemptDeadline) {
@@ -3208,7 +3345,6 @@ function createEngine(engineOptions = {}) {
         let attemptErrorType = "";
         try {
           collectStepMissingVars(step, runtime, missingVars);
-          const selection = chooseAdapter(step, adapters);
           const attemptStartedAt = now();
           const attemptOptions = attemptDeadline ? { ...options, signal: attemptDeadline.signal } : options;
           const execution = selection ? executeAdapter(selection.adapter, selection.name, step, runtime, attemptOptions) : executeHttp(step, runtime, attemptOptions);
@@ -3224,7 +3360,7 @@ function createEngine(engineOptions = {}) {
           if (extractResult.failures.length) assertions.push(...extractResult.failures);
         } catch (error) {
           if (options.signal?.aborted) throw error;
-          if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+          if (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs) {
             throw retryTimeoutError(attempt);
           }
           const errorType = isTimeoutError(error) ? "timeout" : "error";
@@ -3237,7 +3373,7 @@ function createEngine(engineOptions = {}) {
         } finally {
           attemptDeadline?.dispose();
         }
-        if (enforceAttemptDeadline && (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs)) {
+        if (attemptDeadline?.timedOut() || now() - retryStartTime >= maxElapsedMs) {
           throw retryTimeoutError(attempt);
         }
         const failedAssertion = attemptError ? "" : assertions.find((item) => !item.passed)?.name || "";
@@ -3497,6 +3633,7 @@ function buildCapabilities(inputContract = contract) {
     scenario: {
       keys: [...scenario.keys],
       stepKeys: [...scenario.stepKeys],
+      requestKeys: [...scenario.requestKeys || []],
       failurePolicies: [...scenario.failurePolicies],
       retryUntilKeys: [...scenario.retryUntilKeys || []],
       ...scenario.note ? { note: scenario.note } : {}
@@ -3572,6 +3709,7 @@ function renderCapabilitiesText(capabilities) {
   lines.push(`  manual\uFF08${capabilities.config.manual.type}\uFF09: ${capabilities.config.manual.note}`);
   lines.push("");
   lines.push(`\u573A\u666F\u7ED3\u6784: ${capabilities.scenario.keys.join(" / ")}\uFF1B\u6B65\u9AA4\u5B57\u6BB5: ${capabilities.scenario.stepKeys.join(" / ")}`);
+  lines.push(`request \u5B57\u6BB5: ${capabilities.scenario.requestKeys.join(" / ")}`);
   lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
   if (capabilities.retryUntil) {
     lines.push(`retryUntil \u5B57\u6BB5: ${capabilities.retryUntil.keys.join(" / ")}\uFF1BretryOn: ${capabilities.retryUntil.retryOn.join(" / ")}\uFF08\u9ED8\u8BA4 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}\uFF09`);
@@ -3782,8 +3920,10 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
 var import_node_fs3 = __toESM(require("node:fs"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
 var import_node_vm = __toESM(require("node:vm"), 1);
-function executeDefinitionFile(filePath, api) {
+var DEFAULT_DEFINITION_TIMEOUT_MS = 1e4;
+function executeDefinitionFile(filePath, api, options = {}) {
   const absolutePath = import_node_path3.default.resolve(filePath);
+  const timeout = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_DEFINITION_TIMEOUT_MS;
   const moduleObject = { exports: {} };
   const windowObject = { ScenarioTest: api };
   const context = {
@@ -3800,12 +3940,20 @@ function executeDefinitionFile(filePath, api) {
   context.global = context;
   context.globalThis = context;
   import_node_vm.default.createContext(context);
-  import_node_vm.default.runInContext(import_node_fs3.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath });
+  try {
+    import_node_vm.default.runInContext(import_node_fs3.default.readFileSync(absolutePath, "utf8"), context, { filename: absolutePath, timeout });
+  } catch (error) {
+    if (error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+      error.message = `\u5B9A\u4E49\u6587\u4EF6\u6267\u884C\u8D85\u65F6\uFF08${timeout}ms\uFF0C\u7591\u4F3C\u6B7B\u5FAA\u73AF\uFF09: ${absolutePath}
+${error.message}`;
+    }
+    throw error;
+  }
   return { context, window: windowObject, exports: moduleObject.exports };
 }
-function loadConfigFile(filePath, api) {
+function loadConfigFile(filePath, api, options = {}) {
   const previousConfig = getConfig();
-  const loaded = executeDefinitionFile(filePath, api);
+  const loaded = executeDefinitionFile(filePath, api, options);
   const exported = loaded.exports?.default || loaded.exports;
   const registeredConfig = getConfig();
   const config = (registeredConfig !== previousConfig ? registeredConfig : null) || (exported && Object.keys(exported).length ? exported : null);
@@ -3813,11 +3961,11 @@ function loadConfigFile(filePath, api) {
   return api.defineConfig(config);
 }
 var loadedScenarioPaths = /* @__PURE__ */ new Map();
-function loadScenarioFile(filePath, id, api) {
+function loadScenarioFile(filePath, id, api, options = {}) {
   const absolutePath = import_node_path3.default.resolve(filePath);
   const existing = getScenario(id);
   if (existing && loadedScenarioPaths.get(id) === absolutePath) return existing;
-  const loaded = executeDefinitionFile(absolutePath, api);
+  const loaded = executeDefinitionFile(absolutePath, api, options);
   let scenario = getScenario(id);
   const exported = loaded.exports?.default || loaded.exports;
   if (!scenario && exported && Array.isArray(exported.steps)) scenario = registerScenario(id, exported);
@@ -3861,6 +4009,7 @@ function createApp() {
   clone,
   collectMissingTemplateVars,
   collectSecretValues,
+  completeProtocolRelativeUrl,
   contract,
   createApp,
   createEngine,
@@ -3907,6 +4056,7 @@ function createApp() {
   pickWeightedIndex,
   queryKeys,
   queryPairs,
+  randomUuid,
   redactSecrets,
   registerAdapter,
   registerConfig,
