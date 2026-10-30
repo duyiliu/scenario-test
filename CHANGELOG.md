@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.11.1] - 2026-10-31
+
+### 修复
+
+- **一键安装脚本**：`install.sh` 的 `release.json` SHA-256 校验内联 Node 片段把换行写进了字符串字面量，执行即 `SyntaxError`，导致 v0.11.0 默认源安装直接中止。已修复该片段，并新增 `node --check` 回归测试（`tests/issue-120-loader-install.test.js`），防止发布脚本再次带语法错误上线。
+- v0.11.0 的 `dist/`、契约与运行时内容无变化；此 patch 仅修复安装入口。
+
 ## [0.11.0] - 2026-10-31
 
 本批修复来自代码审计 issue #110–#125（#107/#108 需真实业务仓库取证，未处理）。行为修正集中在

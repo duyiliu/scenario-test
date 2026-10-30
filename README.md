@@ -21,14 +21,14 @@
 **官方安装（固定版本）：**
 
 ```bash
-# 用户级全局安装；#v0.11.0 钉住 Git Tag，按提示选择你使用的 Agent
-npx skills add duyiliu/scenario-test#v0.11.0 --skill scenario-test -g
+# 用户级全局安装；#v0.11.1 钉住 Git Tag，按提示选择你使用的 Agent
+npx skills add duyiliu/scenario-test#v0.11.1 --skill scenario-test -g
 ```
 
 **国内网络加速安装（第三方 `skills-cn`）：**
 
 ```bash
-npx skills-cn@latest add duyiliu/scenario-test#v0.11.0 --skill scenario-test -g -y
+npx skills-cn@latest add duyiliu/scenario-test#v0.11.1 --skill scenario-test -g -y
 ```
 
 两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
@@ -58,12 +58,12 @@ Skill 初始化时使用自身携带的发布版运行时。以下脚本供需�
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.0/scripts/install.ps1 | iex
+irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.1/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.0/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.1/scripts/install.sh | bash -s -- . scenario-test
 ```
 
 默认脚本按固定 GitHub Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件，在临时目录就位后由 CLI 初始化；不会执行 `npm install` 或访问 GitHub API。内网下载源的指定方式和文件要求见[自定义下载源](#自定义下载源)。
@@ -295,7 +295,7 @@ scenario-test/
 Skill 按 Git Tag 钉版本安装，升级时**把 Tag 换成目标版本重新安装**即可（覆盖同名 Skill）：
 
 ```bash
-npx skills add duyiliu/scenario-test#v0.11.0 --skill scenario-test -g
+npx skills add duyiliu/scenario-test#v0.11.1 --skill scenario-test -g
 ```
 
 未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。当前内置运行时版本可查看 `<Skill目录>/runtime/release.json` 的 `version`。
@@ -320,7 +320,7 @@ Skill 会先确认当前项目、现有版本锁、目标发布版本和安装�
 无外网时，先准备对应版本的安装脚本及[内网运行时文件](#自定义下载源)，例如：
 
 ```powershell
-.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.11.0/dist"
+.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.11.1/dist"
 ```
 
 升级完成后执行：

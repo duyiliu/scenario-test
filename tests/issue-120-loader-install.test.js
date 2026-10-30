@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { executeDefinitionFile, loadScenarioFile } from "../src/node/loader.js";
@@ -65,4 +66,26 @@ test("#120：install.sh 带 shebang，且仓库索引标记为可执行", () => 
     // `git ls-files -s scripts/install.sh` 的 100755 保证（CI 行尾/权限审计覆盖）
     const stat = fs.statSync(path.join(root, "scripts", "install.sh"));
     assert.ok(stat.isFile());
+});
+
+test("#120：install.sh 内联 Node 校验脚本可被解析（防字符串换行导致发布版校验直接失败）", () => {
+    const installSh = fs.readFileSync(path.join(root, "scripts", "install.sh"), "utf8");
+    const start = installSh.indexOf("node -e '");
+    assert.ok(start > 0, "install.sh 应使用 node -e 内联校验脚本");
+    const NL = String.fromCharCode(10);
+    const bodyStart = installSh.indexOf(NL, start) + 1;
+    const bodyEnd = installSh.indexOf(NL + String.fromCharCode(39) + ' "$MANIFEST_FILE"', bodyStart);
+    assert.ok(bodyEnd > bodyStart, "内联脚本应有结束引号");
+    const inline = installSh.slice(bodyStart, bodyEnd);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-120-install-"));
+    try {
+        const file = path.join(dir, "verify.cjs");
+        fs.writeFileSync(file, inline, "utf8");
+        // 真实执行过的故障：console.error 的字符串被写成裸换行，
+        // `node --check` 立即报 SyntaxError（v0.11.0 发布版即因此校验失败）
+        const checked = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
+        assert.equal(checked.status, 0, `install.sh 内联脚本语法错误: ${checked.stderr}`);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });

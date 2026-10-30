@@ -5,8 +5,8 @@
 # 使用方法：
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
-#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.11.0/dist"
-#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.11.1/dist"
+#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.11.1/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
 # 原理：免 npm 安装 —— 按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/ 运行时文件，
 #       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
@@ -23,7 +23,7 @@ PROJECT_DIR="${1:-.}"
 TARGET_DIR="${2:-scenario-test}"
 SOURCE="${3:-${SCENARIO_TEST_SOURCE:-}}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
-SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.11.0}"
+SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.11.1}"
 DEFAULT_SOURCE="https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${SCENARIO_TEST_VERSION}/dist"
 RUNTIME_FILES=(
     "scenario-test-cli.cjs"
@@ -127,9 +127,7 @@ for (const file of args.slice(2)) {
     if (!want) { console.error("release.json 缺少 " + file + " 的 SHA256"); process.exit(1); }
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, file))).digest("hex");
     if (actual !== want) {
-        console.error("运行时文件校验失败: " + file + "
-期望 " + want + "
-实际 " + actual);
+        console.error("运行时文件校验失败: " + file + "\n期望 " + want + "\n实际 " + actual);
         process.exit(1);
     }
 }
