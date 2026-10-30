@@ -286,6 +286,16 @@ export function defineScenario(input) {
                 inheritedRequestKey === null,
                 `${stepLabel} 的 request 包含继承的可枚举字段 "${inheritedRequestKey}"（运行期 clone 只保留自有字段，会静默丢失；请改为对象自有字段）`
             );
+            // request 键白名单（#125）：request.heders/bodyy 这类拼写此前被运行期静默忽略，
+            // 「以为带了认证头/请求体，实际没带」的假绿即由此产生。
+            // 显式 adapter 步骤的 request 由适配器自行解释（可携带私有键），只校验 HTTP 步骤。
+            if (step.adapter === undefined) {
+                const unknownRequestKeys = describeUnknownKeys(step.request, contract.scenario.requestKeys);
+                invariant(
+                    unknownRequestKeys.length === 0,
+                    unknownKeysMessage(`${stepLabel} 的 request`, unknownRequestKeys, contract.scenario.requestKeys)
+                );
+            }
             if (step.request.params !== undefined) {
                 invariant(
                     isPlainObject(step.request.params),
@@ -595,6 +605,11 @@ export function defineConfig(input) {
     assertTemplatePathsOnly(input, "配置");
     const baseUrl = normalizeBaseUrl(input.baseUrl, "配置顶层 baseUrl");
     const globals = normalizeGlobals(input.globals, "全局");
+    // envs/scenarios 声明了但不是数组时拒绝：静默降级为 [] 会让 --env/--tag 被
+    // 静默忽略（环境拼错时静默回落顶层 baseUrl，实际打错目标仍可能通过）
+    if (input.envs !== undefined) {
+        invariant(Array.isArray(input.envs), `配置 envs 必须是数组（当前 ${describeValue(input.envs)}）`);
+    }
     const envs = Array.isArray(input.envs) ? input.envs.map((env, index) => {
         invariant(isPlainObject(env), `第 ${index + 1} 个环境定义无效`);
         assertKnownKeys(env, contract.config.environmentKeys, `第 ${index + 1} 个环境`, "（环境只接受契约声明的字段）");
@@ -614,12 +629,24 @@ export function defineConfig(input) {
         env.baseUrl = normalizeBaseUrl(env.baseUrl, `环境 ${env.key} 的 baseUrl`);
     }
     assertUnique(envs, "key", "环境 key");
+    if (input.scenarios !== undefined) {
+        invariant(Array.isArray(input.scenarios), `配置 scenarios 必须是数组（当前 ${describeValue(input.scenarios)}）`);
+    }
+    // 清单项只接受契约字段 + url 兼容回退写法；manul/tgas 这类近似拼写必须定义期报错，
+    // 否则 manual 拼错会让 --all 把需人工准备的场景当自动场景执行（写数据安全问题）
+    const scenarioItemKeys = [...contract.config.scenarioItemKeys, "file", "path"];
     const scenarios = (Array.isArray(input.scenarios) ? input.scenarios : []).map((entry, index) => {
         if (typeof entry === "string") {
             invariant(nonEmptyString(entry), `第 ${index + 1} 个场景地址不能为空`);
             return { id: entry, name: entry, url: entry };
         }
         invariant(isPlainObject(entry), `第 ${index + 1} 个场景清单项无效`);
+        assertKnownKeys(
+            entry,
+            scenarioItemKeys,
+            `第 ${index + 1} 个场景清单项`,
+            `（清单项只接受 ${scenarioItemKeys.join("/")}，拼错 manual 会使 --all 误把手动场景当自动场景执行）`
+        );
         const url = entry.url || entry.file || entry.path || "";
         const id = entry.id || url || `scenario-${index + 1}`;
         invariant(nonEmptyString(id), `第 ${index + 1} 个场景缺少 id`);

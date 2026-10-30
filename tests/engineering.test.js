@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("#48 测试脚本分层：unit/browser/all/coverage 与阈值显式声明", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -32,10 +33,15 @@ test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、覆盖率与浏览
     assert.match(workflow, /on:\s*\n\s*push:/);
     assert.match(workflow, /pull_request/);
     assert.match(workflow, /os: \[ubuntu-latest, windows-latest\]/);
-    assert.match(workflow, /node: \[20, 22\]/);
+    // Node 18 是 engines 下限（只跑 unit，不跑依赖 Tailwind 4 的构建）；20/22 全量
+    assert.match(workflow, /node: \[18, 20, 22\]/);
+    assert.match(workflow, /matrix\.node != 18/, "构建步骤应跳过 Node 18");
     assert.match(workflow, /npm run test:unit/);
     assert.match(workflow, /npm run test:coverage/);
     assert.match(workflow, /npm run test:browser/);
     assert.match(workflow, /npm run check:eol/);
     assert.match(workflow, /playwright install/);
+    // #124：dist 新鲜度与 d.ts 自编译必须进 CI，否则 stale dist / P0 类型错误能漏网
+    assert.match(workflow, /git diff --exit-code -- dist\//);
+    assert.match(workflow, /tsc --noEmit[\s\S]*dist\/scenario-test\.d\.ts/);
 });

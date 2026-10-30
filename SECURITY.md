@@ -46,11 +46,11 @@
 
 ```bash
 # ❌ 旧方式（不推荐，但仍可用）
-npx @yc_yzkj/scenario-test --authorization "Bearer token"
+node scenario-test/.scenario-test/scenario-test-cli.cjs --authorization "Bearer token"
 
 # ✅ 新方式（推荐）
 export SCENARIO_AUTH="Bearer token"
-npx @yc_yzkj/scenario-test --config scenario.config.js
+node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario.config.js
 ```
 
 ### 3. 插件路径限制
@@ -62,13 +62,13 @@ npx @yc_yzkj/scenario-test --config scenario.config.js
 ```javascript
 // ✅ 安全：相对路径
 {
-  plugins: ["./plugins/custom-adapter.js"]
+  nodePlugins: ["./plugins/custom-adapter.js"]
 }
 
 // ❌ 需要标志：外部路径
 // 需要 --allow-external-plugins
 {
-  plugins: ["/tmp/external-plugin.js"]
+  nodePlugins: ["/tmp/external-plugin.js"]
 }
 ```
 
@@ -125,7 +125,8 @@ runtime.vars.apiKey = "hacked";
 `serve` 是**本地联调工具**，按以下模型设计，使用前请确认与你的环境匹配：
 
 - 服务只绑定 `127.0.0.1`，并校验 `Host` 头（仅放行本机回环域名，伪造 Host 的请求返回 403，可阻断 DNS rebinding 读取）。
-- 同源接口代理会放宽上游 https 证书校验（接受自签证书，等价 `rejectUnauthorized: false`），仅应用于本机联调的代理连接；上游空闲超时默认 30 秒，可用 `--proxy-timeout` 调整（1-600000 毫秒）。
+- 代理默认校验证书链与主机名；内网自签证书联调时显式 `--insecure` 才放宽为 `rejectUnauthorized: false`。上游空闲超时默认 30 秒，可用 `--proxy-timeout` 调整（1-600000 毫秒）。
+- 代理只接受与本机 serve 同源的浏览器请求：`Origin`/`Referer` 存在且指向其他源（含 `null`）时返回 403，阻断跨站页面借本地代理读取内网接口。Cookie Jar 丢弃跨站与公共后缀（如 `com`、`co.uk`）的 `Domain` Cookie。
 - **同机任意进程**（包括其他用户会话下的进程）都能访问该端口，并读取工作区内的静态文件——包括 `scenario.config.js`。**不要在配置里放生产凭据**；联调凭据用完即清（工作台"清除当前环境覆盖"或手动清理 localStorage）。
 - 工作台的场景加载有配置清单白名单（`?scenario=` 只接受 config 中列出的场景文件），但清单内的场景文件本身仍是可执行代码。
 - 浏览器本地存储（localStorage）中的环境变量/凭据为明文，仅适合受控联调环境。
@@ -191,10 +192,10 @@ runtime.vars.apiKey = "hacked";
 
 ```bash
 # ✅ 项目内插件
-npx @yc_yzkj/scenario-test --config scenario.config.js
+node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario.config.js
 
 # ⚠️ 外部插件（需要明确允许）
-npx @yc_yzkj/scenario-test --config scenario.config.js --allow-external-plugins
+node scenario-test/.scenario-test/scenario-test-cli.cjs --config scenario.config.js --allow-external-plugins
 ```
 
 ---

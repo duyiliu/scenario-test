@@ -3,10 +3,24 @@
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 import path from "node:path";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
-const root = path.resolve(import.meta.dirname, "..");
-const port = 4397;
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+async function freePort() {
+    return new Promise((resolve, reject) => {
+        const probe = net.createServer();
+        probe.once("error", reject);
+        probe.listen(0, "127.0.0.1", () => {
+            const { port: available } = probe.address();
+            probe.close(() => resolve(available));
+        });
+    });
+}
+
+const port = Number(process.env.SCENARIO_TEST_UI_STYLE_PORT) || await freePort();
 
 const server = spawn(process.execPath, [
     path.join(root, "dist/scenario-test-cli.cjs"),
@@ -27,10 +41,11 @@ try {
         server.on("exit", (code) => reject(new Error(`服务提前退出: ${code}`)));
     });
 
-    browser = await chromium.launch({ channel: "chrome", headless: true });
+    const browserChannel = process.env.SCENARIO_TEST_BROWSER_CHANNEL || "";
+    browser = await chromium.launch({ ...(browserChannel ? { channel: browserChannel } : {}), headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
-    await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 5);
+    await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 6);
 
     // 暗转亮后应立即完成配色，不能让白底上的控件继续插值为灰色。
     await page.locator("#themeSelect").selectOption("zcode");

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
     ASSERTION_META_KEYS,
@@ -82,7 +83,7 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
 });
 
 test("contract.engines 与 package.json engines 一致", () => {
-    const packageInfo = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../package.json"), "utf8"));
+    const packageInfo = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8"));
     assert.equal(contract.engines.node, packageInfo.engines.node);
 });
 
@@ -110,15 +111,15 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
 });
 
 test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
-    const scenarioPrompt = fs.readFileSync(path.resolve(import.meta.dirname, "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
-    const examplesIndex = fs.readFileSync(path.resolve(import.meta.dirname, "../examples/EXAMPLES_INDEX.md"), "utf8");
+    const scenarioPrompt = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../docs/AI_SCENARIO_PROMPT.md"), "utf8");
+    const examplesIndex = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../examples/EXAMPLES_INDEX.md"), "utf8");
     assert.match(scenarioPrompt, /仓库预览/);
     assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
     assert.match(scenarioPrompt, /实际执行时，以.*项目.*文件为准/);
     assert.match(scenarioPrompt, /不复制完整模板和操作符名单/);
     // README 是 Skill 查找固定版本安装脚本的入口，版本须与当前运行时一致。
-    const readme = fs.readFileSync(path.resolve(import.meta.dirname, "../README.md"), "utf8");
-    const skill = fs.readFileSync(path.resolve(import.meta.dirname, "../skills/scenario-test/SKILL.md"), "utf8");
+    const readme = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../README.md"), "utf8");
+    const skill = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills/scenario-test/SKILL.md"), "utf8");
     const quickInstall = readme.match(/^## 快速接入\s*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/m)?.[0] ?? "";
     assert.ok(quickInstall, "README 缺少 Skill 快速接入章节");
     assert.match(readme, /npx skills add duyiliu\/scenario-test#v[\d.]+ --skill scenario-test -g/);
@@ -147,8 +148,8 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
 
     // 一键安装脚本锁定免 npm 单一路径：按固定 GitHub Tag 经 jsDelivr 下载发布版 dist/
     // 四个运行时文件后初始化；npm 已不再是分发渠道，脚本不得再出现 npm 安装分支。
-    const installSh = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.sh"), "utf8");
-    const installPs1 = fs.readFileSync(path.resolve(import.meta.dirname, "../scripts/install.ps1"), "utf8");
+    const installSh = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../scripts/install.sh"), "utf8");
+    const installPs1 = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../scripts/install.ps1"), "utf8");
     for (const script of [installSh, installPs1]) {
         assert.match(script, /scenario-test-cli\.cjs/);
         assert.match(script, /cdn\.jsdelivr\.net\/gh\/duyiliu\/scenario-test@v/, "默认下载源应固定到 GitHub Tag 的 jsDelivr dist");

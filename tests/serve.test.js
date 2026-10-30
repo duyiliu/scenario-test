@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import http from "node:http";
 import https from "node:https";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "src/cli.js");
 
 // openssl 能力探测：仅用于可选的 https 端到端转发用例
@@ -362,7 +363,8 @@ test("serve：https 上游端到端转发（需 openssl，自签证书容忍）"
         }));`, "utf8");
 
         const servePort = await freePort();
-        const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort)], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+        // #119：默认校验上游证书，自签环境需显式 --insecure
+        const child = spawn(process.execPath, [cli, "serve", "--config", path.join(dir, "scenario.config.js"), "--port", String(servePort), "--insecure"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
         try {
             await waitForOutput(child, "场景测试工作台");
             const response = await fetch(`http://127.0.0.1:${servePort}/api/tls-check`);

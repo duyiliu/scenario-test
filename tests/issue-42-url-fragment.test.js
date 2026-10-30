@@ -108,7 +108,9 @@ test("#42 绝对/协议相对 URL：引擎与 cURL 默认都不注入环境 glob
             { method: "GET", path, params: { a: 1 } },
             { baseUrl: "http://api.example.com", vars: { g: "v" }, globals }
         );
-        const expected = `${path.slice(0, path.indexOf("#"))}?a=1${path.slice(path.indexOf("#"))}`;
+        // #121：协议相对 URL 在引擎里按 baseUrl 协议补全，cURL 与引擎同口径
+        const scheme = path.startsWith("//") ? "http:" : "";
+        const expected = `${scheme}${path.slice(0, path.indexOf("#"))}?a=1${path.slice(path.indexOf("#"))}`;
         assert.equal(seen[0], expected);
         assert.equal(curl, `curl -X GET '${seen[0]}'`);
         assert.ok(!curl.includes("X-Global"), "绝对 URL 不应注入全局 header");

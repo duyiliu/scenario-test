@@ -199,7 +199,7 @@ test("maxElapsedMs 约束在途 HTTP 请求：超过总时限后才返回的成�
     assert.equal(steps.length, 1);
 });
 
-test("未声明 retryOn 时在途慢请求保持旧行为：超过 maxElapsedMs 的成功响应仍 PASS", async () => {
+test("#121 未声明 retryOn 时 maxElapsedMs 也是硬时限：在途慢请求超时后按 TIMEOUT 结束", async () => {
     let calls = 0;
     const engine = createEngine({
         baseUrl: "https://mock.local",
@@ -210,19 +210,20 @@ test("未声明 retryOn 时在途慢请求保持旧行为：超过 maxElapsedMs 
         }
     });
     const report = await engine.runScenario(defineScenario({
-        name: "默认兼容在途慢请求",
+        name: "默认重试在途慢请求",
         steps: [retryStep({ maxAttempts: 3, intervalMs: 100, maxElapsedMs: 50 }, { timeoutMs: 1000 })]
     }));
     const result = report.results[0];
 
-    // 旧实现只在尝试之间检查总时限，未显式启用 error/timeout 时不能中断在途请求
-    assert.equal(report.status, "PASSED");
-    assert.equal(result.status, 200);
-    assert.equal(result.passed, true);
+    // maxElapsedMs 是总时限（契约 note 同口径），默认 assertion 重试同样中断在途请求
+    assert.equal(report.passed, false);
+    assert.equal(result.status, "TIMEOUT");
+    assert.equal(result.timedOut, true);
+    assert.match(result.error, /重试超时/);
     assert.equal(calls, 1);
 });
 
-test("未声明 retryOn 时 maxElapsedMs 边界保持旧行为：恰好等于仍发起下一次尝试", async () => {
+test("#121 未声明 retryOn 时总时限边界用 >=：恰好到 maxElapsedMs 不再发起下一次尝试", async () => {
     const originalPerformance = globalThis.performance;
     let fixedNow = 0;
     globalThis.performance = { now: () => fixedNow };
@@ -244,10 +245,10 @@ test("未声明 retryOn 时 maxElapsedMs 边界保持旧行为：恰好等于仍
             steps: [retryStep({ maxAttempts: 2, intervalMs: 100, maxElapsedMs: 100 })]
         }));
 
-        // 旧实现用 >：下一轮恰好等于 maxElapsedMs 时仍尝试，第二次成功
-        assert.equal(report.status, "PASSED");
-        assert.equal(report.results[0].passed, true);
-        assert.equal(calls, 2);
+        // 到达总时限（=）即按 TIMEOUT 结束，不再多发起一次注定超时的尝试
+        assert.equal(report.results[0].status, "TIMEOUT");
+        assert.match(report.results[0].error, /重试超时/);
+        assert.equal(calls, 1);
     } finally {
         globalThis.performance = originalPerformance;
     }

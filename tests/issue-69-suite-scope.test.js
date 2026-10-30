@@ -4,6 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createEngine, defineScenario } from "../src/index.js";
 
@@ -150,7 +151,7 @@ test("CLI run 在一次 run 内按场景清单顺序共享 extract scope:\"suite
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"login",name:"Login",url:"scenarios/login.js"},{id:"profile",name:"Profile",url:"scenarios/profile.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/login.js"), `ScenarioTest.registerScenario("login",ScenarioTest.defineScenario({name:"Login",steps:[{name:"登录",method:"POST",path:"login",extract:[{name:"loginToken",path:"data.token",scope:"suite"}]}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/profile.js"), `ScenarioTest.registerScenario("profile",ScenarioTest.defineScenario({name:"Profile",steps:[{name:"复用 token",path:"profile",request:{headers:{Authorization:"Bearer {{suite.loginToken}}"}},assertions:[{path:"authorized",equals:true}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -201,7 +202,7 @@ test("CLI --concurrency > 1：每个场景使用启动时 suite 快照，避免�
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"login",name:"Login",url:"scenarios/login.js"},{id:"reader",name:"Reader",url:"scenarios/reader.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/login.js"), `ScenarioTest.registerScenario("login",ScenarioTest.defineScenario({name:"Login",steps:[{name:"登录",method:"POST",path:"login",extract:[{name:"loginState",path:"token",scope:"suite"}]}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/reader.js"), `ScenarioTest.registerScenario("reader",ScenarioTest.defineScenario({name:"Reader",steps:[{name:"等待登录完成",path:"hold",status:200},{name:"读取启动快照",path:"check",request:{headers:{"X-Suite-Token":"{{suite.loginState}}"}},assertions:[{path:"token",equals:null}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all", "--concurrency", "2", "--json"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";

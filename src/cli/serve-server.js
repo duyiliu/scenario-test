@@ -53,6 +53,10 @@ export function serveStaticFile(response, filePath) {
             response.writeHead(200, headers);
             stream.pipe(response);
         });
+        // 客户端中断时销毁文件流，避免大文件继续读到尾部（#119）
+        response.on("close", () => {
+            if (!response.writableEnded) stream.destroy();
+        });
         return;
     }
     fs.readFile(filePath, "utf8", function (error, html) {
@@ -79,6 +83,36 @@ export function isAllowedServeHost(hostHeader, port) {
     return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "localhost", "[::1]"].includes(host);
 }
 
+// 代理请求来源校验（#119）：serve 绑定回环地址，跨站页面仍可发起写请求（读响应受 CORS 限制，
+// 但 DELETE/POST 等副作用已经发生）。Origin/Referer 存在时必须指向本机 serve origin；
+// 两者都缺省（curl/脚本/同源 GET）放行；Origin: null（沙箱/file://）一律拒绝。
+export function isProxyOriginAllowed(headers, hostHeader, port) {
+    const localHosts = new Set([
+        String(hostHeader || "").trim().toLowerCase(),
+        `127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`,
+        "127.0.0.1", "localhost", "[::1]"
+    ].filter(Boolean));
+    const check = (raw, label) => {
+        const text = String(raw || "").trim();
+        if (!text || text === "null") return !text;
+        let parsed;
+        try {
+            parsed = new URL(text);
+        } catch {
+            return false;
+        }
+        return localHosts.has(parsed.host.toLowerCase());
+    };
+    const origin = headers.origin;
+    const referer = headers.referer || headers.referrer;
+    // Origin 可能是重定向链的空格分隔列表：任一跨站即拒绝
+    if (origin !== undefined) {
+        return String(origin).split(/\s+/).filter(Boolean).every((item) => check(item, "Origin"));
+    }
+    if (referer !== undefined) return check(referer, "Referer");
+    return true;
+}
+
 // RFC 7230 §6.1：Connection 头点名的字段同样是逐跳的，需随静态名单一并剔除
 export function connectionNamedHeaders(connectionValue) {
     return String(connectionValue || "")
@@ -93,6 +127,10 @@ function trimUrl(url) {
 
 // serve 启动时的默认目标（与 run 的 selectEnvironment 一致：未知环境直接报错）
 export function resolveStartupProxyTarget(config, envKey, baseUrlOverride) {
+    // 显式 --env 但配置没有 envs：不静默回落顶层 baseUrl（与 run 的 --env 同口径）
+    if (envKey && !config.envs?.length) {
+        return { error: `配置未声明 envs，无法使用 --env ${envKey}` };
+    }
     if (config.envs?.length) {
         const selectedKey = envKey || config.defaultEnvKey;
         const environment = config.envs.find((item) => item.key === selectedKey);
@@ -204,6 +242,8 @@ export function proxyRequest(request, response, targetUrl, options = {}) {
     const timeoutMs = Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0
         ? Number(options.timeoutMs)
         : DEFAULT_PROXY_TIMEOUT_MS;
+    // 默认校验上游 https 证书；仅显式 insecure（--insecure）才放宽，避免非自签环境被 MITM
+    const verifyUpstreamCert = options.insecure !== true;
     const transport = proxyTransport(targetUrl);
     if (!transport) {
         respondProxyError(
@@ -220,9 +260,9 @@ export function proxyRequest(request, response, targetUrl, options = {}) {
         upstream = transport.request(targetUrl + request.url, {
             method: request.method,
             headers,
-            // serve 是本地联调代理，内网 https 后端普遍使用自签证书；
-            // 与 vite/webpack-dev-server 的 proxy secure:false 同语义，放宽上游证书校验
-            ...(transport === https ? { rejectUnauthorized: false } : {})
+            // serve 是本地联调代理：内网自签证书需显式 --insecure 才跳过校验，
+            // 默认按 Node 默认策略校验证书（#119）
+            ...(transport === https ? { rejectUnauthorized: verifyUpstreamCert } : {})
         }, (upstreamResponse) => {
             // 响应方向同样剔除 hop-by-hop 头，避免把上游连接语义（transfer-encoding/keep-alive 等）透传给浏览器；
             // Connection 点名的自定义字段同样剔除
@@ -250,6 +290,12 @@ export function proxyRequest(request, response, targetUrl, options = {}) {
     upstream.on("error", () => {
         respondProxyError(response, "Bad Gateway: 无法连接接口代理目标或代理超时");
     });
+    // 客户端中断（关闭页面/取消请求）时必须销毁上游请求：否则持续输出或长轮询会
+    // 一直占用到空闲超时甚至更久（#119）
+    request.on("aborted", () => upstream.destroy());
+    response.on("close", () => {
+        if (!response.writableEnded) upstream.destroy();
+    });
     request.pipe(upstream);
 }
 
@@ -262,7 +308,8 @@ export function createServeServer(options) {
         config,
         defaultTarget,
         overrideBaseUrl = "",
-        proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS
+        proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS,
+        insecure = false
     } = options;
     return http.createServer((request, response) => {
         try {
@@ -291,6 +338,12 @@ export function createServeServer(options) {
                 if (error || !stat.isFile()) {
                     // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
                     if (!defaultTarget?.target) { response.writeHead(404); response.end("Not Found"); return; }
+                    // 跨站页面可向回环地址发起写请求：来源不是本机 serve origin 时直接拒绝
+                    if (!isProxyOriginAllowed(request.headers, request.headers.host, port)) {
+                        response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+                        response.end("Forbidden: 代理只接受本机工作台来源的请求");
+                        return;
+                    }
                     let target;
                     try {
                         target = resolveRequestProxyTarget({
@@ -304,7 +357,7 @@ export function createServeServer(options) {
                         respondProxyError(response, `Bad Gateway: ${targetError.message}`);
                         return;
                     }
-                    proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs });
+                    proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs, insecure });
                     return;
                 }
                 serveStaticFile(response, filePath);

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 // 本文件全部 CLI 子进程默认继承 process.env：剥离宿主 SCENARIO_* 变量，
@@ -27,7 +28,7 @@ test("CLI 从公共 JS 配置执行场景", async () => {
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],vars:{expectedStatus:"UP",token:"config-token"},variables:[{name:"token",env:"SCENARIO_TEST_TOKEN"}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/health.js"), `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",vars:{expectedStatus:"DOWN",token:"scenario-token"},steps:[{name:"healthy",path:"health",status:200,request:{headers:{"X-Token":"{{vars.token}}"}},assertions:[{path:"status",equals:"{{vars.expectedStatus}}"},{path:"token",equals:"cli-token"}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/scenario-test-cli.cjs");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { env: { ...process.env, SCENARIO_TEST_TOKEN: "cli-token" }, stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -59,7 +60,7 @@ test("CLI run 失败输出单列 each 元素级明细行（嵌套递归）", asy
         fs.writeFileSync(path.join(directory, "scenarios/eachfail.js"), `ScenarioTest.registerScenario("eachfail",ScenarioTest.defineScenario({name:"EachFail",steps:[{name:"批量校验",path:"batch",assertions:[{path:"list",each:{path:"items",each:{path:"qty",lte:5}}}]}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/notefail.js"), `ScenarioTest.registerScenario("notefail",ScenarioTest.defineScenario({name:"NoteFail",steps:[{name:"单值校验",path:"batch",assertions:[{path:"note",equals:"ok"}]}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/passall.js"), `ScenarioTest.registerScenario("passall",ScenarioTest.defineScenario({name:"PassAll",steps:[{name:"通过项",path:"batch",assertions:[{path:"list",each:{path:"items",each:{path:"qty",lte:10}}}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -100,7 +101,7 @@ test("CLI run includes 对象实际值失败输出语义化原因（数组/字�
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"includesobj",name:"IncludesObj",url:"scenarios/includesobj.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/includesobj.js"), `ScenarioTest.registerScenario("includesobj",ScenarioTest.defineScenario({name:"IncludesObj",steps:[{name:"包含校验",path:"data",assertions:[{name:"对象包含",path:"obj",includes:{a:1}},{name:"数组包含",path:"list",includes:{a:1}},{name:"字符串包含",path:"text",includes:"a"}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -139,7 +140,7 @@ test("CLI run 失败长值输出行级对齐 diff（hunk 上下文/差异定位/
         // bodyText 与整 body 期望值差异足够大：长值分块 + 字符串首个差异定位
         fs.writeFileSync(path.join(directory, "scenarios/longdiff.js"), `ScenarioTest.registerScenario("longdiff",ScenarioTest.defineScenario({name:"LongDiff",steps:[{name:"长响应体",path:"long",assertions:[{name:"响应原文比对",from:"bodyText",equals:"${"x".repeat(100)}"}]}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/shortdiff.js"), `ScenarioTest.registerScenario("shortdiff",ScenarioTest.defineScenario({name:"ShortDiff",steps:[{name:"短响应体",path:"short",assertions:[{path:"status",equals:"DOWN"}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -198,7 +199,7 @@ test("CLI run 失败步骤输出截断响应体原文（saveResponseAs 提示保
         fs.writeFileSync(path.join(directory, "scenarios/longstep.js"), `ScenarioTest.registerScenario("longstep",ScenarioTest.defineScenario({name:"LongStep",steps:[{name:"超长响应",path:"long",status:200}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/savestep.js"), `ScenarioTest.registerScenario("savestep",ScenarioTest.defineScenario({name:"SaveStep",steps:[{name:"落盘步骤",path:"err",status:200,saveResponseAs:"responses/err.bin"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/passstep.js"), `ScenarioTest.registerScenario("passstep",ScenarioTest.defineScenario({name:"PassStep",steps:[{name:"通过步骤",path:"ok",status:200}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -242,7 +243,7 @@ test("CLI run 重试轮询输出 [RETRY] 进度行（防长时间静默）", asy
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"poll",name:"Poll",url:"scenarios/poll.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/poll.js"), `ScenarioTest.registerScenario("poll",ScenarioTest.defineScenario({name:"Poll",steps:[{name:"轮询任务",path:"job",retryUntil:{maxAttempts:5,intervalMs:120},assertions:[{name:"就绪",path:"ready",equals:true}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -297,7 +298,7 @@ test("CLI run 响应体/路径/断言输出防 CI 命令与 ANSI 注入，SCENAR
         // 适配器返回的 status 字符串/断言名同为服务端可控输出面：[FAIL] 行 status、
         // [RETRY] detail（status + failedAssertion）、断言名逐行折行防注入
         fs.writeFileSync(path.join(directory, "scenarios/retrystep.js"), `ScenarioTest.registerScenario("retrystep",ScenarioTest.defineScenario({name:"RetryStep",steps:[{name:"重试注入",adapter:"biz2",retryUntil:{maxAttempts:2,intervalMs:100},assertions:[{name:"断言\\n::error::name",path:"ok",equals:true}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const run = (env) => new Promise((resolve) => {
             // 隔离宿主 SCENARIO_* 环境变量（SCENARIO_AUTH/GLOBALS/NO_BODY_PRINT 会改变子进程行为）
             const childEnv = { ...process.env };
@@ -349,7 +350,7 @@ test("CLI run 响应体/路径/断言输出防 CI 命令与 ANSI 注入，SCENAR
 
 test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-legacy-"));
-    const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+    const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/scenario-test-cli.cjs");
     try {
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `window.GlobalConfig={envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[{id:"health",url:"scenarios/health.js"}]};`, "utf8");
@@ -368,7 +369,7 @@ test("CLI 拒绝旧 window 全局配置与场景格式", async () => {
 });
 
 test("CLI 拒绝未知参数、缺失参数值和冲突选择", () => {
-    const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+    const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
     for (const args of [
         ["--unknown"],
         ["--config", "--all"],
@@ -382,7 +383,7 @@ test("CLI 拒绝未知参数、缺失参数值和冲突选择", () => {
 });
 
 test("CLI 命令放错位置时给出纠正，而非静默当 run 场景名", () => {
-    const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+    const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
     const result = spawnSync(process.execPath, [cli, "--config", "scenario.config.js", "doctor"], { encoding: "utf8" });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /doctor 必须放在第一个参数位置/);
@@ -406,7 +407,7 @@ test("CLI Overall 统计按计划步骤数计算", async () => {
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"health",name:"Health",url:"scenarios/health.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/health.js"), `ScenarioTest.registerScenario("health",ScenarioTest.defineScenario({name:"Health",steps:[{name:"step1",path:"a"},{name:"step2",path:"b"}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/scenario-test-cli.cjs");
         const result = await new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
             let stdout = "";
@@ -439,7 +440,7 @@ test("CLI SCENARIO_GLOBALS 环境变量注入全局参数", async () => {
         fs.mkdirSync(path.join(directory, "scenarios"));
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],scenarios:[{id:"echo",name:"Echo",url:"scenarios/echo.js"}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/echo.js"), `ScenarioTest.registerScenario("echo",ScenarioTest.defineScenario({name:"Echo",steps:[{name:"echo",path:"api",status:200,assertions:[{path:"header",equals:"cli-trace"},{path:"cookie",includes:"sid=cli-123"},{path:"url",includes:"source=cli"}]}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/scenario-test-cli.cjs");
         const globals = JSON.stringify([
             { type: "header", name: "X-Trace", value: "cli-trace" },
             { type: "cookie", name: "sid", value: "cli-123" },
@@ -466,7 +467,7 @@ test("CLI SCENARIO_GLOBALS 非法 JSON 时报错", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-badglobals-"));
     try {
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = spawnSync(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js")], {
             encoding: "utf8",
             env: { ...process.env, SCENARIO_GLOBALS: "not-json" }
@@ -496,7 +497,7 @@ test("CLI --all 排除 manual 场景，显式 --scenario 可执行，SKIP 输出
         fs.writeFileSync(path.join(directory, "scenarios/auto.js"), `ScenarioTest.registerScenario("auto",ScenarioTest.defineScenario({name:"Auto",steps:[{name:"auto-step",path:"health",status:200}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/manual.js"), `ScenarioTest.registerScenario("manual",ScenarioTest.defineScenario({name:"ManualOnly",steps:[{name:"manual-step",path:"health",status:200}]}));`, "utf8");
         fs.writeFileSync(path.join(directory, "scenarios/skippable.js"), `ScenarioTest.registerScenario("skippable",ScenarioTest.defineScenario({name:"Skippable",steps:[{name:"skip-step",path:"health",status:200,when:{from:"vars",path:"missing",exists:true}}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../dist/scenario-test-cli.cjs");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/scenario-test-cli.cjs");
 
         const run = (extraArgs, env) => new Promise((resolve) => {
             const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), ...extraArgs], { env: { ...process.env, ...(env || {}) }, stdio: ["ignore", "pipe", "pipe"] });
@@ -537,7 +538,7 @@ test("CLI 配置全部为 manual 时 --all 报明确错误", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-allmanual-"));
     try {
         fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1"}],scenarios:[{id:"m1",name:"M1",url:"s1.js",manual:true}]}));`, "utf8");
-        const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
         const result = spawnSync(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { encoding: "utf8" });
         assert.notEqual(result.status, 0);
         assert.match(result.stderr, /全部标记为 manual:true/);
@@ -548,7 +549,7 @@ test("CLI 配置全部为 manual 时 --all 报明确错误", async () => {
 
 // ==================== CLI 黑盒主路径补充（src/cli.js 直跑，覆盖计入统计） ====================
 
-const cliSrc = path.resolve(import.meta.dirname, "../src/cli.js");
+const cliSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
 
 function runCli(args, extraEnv = {}) {
     return new Promise((resolve) => {

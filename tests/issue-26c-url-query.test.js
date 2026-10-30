@@ -37,7 +37,8 @@ test("B4：协议相对 URL 同样不注入环境 Authorization/全局 query", a
     });
     await engine.runScenario({ name: "协议相对", steps: [{ name: "外链", path: "//cdn.example.com/x" }] });
     assert.equal(seen.length, 1);
-    assert.equal(seen[0].url, "//cdn.example.com/x");
+    // #121：Node 路径按 baseUrl 协议补全（此前 fetch 会报 Failed to parse URL）
+    assert.equal(seen[0].url, "http://cdn.example.com/x");
     assert.equal(seen[0].headers.Authorization, undefined, "协议相对 URL 不应注入环境授权");
     assert.ok(!seen[0].url.includes("token="), "协议相对 URL 不应注入全局 query");
 });

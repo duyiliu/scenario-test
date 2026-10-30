@@ -21,6 +21,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
         { id: "continue-after-failure", name: "失败后继续执行示例", url: "scenarios/continue-after-failure.js" },
         { id: "slow", name: "取消请求示例", url: "scenarios/slow.js" },
         { id: "cleanup", name: "条件清理示例", url: "scenarios/cleanup.js" },
-        { id: "timeout", name: "超时请求示例", url: "scenarios/timeout.js" }
+        { id: "timeout", name: "超时请求示例", url: "scenarios/timeout.js" },
+        { id: "always-cleanup", name: "失败后仍清理示例", url: "scenarios/always-cleanup.js" }
     ]
 }));

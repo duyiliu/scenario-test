@@ -9,7 +9,7 @@ import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
-import { validatePath } from "./utils/path-validator.js";
+import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveString, SAVED_RESPONSE } from "./core.js";
 import { loadDataset } from "./utils/data-file.js";
 import { writeJUnitReport } from "./utils/junit.js";
@@ -104,7 +104,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, insecure: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -288,6 +288,11 @@ ${optionHelp}
 
 function writeProjectFile(projectRoot, relativePath, content, force) {
     const target = path.resolve(projectRoot, relativePath);
+    // 词法边界管不住 junction/符号链接：预置 scenario-test 指向项目外时，
+    // 写入会跟随链接落到界外（--force 甚至覆盖外部文件）
+    if (!isRealPathWithinRoot(projectRoot, target)) {
+        throw new Error(`拒绝写入项目外路径（经链接/联接点越界）: ${relativePath}`);
+    }
     if (fs.existsSync(target) && !force) return false;
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content, "utf8");
@@ -298,8 +303,14 @@ function resolveInitDirectory(projectRoot, value) {
     const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
     const target = path.resolve(projectRoot, directory);
     const relative = path.relative(projectRoot, target);
-    if (!directory || path.isAbsolute(directory) || relative.startsWith("..") || path.isAbsolute(relative)) {
-        throw new Error("--dir 必须是项目内的相对目录");
+    // 归一化后落到项目根（--dir "sub/.."、--dir "."）会直接把工作台文件铺到项目根，
+    // --force 时覆盖项目原有文件；相对路径为空同样拒绝
+    if (!directory || !relative || path.isAbsolute(directory) || relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error("--dir 必须是项目内的相对目录（不能是项目根本身）");
+    }
+    // 真实路径校验：目录本身或其祖先若是指向项目外的 junction/符号链接，写入会越界
+    if (!isRealPathWithinRoot(projectRoot, target)) {
+        throw new Error(`--dir 经链接/联接点越界，拒绝写入项目外: ${directory}`);
     }
     return directory;
 }
@@ -432,6 +443,10 @@ async function initCommand(args) {
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
     const frameworkDirectory = ".scenario-test";
+    // 目标目录内的 .scenario-test 也可能是预置跳转链接：运行时副本写入前先做真实路径校验
+    if (!isRealPathWithinRoot(projectRoot, path.join(projectRoot, directory, frameworkDirectory))) {
+        throw new Error(`目标目录中的 ${frameworkDirectory} 经链接/联接点越界，拒绝写入项目外`);
+    }
     // 目标目录已存在且未显式 --force 时，由用户选择覆盖方式；
     // --no-input 或非交互环境（CI、脚本、管道）自动采用默认保留行为，避免卡住
     let force = args.force;
@@ -543,7 +558,16 @@ async function transformScenario(scenario, context, plugins) {
 }
 
 function selectEnvironment(config, key) {
-    if (!config.envs.length) return { key: "default", name: "默认", baseUrl: config.baseUrl || "" };
+    if (!config.envs.length) {
+        // 显式 --env 但配置没有 envs：不能静默回落顶层 baseUrl（可能直接打错目标）
+        if (key) {
+            throw new CliUsageError(
+                `配置未声明 envs，无法使用 --env ${key}`,
+                "请先在配置中声明 envs 与对应环境 key，或去掉 --env 参数。"
+            );
+        }
+        return { key: "default", name: "默认", baseUrl: config.baseUrl || "" };
+    }
     const selectedKey = key || config.defaultEnvKey;
     const environment = config.envs.find((item) => item.key === selectedKey);
     if (!environment) {
@@ -715,6 +739,13 @@ async function runCommand(args) {
     };
     const reportSummary = (report) =>
         `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`;
+    // 数据驱动执行时给报告打数据行标记：JUnit/JSON 需要区分同一场景的不同数据行
+    const markDataRow = (report, entry, rowIndex, datasetEnabled) => {
+        if (!datasetEnabled || !report) return report;
+        report.dataRow = rowIndex + 1;
+        report.scenarioId = `${entry.id}#row-${rowIndex + 1}`;
+        return report;
+    };
     // 单场景执行抽成可复用单元：并发模式下 entryPrint 指向场景私有缓冲，
     // 场景结束时一次性 flush，避免多个场景的 [PASS]/[FAIL]/[RETRY] 行交错。
     // 顺序模式下 entryPrint 就是全局 print，行为与历史串行输出完全一致。
@@ -779,7 +810,8 @@ async function runCommand(args) {
                         if (!item) continue;
                         if (!Array.isArray(item.assertions) || item.index === undefined) {
                             // shape 失败明细：{ path, expected, actual }
-                            print(`      ↳ ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+                            // 必须走场景私有 entryPrint：并发输出时明细不能插到其他场景块
+                            entryPrint(`      ↳ ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
                             continue;
                         }
                         const label = `${prefix}${item.path !== undefined && item.path !== null && item.path !== ""
@@ -854,6 +886,7 @@ async function runCommand(args) {
                     continue;
                 }
                 const report = await runEntry(entries[index], print);
+                markDataRow(report, entries[index], rowIndex, dataset);
                 // JSON 输出按配置清单顺序收集，而非完成顺序
                 rowReports[index] = report;
                 reports.push(report);
@@ -882,6 +915,7 @@ async function runCommand(args) {
                     const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
                     try {
                         const report = await runEntry(entries[index], bufferedPrint);
+                        markDataRow(report, entries[index], rowIndex, dataset);
                         rowReports[index] = report;
                         accumulateReport(report);
                         bufferedPrint(reportSummary(report));
@@ -1035,7 +1069,9 @@ async function serveCommand(args) {
         defaultTarget: startup,
         // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
         overrideBaseUrl: args.baseUrl || "",
-        proxyTimeoutMs: args.proxyTimeout ?? undefined
+        proxyTimeoutMs: args.proxyTimeout ?? undefined,
+        // 默认校验上游 https 证书；只有显式 --insecure 才放宽（自签联调环境）
+        insecure: args.insecure === true
     });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
@@ -1053,6 +1089,7 @@ async function serveCommand(args) {
         if (startup.target) {
             console.log(`接口代理: ${startup.key} -> ${startup.target}`);
             console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
+            if (args.insecure === true) console.log("接口代理: 已跳过上游 https 证书校验（--insecure）");
         }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
     });

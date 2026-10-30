@@ -72,6 +72,7 @@ export function buildCapabilities(inputContract = contract) {
         scenario: {
             keys: [...scenario.keys],
             stepKeys: [...scenario.stepKeys],
+            requestKeys: [...(scenario.requestKeys || [])],
             failurePolicies: [...scenario.failurePolicies],
             retryUntilKeys: [...(scenario.retryUntilKeys || [])],
             ...(scenario.note ? { note: scenario.note } : {})
@@ -149,6 +150,7 @@ export function renderCapabilitiesText(capabilities) {
     lines.push(`  manual（${capabilities.config.manual.type}）: ${capabilities.config.manual.note}`);
     lines.push("");
     lines.push(`场景结构: ${capabilities.scenario.keys.join(" / ")}；步骤字段: ${capabilities.scenario.stepKeys.join(" / ")}`);
+    lines.push(`request 字段: ${capabilities.scenario.requestKeys.join(" / ")}`);
     lines.push(`failurePolicy: ${capabilities.scenario.failurePolicies.join(" / ")}`);
     if (capabilities.retryUntil) {
         lines.push(`retryUntil 字段: ${capabilities.retryUntil.keys.join(" / ")}；retryOn: ${capabilities.retryUntil.retryOn.join(" / ")}（默认 ${capabilities.retryUntil.defaultRetryOn.join(" / ")}）`);

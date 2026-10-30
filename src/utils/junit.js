@@ -99,6 +99,21 @@ export function buildJUnitXml(reports, options = {}) {
         );
     }
 
+    // 未执行场景（--bail / 并发中断）：以 skipped testcase 落盘，避免 CI 报告只看到
+    // 已有用例而完全不知道有场景被跳过
+    for (const skippedEntry of options.notRun || []) {
+        const id = skippedEntry.id || skippedEntry.name || "scenario";
+        const suiteName = skippedEntry.row ? `${id}#row-${skippedEntry.row}` : id;
+        const reason = skippedEntry.reason === "bail" ? "--bail 后未执行" : "未执行";
+        totalTests += 1;
+        totalSkipped += 1;
+        suites.push(
+            `  <testsuite name="${escapeXml(suiteName)}" tests="1" failures="0" skipped="1" time="0.000">\n`
+            + `    <testcase name="${escapeXml(skippedEntry.name || "未执行场景")}" classname="${escapeXml(suiteName)}" time="0.000"><skipped message="${escapeXml(reason)}"/></testcase>\n`
+            + `  </testsuite>`
+        );
+    }
+
     const name = options.name || "scenario-test";
     return `<?xml version="1.0" encoding="UTF-8"?>\n`
         + `<testsuites name="${escapeXml(name)}" tests="${totalTests}" failures="${totalFailures}" skipped="${totalSkipped}" time="${seconds(totalTime)}">\n`

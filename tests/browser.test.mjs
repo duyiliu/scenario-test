@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import net from "node:net";
 import { chromium } from "playwright";
 
-const root = path.resolve(import.meta.dirname, "..");
-const port = 4399;
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// 端口不写死：并发跑多个测试或本机 4399 被占用时自动改用空闲端口；
+// 需要固定端口时用 SCENARIO_TEST_BROWSER_PORT 覆盖
+async function freePort() {
+    return new Promise((resolve, reject) => {
+        const probe = net.createServer();
+        probe.once("error", reject);
+        probe.listen(0, "127.0.0.1", () => {
+            const { port: available } = probe.address();
+            probe.close(() => resolve(available));
+        });
+    });
+}
+
+const port = Number(process.env.SCENARIO_TEST_BROWSER_PORT) || await freePort();
 const artifacts = path.join(root, "test-results");
 fs.mkdirSync(artifacts, { recursive: true });
 
@@ -34,7 +50,10 @@ async function waitForServer() {
 let browser;
 try {
     await waitForServer();
-    browser = await chromium.launch({ channel: "chrome", headless: true });
+    // 默认用 Playwright 内置 chromium（CI 只装 chromium 也能跑）；需要系统 Chrome 时用
+    // SCENARIO_TEST_BROWSER_CHANNEL=chrome 显式指定
+    const browserChannel = process.env.SCENARIO_TEST_BROWSER_CHANNEL || "";
+    browser = await chromium.launch({ ...(browserChannel ? { channel: browserChannel } : {}), headless: true });
     // 仅桌面视口：工作台面向桌面浏览器，无移动端使用场景（2026-10-09 决策移除 mobile 视口）
     for (const viewport of [{ width: 1440, height: 900, name: "desktop" }]) {
         const page = await browser.newPage({ viewport });
@@ -60,7 +79,7 @@ try {
             if (!url.startsWith(`http://127.0.0.1:${port}`) && !url.startsWith("https://mock.local")) externalRequests.push(url);
         });
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 5);
+        await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 6);
         assert.equal(await page.locator("#stepsList li").count(), 1);
         assert.equal(await page.locator("[data-copy-step]").count(), 1, "待执行步骤应提供复制按钮");
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
@@ -343,6 +362,21 @@ try {
         assert.equal(await progressBar.getAttribute("aria-valuenow"), "3");
         assert.equal(await progressBar.getAttribute("aria-valuemax"), "3");
         await page.screenshot({ path: path.join(artifacts, `${viewport.name}-failure-diagnosis.png`), fullPage: true });
+
+        // #116：失败后仍执行 always:true 清理步骤，其余步骤记 SKIPPED（与 CLI 引擎同口径）
+        await page.locator('[data-scenario-file="scenarios/always-cleanup.js"]').click();
+        await page.waitForFunction(() => document.querySelector("#scenarioTitle").textContent.includes("失败后仍清理"));
+        const cleanupRequestsBefore = recordsRequests.length;
+        await page.locator("#runBtn").click();
+        await page.waitForFunction(() => !document.querySelector("#runBtn").disabled);
+        assert.equal(await page.locator("#stepsList li").count(), 3);
+        assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1, "首步失败应记录失败");
+        assert.equal(await page.locator('#stepsList li[data-step-idx="2"][data-passed="true"]').count(), 1, "always 清理步骤应执行并通过");
+        assert.equal(await page.locator('#stepsList li[data-skipped="true"]').count(), 1, "stop 后非 always 步骤应记为 SKIPPED");
+        const cleanupRequests = recordsRequests.slice(cleanupRequestsBefore);
+        assert.equal(cleanupRequests.length, 2, `应只发出失败步骤与 always 清理请求: ${cleanupRequests.join(", ")}`);
+        assert.ok(cleanupRequests.some((url) => url.includes("records/create")), "失败步骤请求应发出");
+        assert.ok(!cleanupRequests.some((url) => url.includes("records/should-not-run")), "stop 后非 always 步骤不应发请求");
 
         await page.locator('[data-scenario-file="scenarios/health.js"]').click();
         await page.locator("#runBtn").click();

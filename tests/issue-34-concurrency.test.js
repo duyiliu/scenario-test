@@ -4,6 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 // 与其它 CLI 测试一致：隔离宿主 SCENARIO_* 变量，避免改变被测子进程行为
@@ -11,7 +12,7 @@ for (const key of Object.keys(process.env)) {
     if (key.toUpperCase().startsWith("SCENARIO_")) delete process.env[key];
 }
 
-const cli = path.resolve(import.meta.dirname, "../src/cli.js");
+const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
 
 function runCli(args, extraEnv = {}) {
     return new Promise((resolve) => {
@@ -87,7 +88,7 @@ function createFixture(directory) {
 
 test("契约 v17：--concurrency 为 number 型 run 选项并投射到 --help", async () => {
     const { contract, CONTRACT_VERSION } = await import("../src/contract.js");
-    assert.equal(CONTRACT_VERSION, 17);
+    assert.ok(CONTRACT_VERSION >= 17, "该能力自 contract v17 起可用，后续版本继续保留");
     assert.equal(contract.cli.options.concurrency.kind, "value");
     assert.equal(contract.cli.options.concurrency.parse, "number");
     assert.match(contract.cli.options.concurrency.description, /默认 1/);

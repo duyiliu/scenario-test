@@ -99,7 +99,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
 >
 > 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
 >
-> 为便于内网联调，https 上游沿用本地开发代理的 `rejectUnauthorized: false`（不校验自签证书），不要将 serve 暴露到本机回环之外。
+> **安全默认值**：`serve` 默认校验 https 上游证书；内网自签证书联调时显式加 `--insecure` 才跳过校验。代理仅接受与本机 serve 同源的浏览器请求（`Origin`/`Referer` 不匹配返回 403），且不要将 serve 暴露到本机回环之外。
 
 #### 界面预览
 

@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [20, 22]
+        node: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,11 +21,35 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # 构建链要求 Node 20+（Tailwind CSS 4 的 oxide）；Node 18 只验证 src/ 的运行时兼容性
       - run: npm run build
+        if: matrix.node != 18
+      # dist/ 已提交且按 Tag 分发：构建必须无差异，防止 stale dist 通过 CI
+      - name: dist 新鲜度
+        if: matrix.node != 18
+        shell: bash
+        run: |
+          git diff --exit-code -- dist/
+          test -z "$(git status --porcelain dist/)" || { git status --porcelain dist/; exit 1; }
       - run: npm run test:unit
       - name: 行尾审计
         shell: bash
         run: npm run check:eol
+
+  types:
+    name: d.ts 类型自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # 发布物 d.ts 必须可编译（#110/#124：重复成员曾让 TS 消费方直接报错）
+      - run: npx tsc --noEmit --strict --target es2020 --module esnext --moduleResolution bundler --lib es2020,dom dist/scenario-test.d.ts
+      - run: node --test tests/dts.test.js
 
   coverage:
     name: coverage (src/)
@@ -51,6 +75,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # 只装 chromium（浏览器测试默认走 Playwright 内置 chromium，不依赖系统 Chrome）
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npm run test:ui-style

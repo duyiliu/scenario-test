@@ -4,11 +4,12 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import * as ScenarioTest from "../src/node.js";
 import { createCurlDraft, createHarDraft, tokenizeCurl } from "../src/import.js";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "src/cli.js");
 
 function runCli(args, options = {}) {
