@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { randomUuid } from "../src/core.js";
 
 // Issue #124：test/ci 补强——Node 18 兼容、d.ts 自编译（见 dts.test.js）、dist 新鲜度
 // （CI 步骤）、浏览器测试端口/channel 可配置
@@ -30,6 +31,19 @@ test("#124：Node 18 运行时兼容——src 不使用 import.meta.dirname（20
         .filter((file) => file !== selfPath && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
         .map((file) => path.relative(root, file));
     assert.deepEqual(testOffenders, [], `Node 18 测试不支持 import.meta.dirname: ${testOffenders.join(", ")}`);
+});
+
+test("#124：Node 18 无全局 crypto 时 UUID 仍可用（v4 格式）", () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+    try {
+        const uuid = randomUuid();
+        assert.match(uuid, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        assert.notEqual(randomUuid(), uuid);
+    } finally {
+        if (original) Object.defineProperty(globalThis, "crypto", original);
+        else delete globalThis.crypto;
+    }
 });
 
 test("#124：浏览器测试端口不写死、默认用 Playwright 内置 chromium", () => {

@@ -1476,20 +1476,20 @@ export function normalizeEnumDefinition(definition) {
     return { values, weights: normalized };
 }
 
-// UUID v4：Node 18 的 globalThis.crypto 有 getRandomValues 但还没有 randomUUID
-// （randomUUID 仅 node:crypto 导出）；用 getRandomValues 按 RFC 4122 手工组装，
-// 保持浏览器 / Node 18+ 同一降级链，避免 generatedVars uuid 在 Node 18 直接抛错
+// UUID v4：Node 18 的 globalThis.crypto 可能整体缺失（webcrypto 全局需要更新版本或
+// --experimental-global-webcrypto），且没有 randomUUID；这里按 RFC 4122 手工组装，
+// 随机源优先 randomUUID → getRandomValues → Math.random。
+// Math.random 兜底只服务于测试造数/运行标识（非安全用途），保证 Node 18 不直接抛错。
 export function randomUuid() {
     const crypto = globalThis.crypto;
     if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
-    if (typeof crypto?.getRandomValues === "function") {
-        const bytes = crypto.getRandomValues(new Uint8Array(16));
-        bytes[6] = (bytes[6] & 0x0f) | 0x40;
-        bytes[8] = (bytes[8] & 0x3f) | 0x80;
-        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-    }
-    throw new Error("当前环境不支持 crypto.randomUUID/getRandomValues");
+    const bytes = typeof crypto?.getRandomValues === "function"
+        ? crypto.getRandomValues(new Uint8Array(16))
+        : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function defaultUuidHex() {
