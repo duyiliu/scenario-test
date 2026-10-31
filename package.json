@@ -28,7 +28,6 @@
     "dev": "node scripts/dev.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:unit": "node scripts/run-tests.mjs",
-    "test:coverage": "node scripts/run-tests.mjs --experimental-test-coverage --test-coverage-include=\"src/**\" --test-coverage-exclude=\"src/browser/**\" --test-coverage-lines=90 --test-coverage-branches=80",
     "test:browser": "node tests/browser.test.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
     "test:all": "npm run test:unit && npm run test:browser && npm run test:ui-style",

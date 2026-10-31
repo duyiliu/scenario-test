@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 
+## [Unreleased]
+
+### 维护
+
+- **移除覆盖率门禁**：下线 `npm run test:coverage` 脚本、CI `coverage` job、README / AGENTS.md / docs/RELEASING.md 中相关命令说明，以及 `.gitignore` 的 `coverage/` 条目。`tests/engineering.test.js` 改为负向断言，防止覆盖率门禁回潮。单测/浏览器/视觉回归/行尾审计与 dist 新鲜度检查保持不变。
+
 ## [0.11.1] - 2026-10-31
 
 ### 修复

@@ -339,12 +339,11 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 npm install
 npm run build
 npm run test:unit        # 单测/集成（tests/*.test.js）
-npm run test:coverage    # 仅 src/ 口径，line 90 / branch 80
 npm run test:browser     # Playwright 浏览器测试
 npm run check:all        # 构建 + unit + browser + ui-style + 行尾审计
 ```
 
-CI 在 GitHub Actions 上覆盖 Node 20/22 × Ubuntu/Windows 的构建与单测、覆盖率、浏览器测试、视觉回归和行尾审计，见 `.github/workflows/ci.yml`。
+CI 在 GitHub Actions 上覆盖 Node 18/20/22 × Ubuntu/Windows 的单测矩阵、构建与类型自检、浏览器测试、视觉回归和行尾审计，见 `.github/workflows/ci.yml`。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 

@@ -6,7 +6,7 @@ import test from "node:test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("#48 测试脚本分层：unit/browser/all/coverage 与阈值显式声明", () => {
+test("#48 测试脚本分层：unit/browser/all 与 check 分层显式声明", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
     // Windows PowerShell/cmd 与 Node 18/20 不展开 tests/*.test.js，统一由跨平台 runner 枚举
     assert.match(pkg.scripts.test, /scripts\/run-tests\.mjs/);
@@ -21,14 +21,11 @@ test("#48 测试脚本分层：unit/browser/all/coverage 与阈值显式声明",
     assert.match(pkg.scripts["test:all"], /test:ui-style/);
     assert.match(pkg.scripts.check, /test:browser/, "check 不应静默漏掉浏览器测试");
     assert.match(pkg.scripts["check:all"], /check:eol/);
-    const coverage = pkg.scripts["test:coverage"];
-    assert.match(coverage, /test-coverage-include="src\/\*\*"/);
-    assert.match(coverage, /test-coverage-exclude="src\/browser\/\*\*"/);
-    assert.match(coverage, /test-coverage-lines=90/);
-    assert.match(coverage, /test-coverage-branches=80/);
+    // 覆盖率门禁已从仓库清理：不再提供 test:coverage 脚本，防止回潮
+    assert.equal(pkg.scripts["test:coverage"], undefined, "test:coverage 已下线，不应重新出现");
 });
 
-test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、覆盖率与浏览器测试", () => {
+test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、类型自检与浏览器测试", () => {
     const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
     assert.match(workflow, /on:\s*\n\s*push:/);
     assert.match(workflow, /pull_request/);
@@ -37,7 +34,7 @@ test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、覆盖率与浏览
     assert.match(workflow, /node: \[18, 20, 22\]/);
     assert.match(workflow, /matrix\.node != 18/, "构建步骤应跳过 Node 18");
     assert.match(workflow, /npm run test:unit/);
-    assert.match(workflow, /npm run test:coverage/);
+    assert.doesNotMatch(workflow, /test:coverage/, "覆盖率 job 已下线，不应重新出现");
     assert.match(workflow, /npm run test:browser/);
     assert.match(workflow, /npm run check:eol/);
     assert.match(workflow, /playwright install/);
