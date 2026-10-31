@@ -16,7 +16,6 @@
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
 npm test               # 单元/集成测试（node --test tests/*.test.js，与 test:unit 等价）
-npm run test:coverage  # 仅统计 src/（排除 dist/tests/scripts/browser），line 90 / branch 80 阈值
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
 npm run test:ui-style  # 工作台视觉回归（Playwright）
 npm run test:all       # unit + browser + ui-style

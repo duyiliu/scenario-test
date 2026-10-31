@@ -1,7 +1,6 @@
 node_modules/
 dist/*.map
 dist/**/*.map
-coverage/
 test-results/
 playwright-report/
 examples/**/downloads/

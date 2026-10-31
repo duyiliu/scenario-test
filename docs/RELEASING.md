@@ -26,7 +26,6 @@ Registry 上的存量 `@yc_yzkj/scenario-test` 停留在旧版本，不为新版
 
    ```powershell
    npm run check:all
-   npm run test:coverage
    node --test tests/skill-runtime.test.js
    npm audit   # 期望 0 vulnerabilities；运行时依赖链上不允许遗留，devDependencies 链上遗留需在 issue 中登记
    ```
