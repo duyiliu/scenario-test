@@ -312,10 +312,11 @@ function chooseAdapter(step, adapters) {
     return null;
 }
 
-// 无适配器命中时，步骤至少要声明一个 HTTP 执行字段；否则 executeHttp 会用空
+// 无适配器命中时，步骤至少要声明一个会发起 HTTP 的字段；否则 executeHttp 会用空
 // path 请求 baseUrl 根路径，根路径返回 2xx 就 PASSED——适配器名/插件加载拼错会
-// 变成假绿（#115）。
-const HTTP_EXECUTION_KEYS = ["method", "path", "params", "request", "status", "timeoutMs", "saveResponseAs"];
+// 变成假绿（#115）。status/timeoutMs/saveResponseAs 不产生请求，不计入执行字段：
+// 只写 status: 200 的步骤同样没有可验证的目标，必须显式报错而非打根路径。
+const HTTP_EXECUTION_KEYS = ["method", "path", "params", "request"];
 
 // 读取响应体并支持中途取消：fetch 的 signal abort 是否传播给 body 流随实现而异，
 // 这里显式监听 signal，保证"读体"阶段同样受超时/取消控制。

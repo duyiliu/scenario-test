@@ -2,7 +2,7 @@
 name: scenario-test
 description: 为当前业务项目接入、设计、维护、诊断或执行 scenario-test HTTP 业务场景测试。用户提到为某个业务功能、Controller、接口链路生成场景测试，或操作 scenario-test 时使用；普通单元测试、代码审查和无关 E2E 测试不要触发。
 metadata:
-  version: "0.12.0"
+  version: "0.12.1"
 ---
 
 # scenario-test：全局入口，多业务项目独立使用

@@ -22,6 +22,27 @@ test("#115：无适配器命中且无 HTTP 字段的步骤报错，不再静默 
     assert.deepEqual(requests, [], "不应发出任何 HTTP 请求");
 });
 
+// 回归（0.12.1）：HTTP_EXECUTION_KEYS 曾把 status/timeoutMs/saveResponseAs 也算作
+// 执行字段，只写 status 的步骤会绕过守卫、照样 GET baseUrl 根路径并假绿。
+test("#115：只声明 status/timeoutMs 等非请求字段的步骤同样报错，不打根路径", async () => {
+    const requests = [];
+    for (const step of [
+        { name: "只有状态断言", status: 200 },
+        { name: "只有超时", timeoutMs: 5000 },
+        { name: "只有落盘", saveResponseAs: "out.json" }
+    ]) {
+        const scenario = defineScenario({ name: `病态步骤 ${step.name}`, steps: [step] });
+        const report = await createEngine({
+            baseUrl: "https://mock.local",
+            fetch: async (url) => { requests.push(String(url)); return new Response("{}", { status: 200 }); }
+        }).runScenario(scenario);
+        assert.equal(report.passed, false, step.name);
+        assert.equal(report.results[0].status, "ERROR", step.name);
+        assert.match(report.results[0].error, /未匹配任何适配器/, step.name);
+    }
+    assert.deepEqual(requests, [], "不应发出任何 HTTP 请求");
+});
+
 test("#115：匹配到适配器时私有键仍正常交给适配器", async () => {
     clearAdapters();
     const executed = [];

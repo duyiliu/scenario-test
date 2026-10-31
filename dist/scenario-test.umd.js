@@ -1,4 +1,4 @@
-/*! scenario-test v0.12.0 */
+/*! scenario-test v0.12.1 */
 var ScenarioTest = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -344,7 +344,7 @@ var ScenarioTest = (() => {
   var import_blueimp_md5 = __toESM(require_md5(), 1);
 
   // src/version.generated.js
-  var VERSION = "0.12.0";
+  var VERSION = "0.12.1";
 
   // src/contract.js
   var CONTRACT_VERSION = 18;
@@ -2777,7 +2777,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     }
     return null;
   }
-  var HTTP_EXECUTION_KEYS = ["method", "path", "params", "request", "status", "timeoutMs", "saveResponseAs"];
+  var HTTP_EXECUTION_KEYS = ["method", "path", "params", "request"];
   function readBodyChunks(response, signal, maxBytes = 0) {
     if (signal?.aborted) return Promise.reject(abortReason(signal));
     if (!response.body) return Promise.resolve([]);

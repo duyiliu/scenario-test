@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.12.1] - 2026-10-31
+
+### 修复
+
+- **#115 守卫补全**：`HTTP_EXECUTION_KEYS` 收窄为 `method`/`path`/`params`/`request`（原先包含 `status`/`timeoutMs`/`saveResponseAs`）。只声明 `status: 200` 等非请求字段的步骤此前会绕过守卫、照样请求 `baseUrl` 根路径并可能假绿，现在与缺少 HTTP 字段的步骤一样按步骤 ERROR 处理。病态写法（无 path 的步骤）从"假绿"变为明确报错。
+- **CHANGELOG 精确化**：#117 条目补充说明 HAR 与 cURL 对非法方法/头名的不同处置（前者计入 `filteredInvalid` 跳过，后者直接报错），避免误解为一律过滤。
+
 ## [0.12.0] - 2026-10-31
 
 ### 文档
@@ -41,7 +48,7 @@ All notable changes to this project will be documented in this file.
 - **#114 配置校验**：`envs`/`scenarios` 非数组、场景清单项未知键（含 `file`/`path` 兼容）、无 `envs` 时显式 `--env` 均在定义期/启动期报错，不再静默忽略。
 - **#115 适配器守卫**：既未匹配任何适配器、又未声明 HTTP 字段的步骤直接报错（步骤 ERROR），不再发出无 body/无头部的空请求而假通过。
 - **#116 工作台调度**：浏览器工作台补齐 `halted`/`always`/`SKIPPED` 调度，与引擎同形状（失败中断后仍执行 cleanup 步骤）；示例场景新增 `always-cleanup.js`。
-- **#117 导入安全**：HAR/cURL 导入剥离 U+2028/U+2029，HTTP 方法与请求头名按 token 校验，非法条目走 `filteredInvalid`；URL 中的行终止符被百分号编码，避免生成器注入。
+- **#117 导入安全**：HAR/cURL 导入剥离 U+2028/U+2029，HTTP 方法与请求头名按 RFC 7230 token 校验——HAR 中非法方法/头名的条目计入 `filteredInvalid` 并跳过（其余条目照常导入），cURL 导入则直接报错；URL 中的行终止符被百分号编码，避免生成器注入。
 - **#118 初始化路径**：`init --dir` 拒绝归一化到项目根、符号链接越界与 `.scenario-test` 目录越界写入（真实路径校验）。
 - **#119 serve 与 Cookie 安全**：
   - 代理仅接受与本机 serve 同源的请求（`Origin`/`Referer` 校验，跨站 403，`null` 拒绝）；
