@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 新增
+
+- **doctor 弱断言诊断**：场景内没有任何业务断言时给出 `[WARN] weak-assertions`（写操作会额外提示缺少后置状态验证）；写步骤只发请求、由后置查询验证副作用时不误报。仅为提示，不改变 doctor 退出码，也不做结构强制或覆盖率门禁。
+
 ### 维护
 
 - **移除覆盖率门禁**：下线 `npm run test:coverage` 脚本、CI `coverage` job、README / AGENTS.md / docs/RELEASING.md 中相关命令说明，以及 `.gitignore` 的 `coverage/` 条目。`tests/engineering.test.js` 改为负向断言，防止覆盖率门禁回潮。单测/浏览器/视觉回归/行尾审计与 dist 新鲜度检查保持不变。
