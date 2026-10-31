@@ -243,7 +243,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
 | \`index.html\` | 浏览器工作台入口 | 通常不需要 |
-| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后启动 HTTP Server 并打开工作台 | 通常不需要 |
+| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后启动 HTTP Server 并打开工作台。macOS / Linux 用 \`node .scenario-test/scenario-test-cli.cjs serve\`（端口冲突加 \`--port 4301\`） | 通常不需要 |
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
@@ -350,6 +350,8 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 ## 浏览器工作台
 
 双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
+
+macOS / Linux（或不使用双击的 Windows 场景）在项目根目录执行 \`node .scenario-test/scenario-test-cli.cjs serve\`，行为与双击一致；端口默认 4300，被占用时追加 \`--port 4301\` 显式指定。
 
 也可以在项目根目录执行：
 

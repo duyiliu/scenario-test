@@ -3,10 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
-## [Unreleased]
+## [0.12.0] - 2026-10-31
+
+### 文档
+
+- **跨平台启动工作台**：`references/execute.md` 与 init 项目 README 补充 macOS / Linux 的 `node .scenario-test/scenario-test-cli.cjs serve` 启动命令及 `--port` 端口冲突说明（对应已关闭的 PR #109，不新增生成文件、不改 serve 行为）。
 
 ### 新增
 
+- **Skill：场景选择与去重决策**（references/author.md）：对矩阵中每条候选行为显式决策（复用 / 增强 / 新建 / 暂不创建 / 待确认），等价候选一律合并进已有场景、不并存等价场景，总结输出「规则 → 决策」逐条映射；源码已确认的关键规则（状态前置、重复提交、等级冲突等）必须在矩阵中给出决策，不得静默略过。
+- **Skill：待确认前先检索统一异常契约**（references/author.md）：列待确认前须先检索统一响应结构、全局异常处理（含父模块、外部框架与依赖 jar 的约定）及既有场景中已确认的错误响应；确认不到才列待确认，且不为待确认项创建场景，禁止写死猜测的状态码或错误码。
+- **Skill：只读评估路由**（SKILL.md）：用户只要求评估测试设计 / 还有哪些值得补测时，只读分析，不改文件、不初始化、不执行、不产出场景。
 - **doctor 弱断言诊断**：场景内没有任何业务断言时给出 `[WARN] weak-assertions`（写操作会额外提示缺少后置状态验证）；写步骤只发请求、由后置查询验证副作用时不误报。仅为提示，不改变 doctor 退出码，也不做结构强制或覆盖率门禁。
 
 ### 维护

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.11.1 */
+/*! scenario-test v0.12.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -354,7 +354,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.11.1";
+var VERSION = "0.12.0";
 
 // src/contract.js
 var CONTRACT_VERSION = 18;
@@ -4449,7 +4449,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | \u8DEF\u5F84 | \u4F5C\u7528 | \u662F\u5426\u5E94\u4FEE\u6539 |
 | --- | --- | --- |
 | \`index.html\` | \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u5165\u53E3 | \u901A\u5E38\u4E0D\u9700\u8981 |
-| \`start-scenario-test.cmd\` | Windows \u4EBA\u5DE5\u6D4B\u8BD5\u5165\u53E3\uFF1B\u53CC\u51FB\u540E\u542F\u52A8 HTTP Server \u5E76\u6253\u5F00\u5DE5\u4F5C\u53F0 | \u901A\u5E38\u4E0D\u9700\u8981 |
+| \`start-scenario-test.cmd\` | Windows \u4EBA\u5DE5\u6D4B\u8BD5\u5165\u53E3\uFF1B\u53CC\u51FB\u540E\u542F\u52A8 HTTP Server \u5E76\u6253\u5F00\u5DE5\u4F5C\u53F0\u3002macOS / Linux \u7528 \`node .scenario-test/scenario-test-cli.cjs serve\`\uFF08\u7AEF\u53E3\u51B2\u7A81\u52A0 \`--port 4301\`\uFF09 | \u901A\u5E38\u4E0D\u9700\u8981 |
 | \`scenario.config.js\` | \u73AF\u5883\u3001\u6D4B\u8BD5\u53D8\u91CF\u548C\u573A\u666F\u6E05\u5355\uFF1B\u901A\u5E38\u7531 AI \u6309\u7528\u6237\u63D0\u4F9B\u7684\u4FE1\u606F\u7EF4\u62A4 | \u6309\u9700 |
 | \`scenarios/\` | \u6309\u4E1A\u52A1\u529F\u80FD\u5EFA\u5B50\u76EE\u5F55\uFF1B\u76EE\u5F55\u5185\u4E00\u4E2A\u6587\u4EF6\u5BF9\u5E94\u8BE5\u529F\u80FD\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84 | \u7531 AI \u7EF4\u62A4 |
 | \`plugins/\` | \u4EC5\u5F53\u524D\u9879\u76EE\u9700\u8981\u7684\u6587\u4EF6\u3001Excel \u6216\u4E1A\u52A1\u6269\u5C55 | \u6309\u9700\u65B0\u5EFA |
@@ -4556,6 +4556,8 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 ## \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0
 
 \u53CC\u51FB\u672C\u76EE\u5F55\u4E2D\u7684 \`start-scenario-test.cmd\` \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1A\u811A\u672C\u4F7F\u7528\u9879\u76EE\u5185\u8FD0\u884C\u65F6\u526F\u672C\u542F\u52A8\u672C\u5730 HTTP Server\uFF0C\u81EA\u52A8\u6253\u5F00 \`index.html\`\u3002\`serve\` \u4F1A\u5728\u9875\u9762\u4E2D\u542F\u7528\u540C\u6E90\u4EE3\u7406\u6A21\u5F0F\uFF0C\u6D4F\u89C8\u5668\u8BF7\u6C42\u5148\u53D1\u9001\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\uFF0C\u518D\u8F6C\u53D1\u5230\u6240\u9009\u73AF\u5883\u7684 \`baseUrl\`\uFF0C\u65E0\u9700\u540E\u7AEF\u653E\u884C CORS\uFF0C\u4E5F\u65E0\u9700\u624B\u5DE5\u6E05\u7A7A\u6216\u8986\u76D6\u9875\u9762\u5730\u5740\u3002\u4EBA\u5DE5\u6D4B\u8BD5\u7ED3\u675F\u540E\u6309 \`Ctrl+C\` \u505C\u6B62\u670D\u52A1\u3002
+
+macOS / Linux\uFF08\u6216\u4E0D\u4F7F\u7528\u53CC\u51FB\u7684 Windows \u573A\u666F\uFF09\u5728\u9879\u76EE\u6839\u76EE\u5F55\u6267\u884C \`node .scenario-test/scenario-test-cli.cjs serve\`\uFF0C\u884C\u4E3A\u4E0E\u53CC\u51FB\u4E00\u81F4\uFF1B\u7AEF\u53E3\u9ED8\u8BA4 4300\uFF0C\u88AB\u5360\u7528\u65F6\u8FFD\u52A0 \`--port 4301\` \u663E\u5F0F\u6307\u5B9A\u3002
 
 \u4E5F\u53EF\u4EE5\u5728\u9879\u76EE\u6839\u76EE\u5F55\u6267\u884C\uFF1A
 
@@ -4876,6 +4878,42 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+var WRITE_METHODS = /* @__PURE__ */ new Set(["POST", "PUT", "PATCH", "DELETE"]);
+function stepMethodOf(step) {
+  const raw = step.method || step.request && step.request.method || "GET";
+  return String(raw).toUpperCase();
+}
+function isEnvelopeOnlyAssertion(assertion) {
+  if (!assertion || typeof assertion !== "object") return false;
+  if ("status" in assertion) return true;
+  if (assertion.path === "code" && assertion.from === void 0) return true;
+  return false;
+}
+function collectWeakAssertionFindings(scenario) {
+  const findings = [];
+  const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+  const label = scenario.id || scenario.name || "\u672A\u547D\u540D\u573A\u666F";
+  const hasBusinessAssertion = steps.some((step) => (step.assertions || []).some((a) => !isEnvelopeOnlyAssertion(a)));
+  const hasWriteStep = steps.some((step) => WRITE_METHODS.has(stepMethodOf(step)));
+  if (!hasBusinessAssertion) {
+    findings.push({
+      kind: hasWriteStep ? "write-no-postcheck" : "envelope-only",
+      message: hasWriteStep ? `\u573A\u666F ${label} \u7684\u6240\u6709\u6B65\u9AA4\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u4E14\u542B\u5199\u64CD\u4F5C\u5374\u7F3A\u5C11\u540E\u7F6E\u72B6\u6001\u9A8C\u8BC1\uFF08\u67E5\u8BE2\u63A5\u53E3/\u8FD4\u56DE\u4F53\u5B57\u6BB5\uFF09\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C` : `\u573A\u666F ${label} \u7684\u6240\u6709\u6B65\u9AA4\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C`
+    });
+    return findings;
+  }
+  steps.forEach((step, index) => {
+    const assertions = step.assertions || [];
+    const envelopeOnly = assertions.length === 0 || assertions.every((a) => isEnvelopeOnlyAssertion(a));
+    if (envelopeOnly && !WRITE_METHODS.has(stepMethodOf(step))) {
+      findings.push({
+        kind: "envelope-only",
+        message: `\u573A\u666F ${label} \u7684\u53EA\u8BFB\u6B65\u9AA4\u300C${step.name || index + 1}\u300D\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C`
+      });
+    }
+  });
+  return findings;
+}
 function checkConfigBaseUrl(config) {
   const environments = Array.isArray(config.envs) ? config.envs : [];
   const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
@@ -5056,6 +5094,15 @@ function buildDoctorReport(options) {
               message: `\u573A\u666F ${entry.id} \u52A0\u8F7D\u5E76\u6CE8\u518C\u6210\u529F\uFF08${scenarioPath}\uFF09`,
               fix: ""
             });
+            for (const finding of collectWeakAssertionFindings({ ...scenario, id: entry.id })) {
+              checks.push({
+                name: "weak-assertions",
+                status: "WARN",
+                scenarioId: finding.scenarioId,
+                message: finding.message,
+                fix: "\u8865\u5145\u54CD\u5E94\u4F53/\u540E\u7F6E\u67E5\u8BE2\u65AD\u8A00\uFF08\u5982\u67E5\u8BE2\u521B\u5EFA\u7ED3\u679C\u3001\u72B6\u6001\u53D8\u66F4\u540E\u7684\u8BB0\u5F55\uFF09\uFF0C\u4F7F\u65AD\u8A00\u53EF\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C"
+              });
+            }
           }
         } catch (error) {
           listOk = false;

@@ -112,6 +112,8 @@ test("init 创建项目内运行时副本入口，且默认不覆盖项目文件
         assert.doesNotMatch(readme, /npx @yc_yzkj\/scenario-test|npm install -D/);
         assert.match(readme, /AI 负责维护 `scenario\.config\.js` 和 `scenarios\/`/);
         assert.match(readme, /一次只处理一个业务功能/);
+        assert.match(readme, /node \.scenario-test\/scenario-test-cli\.cjs serve/, "README 应给出跨平台 serve 启动命令");
+        assert.match(readme, /--port 4301/, "README 应说明端口冲突时的显式指定");
 
         fs.writeFileSync(configPath, "// 用户配置\n", "utf8");
         const scenarioDir = path.join(publicDir, "scenarios");
