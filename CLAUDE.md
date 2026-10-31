@@ -10,7 +10,7 @@
 
 ## 常用命令
 
-构建链要求 Node.js 20+（Tailwind CSS 4 的 oxide）；业务项目运行时消费仍为 Node.js 18+。
+构建链与运行时消费均要求 Node.js 22+（Tailwind CSS 4 的 oxide 需要 20+，运行时下限已统一到 22：Node 18/20 均已 EOL）。
 
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）

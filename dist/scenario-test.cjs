@@ -1,4 +1,4 @@
-/*! scenario-test v0.12.1 */
+/*! scenario-test v0.13.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -348,16 +348,16 @@ module.exports = __toCommonJS(node_exports);
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.12.1";
+var VERSION = "0.13.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 18;
+var CONTRACT_VERSION = 19;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
   // 运行时要求（与 package.json engines 保持一致，doctor 据此校验 Node 版本）
-  engines: Object.freeze({ node: ">=18" }),
+  engines: Object.freeze({ node: ">=22" }),
   assertions: Object.freeze({
     // 断言对象允许的元数据键（非操作符键）
     metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
@@ -1737,7 +1737,10 @@ function normalizeEnumDefinition(definition) {
 function randomUuid() {
   const crypto = globalThis.crypto;
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
-  const bytes = typeof crypto?.getRandomValues === "function" ? crypto.getRandomValues(new Uint8Array(16)) : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  if (typeof crypto?.getRandomValues !== "function") {
+    throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID/getRandomValues");
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = bytes[6] & 15 | 64;
   bytes[8] = bytes[8] & 63 | 128;
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -3858,7 +3861,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      const blob = await import_node_fs2.default.openAsBlob(absolutePath);
       form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };

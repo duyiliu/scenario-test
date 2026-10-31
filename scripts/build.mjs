@@ -129,7 +129,7 @@ await build({
     outfile: path.join(staging, "scenario-test.cjs"),
     platform: "node",
     format: "cjs",
-    target: ["node18"]
+    target: ["node22"]
 });
 
 await build({
@@ -138,7 +138,7 @@ await build({
     outfile: path.join(staging, "scenario-test-cli.cjs"),
     platform: "node",
     format: "cjs",
-    target: ["node18"],
+    target: ["node22"],
     // CLI 产物作为 npm bin：需要 shebang 才能被 npx/命令行直接执行
     banner: { js: `#!/usr/bin/env node\n/*! scenario-test v${packageInfo.version} */` }
 });

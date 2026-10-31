@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { randomUuid } from "../src/core.js";
 
-// Issue #124：test/ci 补强——Node 18 兼容、d.ts 自编译（见 dts.test.js）、dist 新鲜度
-// （CI 步骤）、浏览器测试端口/channel 可配置
+// Issue #124：test/ci 补强——Node 版本基线、d.ts 自编译（见 dts.test.js）、dist 新鲜度
+// （CI 步骤）、浏览器测试端口/channel 可配置。0.13.0 起下限为 Node 22，原 Node 18
+// 专项（import.meta.dirname / 无 crypto 的 UUID）随兼容代码删除，改为基线断言。
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,26 +21,28 @@ function listFiles(dir, extension) {
     return result;
 }
 
-test("#124：Node 18 运行时兼容——src 不使用 import.meta.dirname（20.11+ 才有）", () => {
+test("#124：Node 基线——engines 下限为 22，src/测试不使用低于 22 的写法", () => {
     const selfPath = fileURLToPath(import.meta.url);
     const offenders = listFiles(path.join(root, "src"), ".js")
         .filter((file) => file !== selfPath && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
         .map((file) => path.relative(root, file));
-    assert.deepEqual(offenders, [], `Node 18 不支持 import.meta.dirname: ${offenders.join(", ")}`);
-    // 测试同样要在 Node 18 下能跑（CI unit 矩阵含 18）
-    const testOffenders = listFiles(path.join(root, "tests"), ".js")
-        .filter((file) => file !== selfPath && fs.readFileSync(file, "utf8").includes("import.meta.dirname"))
-        .map((file) => path.relative(root, file));
-    assert.deepEqual(testOffenders, [], `Node 18 测试不支持 import.meta.dirname: ${testOffenders.join(", ")}`);
+    // import.meta.dirname 自 Node 20.11 可用，22 基线不禁止；此处仅锁定 engines 下限
+    assert.deepEqual(offenders, [], `src 不应依赖低于 engines 下限的 API: ${offenders.join(", ")}`);
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    assert.equal(pkg.engines.node, ">=22", "0.13.0 起运行时下限为 Node 22");
+    const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+    assert.match(workflow, /node: \[22, 24\]/, "CI 矩阵应为 22/24");
 });
 
-test("#124：Node 18 无全局 crypto 时 UUID 仍可用（v4 格式）", () => {
+test("#124：UUID v4 格式与唯一性（randomUuid 降级链只保留 getRandomValues）", () => {
+    const uuid = randomUuid();
+    assert.match(uuid, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.notEqual(randomUuid(), uuid);
+    // 无 crypto 时应明确报错，而不是静默退化到 Math.random
     const original = Object.getOwnPropertyDescriptor(globalThis, "crypto");
     Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
     try {
-        const uuid = randomUuid();
-        assert.match(uuid, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-        assert.notEqual(randomUuid(), uuid);
+        assert.throws(() => randomUuid(), /不支持 crypto\.randomUUID\/getRandomValues/);
     } finally {
         if (original) Object.defineProperty(globalThis, "crypto", original);
         else delete globalThis.crypto;
@@ -56,9 +59,9 @@ test("#124：浏览器测试端口不写死、默认用 Playwright 内置 chromi
     }
 });
 
-test("#124：CI 覆盖 dist 新鲜度、d.ts 自编译与 Node 18", () => {
+test("#124：CI 覆盖 dist 新鲜度、d.ts 自编译与 Node 22/24 矩阵", () => {
     const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
-    assert.match(workflow, /node: \[18, 20, 22\]/);
+    assert.match(workflow, /node: \[22, 24\]/);
     assert.match(workflow, /dist 新鲜度/);
     assert.match(workflow, /git diff --exit-code -- dist\//);
     assert.match(workflow, /tsc --noEmit/);

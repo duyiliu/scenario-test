@@ -12,7 +12,7 @@ import { VERSION } from "./version.generated.js";
 
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
 // v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）
-export const CONTRACT_VERSION = 18;
+export const CONTRACT_VERSION = 19;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -23,7 +23,7 @@ export const contract = Object.freeze({
     runtimeVersion: VERSION,
 
     // 运行时要求（与 package.json engines 保持一致，doctor 据此校验 Node 版本）
-    engines: Object.freeze({ node: ">=18" }),
+    engines: Object.freeze({ node: ">=22" }),
 
     assertions: Object.freeze({
         // 断言对象允许的元数据键（非操作符键）

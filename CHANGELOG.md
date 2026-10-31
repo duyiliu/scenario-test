@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.13.0] - 2026-10-31
+
+### 破坏性变更
+
+- **运行时最低版本提升到 Node.js 22**（`engines: >=22`，`contractVersion` 19）：Node 18 与 20 均已 EOL（分别为 2025-04 与 2026-04），不再接收安全补丁。影响面：
+  - `init` / 安装脚本 / `doctor` 在 Node < 22 上直接拒绝运行（安装脚本校验同步升级）；
+  - 删除为 Node 18 维护的兼容债务：`core.randomUuid` 去掉 `Math.random` 兜底（无 `crypto.randomUUID`/`getRandomValues` 时明确报错，不再静默退化）；`node/io.js` 的 `fs.promises.readFile`/`fs.openAsBlob` 回退分支移除；
+  - 插件 `.js` 文件恢复直接加载（Node 22+ 默认 ESM 探测），不再要求 `.mjs`；
+  - CI 矩阵由 `[18, 20, 22]` 收窄为 `[22, 24]`，unit 作业 6 → 4，全矩阵执行构建与 dist 新鲜度检查。
+- **升级提示**：本机 Node < 22 的团队需先升级 Node（22 LTS 维护至 2027-04，24 已于 2026-10 进入 LTS）；`npm ci` 与安装脚本会在入口处给出明确版本错误。`dist/` 运行时文件在 Node 22+ 上行为不变，无 DSL 或场景文件兼容性影响。
+
+### 修复
+
+- 浏览器测试的进度面板断言改为先等 DOM 终态再断言：步骤完成瞬间的「2 / 3 + 66.7%」重绘中间态曾被单次 `textContent` 快照读成「执行进度 2 / 366.7%」，造成偶发失败（非产品缺陷，测试时序问题）。
+
+### 其他
+
+- esbuild target 由 `node18` 升至 `node22`，产物不再为死版本降级转译。
+
 ## [0.12.1] - 2026-10-31
 
 ### 修复

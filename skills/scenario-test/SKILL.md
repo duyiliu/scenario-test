@@ -2,7 +2,7 @@
 name: scenario-test
 description: 为当前业务项目接入、设计、维护、诊断或执行 scenario-test HTTP 业务场景测试。用户提到为某个业务功能、Controller、接口链路生成场景测试，或操作 scenario-test 时使用；普通单元测试、代码审查和无关 E2E 测试不要触发。
 metadata:
-  version: "0.12.1"
+  version: "0.13.0"
 ---
 
 # scenario-test：全局入口，多业务项目独立使用
@@ -11,7 +11,7 @@ metadata:
 
 ## 路由（先判断意图，再动作）
 
-1. 先执行只读探测（需要 Node.js 18+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。环境检查（`node -v`、目录可写、Skill 运行时完整）只在需要初始化时按 [init.md](references/init.md) 执行；`status=installed` 时不要重复检查或重新初始化。
+1. 先执行只读探测（需要 Node.js 22+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。环境检查（`node -v`、目录可写、Skill 运行时完整）只在需要初始化时按 [init.md](references/init.md) 执行；`status=installed` 时不要重复检查或重新初始化。
 2. `status=installed`：只证明文件存在，**不代表 doctor PASS**。使用脚本返回的 `projectRoot`、`scenarioDir`、`config` 等路径。不同项目不可混用规则/配置；不要自动执行 `init` 或升级。
 3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录使用 Skill 自带的发布版 CLI 初始化（见 [init.md](references/init.md)，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。

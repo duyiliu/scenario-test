@@ -5,8 +5,8 @@
 # 使用方法：
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
-#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.12.1/dist"
-#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.12.1/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.13.0/dist"
+#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.13.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
 # 原理：免 npm 安装 —— 按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/ 运行时文件，
 #       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
@@ -23,7 +23,7 @@ PROJECT_DIR="${1:-.}"
 TARGET_DIR="${2:-scenario-test}"
 SOURCE="${3:-${SCENARIO_TEST_SOURCE:-}}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
-SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.12.1}"
+SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.13.0}"
 DEFAULT_SOURCE="https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${SCENARIO_TEST_VERSION}/dist"
 RUNTIME_FILES=(
     "scenario-test-cli.cjs"
@@ -57,15 +57,15 @@ echo ""
 print_info "检查 Node.js 版本..."
 if ! command -v node &> /dev/null; then
     print_error "Node.js 未安装"
-    print_info "请访问 https://nodejs.org/ 安装 Node.js 18+"
+    print_info "请访问 https://nodejs.org/ 安装 Node.js 22+"
     exit 1
 fi
 
 NODE_VERSION=$(node -v)
 NODE_MAJOR=$(echo "$NODE_VERSION" | sed 's/v\([0-9]*\).*/\1/')
 
-if [ "$NODE_MAJOR" -lt 18 ]; then
-    print_error "需要 Node.js 18+，当前版本：$NODE_VERSION"
+if [ "$NODE_MAJOR" -lt 22 ]; then
+    print_error "需要 Node.js 22+，当前版本：$NODE_VERSION"
     print_info "请访问 https://nodejs.org/ 下载最新 LTS 版本"
     exit 1
 fi

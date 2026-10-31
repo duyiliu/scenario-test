@@ -196,7 +196,7 @@ function createRequestSignal(parentSignal, timeoutMs) {
 
 function createRunIdentifiers() {
     const timestamp = String(Date.now());
-    // Node 18 没有 crypto.randomUUID（有 getRandomValues），统一走 core.randomUuid 降级链
+    // Node 19+ 与浏览器统一走 core.randomUuid（浏览器非安全上下文退 getRandomValues）
     const random = randomUuid().replace(/-/g, "").slice(0, 8);
     return {
         runId: `${timestamp}-${random}`,

@@ -1,5 +1,5 @@
-// 跨平台测试入口：Windows PowerShell/cmd 不会展开 `tests/*.test.js` 通配，
-// Node 18/20 的 `--test` 也不支持 glob，故在 JS 里枚举测试文件后显式传给 node --test。
+// 跨平台测试入口：Windows PowerShell/cmd 不会展开 `tests/*.test.js` 通配符，
+// 故在 JS 里枚举测试文件后显式传给 node --test（与 Node 版本无关的固定做法）。
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";

@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("#48 测试脚本分层：unit/browser/all 与 check 分层显式声明", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    // Windows PowerShell/cmd 与 Node 18/20 不展开 tests/*.test.js，统一由跨平台 runner 枚举
+    // Windows PowerShell/cmd 不展开 tests/*.test.js，统一由跨平台 runner 枚举
     assert.match(pkg.scripts.test, /scripts\/run-tests\.mjs/);
     assert.equal(pkg.scripts["test:unit"], pkg.scripts.test);
     const runner = fs.readFileSync(path.join(root, "scripts/run-tests.mjs"), "utf8");
@@ -30,9 +30,9 @@ test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、类型自检与浏
     assert.match(workflow, /on:\s*\n\s*push:/);
     assert.match(workflow, /pull_request/);
     assert.match(workflow, /os: \[ubuntu-latest, windows-latest\]/);
-    // Node 18 是 engines 下限（只跑 unit，不跑依赖 Tailwind 4 的构建）；20/22 全量
-    assert.match(workflow, /node: \[18, 20, 22\]/);
-    assert.match(workflow, /matrix\.node != 18/, "构建步骤应跳过 Node 18");
+    // engines 下限 Node 22；22/24 均跑全量（含 Tailwind 4 构建），无版本跳过条件
+    assert.match(workflow, /node: \[22, 24\]/);
+    assert.doesNotMatch(workflow, /matrix\.node != 18/, "22/24 全量构建，不应有 Node 18 跳过条件");
     assert.match(workflow, /npm run test:unit/);
     assert.doesNotMatch(workflow, /test:coverage/, "覆盖率 job 已下线，不应重新出现");
     assert.match(workflow, /npm run test:browser/);

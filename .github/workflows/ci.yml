@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [18, 20, 22]
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,12 +21,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # 构建链要求 Node 20+（Tailwind CSS 4 的 oxide）；Node 18 只验证 src/ 的运行时兼容性
+      # 构建链要求 Node 22+（Tailwind CSS 4 的 oxide + engines 下限）
       - run: npm run build
-        if: matrix.node != 18
       # dist/ 已提交且按 Tag 分发：构建必须无差异，防止 stale dist 通过 CI
       - name: dist 新鲜度
-        if: matrix.node != 18
         shell: bash
         run: |
           git diff --exit-code -- dist/

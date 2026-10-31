@@ -27,8 +27,8 @@
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.12.1/dist"
-    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.12.1/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.13.0/dist"
+    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.13.0/scripts/install.ps1 | iex
 #>
 
 param(
@@ -39,7 +39,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScenarioTestVersion = "0.12.1"
+$ScenarioTestVersion = "0.13.0"
 $DefaultSource = "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/dist"
 $RuntimeFiles = @(
     "scenario-test-cli.cjs",
@@ -80,9 +80,9 @@ try {
         $minor = [int]$matches[2]
         $patch = [int]$matches[3]
 
-        if ($major -lt 18) {
-            Write-Error-Custom "需要 Node.js 18+，当前版本：$nodeVersionOutput"
-            Write-Info "请访问 https://nodejs.org/ 安装 Node.js 18+"
+        if ($major -lt 22) {
+            Write-Error-Custom "需要 Node.js 22+，当前版本：$nodeVersionOutput"
+            Write-Info "请访问 https://nodejs.org/ 安装 Node.js 22+"
             exit 1
         }
         Write-Success "Node.js 版本检查通过：$nodeVersionOutput"
@@ -91,7 +91,7 @@ try {
     }
 } catch {
     Write-Error-Custom "Node.js 未安装或不在 PATH 中"
-    Write-Info "请访问 https://nodejs.org/ 安装 Node.js 18+"
+    Write-Info "请访问 https://nodejs.org/ 安装 Node.js 22+"
     exit 1
 }
 

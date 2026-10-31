@@ -239,7 +239,7 @@ CLI 的 `--concurrency <N>`（默认 1，串行）会让多个**场景**同时�
   适配器自身必须无状态或自行加锁；不要把「当前场景」之类的可变状态挂在适配器实例上。
 - `onStep`/`onAttempt` 回调的并发安全由调用方保证；CLI 在并发模式下为每个场景使用独立输出缓冲，
   场景结束时整块输出，避免进度行交错。
-- 插件文件请使用 `.mjs`（或让所在包声明 `"type": "module"`）：Node 18 不会对 `.js` 做 ESM 语法探测，`export default` 会报 `Unexpected token 'export'`。
+- 插件文件可用 `.js`：Node 22+ 默认对 `.js` 做 ESM 语法探测，`export default` 可直接加载；需要显式声明时仍可用 `.mjs` 或包级 `"type": "module"`。
 - 配置里的插件（`nodePlugins`）钩子同样处于并发调用之下：多个场景可能同时进入
   `transformScenario`，多个场景的 report 也可能同时触发 `afterScenario`。
   插件钩子请按「可重入、无状态」编写（或自行加锁），不要依赖「一次只跑一个场景」的假设。

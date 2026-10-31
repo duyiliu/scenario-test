@@ -220,7 +220,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 由 @yc_yzkj/scenario-test 提供（运行时副本在 \`${frameworkDisplay}\`，由 init 或安装脚本落盘）。
 
-默认免 npm 接入：不安装 npm 包、不改 package.json，直接使用 \`${frameworkDisplay}\` 内的运行时副本（仍需 Node.js 18+）。项目内 \`${frameworkDisplay}\` 保存 AI 规则、模式库与运行时副本（CLI、UMD、d.ts、能力清单），业务人员通常不需要打开或修改。
+默认免 npm 接入：不安装 npm 包、不改 package.json，直接使用 \`${frameworkDisplay}\` 内的运行时副本（仍需 Node.js 22+）。项目内 \`${frameworkDisplay}\` 保存 AI 规则、模式库与运行时副本（CLI、UMD、d.ts、能力清单），业务人员通常不需要打开或修改。
 
 ## 开始使用
 

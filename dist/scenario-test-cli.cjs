@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.12.1 */
+/*! scenario-test v0.13.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -354,16 +354,16 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.12.1";
+var VERSION = "0.13.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 18;
+var CONTRACT_VERSION = 19;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
   runtimeVersion: VERSION,
   // 运行时要求（与 package.json engines 保持一致，doctor 据此校验 Node 版本）
-  engines: Object.freeze({ node: ">=18" }),
+  engines: Object.freeze({ node: ">=22" }),
   assertions: Object.freeze({
     // 断言对象允许的元数据键（非操作符键）
     metaKeys: Object.freeze(["name", "path", "from", "target", "header", "implicit"]),
@@ -1743,7 +1743,10 @@ function normalizeEnumDefinition(definition) {
 function randomUuid() {
   const crypto3 = globalThis.crypto;
   if (typeof crypto3?.randomUUID === "function") return crypto3.randomUUID();
-  const bytes = typeof crypto3?.getRandomValues === "function" ? crypto3.getRandomValues(new Uint8Array(16)) : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  if (typeof crypto3?.getRandomValues !== "function") {
+    throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID/getRandomValues");
+  }
+  const bytes = crypto3.getRandomValues(new Uint8Array(16));
   bytes[6] = bytes[6] & 15 | 64;
   bytes[8] = bytes[8] & 63 | 128;
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -4093,7 +4096,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       const fieldName = definition.fieldName || "file";
       const filename = definition.filename || import_node_path2.default.basename(absolutePath);
       const form = new FormData();
-      const blob = typeof import_node_fs2.default.openAsBlob === "function" ? await import_node_fs2.default.openAsBlob(absolutePath) : new Blob([import_node_fs2.default.readFileSync(absolutePath)]);
+      const blob = await import_node_fs2.default.openAsBlob(absolutePath);
       form.append(fieldName, blob, filename);
       for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
       return { body: form, omitContentType: true };
@@ -4426,7 +4429,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 \u672C\u76EE\u5F55\u662F\u5F53\u524D\u9879\u76EE\u7684\u573A\u666F\u6D4B\u8BD5\u5165\u53E3\u3002\u5B83\u4E0E\u4E1A\u52A1\u4EE3\u7801\u540C\u4ED3\u7EF4\u62A4\uFF1A\u73AF\u5883\u5730\u5740\u3001\u6D4B\u8BD5\u53D8\u91CF\u3001\u573A\u666F\u6587\u4EF6\u548C\u9879\u76EE\u4E13\u5C5E\u63D2\u4EF6\u653E\u5728\u8FD9\u91CC\uFF1B\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u4E0E CLI \u7531 @yc_yzkj/scenario-test \u63D0\u4F9B\uFF08\u8FD0\u884C\u65F6\u526F\u672C\u5728 \`${frameworkDisplay}\`\uFF0C\u7531 init \u6216\u5B89\u88C5\u811A\u672C\u843D\u76D8\uFF09\u3002
 
-\u9ED8\u8BA4\u514D npm \u63A5\u5165\uFF1A\u4E0D\u5B89\u88C5 npm \u5305\u3001\u4E0D\u6539 package.json\uFF0C\u76F4\u63A5\u4F7F\u7528 \`${frameworkDisplay}\` \u5185\u7684\u8FD0\u884C\u65F6\u526F\u672C\uFF08\u4ECD\u9700 Node.js 18+\uFF09\u3002\u9879\u76EE\u5185 \`${frameworkDisplay}\` \u4FDD\u5B58 AI \u89C4\u5219\u3001\u6A21\u5F0F\u5E93\u4E0E\u8FD0\u884C\u65F6\u526F\u672C\uFF08CLI\u3001UMD\u3001d.ts\u3001\u80FD\u529B\u6E05\u5355\uFF09\uFF0C\u4E1A\u52A1\u4EBA\u5458\u901A\u5E38\u4E0D\u9700\u8981\u6253\u5F00\u6216\u4FEE\u6539\u3002
+\u9ED8\u8BA4\u514D npm \u63A5\u5165\uFF1A\u4E0D\u5B89\u88C5 npm \u5305\u3001\u4E0D\u6539 package.json\uFF0C\u76F4\u63A5\u4F7F\u7528 \`${frameworkDisplay}\` \u5185\u7684\u8FD0\u884C\u65F6\u526F\u672C\uFF08\u4ECD\u9700 Node.js 22+\uFF09\u3002\u9879\u76EE\u5185 \`${frameworkDisplay}\` \u4FDD\u5B58 AI \u89C4\u5219\u3001\u6A21\u5F0F\u5E93\u4E0E\u8FD0\u884C\u65F6\u526F\u672C\uFF08CLI\u3001UMD\u3001d.ts\u3001\u80FD\u529B\u6E05\u5355\uFF09\uFF0C\u4E1A\u52A1\u4EBA\u5458\u901A\u5E38\u4E0D\u9700\u8981\u6253\u5F00\u6216\u4FEE\u6539\u3002
 
 ## \u5F00\u59CB\u4F7F\u7528
 
@@ -4985,7 +4988,7 @@ function buildDoctorReport(options) {
   const { configPath, api, configDir } = options;
   const checks = [];
   const info = [];
-  const engineRange = contract.engines?.node || ">=18";
+  const engineRange = contract.engines?.node || ">=22";
   checks.push(satisfiesNodeEngine(process.version, engineRange) ? { name: "node-version", status: "PASS", message: `Node ${process.version} \u6EE1\u8DB3 engines.node ${engineRange}`, fix: "" } : {
     name: "node-version",
     status: "FAIL",

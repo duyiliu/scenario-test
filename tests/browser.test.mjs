@@ -356,6 +356,18 @@ try {
         await page.locator("#runBtn").click();
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelectorAll('#stepsList li[data-passed="true"]').length === 2);
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        // 进度文本在步骤完成瞬间会经过「2 / 3 + 66.7%」的中间态：单次 textContent 快照
+        // 会把重绘中间态当成结果（曾偶发读成「执行进度 2 / 366.7%」）。先等 DOM 到终态。
+        await page.waitForFunction(() => {
+            const labels = document.querySelector("#reportPanel .report-progress__labels");
+            const outcome = document.querySelector("#reportPanel .report-progress__outcome");
+            const bar = document.querySelector('[role="progressbar"]');
+            return Boolean(bar)
+                && /执行进度 3 \/ 3.*100\.0%/.test((labels && labels.textContent) || "")
+                && /通过率.*66\.7%/.test((outcome && outcome.textContent) || "")
+                && bar.getAttribute("aria-valuenow") === "3"
+                && bar.getAttribute("aria-valuemax") === "3";
+        }, undefined, "进度面板应到达 3/3 100% 终态");
         assert.match(await page.locator("#reportPanel .report-progress__labels").first().textContent(), /执行进度 3 \/ 3.*100\.0%/);
         assert.match(await page.locator("#reportPanel .report-progress__outcome").textContent(), /通过率.*66\.7%/);
         const progressBar = page.getByRole("progressbar", { name: "步骤执行进度" });

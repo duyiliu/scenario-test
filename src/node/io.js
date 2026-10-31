@@ -81,10 +81,8 @@ export function createNodeIo(workspace = process.cwd(), options = {}) {
             const filename = definition.filename || path.basename(absolutePath);
             const form = new FormData();
             // Node 19.8+ 的 openAsBlob 让 FormData 直接引用文件（无需整文件入内存）；
-            // Node 18 没有该 API 时回退 readFileSync，保持既有兼容性
-            const blob = typeof fs.openAsBlob === "function"
-                ? await fs.openAsBlob(absolutePath)
-                : new Blob([fs.readFileSync(absolutePath)]);
+            // engines 下限 22 起必有该 API，不再保留 readFileSync 回退分支
+            const blob = await fs.openAsBlob(absolutePath);
             form.append(fieldName, blob, filename);
             for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
             return { body: form, omitContentType: true };

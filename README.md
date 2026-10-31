@@ -2,7 +2,7 @@
 
 面向业务项目的 HTTP 场景测试工具，提供声明式 DSL、浏览器工作台和 Node.js CLI。通过全局 AI Skill 接入业务项目，根据指定的业务入口生成场景，再用工作台或 CLI 运行同一套测试。默认免 npm 接入，不修改业务项目依赖，也无需克隆本仓库。
 
-**运行要求：Node.js 18+**；维护本仓库并构建时需要 Node.js 20+。
+**运行要求：Node.js 22+**（Node 18/20 已 EOL，自 0.13.0 起不再支持）。
 
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
@@ -21,14 +21,14 @@
 **官方安装（固定版本）：**
 
 ```bash
-# 用户级全局安装；#v0.12.1 钉住 Git Tag，按提示选择你使用的 Agent
-npx skills add duyiliu/scenario-test#v0.12.1 --skill scenario-test -g
+# 用户级全局安装；#v0.13.0 钉住 Git Tag，按提示选择你使用的 Agent
+npx skills add duyiliu/scenario-test#v0.13.0 --skill scenario-test -g
 ```
 
 **国内网络加速安装（第三方 `skills-cn`）：**
 
 ```bash
-npx skills-cn@latest add duyiliu/scenario-test#v0.12.1 --skill scenario-test -g -y
+npx skills-cn@latest add duyiliu/scenario-test#v0.13.0 --skill scenario-test -g -y
 ```
 
 两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
@@ -37,7 +37,7 @@ npx skills-cn@latest add duyiliu/scenario-test#v0.12.1 --skill scenario-test -g 
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 18+；Skill 自带发布版运行时，初始化时将运行时复制到业务项目；日常使用项目内版本，后续使用无需再次下载工具，执行测试仍需连接目标服务。
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；Skill 自带发布版运行时，初始化时将运行时复制到业务项目；日常使用项目内版本，后续使用无需再次下载工具，执行测试仍需连接目标服务。
 
 未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。全局 Skill 和各项目运行时分别升级；已接入项目使用自己的 CLI，不要求与 Skill 版本一致，见[升级](#升级)。
 
@@ -58,12 +58,12 @@ Skill 初始化时使用自身携带的发布版运行时。以下脚本供需�
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.12.1/scripts/install.ps1 | iex
+irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.13.0/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.12.1/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.13.0/scripts/install.sh | bash -s -- . scenario-test
 ```
 
 默认脚本按固定 GitHub Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件，在临时目录就位后由 CLI 初始化；不会执行 `npm install` 或访问 GitHub API。内网下载源的指定方式和文件要求见[自定义下载源](#自定义下载源)。
@@ -295,7 +295,7 @@ scenario-test/
 Skill 按 Git Tag 钉版本安装，升级时**把 Tag 换成目标版本重新安装**即可（覆盖同名 Skill）：
 
 ```bash
-npx skills add duyiliu/scenario-test#v0.12.1 --skill scenario-test -g
+npx skills add duyiliu/scenario-test#v0.13.0 --skill scenario-test -g
 ```
 
 未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。当前内置运行时版本可查看 `<Skill目录>/runtime/release.json` 的 `version`。
@@ -320,7 +320,7 @@ Skill 会先确认当前项目、现有版本锁、目标发布版本和安装�
 无外网时，先准备对应版本的安装脚本及[内网运行时文件](#自定义下载源)，例如：
 
 ```powershell
-.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.12.1/dist"
+.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.13.0/dist"
 ```
 
 升级完成后执行：
@@ -333,7 +333,7 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scen
 
 ## 维护者
 
-要求：Node.js 20+（构建链含 Tailwind CSS 4 的 oxide；业务项目运行时消费仍为 Node.js 18+）。
+要求：Node.js 22+（构建链含 Tailwind CSS 4 的 oxide；运行时消费同为 22+）。
 
 ```powershell
 npm install
@@ -343,7 +343,7 @@ npm run test:browser     # Playwright 浏览器测试
 npm run check:all        # 构建 + unit + browser + ui-style + 行尾审计
 ```
 
-CI 在 GitHub Actions 上覆盖 Node 18/20/22 × Ubuntu/Windows 的单测矩阵、构建与类型自检、浏览器测试、视觉回归和行尾审计，见 `.github/workflows/ci.yml`。
+CI 在 GitHub Actions 上覆盖 Node 22/24 × Ubuntu/Windows 的单测矩阵、构建与类型自检、浏览器测试、视觉回归和行尾审计，见 `.github/workflows/ci.yml`。
 
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 

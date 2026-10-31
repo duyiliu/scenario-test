@@ -4,7 +4,7 @@
 
 ## 前置检查
 
-1. 使用探测结果确认 `projectRoot` 是本次业务项目根目录；无法确定时说明候选目录，不要跨项目操作。仅在需要安装/修复/升级时用 `node -v` 实测 Node.js >=18（不以文档假设代替检查）并确认项目目录可写；`installed` 的日常使用不重复这些检查。
+1. 使用探测结果确认 `projectRoot` 是本次业务项目根目录；无法确定时说明候选目录，不要跨项目操作。仅在需要安装/修复/升级时用 `node -v` 实测 Node.js >=22（不以文档假设代替检查）并确认项目目录可写；`installed` 的日常使用不重复这些检查。
 2. `installed` 时，普通“测试某个功能”请求直接进入 `author.md`，**不得先重跑安装**。
 3. `incomplete` 时展示缺失项；不要删除目录、覆盖配置或场景。修复前备份/确认可能受影响文件。
 4. 用户明确要求升级时，再查看当前版本锁及目标发布版本，并确认安装来源；不要把全局 Skill 版本等同于运行时版本。
@@ -12,7 +12,7 @@
 
 ## 自动初始化（默认行为）
 
-1. 确认 Node.js 18+、项目根目录可写，执行 `node <本Skill目录>/scripts/check-runtime.mjs` 校验 Skill 自带运行时。
+1. 确认 Node.js 22+、项目根目录可写，执行 `node <本Skill目录>/scripts/check-runtime.mjs` 校验 Skill 自带运行时。
 2. 在确认的项目根目录执行 `node <本Skill目录>/runtime/scenario-test-cli.cjs init --project <projectRoot> --dir scenario-test --no-input`；自定义目录使用探测时的 `--dir`。运行时文件从 Skill 自带的同目录发布产物复制，无需下载、无需源码仓库。
 3. 重新探测，再使用项目内 CLI 运行 `doctor --config <config>`；任何检查失败时停止并报告。
 4. 用户明确拒绝自动安装、设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或项目不完整时，不自动初始化或修复；只询问能力时不安装。

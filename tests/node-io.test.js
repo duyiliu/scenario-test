@@ -38,8 +38,8 @@ test("createUploadBody：对象定义映射 fieldName/filename/fields 并构造 
         assert.equal(upload.omitContentType, true);
         assert.ok(upload.body instanceof FormData);
         const file = upload.body.get("attachment");
-        // Node 18 无全局 File（20+ 才有）：断言文件对象行为而非构造函数身份
-        assert.equal(typeof file.text, "function", "字段应是文件对象");
+        // Node 20+ 起有全局 File：直接断言构造函数身份
+        assert.ok(file instanceof File, "字段应是 File 实例");
         assert.equal(file.name, "renamed.txt");
         assert.equal(await file.text(), "upload-payload");
         // 附加字段值统一转字符串
@@ -149,21 +149,18 @@ test("createUploadBody：maxUploadBytes 超限返回结构化错误，边界值�
     }
 });
 
-test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超限/未配置上限回退内容正确", async () => {
+test("createUploadBody：超限先在 stat 阶段拒绝，未超限走 openAsBlob 原生路径", async () => {
     const workspace = makeWorkspace();
     const originalOpenAsBlob = fs.openAsBlob;
-    const originalReadFileSync = fs.readFileSync;
-    let reads = 0;
+    let openAsBlobCalls = 0;
     try {
         const sampleSize = fs.statSync(path.join(workspace, "sample.txt")).size;
-        // 模拟 Node 18：无 fs.openAsBlob，上传体只能回退 readFileSync
-        fs.openAsBlob = undefined;
-        fs.readFileSync = function countingReadFileSync(...args) {
-            reads += 1;
-            return originalReadFileSync.apply(this, args);
+        fs.openAsBlob = function countingOpenAsBlob(...args) {
+            openAsBlobCalls += 1;
+            return originalOpenAsBlob.apply(this, args);
         };
 
-        // 超限：stat 阶段即拒绝，不得为构造上传体读取文件内容
+        // 超限：stat 阶段即拒绝，不得为构造上传体打开文件
         const limited = createNodeIo(workspace, { maxUploadBytes: sampleSize - 1 });
         await assert.rejects(
             () => limited.createUploadBody("sample.txt"),
@@ -173,9 +170,9 @@ test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超�
                 return true;
             }
         );
-        assert.equal(reads, 0, "超限应在 readFileSync 前拒绝");
+        assert.equal(openAsBlobCalls, 0, "超限应在 openAsBlob 前拒绝");
 
-        // 未配置上限（旧调用形态）：回退生成内容、字段名与文件名均正确的 FormData
+        // 旧调用形态：字段名与文件名均正确的 FormData，内容经原生路径引用
         const unlimited = createNodeIo(workspace);
         const upload = await unlimited.createUploadBody({
             filePath: "sample.txt",
@@ -184,11 +181,11 @@ test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超�
             fields: { note: "hello" }
         });
         const file = upload.body.get("attachment");
-        assert.equal(typeof file.text, "function", "字段应是文件对象");
+        assert.ok(file instanceof File, "字段应是 File 实例");
         assert.equal(file.name, "renamed.txt");
         assert.equal(await file.text(), "upload-payload");
         assert.equal(upload.body.get("note"), "hello");
-        assert.ok(reads > 0, "无 openAsBlob 时应走 readFileSync 回退");
+        assert.equal(openAsBlobCalls, 1, "未超限应走 openAsBlob 原生路径");
 
         // 恰好达到上限：允许上传，内容仍正确
         const exact = createNodeIo(workspace, { maxUploadBytes: sampleSize });
@@ -198,8 +195,6 @@ test("createUploadBody：Node 18 无 openAsBlob 时先按上限拒绝，未超�
         assert.equal(await exactFile.text(), "upload-payload");
     } finally {
         fs.openAsBlob = originalOpenAsBlob;
-        fs.readFileSync = originalReadFileSync;
-        removeWorkspace(workspace);
     }
 });
 

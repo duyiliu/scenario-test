@@ -315,8 +315,8 @@ function checkConfigBaseUrl(config) {
 }
 
 // 缺省段按 0 参与比较：此前 map(Number) 对未命中的可选组产出 NaN（解构默认值只兜
-// undefined），NaN 参与比较恒 false——">=18" 在全部 v18.x（engines 声明的支持下限）
-// 上误判 FAIL，仅主版本高于下限时因短路偶然正确；v18.17.0 对 >=18.17 同病
+// undefined），NaN 参与比较恒 false——">=22" 在全部 v22.x（engines 声明的支持下限）
+// 上误判 FAIL，仅主版本高于下限时因短路偶然正确；v22.9.0 对 >=22.9 同病
 export function satisfiesNodeEngine(version, range) {
     const match = /^>=\s*(\d+)(?:\.(\d+)(?:\.(\d+))?)?/.exec(String(range || "").trim());
     if (!match) return false;
@@ -360,7 +360,7 @@ export function buildDoctorReport(options) {
     const info = [];
 
     // 1. Node 版本满足 package engines
-    const engineRange = contract.engines?.node || ">=18";
+    const engineRange = contract.engines?.node || ">=22";
     checks.push(satisfiesNodeEngine(process.version, engineRange)
         ? { name: "node-version", status: "PASS", message: `Node ${process.version} 满足 engines.node ${engineRange}`, fix: "" }
         : {
