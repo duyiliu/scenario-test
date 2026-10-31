@@ -4876,6 +4876,42 @@ function checkVersionLock(filePath) {
     extra: extras
   };
 }
+var WRITE_METHODS = /* @__PURE__ */ new Set(["POST", "PUT", "PATCH", "DELETE"]);
+function stepMethodOf(step) {
+  const raw = step.method || step.request && step.request.method || "GET";
+  return String(raw).toUpperCase();
+}
+function isEnvelopeOnlyAssertion(assertion) {
+  if (!assertion || typeof assertion !== "object") return false;
+  if ("status" in assertion) return true;
+  if (assertion.path === "code" && assertion.from === void 0) return true;
+  return false;
+}
+function collectWeakAssertionFindings(scenario) {
+  const findings = [];
+  const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+  const label = scenario.id || scenario.name || "\u672A\u547D\u540D\u573A\u666F";
+  const hasBusinessAssertion = steps.some((step) => (step.assertions || []).some((a) => !isEnvelopeOnlyAssertion(a)));
+  const hasWriteStep = steps.some((step) => WRITE_METHODS.has(stepMethodOf(step)));
+  if (!hasBusinessAssertion) {
+    findings.push({
+      kind: hasWriteStep ? "write-no-postcheck" : "envelope-only",
+      message: hasWriteStep ? `\u573A\u666F ${label} \u7684\u6240\u6709\u6B65\u9AA4\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u4E14\u542B\u5199\u64CD\u4F5C\u5374\u7F3A\u5C11\u540E\u7F6E\u72B6\u6001\u9A8C\u8BC1\uFF08\u67E5\u8BE2\u63A5\u53E3/\u8FD4\u56DE\u4F53\u5B57\u6BB5\uFF09\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C` : `\u573A\u666F ${label} \u7684\u6240\u6709\u6B65\u9AA4\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C`
+    });
+    return findings;
+  }
+  steps.forEach((step, index) => {
+    const assertions = step.assertions || [];
+    const envelopeOnly = assertions.length === 0 || assertions.every((a) => isEnvelopeOnlyAssertion(a));
+    if (envelopeOnly && !WRITE_METHODS.has(stepMethodOf(step))) {
+      findings.push({
+        kind: "envelope-only",
+        message: `\u573A\u666F ${label} \u7684\u53EA\u8BFB\u6B65\u9AA4\u300C${step.name || index + 1}\u300D\u4EC5\u65AD\u8A00 HTTP \u72B6\u6001/\u54CD\u5E94 code\uFF0C\u65E0\u6CD5\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C`
+      });
+    }
+  });
+  return findings;
+}
 function checkConfigBaseUrl(config) {
   const environments = Array.isArray(config.envs) ? config.envs : [];
   const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
@@ -5056,6 +5092,15 @@ function buildDoctorReport(options) {
               message: `\u573A\u666F ${entry.id} \u52A0\u8F7D\u5E76\u6CE8\u518C\u6210\u529F\uFF08${scenarioPath}\uFF09`,
               fix: ""
             });
+            for (const finding of collectWeakAssertionFindings({ ...scenario, id: entry.id })) {
+              checks.push({
+                name: "weak-assertions",
+                status: "WARN",
+                scenarioId: finding.scenarioId,
+                message: finding.message,
+                fix: "\u8865\u5145\u54CD\u5E94\u4F53/\u540E\u7F6E\u67E5\u8BE2\u65AD\u8A00\uFF08\u5982\u67E5\u8BE2\u521B\u5EFA\u7ED3\u679C\u3001\u72B6\u6001\u53D8\u66F4\u540E\u7684\u8BB0\u5F55\uFF09\uFF0C\u4F7F\u65AD\u8A00\u53EF\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C"
+              });
+            }
           }
         } catch (error) {
           listOk = false;

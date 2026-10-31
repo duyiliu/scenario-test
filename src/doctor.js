@@ -225,6 +225,57 @@ function checkVersionLock(filePath) {
 // baseUrl 缺失本身不阻断 defineConfig（浏览器工作台可回退当前页面地址），但 CLI run
 // 没有 baseUrl 会在执行期才报错；doctor 提前用 WARN 暴露，并说明顶层 baseUrl 回退规则。
 // 已声明的 baseUrl 由 defineConfig 统一校验 http(s)://，非法值会在 config-load 阶段 FAIL。
+// 弱断言诊断（#107 配套）：只断言 HTTP 状态/业务 code 的步骤无法证明业务结果；
+// 写操作场景若没有任何业务断言（无后置状态验证）同样提示。诊断为 WARN，
+// 不改变 doctor 退出码，也不强制场景结构——是否采纳由人决定。
+const WEAK_ASSERTION_NOTE = "仅断言 HTTP 状态/响应 code，无法证明业务结果";
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function stepMethodOf(step) {
+    const raw = step.method || (step.request && step.request.method) || "GET";
+    return String(raw).toUpperCase();
+}
+
+// 断言是否只覆盖「HTTP 状态」或「响应 code」这类 envelope 信息
+function isEnvelopeOnlyAssertion(assertion) {
+    if (!assertion || typeof assertion !== "object") return false;
+    if ("status" in assertion) return true;
+    // 业务包装体的 code 字段（未显式 from:headers/bodyText 时默认取 body）
+    if (assertion.path === "code" && assertion.from === undefined) return true;
+    return false;
+}
+
+function collectWeakAssertionFindings(scenario) {
+    const findings = [];
+    const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+    const label = scenario.id || scenario.name || "未命名场景";
+    const hasBusinessAssertion = steps.some((step) => (step.assertions || []).some((a) => !isEnvelopeOnlyAssertion(a)));
+    const hasWriteStep = steps.some((step) => WRITE_METHODS.has(stepMethodOf(step)));
+    if (!hasBusinessAssertion) {
+        // 全场景没有任何业务断言：只读场景是弱断言；写场景还意味着没有后置状态验证
+        findings.push({
+            kind: hasWriteStep ? "write-no-postcheck" : "envelope-only",
+            message: hasWriteStep
+                ? `场景 ${label} 的所有步骤仅断言 HTTP 状态/响应 code，且含写操作却缺少后置状态验证（查询接口/返回体字段），无法证明业务结果`
+                : `场景 ${label} 的所有步骤仅断言 HTTP 状态/响应 code，无法证明业务结果`
+        });
+        return findings;
+    }
+    // 已有业务断言时，写操作步骤可以只靠后置查询验证（推荐模式），
+    // 只提示仍然只断言状态的只读步骤。
+    steps.forEach((step, index) => {
+        const assertions = step.assertions || [];
+        const envelopeOnly = assertions.length === 0 || assertions.every((a) => isEnvelopeOnlyAssertion(a));
+        if (envelopeOnly && !WRITE_METHODS.has(stepMethodOf(step))) {
+            findings.push({
+                kind: "envelope-only",
+                message: `场景 ${label} 的只读步骤「${step.name || index + 1}」仅断言 HTTP 状态/响应 code，无法证明业务结果`
+            });
+        }
+    });
+    return findings;
+}
+
 function checkConfigBaseUrl(config) {
     const environments = Array.isArray(config.envs) ? config.envs : [];
     const fallback = typeof config.baseUrl === "string" ? config.baseUrl.trim() : "";
@@ -430,6 +481,17 @@ export function buildDoctorReport(options) {
                             message: `场景 ${entry.id} 加载并注册成功（${scenarioPath}）`,
                             fix: ""
                         });
+                        // 弱断言是提示而非失败：AI 编写规则（references/author.md）已要求优先
+                        // 增强/补后置断言，这里给确定性的兜底信号，避免假绿被当成完整验证
+                        for (const finding of collectWeakAssertionFindings({ ...scenario, id: entry.id })) {
+                            checks.push({
+                                name: "weak-assertions",
+                                status: "WARN",
+                                scenarioId: finding.scenarioId,
+                                message: finding.message,
+                                fix: "补充响应体/后置查询断言（如查询创建结果、状态变更后的记录），使断言可证明业务结果"
+                            });
+                        }
                     }
                 } catch (error) {
                     listOk = false;
