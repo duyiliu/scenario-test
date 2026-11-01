@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.13.0 */
+/*! scenario-test v0.14.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -354,7 +354,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.13.0";
+var VERSION = "0.14.0";
 
 // src/contract.js
 var CONTRACT_VERSION = 19;
@@ -5104,6 +5104,16 @@ function buildDoctorReport(options) {
                 scenarioId: finding.scenarioId,
                 message: finding.message,
                 fix: "\u8865\u5145\u54CD\u5E94\u4F53/\u540E\u7F6E\u67E5\u8BE2\u65AD\u8A00\uFF08\u5982\u67E5\u8BE2\u521B\u5EFA\u7ED3\u679C\u3001\u72B6\u6001\u53D8\u66F4\u540E\u7684\u8BB0\u5F55\uFF09\uFF0C\u4F7F\u65AD\u8A00\u53EF\u8BC1\u660E\u4E1A\u52A1\u7ED3\u679C"
+              });
+            }
+            const writeSteps = (scenario.steps || []).filter((step) => WRITE_METHODS.has(stepMethodOf(step)));
+            if (entry.manual === true && writeSteps.length > 0) {
+              checks.push({
+                name: "manual-write-scenario",
+                status: "WARN",
+                scenarioId: entry.id,
+                message: `\u573A\u666F ${entry.id} \u6807\u8BB0\u4E3A manual \u4E14\u5305\u542B\u5199\u64CD\u4F5C\uFF08${writeSteps.length} \u6B65\uFF09\uFF1A\u9ED8\u8BA4 run \u4E0D\u4F1A\u6267\u884C\u5B83\uFF0CCI \u4E0D\u8986\u76D6\u8FD9\u4E9B\u5199\u64CD\u4F5C`,
+                fix: "\u786E\u8BA4\u662F\u5426\u5FC5\u987B\u624B\u52A8\u6267\u884C\uFF1B\u82E5\u8981\u7EB3\u5165\u56DE\u5F52\uFF0C\u79FB\u9664 manual: true \u5E76\u4FDD\u8BC1\u6570\u636E\u6E05\u7406\u53EF\u91CD\u590D\u6267\u884C"
               });
             }
           }

@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.14.0] - 2026-11-01
+
+### 新增
+
+- **`doctor` 新增 `manual-write-scenario` 检查（WARN）**：`manual: true` 的场景不会进入默认 `run`，写操作若只存在于这类场景，CI 等于没有覆盖。检查只对含写方法的 manual 场景提示，只读 manual 场景不打扰，不改变退出码。
+- **场景设计评估夹具与三层评估工具**（`tests/fixtures/scenario-design/`）：`order-adjust` 可运行 Spring Boot 夹具、9 个业务变异、`mutation-check.mjs`（确定性硬门槛）、`score.mjs`（结构评分）、`compare.mjs`（两份产出盲评）。用于验证 Skill 改动是否真的提升了场景有效性。
+
+### 变更
+
+- **压缩 Skill 的 `references/author.md`**：把约 400 字、含 8 件事的第 4 步收敛为 5 行决策表 + 3 条独立硬约束，去掉决策命名与总结映射等仪式性要求；关键约束前移到文件前 1/3。4 轮验证变异杀死率保持 9/9，无回归。
+
+### 验证
+
+- 新增 `tests/issue-107-manual-write.test.js`（3 个用例）与 `tests/score-design-eval.test.js`（3 个用例）；`npm run check:all` 通过。
+- 夹具实测结论记录在 `tests/fixtures/scenario-design/README.md`：结构分与变异杀死率不相关，当前夹具上指标已饱和；基线 skill 与工作区版本均能杀死全部 9 个变异。
+
 ## [0.13.0] - 2026-10-31
 
 ### 破坏性变更
