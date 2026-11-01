@@ -21,7 +21,7 @@
 **官方安装（固定版本）：**
 
 ```bash
-# 用户级全局安装；#v0.13.0 钉住 Git Tag，按提示选择你使用的 Agent
+# 用户级全局安装；#v0.14.0 钉住 Git Tag，按提示选择你使用的 Agent
 npx skills add duyiliu/scenario-test#v0.14.0 --skill scenario-test -g
 ```
 
