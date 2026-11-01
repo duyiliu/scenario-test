@@ -1,5 +1,7 @@
 package com.example.order;
 
+import org.springframework.stereotype.Repository;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -13,6 +15,7 @@ import java.util.stream.Collectors;
  * 生产库表在 request_id 上有唯一索引；本实现在 {@link #save} 前先按键查重，
  * 语义一致。
  */
+@Repository
 public class OrderAdjustRepository {
 
     private final AtomicLong idSeq = new AtomicLong(9000);

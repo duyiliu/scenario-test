@@ -1,0 +1,30 @@
+{
+  "id": "order-adjust-scenario-design",
+  "version": 1,
+  "description": "给「订单调整单」功能补场景测试：要求覆盖关键业务规则、拒绝分支证明无副作用、不重复新建等价场景。",
+  "prompt": "prompt.md",
+  "fixture": "order-adjust",
+  "layers": {
+    "deterministic": {
+      "tool": "mutation-check.mjs",
+      "spec": "mutations.json"
+    },
+    "structural": {
+      "tool": "score.mjs",
+      "spec": "rubric.json",
+      "weight": "辅助信号，不作为通过/不通过依据"
+    },
+    "semantic": {
+      "tool": "compare.mjs",
+      "description": "两份产出匿名盲评，判断哪份更能发现业务回归"
+    }
+  },
+  "expectations": {
+    "mustCoverRules": ["R1", "R2", "R3", "R4", "R6"],
+    "allowedPending": ["R5"],
+    "mustKillMutations": ["M1", "M2", "M4"],
+    "knownGaps": ["M3"],
+    "maxNewScenarios": 7,
+    "note": "knownGaps 是当前两版 skill 都未解决的能力缺口，用于追踪改进；它不计入通过线，但必须在报告里显式列出。"
+  }
+}

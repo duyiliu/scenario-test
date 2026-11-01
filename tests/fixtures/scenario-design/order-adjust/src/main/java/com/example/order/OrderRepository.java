@@ -1,5 +1,7 @@
 package com.example.order;
 
+import org.springframework.stereotype.Repository;
+
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 原订单存储（只读）。演示数据在构造时初始化，等同于上游履约系统的同步结果。
  */
+@Repository
 public class OrderRepository {
 
     private final Map<Long, Order> orders = new ConcurrentHashMap<>();

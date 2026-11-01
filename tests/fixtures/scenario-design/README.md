@@ -14,17 +14,24 @@
 
 ```
 scenario-design/
-├── order-adjust/       考题：一个 Spring Boot 业务项目 + 预置弱场景
-├── rubric.json         机器可读评分口径：规则 → 触发条件 → 期望结果
-├── RUBRIC.md           人读评分说明
-├── score.mjs           评分器
-├── summarize.mjs       多轮结果汇总
+├── order-adjust/       考题：一个可运行的 Spring Boot 业务项目 + 预置弱场景
+├── case.json           标准 eval case：prompt、必须覆盖的规则、必须杀死的变异
 ├── prompt.md           给 AI 的任务描述（只给功能名，不给规则清单）
+├── rubric.json         结构评分口径：规则 → 触发条件 → 期望结果
+├── RUBRIC.md           人读评分说明
+├── mutations.json      业务变异定义（M1-M4）
+├── score.mjs           结构评分器（辅助信号）
+├── mutation-check.mjs  变异测试（确定性硬门槛）
+├── compare.mjs         两份产出匿名盲评（语义层）
+├── summarize.mjs       多轮结果汇总
 ├── run-ab.sh           Docker 内跑一轮并评分
+├── run-ab-local.mjs    本地裸跑（Linux 可用；Windows 上 pi 无 TTY 会卡住）
+├── run-batch.sh        连续跑多轮（按 tag 前缀分组）
 └── artifacts/          运行产物（不入库）
 ```
 
-`order-adjust/` 的 Java 代码**不需要能编译运行**。Skill 的编写阶段本来就禁止调用 HTTP，评分只读 DSL 与源码，所以不需要 maven、端口或容器。
+`order-adjust/` 是可编译运行的 Spring Boot 项目（`mvn package` + `java -jar`），
+这是变异测试的前提：只有能起服务，才能验证「业务被改坏后场景会不会失败」。
 
 ## 快速验证评分器
 
@@ -44,6 +51,60 @@ node tests/fixtures/scenario-design/score.mjs --artifact tests/fixtures/scenario
 
 预期总分约 10（只有卫生分）——因为那条预置场景只断言 `status: 200`，而本项目所有响应都是 200，这个断言恒真。
 
+## 三层评估
+
+社区共识是「确定性检查优先，LLM judge 其次」。这里按这个顺序分三层：
+
+| 层 | 工具 | 回答的问题 | 是否作为通过线 |
+| --- | --- | --- | --- |
+| **确定性** | `mutation-check.mjs` | 业务逻辑被改坏时，这组场景会不会失败 | **是** |
+| 结构 | `score.mjs` | 规则覆盖、断言形态、场景冗余、`manual` 遗漏 | 否，辅助信号 |
+| 语义 | `compare.mjs` | 两份产出哪份更能发现业务回归（盲评） | 否，参考 |
+
+### 1. 变异测试（硬门槛）
+
+```bash
+node tests/fixtures/scenario-design/mutation-check.mjs --artifact artifacts/current-1/scenario-test
+```
+
+流程：注入变异 → `mvn package` → 起服务 → 跑场景 → 记录是否失败 → 恢复代码并重建。
+
+```json
+{
+  "killed": 3,
+  "total": 4,
+  "required": { "total": 3, "killed": 3, "passed": true },
+  "results": [
+    { "id": "M3-invalid-quantity-writes-first", "killed": false, "knownGap": true }
+  ]
+}
+```
+
+- `manual: true` 的场景默认套件不执行，变异测试会逐个单独跑它们（每个场景前重启服务）
+- `case.json` 的 `knownGaps` 是当前已知能力缺口，不计入通过线但要显式报告
+
+**当前基线（v0.11.1 与工作区两版一致）**：M1/M2/M4 被杀死，**M3 存活** ——
+两版都没有验证「数量非法被拒后，库里没有留下脏数据」。
+
+### 2. 结构评分（辅助）
+
+```bash
+node tests/fixtures/scenario-design/score.mjs --artifact artifacts/current-1/scenario-test
+```
+
+它只看静态文本：断言是否指向业务字段、有没有后置查询、场景 ID 是否保留。
+**不能判断断言在业务被改坏时会不会失败** —— 变异测试实测证明，它会给 baseline 的 R2 判「无后置」，
+但 baseline 实际能杀死 M4。把它当趋势信号，不要当结论。
+
+### 3. 语义盲评（参考）
+
+```bash
+node tests/fixtures/scenario-design/compare.mjs --a artifacts/baseline-1/scenario-test --b artifacts/current-1/scenario-test
+```
+
+两份产出匿名化为 A/B（随机交换），让模型只回答「哪份更可能触发失败」，并要求指出各自最弱的一处验证。
+用过的一轮里，盲评准确指出了「A 的数量非正数场景只断言 code=0，可能漏 M3」，与变异测试结论一致。
+
 ## A/B 流程
 
 在 **192.168.1.214** 上执行（Windows 工作机没有 Docker daemon，详见 `AGENTS.md` 的「隔离验证环境」）。该机已配置 pi 凭据，并有预建镜像 `scenario-test-pi:1.4.0-node22`。
@@ -52,17 +113,13 @@ node tests/fixtures/scenario-design/score.mjs --artifact tests/fixtures/scenario
 ssh root@192.168.1.214
 cd /root/git/scenario-test && git pull && npm ci && npm run build
 
-# 1. 拿一个旧版本 skill 作为基线
-git worktree add /tmp/st-baseline v0.12.1
+# 1. 拿一个旧版本 skill 作为基线（#107 的规则改动合入前用 v0.11.1，合入后用 v0.12.1）
+git worktree add /tmp/st-baseline v0.11.1
 
-# 2. 各跑 N 轮（建议 ≥ 6）
-for i in 1 2 3 4 5 6; do
-  SKILL_DIR=/tmp/st-baseline/skills/scenario-test PI_IMAGE=scenario-test-pi:1.4.0-node22 \
-    bash tests/fixtures/scenario-design/run-ab.sh --tag baseline-$i
-done
-for i in 1 2 3 4 5 6; do
-  PI_IMAGE=scenario-test-pi:1.4.0-node22 bash tests/fixtures/scenario-design/run-ab.sh --tag current-$i
-done
+# 2. 各跑 N 轮（建议 ≥ 6）；run-batch.sh 逐轮调用 run-ab.sh
+SKILL_DIR=/tmp/st-baseline/skills/scenario-test PI_IMAGE=scenario-test-pi:1.4.0-node22 \
+  bash tests/fixtures/scenario-design/run-batch.sh baseline 1 6
+PI_IMAGE=scenario-test-pi:1.4.0-node22 bash tests/fixtures/scenario-design/run-batch.sh current 1 6
 
 # 3. 汇总分布
 node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design/artifacts
@@ -84,10 +141,8 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 卫生项会单独列出：改写基线 ID、猜测不存在的错误码、把 HTTP 200 写成 400/500、同一规则被多个新建场景重复验证。
 
-## 评分器测不到的部分
+## 仍然测不到的部分
 
-- **「待确认」的质量**：AI 是否正确识别了证据不足、是否在待确认前做了检索。这些在回复文本里，不在场景文件里，目前只能人工读。
-- **规则理解是否正确**：例如把「调整数量」理解成「调整金额」。断言能对上错误码，但语义可能错。
-- **执行可行性**：评分不验证场景能否真的跑通，那是 `tests/skill-e2e/` 的职责。
-
-所以低分一定有问题，高分不代表完美。
+- **「待确认」的质量**：AI 是否正确识别证据不足、是否在待确认前做了检索。这些在回复文本里，不在场景文件里，只能人工读。
+- **多轮对话式的语义误读**：例如把「调整数量」理解成「调整金额」。盲评能提示，但没有确定性结论。
+- **变异集的完备性**：M1-M4 只覆盖当前的 6 条规则。新增规则要同步补变异，否则「杀死率」会虚高。
