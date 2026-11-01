@@ -492,6 +492,18 @@ export function buildDoctorReport(options) {
                                 fix: "补充响应体/后置查询断言（如查询创建结果、状态变更后的记录），使断言可证明业务结果"
                             });
                         }
+                        // manual 场景不进默认执行：写操作若只存在于 manual 场景，
+                        // CI/批量 run 不会覆盖，等于回归里没有这条验证。
+                        const writeSteps = (scenario.steps || []).filter((step) => WRITE_METHODS.has(stepMethodOf(step)));
+                        if (entry.manual === true && writeSteps.length > 0) {
+                            checks.push({
+                                name: "manual-write-scenario",
+                                status: "WARN",
+                                scenarioId: entry.id,
+                                message: `场景 ${entry.id} 标记为 manual 且包含写操作（${writeSteps.length} 步）：默认 run 不会执行它，CI 不覆盖这些写操作`,
+                                fix: "确认是否必须手动执行；若要纳入回归，移除 manual: true 并保证数据清理可重复执行"
+                            });
+                        }
                     }
                 } catch (error) {
                     listOk = false;
