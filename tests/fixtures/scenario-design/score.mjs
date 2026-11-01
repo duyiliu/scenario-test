@@ -163,6 +163,10 @@ function isBusinessAssertion(assertion, envelopePaths) {
 
 function assertionSatisfies(assertion, expected) {
     if (!assertion || assertion.path !== expected.path) return false;
+    if (expected.isTemplate) {
+        // 只要求断言值引用了前面提取的变量（证明「返回的是同一条记录」），不绑定具体变量名。
+        return typeof assertion.equals === "string" && /\{\{\s*(vars|suite)\./.test(assertion.equals);
+    }
     if (Object.prototype.hasOwnProperty.call(expected, "equals")) {
         return assertion.equals === expected.equals;
     }
@@ -260,12 +264,14 @@ function evaluateRule(rule, scenarios) {
             : stepAssertsBusiness(target.step, rule.expect, envelopePaths);
         const postchecked = stepHasPostcheck(group, target.index, rule.postcheck);
         const repeatOk = rule.expect.repeatSameBusinessId ? hasRepeatIdentity(group, target) : true;
-        if (asserted) result.assertedScenarios.push(group.scenario.id);
-        candidates.push({ ...group, target, asserted, postchecked, repeatOk });
+        // 幂等类规则必须证明「返回同一条记录」才算有效断言：只断言 data.id 存在不算。
+        const effective = asserted && repeatOk;
+        if (effective) result.assertedScenarios.push(group.scenario.id);
+        candidates.push({ ...group, target, asserted, postchecked, repeatOk, effective });
     }
 
     // 选「最接近有效验证」的候选：先看断言，再看重复提交，最后看后置验证。
-    const rank = (candidate) => (candidate.asserted ? 4 : 0) + (candidate.repeatOk ? 2 : 0) + (candidate.postchecked ? 1 : 0);
+    const rank = (candidate) => (candidate.effective ? 8 : 0) + (candidate.asserted ? 4 : 0) + (candidate.postchecked ? 1 : 0);
     const best = candidates.sort((a, b) => rank(b) - rank(a))[0];
     if (!best) {
         if (result.touched) {
@@ -277,12 +283,14 @@ function evaluateRule(rule, scenarios) {
         return result;
     }
 
-    result.scenarioId = best.asserted ? best.scenario.id : null;
-    result.asserted = best.asserted;
+    result.scenarioId = best.effective ? best.scenario.id : null;
+    result.asserted = best.effective;
     result.postchecked = rule.postcheck ? Boolean(best.postchecked) : true;
 
-    if (best.asserted) {
+    if (best.effective) {
         result.decision = "新建";
+    } else if (rule.expect.repeatSameBusinessId && best.asserted) {
+        result.decision = "未证明幂等";
     } else if (rule.expect.code !== 0) {
         // 拒绝类规则：连错误码断言都没有，说明根本没有验证这条拒绝分支，
         // 而不是「断言写得弱」——避免把缺失当成弱覆盖。
@@ -298,11 +306,10 @@ function evaluateRule(rule, scenarios) {
         else result.findings.push(`没有场景验证这条拒绝分支（期望 code=${rule.expect.code}）`);
     } else if (!best.asserted) {
         result.findings.push("只有 envelope 断言，缺业务字段验证");
+    } else if (!best.repeatOk) {
+        result.findings.push("做了重复提交，但没证明返回同一条记录（需断言 data.id 一致或列表 total=1）");
     }
-    if (rule.expect.repeatSameBusinessId && best.asserted && !best.repeatOk) {
-        result.findings.push("两次提交未证明返回同一条记录（需断言 data.id 一致或列表 total=1）");
-    }
-    if (rule.postcheck && best.asserted && !best.postchecked) {
+    if (best.effective && rule.postcheck && !best.postchecked) {
         result.findings.push("缺后置状态验证（需在受验请求之后查询并断言副作用）");
     }
     return result;
@@ -357,13 +364,17 @@ function evaluateHygiene(rubric, scenarios, rules) {
     }
 
     // 冗余：同一规则被多个新建场景断言覆盖。
+    // 只对拒绝类规则判定：成功类规则会被其他场景的准备步骤顺带命中，
+    // 那是搭建前置数据，不是重复验证。
     for (const rule of rules) {
+        const spec = rule.spec;
+        if (!spec || !spec.expect || spec.expect.code === 0) continue;
         if (!rule.assertedScenarios) continue;
         const newOnes = rule.assertedScenarios.filter((id) => !baselineIds.has(id));
         if (newOnes.length > 1) {
             penalties.push({
                 kind: "redundant-scenario",
-                detail: `规则 ${rule.id} 被 ${newOnes.length} 个新建场景重复验证：${newOnes.join(", ")}`
+                detail: `规则 ${rule.id}（期望 code=${spec.expect.code}）被 ${newOnes.length} 个新建场景重复验证：${newOnes.join(", ")}`
             });
         }
     }

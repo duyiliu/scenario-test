@@ -49,9 +49,14 @@ for (const [key, runs] of groups) {
     const ruleIds = runs[0].report.rules.map((rule) => rule.id);
     process.stdout.write(`${key}  n=${runs.length}  总分 min ${Math.min(...totals)} / 中位 ${median(totals)} / max ${Math.max(...totals)}\n`);
     for (const ruleId of ruleIds) {
-        const covered = runs.filter((run) => run.report.rules.find((rule) => rule.id === ruleId)?.asserted).length;
+        const findRule = (run) => run.report.rules.find((rule) => rule.id === ruleId);
+        const covered = runs.filter((run) => {
+            const rule = findRule(run);
+            return rule && rule.asserted && rule.postchecked;
+        }).length;
+        const asserted = runs.filter((run) => findRule(run)?.asserted).length;
         const scenarioCounts = runs.map((run) => run.report.summary.newScenarios);
-        process.stdout.write(`  ${ruleId} 有效覆盖 ${covered}/${runs.length}  新建场景数 ${scenarioCounts.join("/")}\n`);
+        process.stdout.write(`  ${ruleId} 完整覆盖 ${covered}/${runs.length}  断言有效 ${asserted}/${runs.length}  新建场景数 ${scenarioCounts.join("/")}\n`);
     }
     process.stdout.write("\n");
 }

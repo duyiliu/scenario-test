@@ -11,6 +11,9 @@
 #   # 复用已有 pi 镜像（214 上是 scenario-test-pi:1.4.0-node22）
 #   PI_IMAGE=scenario-test-pi:1.4.0-node22 bash run-ab.sh --tag current-1
 #
+#   # 同名模型在多个 provider 下存在时，MODEL 要写成 provider/model
+#   MODEL=new-api/deepseek-v4.1-flash bash run-ab.sh --tag current-2
+#
 # 产物保存在 artifacts/<tag>/，评分结果打印到 stdout，JSON 在同目录 report.json。
 set -euo pipefail
 
@@ -55,10 +58,13 @@ node "$CLI" init --project "$WORK/project" --dir scenario-test --no-input >/dev/
 
 # 3. pi 容器里生成场景（只写不跑）。挂载 skill、工作区、模型凭据与 prompt。
 # --entrypoint bash：不同 pi 镜像的 ENTRYPOINT 不一样（有的直接是 pi），统一绕过。
+# --user root + HOME=/root：214 的镜像默认 USER 是 uid 10001 的 pi，读不到挂载的
+#   /root/.pi/agent（700 root），pi 会报「没有任何可用模型」。
 docker image inspect "$PI_IMAGE" >/dev/null 2>&1 ||
   docker build -t "$PI_IMAGE" -f "$REPO/tests/skill-e2e/docker/Dockerfile.pi" "$REPO/tests/skill-e2e/docker"
 
-docker run --rm --entrypoint bash \
+docker run --rm --entrypoint bash --user root \
+  -e HOME=/root \
   -v "$SKILL_DIR:/skill:ro" \
   -v "$WORK:/work" \
   -v "$PI_CONFIG_DIR:/root/.pi/agent" \

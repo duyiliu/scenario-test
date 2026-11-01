@@ -69,6 +69,7 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 ```
 
 `PI_IMAGE` 缺省为 `pi-agent:1.4.0`（本地 build）；在 214 上显式指定预建镜像可跳过构建。
+`MODEL` 缺省为 `deepseek-v4.1-flash`，但同名模型在多个 provider 下存在时 pi 会报歧义，此时写成 `provider/model`（214 上已认证的 provider 是 `new-api`）。
 `summarize.mjs` 按 tag 前缀（`-` 之前）分组，输出总分分布与每条规则的有效覆盖次数。
 
 ## 怎么读结果

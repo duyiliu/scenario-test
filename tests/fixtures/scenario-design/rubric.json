@@ -82,7 +82,8 @@
       },
       "postcheck": {
         "anyOf": [
-          { "path": "data.total", "equals": 1 }
+          { "path": "data.total", "equals": 1 },
+          { "path": "data.id", "isTemplate": true }
         ]
       }
     },

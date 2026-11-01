@@ -49,8 +49,8 @@ ssh root@192.168.1.214
 | --- | --- |
 | 系统 | CentOS 7 x86_64，Docker 25.0.3，Node v22.14.0 |
 | 仓库 | `/root/git/scenario-test`（**可能滞后于 master**，先 `git pull` 或重新 clone） |
-| pi | 预建镜像 `scenario-test-pi:1.4.0-node22`，pi 1.4.0，`ENTRYPOINT` 为 `pi`（用 `--entrypoint bash` 覆盖） |
-| 模型 | `deepseek-v4.1-flash`，凭据在 `~/.pi/agent/{auth,models}.json` |
+| pi | 预建镜像 `scenario-test-pi:1.4.0-node22`，pi 1.4.0；`ENTRYPOINT` 为 `pi`、默认 `USER` 为 uid 10001 的 `pi`，跑脚本时需 `--entrypoint bash --user root -e HOME=/root`，否则读不到 `/root/.pi/agent` |
+| 模型 | `deepseek-v4.1-flash`，凭据在 `~/.pi/agent/{auth,models}.json`；该机只认证了 `new-api`，pi 调用要写 `--model new-api/deepseek-v4.1-flash`，否则报同名模型歧义 |
 | 凭据 | 只存在于 214，**不要复制进仓库或提交** |
 
 场景设计 A/B（issue #107）：
