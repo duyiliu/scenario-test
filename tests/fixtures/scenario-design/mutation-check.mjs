@@ -152,16 +152,27 @@ async function suiteKills(configPath, scenarios, timeoutMs) {
 }
 
 function applyMutation(mutation) {
-    const target = path.join(FIXTURE_DIR, mutation.file || "src/main/java/com/example/order/OrderAdjustService.java");
-    const original = fs.readFileSync(target, "utf8");
-    const find = mutation.find.join("\n");
-    const replace = mutation.replace.join("\n");
-    const occurrences = original.split(find).length - 1;
-    if (occurrences !== 1) {
-        throw new Error(`变异 ${mutation.id} 的 find 片段命中 ${occurrences} 次（应为 1），夹具代码可能已变更`);
+    const backups = [];
+    try {
+        for (const edit of mutation.edits) {
+            const target = path.join(FIXTURE_DIR, edit.file);
+            const original = fs.readFileSync(target, "utf8");
+            const find = edit.find.join("\n");
+            const replace = edit.replace.join("\n");
+            const occurrences = original.split(find).length - 1;
+            if (occurrences !== 1) {
+                throw new Error(`变异 ${mutation.id} 在 ${edit.file} 的 find 片段命中 ${occurrences} 次（应为 1），夹具代码可能已变更`);
+            }
+            fs.writeFileSync(target, original.replace(find, replace), "utf8");
+            backups.push({ target, original });
+        }
+    } catch (error) {
+        for (const { target, original } of backups) fs.writeFileSync(target, original, "utf8");
+        throw error;
     }
-    fs.writeFileSync(target, original.replace(find, replace), "utf8");
-    return () => fs.writeFileSync(target, original, "utf8");
+    return () => {
+        for (const { target, original } of backups) fs.writeFileSync(target, original, "utf8");
+    };
 }
 
 async function main() {
@@ -203,7 +214,7 @@ async function main() {
         process.stdout.write(`\n[${mutation.id}] ${mutation.description}\n`);
         let restore = null;
         try {
-            restore = applyMutation({ ...mutation, file: spec.file });
+            restore = applyMutation(mutation);
             build();
             const outcome = await suiteKills(configPath, scenarios, args.timeout);
             results.push({

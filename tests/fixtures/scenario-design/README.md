@@ -75,7 +75,7 @@ node tests/fixtures/scenario-design/mutation-check.mjs --artifact artifacts/curr
   "total": 4,
   "required": { "total": 3, "killed": 3, "passed": true },
   "results": [
-    { "id": "M3-invalid-quantity-writes-first", "killed": false, "knownGap": true }
+    { "id": "M3-invalid-quantity-writes-first", "killed": true }
   ]
 }
 ```
@@ -83,8 +83,12 @@ node tests/fixtures/scenario-design/mutation-check.mjs --artifact artifacts/curr
 - `manual: true` 的场景默认套件不执行，变异测试会逐个单独跑它们（每个场景前重启服务）
 - `case.json` 的 `knownGaps` 是当前已知能力缺口，不计入通过线但要显式报告
 
-**当前基线（v0.11.1 与工作区两版一致）**：M1/M2/M4 被杀死，**M3 存活** ——
-两版都没有验证「数量非法被拒后，库里没有留下脏数据」。
+**当前基线（v0.11.1 与工作区两版）**：M1-M4 全部被杀死 —— 两版生成的场景都能发现对应的业务缺陷。
+
+**等价变异的陷阱**：M3 最初只把 Service 的校验移到落单之后，看起来是个缺陷，但 `OrderAdjustRequest`
+上的 `@Min(1)` 会先拦住请求，Service 根本执行不到 —— 代码变了、行为没变，四个产物全部「存活」。
+修正为「同时移除 Bean Validation」后，两版立刻都杀死了它。**新增变异时必须先确认它真的改变了可观测行为**，
+否则会把等价变异误判成场景缺陷。
 
 ### 2. 结构评分（辅助）
 
@@ -103,7 +107,8 @@ node tests/fixtures/scenario-design/compare.mjs --a artifacts/baseline-1/scenari
 ```
 
 两份产出匿名化为 A/B（随机交换），让模型只回答「哪份更可能触发失败」，并要求指出各自最弱的一处验证。
-用过的一轮里，盲评准确指出了「A 的数量非正数场景只断言 code=0，可能漏 M3」，与变异测试结论一致。
+用过的一轮里，盲评指出「A 的数量非正数场景只断言 code=0，可能漏 M3」。这个判断**后来被变异测试推翻**：
+修正 M3 的等价变异问题后，该场景能够杀死它。所以盲评只作为线索来源，不能当作结论。
 
 ## A/B 流程
 

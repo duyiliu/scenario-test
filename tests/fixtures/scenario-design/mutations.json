@@ -1,82 +1,110 @@
 {
-  "file": "src/main/java/com/example/order/OrderAdjustService.java",
   "description": "订单调整单服务的业务变异。每个变异都应被合格的场景套件杀死；存活说明场景没有验证对应业务结果。",
   "mutations": [
     {
       "id": "M1-drop-idempotency",
       "description": "移除幂等检查：同一 requestId 重复提交会落两条记录",
-      "find": [
-        "        return adjustRepository.findByRequestId(request.getRequestId())",
-        "                .orElseGet(() -> doCreate(request));"
-      ],
-      "replace": [
-        "        return doCreate(request);"
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        return adjustRepository.findByRequestId(request.getRequestId())",
+            "                .orElseGet(() -> doCreate(request));"
+          ],
+          "replace": [
+            "        return doCreate(request);"
+          ]
+        }
       ]
     },
     {
       "id": "M2-relax-quantity-limit",
       "description": "放宽可调上限判断：超出可调数量的请求会被受理",
-      "find": [
-        "        if (request.getQuantity() > order.getAdjustableQuantity()) {"
-      ],
-      "replace": [
-        "        if (request.getQuantity() > order.getAdjustableQuantity() + 100) {"
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        if (request.getQuantity() > order.getAdjustableQuantity()) {"
+          ],
+          "replace": [
+            "        if (request.getQuantity() > order.getAdjustableQuantity() + 100) {"
+          ]
+        }
       ]
     },
     {
       "id": "M3-invalid-quantity-writes-first",
-      "description": "数量非法时先落单再拒绝：失败请求留下脏数据",
-      "find": [
-        "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
-        "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
-        "        }",
-        "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
-        "            // 先校验后落单：此处抛出时库中不会留下任何调整单记录",
-        "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
-        "        }",
-        "",
-        "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
-        "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));"
-      ],
-      "replace": [
-        "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
-        "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
-        "        }",
-        "",
-        "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
-        "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));",
-        "",
-        "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
-        "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
-        "        }"
+      "description": "数量非法时先落单再拒绝：失败请求留下脏数据（同时移除 Bean Validation，否则请求到不了 Service）",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustRequest.java",
+          "find": [
+            "    @Min(value = 1, message = \"调整数量必须大于 0\")"
+          ],
+          "replace": [
+            ""
+          ]
+        },
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
+            "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
+            "        }",
+            "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
+            "            // 先校验后落单：此处抛出时库中不会留下任何调整单记录",
+            "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
+            "        }",
+            "",
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));"
+          ],
+          "replace": [
+            "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
+            "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
+            "        }",
+            "",
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));",
+            "",
+            "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
+            "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
+            "        }"
+          ]
+        }
       ]
     },
     {
       "id": "M4-exceeded-writes-first",
       "description": "超限时先落单再拒绝：被拒的超限请求留下脏数据",
-      "find": [
-        "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
-        "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
-        "        }",
-        "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
-        "            // 先校验后落单：此处抛出时库中不会留下任何调整单记录",
-        "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
-        "        }",
-        "",
-        "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
-        "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));"
-      ],
-      "replace": [
-        "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
-        "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
-        "        }",
-        "",
-        "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
-        "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));",
-        "",
-        "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
-        "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
-        "        }"
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
+            "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
+            "        }",
+            "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
+            "            // 先校验后落单：此处抛出时库中不会留下任何调整单记录",
+            "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
+            "        }",
+            "",
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));"
+          ],
+          "replace": [
+            "        if (request.getQuantity() == null || request.getQuantity() <= 0) {",
+            "            throw new BizException(ErrorCode.QUANTITY_INVALID);",
+            "        }",
+            "",
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));",
+            "",
+            "        if (request.getQuantity() > order.getAdjustableQuantity()) {",
+            "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);",
+            "        }"
+          ]
+        }
       ]
     }
   ]

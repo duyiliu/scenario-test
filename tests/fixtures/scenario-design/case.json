@@ -22,9 +22,9 @@
   "expectations": {
     "mustCoverRules": ["R1", "R2", "R3", "R4", "R6"],
     "allowedPending": ["R5"],
-    "mustKillMutations": ["M1", "M2", "M4"],
-    "knownGaps": ["M3"],
+    "mustKillMutations": ["M1", "M2", "M3", "M4"],
+    "knownGaps": [],
     "maxNewScenarios": 7,
-    "note": "knownGaps 是当前两版 skill 都未解决的能力缺口，用于追踪改进；它不计入通过线，但必须在报告里显式列出。"
+    "note": "M3 需要同时移除 Bean Validation，否则请求根本到不了 Service——这类等价变异体会造成「场景抓不住」的假阴性。新增变异时必须先确认它真的改变可观测行为。"
   }
 }
