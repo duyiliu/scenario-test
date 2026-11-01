@@ -106,6 +106,95 @@
           ]
         }
       ]
+    },
+    {
+      "id": "M5-approve-ignores-status",
+      "description": "审批不检查状态：已审批的调整单可以再次审批成功",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        if (adjust.getStatus() != OrderAdjustStatus.PENDING) {",
+            "            throw new BizException(ErrorCode.INVALID_STATUS_TRANSITION);",
+            "        }"
+          ],
+          "replace": [
+            "        if (false) {",
+            "            throw new BizException(ErrorCode.INVALID_STATUS_TRANSITION);",
+            "        }"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M6-list-ignores-order-filter",
+      "description": "列表查询忽略 orderId：返回全部订单的调整单",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustRepository.java",
+          "find": [
+            "                .filter(adjust -> orderId != null && orderId.equals(adjust.getOrderId()))"
+          ],
+          "replace": [
+            "                .filter(adjust -> true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M7-wrong-error-code",
+      "description": "超限返回错误码被换成数量非法（40001）",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "            throw new BizException(ErrorCode.ADJUST_QUANTITY_EXCEEDED);"
+          ],
+          "replace": [
+            "            throw new BizException(ErrorCode.QUANTITY_INVALID);"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M8-wrong-quantity-persisted",
+      "description": "落单时忽略请求数量，固定写入 1",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), request.getQuantity(), OrderAdjustStatus.PENDING));"
+          ],
+          "replace": [
+            "        OrderAdjust adjust = adjustRepository.save(new OrderAdjust(",
+            "                null, order.getId(), request.getRequestId(), 1, OrderAdjustStatus.PENDING));"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M9-detail-always-pending",
+      "description": "详情接口永远返回 PENDING 状态（读到的状态与真实状态不一致）",
+      "edits": [
+        {
+          "file": "src/main/java/com/example/order/OrderAdjustService.java",
+          "find": [
+            "    public OrderAdjust get(long id) {",
+            "        return adjustRepository.findById(id)",
+            "                .orElseThrow(() -> new BizException(ErrorCode.ADJUST_NOT_FOUND));",
+            "    }"
+          ],
+          "replace": [
+            "    public OrderAdjust get(long id) {",
+            "        OrderAdjust found = adjustRepository.findById(id)",
+            "                .orElseThrow(() -> new BizException(ErrorCode.ADJUST_NOT_FOUND));",
+            "        return new OrderAdjust(found.getId(), found.getOrderId(), found.getRequestId(),",
+            "                found.getQuantity(), OrderAdjustStatus.PENDING);",
+            "    }"
+          ]
+        }
+      ]
     }
   ]
 }
