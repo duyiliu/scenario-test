@@ -17,3 +17,6 @@ dist.restore-*/
 
 # 临时测试标记文件
 SYMPHONY-E2E*.txt
+
+# 场景设计评估运行产物（含模型输出与评分，不入库）
+tests/fixtures/scenario-design/artifacts/

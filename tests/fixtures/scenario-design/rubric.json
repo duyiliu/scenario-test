@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "fixture": "order-adjust",
+  "description": "订单调整单功能的场景设计评分口径。规则证据来自 order-adjust 的源码与 docs/API.md。",
+  "baseline": {
+    "configPath": "scenario-test/scenario.config.js",
+    "scenarioIds": ["order-adjust-create"]
+  },
+  "evidence": {
+    "httpStatus": 200,
+    "errorCodes": {
+      "QUANTITY_INVALID": 40001,
+      "ORDER_NOT_FOUND": 40401,
+      "ADJUST_NOT_FOUND": 40402,
+      "ADJUST_QUANTITY_EXCEEDED": 40901,
+      "INVALID_STATUS_TRANSITION": 40903
+    }
+  },
+  "weights": {
+    "coverage": 50,
+    "assertion": 25,
+    "postcheck": 15,
+    "hygiene": 10
+  },
+  "rules": [
+    {
+      "id": "R1",
+      "name": "创建调整单成功闭环",
+      "priority": "must",
+      "evidence": "OrderAdjustService#create 成功分支；docs/API.md「创建调整单」",
+      "trigger": {
+        "method": "POST",
+        "path": "^/?api/order-adjusts/?$"
+      },
+      "minTriggerCount": 1,
+      "expect": {
+        "code": 0,
+        "assertions": [
+          { "path": "data.status", "equals": "PENDING" }
+        ]
+      },
+      "postcheck": {
+        "anyOf": [
+          { "path": "data.status", "equals": "PENDING" },
+          { "path": "data.id", "exists": true }
+        ]
+      }
+    },
+    {
+      "id": "R2",
+      "name": "调整数量超过可调上限被拒且不落单",
+      "priority": "must",
+      "evidence": "OrderAdjustService#doCreate 抛 ADJUST_QUANTITY_EXCEEDED，且校验在 save 之前；ErrorCode 40901",
+      "trigger": {
+        "method": "POST",
+        "path": "^/?api/order-adjusts/?$"
+      },
+      "minTriggerCount": 1,
+      "expect": {
+        "code": 40901
+      },
+      "postcheck": {
+        "anyOf": [
+          { "path": "data.total", "equals": 0 },
+          { "path": "data.list", "length": 0 }
+        ]
+      }
+    },
+    {
+      "id": "R3",
+      "name": "同一 requestId 重复提交保持幂等",
+      "priority": "must",
+      "evidence": "OrderAdjustService#create 幂等优先分支；OrderAdjustRepository#findByRequestId",
+      "trigger": {
+        "method": "POST",
+        "path": "^/?api/order-adjusts/?$"
+      },
+      "minTriggerCount": 2,
+      "expect": {
+        "code": 0,
+        "repeatSameBusinessId": true
+      },
+      "postcheck": {
+        "anyOf": [
+          { "path": "data.total", "equals": 1 }
+        ]
+      }
+    },
+    {
+      "id": "R4",
+      "name": "非 PENDING 状态再次审批被拒且状态不变",
+      "priority": "must",
+      "evidence": "OrderAdjustService#approve 状态前置判断；ErrorCode 40903",
+      "trigger": {
+        "method": "POST",
+        "path": "^/?api/order-adjusts/[^/]+/approve/?$"
+      },
+      "minTriggerCount": 2,
+      "expect": {
+        "code": 40903
+      },
+      "postcheck": {
+        "anyOf": [
+          { "path": "data.status", "equals": "APPROVED" }
+        ]
+      }
+    },
+    {
+      "id": "R5",
+      "name": "调整后结算金额重算",
+      "priority": "optional",
+      "evidence": "OrderAdjustService 调用 SettlementClient.recalculate，本地无结算服务；金额结果无本地查询手段",
+      "reason": "证据只到调用点，金额结果不可观察：允许标待确认，编造金额断言视为伪断言",
+      "trigger": null
+    },
+    {
+      "id": "R6",
+      "name": "调整数量非正数被拒（与 R2 错误码不同）",
+      "priority": "must",
+      "evidence": "OrderAdjustRequest @Min(1) + OrderAdjustService 兜底；ErrorCode 40001",
+      "trigger": {
+        "method": "POST",
+        "path": "^/?api/order-adjusts/?$"
+      },
+      "minTriggerCount": 1,
+      "expect": {
+        "code": 40001
+      },
+      "postcheck": {
+        "anyOf": [
+          { "path": "data.total", "equals": 0 },
+          { "path": "data.list", "length": 0 }
+        ]
+      }
+    }
+  ],
+  "hygiene": {
+    "envelopePaths": ["code", "status", "message"],
+    "domainPathPrefix": "api/order-adjusts"
+  }
+}

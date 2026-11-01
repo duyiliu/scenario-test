@@ -37,6 +37,32 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 
 公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`、`import`（HAR/curl 导入场景草稿）。选项见 `--help`。
 
+## 隔离验证环境（192.168.1.214）
+
+Docker 相关的验证**不在 Windows 工作机执行**（本机没有 Docker daemon）：`tests/skill-e2e/` 的接入-执行冒烟、`tests/fixtures/scenario-design/` 的场景设计 A/B 都在 192.168.1.214 上跑。本机只跑 `npm test`、`npm run build`、`npm run check:eol`。
+
+```bash
+ssh root@192.168.1.214
+```
+
+| 项 | 值 |
+| --- | --- |
+| 系统 | CentOS 7 x86_64，Docker 25.0.3，Node v22.14.0 |
+| 仓库 | `/root/git/scenario-test`（**可能滞后于 master**，先 `git pull` 或重新 clone） |
+| pi | 预建镜像 `scenario-test-pi:1.4.0-node22`，pi 1.4.0，`ENTRYPOINT` 为 `pi`（用 `--entrypoint bash` 覆盖） |
+| 模型 | `deepseek-v4.1-flash`，凭据在 `~/.pi/agent/{auth,models}.json` |
+| 凭据 | 只存在于 214，**不要复制进仓库或提交** |
+
+场景设计 A/B（issue #107）：
+
+```bash
+cd /root/git/scenario-test && git pull && npm ci && npm run build
+PI_IMAGE=scenario-test-pi:1.4.0-node22 bash tests/fixtures/scenario-design/run-ab.sh --tag current-1
+node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design/artifacts
+```
+
+对比旧版 Skill 时用 `SKILL_DIR` 指向对应 tag 的 `skills/scenario-test`，并用 `--tag baseline-N` 命名，`summarize.mjs` 按 `-` 前的前缀分组。单轮结果不作为结论，至少各 6 轮看分布。
+
 ## 架构
 
 核心思想：**`src/contract.js` 是 DSL 的唯一事实来源。** 它声明操作符列表、断言元键、`when`/`extract` 来源、保留变量、`generatedVars` 类型、globals 类型、config/scenario/scenario-step 键列表以及 CLI 选项。所有对外投射 DSL 的模块都从 `contract` 读取——`capabilities.js` → `dist/scenario-test-capabilities.json` 与 `capabilities` 命令；`scripts/generate-dts.mjs` → `dist/scenario-test.d.ts`；`init-templates.js` → AI 提示词 / 模式 / 项目 README；`doctor.js` → 其 DSL 检查。**切勿手写任何操作符/键列表的第二份副本**——构建与测试会校验一致性（`tests/contract.test.js`、`tests/dts.test.js`）。契约一经发布即不可变；新增能力时递增 `contractVersion` 并保留旧字段。
