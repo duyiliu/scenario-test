@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
@@ -22,6 +23,19 @@ import {
     resolveStartupProxyTarget
 } from "./cli/serve-server.js";
 import { createCurlDraft, createHarDraft, DEFAULT_MAX_IMPORT_ENTRIES, ImportError, parseHostFilter, readHarFile, renderDraftFile } from "./import.js";
+import {
+    DEFAULT_PORT as DEFAULT_PROJECT_PORT,
+    discoverProject,
+    ensureProject,
+    listProjects,
+    projectFromConfig,
+    readRegistry,
+    registryPath,
+    removeProject,
+    resolveRegistryHome,
+    setDefaultPort,
+    setProjectPort
+} from "./project-registry.js";
 
 class CliUsageError extends Error {
     constructor(message, hint) {
@@ -104,7 +118,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, insecure: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -132,6 +146,8 @@ function parseArgs(argv) {
             } else {
                 args[valueOption.prop] = parsed;
             }
+            // 区分「用户显式指定端口」与「未指定时的默认值」：只有显式值才更新项目登记
+            if (item === "--port") args.portExplicit = true;
             if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
             continue;
         }
@@ -155,8 +171,11 @@ function parseArgs(argv) {
             );
         }
         else if (!args.scenario && args.command === "run") args.scenario = item;
+        // projects 的子命令与参数（list / set-port 4301 / remove / ensure）按位置收集
+        else if (args.command === "projects") args.positionals.push(item);
         else throw new CliUsageError(`无法识别的参数: ${item}`, "请运行 node scenario-test-cli.cjs --help 查看命令与参数用法。");
     }
+    if (args.port === null) args.port = DEFAULT_PROJECT_PORT;
     if (args.all && args.scenario) throw new CliUsageError("--all 与 --scenario 不能同时使用", "请移除其中一个选项后重试。");
     if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
         throw new CliUsageError("--port 必须是 1-65535 的整数", "请为 --port 选择 1 到 65535 之间的整数。");
@@ -1047,8 +1066,35 @@ function printFailedStepBody(result, print = console.log, secretsOf = []) {
     print(`  响应体${note}:`);
     for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
+function resolveServeProject(args) {
+    if (args.config) {
+        return projectFromConfig(resolveConfigPath(args.config));
+    }
+    const discovered = discoverProject(process.cwd());
+    if (!discovered) {
+        throw new CliUsageError(
+            "未找到 scenario-test 项目配置",
+            `在 ${process.cwd()} 及上级目录未找到 scenario.config.js；请用 --config 指定，或在项目的 scenario-test/ 目录内运行。`
+        );
+    }
+    return discovered;
+}
+
+function openInBrowser(url) {
+    const command = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
+    const commandArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+    try {
+        const child = spawn(command, commandArgs, { detached: true, stdio: "ignore" });
+        child.on("error", () => { /* 打不开浏览器不影响工作台 */ });
+        child.unref();
+    } catch {
+        // 同上：打开失败只影响便利性
+    }
+}
+
 async function serveCommand(args) {
-    const configPath = resolveConfigPath(args.config);
+    const project = resolveServeProject(args);
+    const configPath = project.config;
     const workspace = path.dirname(configPath);
     const libraryDist = path.dirname(path.resolve(process.argv[1]));
     const config = ScenarioTest.loadConfigFile(configPath, ScenarioTest);
@@ -1061,10 +1107,15 @@ async function serveCommand(args) {
     }
     // 启动日志打印实际生效值（默认/命令行来源），便于确认 --proxy-timeout 是否被识别
     const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
+    // 端口来源优先级：显式 --port（并更新登记） > 项目登记端口 > 首次从默认端口起分配
+    const ensured = await ensureProject(project, {
+        port: args.portExplicit ? args.port : undefined
+    });
+    const port = ensured.entry.port;
     const server = createServeServer({
         workspace,
         libraryDist,
-        port: args.port,
+        port,
         config,
         defaultTarget: startup,
         // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
@@ -1075,24 +1126,130 @@ async function serveCommand(args) {
     });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
-            console.error(`错误：端口 ${args.port} 已被占用`);
-            console.error("提示：请使用 --port <其他空闲端口> 指定端口后重试；或双击 start-scenario-test.cmd 重新申请空闲端口。");
+            console.error(`错误：端口 ${port} 已被占用`);
+            console.error(`提示：使用 --port <其他空闲端口> 临时指定；或用 node "${process.argv[1]}" projects set-port <端口> 固定该项目端口。`);
             process.exitCode = 1;
             return;
         }
         console.error(`场景测试工作台启动失败: ${escapeInlineText(error?.message || String(error))}`);
         process.exitCode = 1;
     });
-    server.listen(args.port, "127.0.0.1", () => {
-        console.log(`场景测试工作台: http://127.0.0.1:${args.port}/`);
+    server.listen(port, "127.0.0.1", () => {
+        const url = `http://127.0.0.1:${port}/`;
+        console.log(`场景测试工作台: ${url}`);
+        console.log(`项目: ${ensured.entry.name} (${project.root})`);
         console.log(`配置目录: ${workspace}`);
+        console.log(`项目登记: ${registryPath()}（端口 ${port}${args.portExplicit ? "，--port 已更新" : ensured.created ? "，首次分配" : "，固定复用"}）`);
         if (startup.target) {
             console.log(`接口代理: ${startup.key} -> ${startup.target}`);
             console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
             if (args.insecure === true) console.log("接口代理: 已跳过上游 https 证书校验（--insecure）");
         }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
+        if (args.open) openInBrowser(url);
     });
+}
+
+function requireProject(args) {
+    if (args.config) return projectFromConfig(resolveConfigPath(args.config));
+    const discovered = discoverProject(process.cwd());
+    if (!discovered) {
+        throw new CliUsageError(
+            "未找到 scenario-test 项目",
+            `在 ${process.cwd()} 及上级目录未找到 scenario.config.js；请用 --config 指定项目配置。`
+        );
+    }
+    return discovered;
+}
+
+async function projectsCommand(args) {
+    const sub = args.positionals[0] || "list";
+    const home = resolveRegistryHome();
+    if (sub === "list") {
+        const registry = readRegistry(home);
+        const projects = listProjects(home);
+        if (args.json) {
+            process.stdout.write(`${JSON.stringify({
+                schemaVersion: registry.schemaVersion,
+                defaultPort: registry.defaultPort,
+                projects
+            }, null, 2)}\n`);
+            return;
+        }
+        console.log(`项目登记: ${registryPath(home)}`);
+        console.log(`默认端口: ${registry.defaultPort}`);
+        if (!projects.length) {
+            console.log("（暂无登记项目；运行 serve 会自动登记当前项目）");
+            return;
+        }
+        for (const item of projects) {
+            console.log(`  ${item.name}  端口 ${item.port}  ${item.config}`);
+        }
+        return;
+    }
+    if (sub === "set-default-port") {
+        const port = Number(args.positionals[1]);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new CliUsageError(
+                "projects set-default-port 需要 1-65535 的端口号",
+                "示例：node scenario-test-cli.cjs projects set-default-port 4300"
+            );
+        }
+        setDefaultPort(port, home);
+        console.log(`默认端口已固定为 ${port}；未登记项目首次启动时从这里开始分配。`);
+        return;
+    }
+    const project = requireProject(args);
+    if (sub === "set-port") {
+        const port = Number(args.positionals[1]);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new CliUsageError(
+                "projects set-port 需要 1-65535 的端口号",
+                "示例：node scenario-test-cli.cjs projects set-port 4301"
+            );
+        }
+        const result = setProjectPort(project, port, home);
+        console.log(`已固定 ${result.entry.name} 的端口: ${port}`);
+        console.log(`配置: ${result.entry.config}`);
+        return;
+    }
+    if (sub === "remove") {
+        const result = removeProject(project, home);
+        console.log(result.removed
+            ? `已移除项目登记: ${result.entry?.config || project.config}`
+            : `项目未登记: ${project.config}`);
+        return;
+    }
+    if (sub === "ensure") {
+        const ensured = await ensureProject(project, {
+            port: args.portExplicit ? args.port : undefined,
+            reassign: args.reassign === true,
+            home
+        });
+        const payload = {
+            name: ensured.entry.name,
+            slug: ensured.entry.slug,
+            root: ensured.entry.root,
+            dir: ensured.entry.dir,
+            config: ensured.entry.config,
+            port: ensured.entry.port,
+            portAvailable: ensured.portAvailable,
+            created: ensured.created,
+            changed: ensured.changed
+        };
+        if (args.json) {
+            process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+            return;
+        }
+        console.log(`项目: ${payload.name}`);
+        console.log(`配置: ${payload.config}`);
+        console.log(`端口: ${payload.port}${payload.portAvailable ? "（可用）" : "（被占用）"}`);
+        return;
+    }
+    throw new CliUsageError(
+        `未知的 projects 子命令: ${sub}`,
+        "可用子命令：list、set-port <端口>、set-default-port <端口>、ensure、remove。"
+    );
 }
 
 function importTimestamp(date = new Date()) {
@@ -1215,6 +1372,7 @@ async function main() {
     else if (args.command === "capabilities") capabilitiesCommand(args);
     else if (args.command === "doctor") doctorCommand(args);
     else if (args.command === "import") importCommand(args);
+    else if (args.command === "projects") await projectsCommand(args);
     else await runCommand(args);
 }
 

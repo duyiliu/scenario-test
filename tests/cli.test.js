@@ -15,6 +15,8 @@ for (const key of Object.keys(process.env)) {
     // 剥离判断必须大小写不敏感，否则宿主变量仍可穿透影响被测子进程
     if (key.toUpperCase().startsWith("SCENARIO_")) delete process.env[key];
 }
+// serve 会写用户级项目登记；测试统一隔离，避免污染 ~/.scenario-test/projects.json
+process.env.SCENARIO_TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-home-"));
 
 test("CLI 从公共 JS 配置执行场景", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-"));

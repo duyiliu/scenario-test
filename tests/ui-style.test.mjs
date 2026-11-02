@@ -2,12 +2,16 @@
 // 毛玻璃、滚动条、prefers-reduced-motion）。需要 dist 已构建，运行：npm run test:ui-style
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// serve 会写用户级项目登记；测试统一隔离，避免污染 ~/.scenario-test/projects.json
+process.env.SCENARIO_TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-ui-style-home-"));
 
 async function freePort() {
     return new Promise((resolve, reject) => {

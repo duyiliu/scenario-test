@@ -18,6 +18,8 @@ for (const key of Object.keys(process.env)) {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "src/cli.js");
+// serve 会写用户级项目登记；测试统一隔离，避免污染 ~/.scenario-test/projects.json
+process.env.SCENARIO_TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-issue72-home-"));
 
 const serveOutputBuffers = new WeakMap();
 

@@ -10,6 +10,8 @@ import test from "node:test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(root, "src/cli.js");
+// serve 会写用户级项目登记；测试统一隔离，避免污染 ~/.scenario-test/projects.json
+process.env.SCENARIO_TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-serve-home-"));
 
 // openssl 能力探测：仅用于可选的 https 端到端转发用例
 function hasOpenSsl() {
@@ -185,7 +187,7 @@ test("serve：端口占用时友好退出，不输出未处理异常", async () 
         });
         assert.equal(result.code, 1);
         assert.match(result.stderr, new RegExp(`错误：端口 ${port} 已被占用`));
-        assert.match(result.stderr, /提示：请使用 --port <其他空闲端口> 指定端口后重试；或双击 start-scenario-test\.cmd 重新申请空闲端口。/);
+        assert.match(result.stderr, /提示：使用 --port <其他空闲端口> 临时指定；或用 .* projects set-port <端口> 固定该项目端口。/);
         assert.doesNotMatch(result.stderr, /请重新启动以获取新的随机端口/);
         assert.doesNotMatch(result.stderr, /Unhandled/);
     } finally {

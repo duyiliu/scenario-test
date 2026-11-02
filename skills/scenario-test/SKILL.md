@@ -23,6 +23,6 @@ metadata:
 - 默认免 npm 接入，不修改业务应用源码、`package.json` 或构建配置；不克隆公共库源码；不覆盖已有配置/场景。自动初始化只针对未接入项目；已接入项目不自动升级运行时，更新运行时需要用户明确要求，尤其不可自动 `--force`。
 - 只分析用户指定的业务功能及直接证据，不扫描整个项目批量生成。
 - **生成场景 ≠ 执行测试**。编写阶段绝不调用 HTTP 接口、启动服务或写入实际业务数据；运行阶段需要用户明确提出，写操作/非本地环境遵守 [execute.md](references/execute.md) 的安全闸门。
-- **已接入项目的诊断、执行与工作台使用项目内 CLI**：`node <cli> doctor|run|serve|capabilities`，其中 `<cli>` 是探测结果的 `cli`。项目和 Skill 版本可以不同，不因此阻止使用或自动升级；以项目自身的 doctor 和能力清单为准。禁止直接 `require`/`import` 运行时（UMD、内部模块），也禁止自写脚本或临时 HTTP 请求复现场景执行；命令与参数以该项目 `capabilities --json` 和 `--help` 为准。
+- **已接入项目的诊断、执行与工作台使用项目内 CLI**：`node <cli> doctor|run|serve|capabilities`，其中 `<cli>` 是探测结果的 `cli`。项目和 Skill 版本可以不同，不因此阻止使用或自动升级；以项目自身的 doctor 和能力清单为准。禁止直接 `require`/`import` 运行时（UMD、内部模块），也禁止自写脚本或临时 HTTP 请求复现场景执行；命令与参数以该项目 `capabilities --json` 和 `--help` 为准。工作台端口由用户级项目登记固定：`serve` 缺省复用登记端口，需要查看或修改时用 `node <cli> projects list|set-port <端口>`；登记文件默认在 `~/.scenario-test/projects.json`。
 - 禁止将 Token、Secret、个人数据或生产环境地址写死在场景与提交内容中。
 - 每个项目独立检查，工作树（`.git` 为文件）和多项目并行同样适用；全局 Skill 更新不意味着业务项目运行时更新。

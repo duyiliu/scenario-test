@@ -91,11 +91,12 @@ scenario-test/start-scenario-test.cmd
 
 ```powershell
 node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
-  --config .\scenario-test\scenario.config.js `
-  --port 4300
+  --config .\scenario-test\scenario.config.js
 ```
 
-> `serve` 未指定 `--port` 时默认 4300；双击 `start-scenario-test.cmd` 时脚本会向系统申请随机空闲端口，多项目同时启动互不冲突。
+> `serve` 未指定 `--port` 时复用用户级项目登记中的固定端口：首次运行从默认端口（4300）起分配空闲端口并写入 `~/.scenario-test/projects.json`，之后始终复用；显式 `--port` 会更新该项目登记。双击 `start-scenario-test.cmd` 走同一套登记并自动打开浏览器。
+>
+> 查看或修改登记：`projects list`、`projects set-port 4301`、`projects set-default-port 4300`、`projects remove`。`SCENARIO_TEST_HOME` 可覆盖登记目录（测试/隔离验证用）。
 >
 > 上游空闲超时默认 30 秒，慢接口/大文件联调时可调大：`--proxy-timeout 120000`（毫秒，1-600000 的整数）。
 >
@@ -145,9 +146,9 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 以上命令从业务项目根目录运行；`local` 和 `health-check` 分别是环境 key 和场景 ID 示例，应替换为项目中实际配置的值。macOS / Linux 可使用以下命令：
 
 ```bash
-# 启动工作台
+# 启动工作台（端口复用用户级项目登记）
 node ./scenario-test/.scenario-test/scenario-test-cli.cjs serve \
-  --config ./scenario-test/scenario.config.js --port 4300
+  --config ./scenario-test/scenario.config.js
 
 # 执行指定场景
 node ./scenario-test/.scenario-test/scenario-test-cli.cjs run \
@@ -272,6 +273,7 @@ scenario-test/
 ### 诊断与集成
 
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹；`capabilities --json` 输出机器可读能力清单。
+- `projects` 管理用户级项目登记（`~/.scenario-test/projects.json`）：`list` 查看项目与固定端口，`set-port` / `set-default-port` 修改，`ensure` 供 agent-app-manager 等工作台复用，`remove` 移除登记。
 - `import --har` / `import --curl` 把真实流量或 curl 示例转成场景草稿；静态资源与预检会被过滤，敏感头和查询参数替换为 `{{vars.*}}` 占位，二进制/multipart 请求体会省略并注明。
 - 还支持 `shape` 结构断言、`always` 清理步骤、文件上传、响应保存和自定义 Node 插件。
 

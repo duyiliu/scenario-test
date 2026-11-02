@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -7,6 +8,8 @@ import net from "node:net";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// serve 会写用户级项目登记；测试统一隔离，避免污染 ~/.scenario-test/projects.json
+process.env.SCENARIO_TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-browser-home-"));
 
 // 端口不写死：并发跑多个测试或本机 4399 被占用时自动改用空闲端口；
 // 需要固定端口时用 SCENARIO_TEST_BROWSER_PORT 覆盖

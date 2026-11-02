@@ -178,16 +178,8 @@ export function createProjectFiles(directory = "scenario-test", options = {}) {
 setlocal
 cd /d "%~dp0"
 
-rem Ask Windows for a random free loopback port so projects can run together.
-for /f "usebackq delims=" %%P in (\`powershell.exe -NoProfile -Command "$listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0); $listener.Start(); $port=($listener.LocalEndpoint).Port; $listener.Stop(); Write-Output $port"\`) do set "SCENARIO_TEST_PORT=%%P"
-if not defined SCENARIO_TEST_PORT (
-    echo Scenario Test failed to allocate a free port.
-    exit /b 1
-)
-
-set "SCENARIO_TEST_URL=http://127.0.0.1:%SCENARIO_TEST_PORT%/"
-start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
-call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port %SCENARIO_TEST_PORT%
+rem 端口由用户级项目登记固定：首次运行自动分配，之后复用；--open 在监听成功后打开浏览器。
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --open
 
 if errorlevel 1 (
     echo.
@@ -243,7 +235,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
 | \`index.html\` | 浏览器工作台入口 | 通常不需要 |
-| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后启动 HTTP Server 并打开工作台。macOS / Linux 用 \`node .scenario-test/scenario-test-cli.cjs serve\`（端口冲突加 \`--port 4301\`） | 通常不需要 |
+| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后按用户级项目登记启动工作台并打开浏览器，首次自动分配固定端口、之后复用。macOS / Linux 用 \`node .scenario-test/scenario-test-cli.cjs serve --open\`；端口用 \`projects list\` 查看、\`projects set-port <端口>\` 修改 | 通常不需要 |
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |

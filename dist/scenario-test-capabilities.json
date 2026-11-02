@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.14.0",
-  "contractVersion": 19,
+  "contractVersion": 20,
   "assertions": {
     "operators": {
       "exists": {
@@ -314,7 +314,8 @@
       "init",
       "capabilities",
       "doctor",
-      "import"
+      "import",
+      "projects"
     ],
     "options": {
       "config": {
@@ -376,8 +377,16 @@
       },
       "port": {
         "kind": "value",
-        "description": "浏览器服务端口，默认 4300",
+        "description": "浏览器服务端口；缺省复用项目登记端口，首次自动分配（默认 4300），显式指定会更新登记",
         "parse": "number"
+      },
+      "open": {
+        "kind": "flag",
+        "description": "serve 监听成功后用默认浏览器打开工作台"
+      },
+      "reassign": {
+        "kind": "flag",
+        "description": "projects ensure：登记端口被占用时自动顺延到空闲端口并更新登记"
       },
       "concurrency": {
         "kind": "value",

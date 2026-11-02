@@ -11,8 +11,9 @@
 import { VERSION } from "./version.generated.js";
 
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
-// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）
-export const CONTRACT_VERSION = 19;
+// v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）；
+// v20：用户级项目登记（projects 命令、serve 固定端口、--open/--reassign）
+export const CONTRACT_VERSION = 20;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -223,7 +224,7 @@ export const contract = Object.freeze({
     }),
 
     cli: Object.freeze({
-        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
+        commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import", "projects"]),
         options: Object.freeze({
             config: { kind: "value", prop: "config", description: "场景配置文件" },
             env: { kind: "value", prop: "env", description: "配置中的环境 key" },
@@ -249,7 +250,9 @@ export const contract = Object.freeze({
             },
             bail: { kind: "flag", prop: "bail", description: "任一场景失败后不再启动后续场景（已执行场景跑完）" },
             "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run 为每个场景启用内存 Cookie Jar（自动携带 Set-Cookie，默认关闭）" },
-            port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口，默认 4300" },
+            port: { kind: "value", prop: "port", parse: "number", description: "浏览器服务端口；缺省复用项目登记端口，首次自动分配（默认 4300），显式指定会更新登记" },
+            open: { kind: "flag", prop: "open", description: "serve 监听成功后用默认浏览器打开工作台" },
+            reassign: { kind: "flag", prop: "reassign", description: "projects ensure：登记端口被占用时自动顺延到空闲端口并更新登记" },
             concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
