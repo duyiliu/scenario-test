@@ -14,7 +14,11 @@
 #   # 同名模型在多个 provider 下存在时，MODEL 要写成 provider/model
 #   MODEL=new-api/deepseek-v4.1-flash bash run-ab.sh --tag current-2
 #
-# 产物保存在 artifacts/<tag>/，评分结果打印到 stdout，JSON 在同目录 report.json。
+#   # 证据隐藏变体：docs/API.md 不再直接给出错误码，必须自己查 ErrorCode 枚举
+#   EVIDENCE_MODE=hidden bash run-ab.sh --tag current-hidden-1
+#
+# 产物保存在 artifacts/<tag>/，评分结果打印到 stdout，JSON 在同目录 report.json，
+# agent 完整输出在 agent.log。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -24,6 +28,7 @@ PI_CONFIG_DIR="${PI_CONFIG_DIR:-$HOME/.pi/agent}"
 MODEL="${MODEL:-deepseek-v4.1-flash}"
 # 214 上已有预建镜像 scenario-test-pi:1.4.0-node22，可直接复用，不必重新 build。
 PI_IMAGE="${PI_IMAGE:-pi-agent:1.4.0}"
+EVIDENCE_MODE="${EVIDENCE_MODE:-full}"
 TAG=""
 ARTIFACT_ROOT="${ARTIFACT_ROOT:-$HERE/artifacts}"
 
@@ -53,6 +58,13 @@ trap cleanup EXIT
 mkdir -p "$WORK/project"
 cp -r "$HERE/order-adjust/." "$WORK/project/"
 
+# 1b. 证据隐藏变体：删掉文档里可直接抄的错误码，逼 agent 自己检索统一异常契约。
+case "$EVIDENCE_MODE" in
+  full) ;;
+  hidden) node "$HERE/hide-evidence.mjs" "$WORK/project" ;;
+  *) echo "未知 EVIDENCE_MODE: $EVIDENCE_MODE（支持 full / hidden）" >&2; exit 2 ;;
+esac
+
 # 2. 非交互初始化：只补运行时文件，保留预置的 scenario.config.js 与场景。
 node "$CLI" init --project "$WORK/project" --dir scenario-test --no-input >/dev/null
 
@@ -72,7 +84,7 @@ docker run --rm --entrypoint bash --user root \
   -v "$HERE/agent.sh:/agent.sh:ro" \
   -e MODEL="$MODEL" \
   -w /work/project \
-  "$PI_IMAGE" /agent.sh
+  "$PI_IMAGE" /agent.sh 2>&1 | tee "$OUT/agent.log"
 
 # 4. 保存产出并评分。
 cp -r "$WORK/project/scenario-test" "$OUT/scenario-test"

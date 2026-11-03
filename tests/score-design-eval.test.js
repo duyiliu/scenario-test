@@ -14,7 +14,7 @@ import test from "node:test";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scoreScript = path.join(root, "tests", "fixtures", "scenario-design", "score.mjs");
 
-function writeArtifact(scenarios) {
+function writeArtifact(scenarios, extraVars = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-design-eval-"));
     const projectDir = path.join(dir, "scenario-test");
     fs.mkdirSync(path.join(projectDir, "scenarios"), { recursive: true });
@@ -29,10 +29,11 @@ ${entries}
     ]
 }));
 `, "utf8");
+    const vars = { requestId: "scenario-{{vars.runNo}}", adjustId: "", ...extraVars };
     for (const scenario of scenarios) {
         fs.writeFileSync(path.join(projectDir, "scenarios", `${scenario.id}.js`), `ScenarioTest.registerScenario(${JSON.stringify(scenario.id)}, ScenarioTest.defineScenario({
     name: ${JSON.stringify(scenario.id)},
-    vars: { requestId: "scenario-{{vars.runNo}}", adjustId: "" },
+    vars: ${JSON.stringify(vars)},
     steps: ${JSON.stringify(scenario.steps, null, 4)}
 }));
 `, "utf8");
@@ -254,6 +255,107 @@ test("评分器：改写基线场景 ID 会命中卫生项扣分", () => {
             `应识别基线场景被改名: ${JSON.stringify(report.hygiene.penalties)}`
         );
         assert.ok(report.score.hygiene < 10, "卫生项应扣分");
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("评分器：拒绝/幂等场景用「前后 total 相等」证明副作用，应算后置验证", () => {
+    const scenarios = [
+        {
+            id: "order-adjust-quantity-exceeded",
+            steps: [
+                {
+                    name: "记录拒绝前的总数",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1002 } },
+                    status: 200,
+                    assertions: [{ path: "code", equals: 0 }],
+                    extract: [{ name: "totalBefore", path: "data.total" }]
+                },
+                createStep({
+                    request: { body: { orderId: 1002, quantity: 1, requestId: "{{vars.requestId}}" } },
+                    extract: [],
+                    assertions: [{ path: "code", equals: 40901 }]
+                }),
+                {
+                    name: "确认未新增记录",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1002 } },
+                    status: 200,
+                    assertions: [{ path: "data.total", equals: "{{vars.totalBefore}}" }]
+                }
+            ]
+        },
+        {
+            id: "order-adjust-idempotent",
+            steps: [
+                createStep({ assertions: [{ path: "code", equals: 0 }, { path: "data.id", exists: true }] }),
+                {
+                    name: "记录首次提交后的总数",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1001 } },
+                    status: 200,
+                    assertions: [{ path: "code", equals: 0 }],
+                    extract: [{ name: "totalAfterFirst", path: "data.total" }]
+                },
+                createStep({
+                    name: "同一 requestId 重放",
+                    extract: [],
+                    assertions: [{ path: "code", equals: 0 }, { path: "data.id", equals: "{{vars.adjustId}}" }]
+                }),
+                {
+                    name: "确认未新增记录",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1001 } },
+                    status: 200,
+                    assertions: [{ path: "data.total", equals: "{{vars.totalAfterFirst}}" }]
+                }
+            ]
+        },
+        {
+            id: "order-adjust-quantity-invalid",
+            steps: [
+                {
+                    name: "记录拒绝前的总数",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1001 } },
+                    status: 200,
+                    assertions: [{ path: "code", equals: 0 }],
+                    extract: [{ name: "totalBeforeInvalid", path: "data.total" }]
+                },
+                createStep({
+                    request: { body: { orderId: 1001, quantity: 0, requestId: "{{vars.requestId}}" } },
+                    extract: [],
+                    assertions: [{ path: "code", equals: 40001 }]
+                }),
+                {
+                    name: "确认未落单",
+                    method: "GET",
+                    path: "api/order-adjusts",
+                    request: { params: { orderId: 1001 } },
+                    status: 200,
+                    assertions: [{ path: "data.total", equals: "{{vars.totalBeforeInvalid}}" }]
+                }
+            ]
+        }
+    ];
+    const dir = writeArtifact(scenarios, { totalBefore: 0, totalAfterFirst: 0, totalBeforeInvalid: 0 });
+    try {
+        const report = score(dir);
+        const rules = Object.fromEntries(report.rules.map((rule) => [rule.id, rule]));
+        for (const id of ["R2", "R3", "R6"]) {
+            assert.equal(
+                rules[id].postchecked,
+                true,
+                `${id} 应识别「前后 total 相等」为后置验证: ${JSON.stringify(rules[id])}`
+            );
+        }
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

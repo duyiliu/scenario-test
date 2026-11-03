@@ -28,7 +28,8 @@ for (const name of fs.readdirSync(root)) {
     } catch {
         continue;
     }
-    const key = name.includes("-") ? name.slice(0, name.indexOf("-")) : name;
+    // 分组键去掉末尾轮次：baseline-1 → baseline，current-hidden-3 → current-hidden。
+    const key = name.replace(/-\d+$/, "");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ tag: name, report });
 }
