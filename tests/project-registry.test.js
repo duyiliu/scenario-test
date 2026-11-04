@@ -102,6 +102,26 @@ test("ensureProject：显式端口写入登记；reassign 在登记端口被占�
     }
 });
 
+test("ensureProject：多个项目首次登记时分配互不冲突的端口", async (t) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-registry-multi-"));
+    t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+    const ports = [];
+    for (const name of ["alpha", "beta", "gamma"]) {
+        const project = fs.mkdtempSync(path.join(os.tmpdir(), `scenario-registry-${name}-`));
+        t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+        const scenarioDir = path.join(project, "scenario-test");
+        fs.mkdirSync(path.join(scenarioDir, ".scenario-test"), { recursive: true });
+        fs.writeFileSync(
+            path.join(scenarioDir, "scenario.config.js"),
+            "ScenarioTest.registerConfig(ScenarioTest.defineConfig({ baseUrl: 'http://127.0.0.1:1', scenarios: [] }));\n",
+            "utf8"
+        );
+        const result = await ensureProject(discoverProject(project), { home });
+        ports.push(result.entry.port);
+    }
+    assert.equal(new Set(ports).size, ports.length, `多个项目不应分到同一端口：${ports.join(", ")}`);
+});
+
 test("setProjectPort / setDefaultPort / removeProject 持久化到用户目录", async (t) => {
     const { home, project } = makeWorkspace(t);
     const discovered = discoverProject(project);

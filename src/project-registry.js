@@ -277,14 +277,25 @@ function isPortFree(port, host = "127.0.0.1") {
     });
 }
 
-async function findFreePort(preferred, host = "127.0.0.1") {
+// 已登记项目占用的端口：分配新端口时必须排除，否则多个项目的固定端口会撞在一起。
+function registeredPorts(registry, excludeKey) {
+    const used = new Set();
+    for (const [key, entry] of Object.entries(registry.projects)) {
+        if (key === excludeKey) continue;
+        if (Number.isInteger(entry.port) && entry.port >= 1 && entry.port <= 65535) used.add(entry.port);
+    }
+    return used;
+}
+
+async function findFreePort(preferred, host = "127.0.0.1", excludedPorts = new Set()) {
     const start = Number.isInteger(preferred) && preferred >= 1 && preferred <= 65535 ? preferred : DEFAULT_PORT;
     for (let offset = 0; offset < MAX_PORT_PROBES; offset += 1) {
         const port = start + offset;
         if (port > 65535) break;
+        if (excludedPorts.has(port)) continue;
         if (await isPortFree(port, host)) return port;
     }
-    throw new Error(`从端口 ${start} 起未找到空闲端口，请用 --port 指定端口`);
+    throw new Error(`从端口 ${start} 起未找到空闲且未被其它项目登记的端口，请用 --port 指定端口`);
 }
 
 function normalizeEntry(registry, project, key) {
@@ -342,6 +353,7 @@ export async function ensureProject(project, options = {}) {
         const key = projectKey(project.config);
         const normalized = normalizeEntry(registry, project, key);
         const entry = normalized.entry;
+        const usedPorts = registeredPorts(registry, key);
         let changed = normalized.changed;
         if (Number.isInteger(explicitPort) && explicitPort >= 1 && explicitPort <= 65535) {
             if (entry.port !== explicitPort) {
@@ -350,11 +362,11 @@ export async function ensureProject(project, options = {}) {
                 changed = true;
             }
         } else if (!entry.port) {
-            entry.port = await findFreePort(registry.defaultPort);
+            entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
             entry.updatedAt = nowIso();
             changed = true;
         } else if (reassign && !(await isPortFree(entry.port))) {
-            entry.port = await findFreePort(registry.defaultPort);
+            entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
             entry.updatedAt = nowIso();
             changed = true;
         }

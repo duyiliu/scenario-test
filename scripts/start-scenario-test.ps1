@@ -21,14 +21,12 @@ if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     throw "配置文件不存在: $configPath"
 }
 
-# 未显式指定 -Port 时向系统申请随机空闲端口（与项目内 start-scenario-test.cmd 一致），
-# 避免固定 4300 被占用时反复启动失败，也让多项目可以同时启动
-if ($Port -eq 0) {
-    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-    $listener.Start()
-    $Port = ($listener.LocalEndpoint).Port
-    $listener.Stop()
-}
+# 未显式指定 -Port 时不再自行申请随机端口：交给 serve 复用用户级项目登记中的固定端口
+# （首次自动分配），与项目内 start-scenario-test.cmd 保持一致。否则每次启动都会用
+# --port 覆盖该项目的登记端口，多项目“固定端口”失效。
+$serveArgs = @("serve", "--config", $configPath)
+if ($Port -gt 0) { $serveArgs += @("--port", "$Port") }
+if ($OpenBrowser) { $serveArgs += "--open" }
 
 # 优先使用项目内免 npm 运行时副本（默认接入方式）；副本缺失且 npm 包可用时才回退 npx（npm 接入方式）
 $runtimeCli = Join-Path $configDir ".scenario-test/scenario-test-cli.cjs"
@@ -36,19 +34,18 @@ $useNpmFallback = -not (Test-Path -LiteralPath $runtimeCli -PathType Leaf)
 
 Push-Location $projectRoot
 try {
-    $url = "http://127.0.0.1:$Port/"
-    Write-Host "Scenario Test 工作台: $url" -ForegroundColor Cyan
     Write-Host "配置文件: $configPath" -ForegroundColor DarkGray
-
-    if ($OpenBrowser) {
-        Start-Process $url
+    if ($Port -gt 0) {
+        Write-Host "工作台端口: $Port（会写入项目登记）" -ForegroundColor DarkGray
+    } else {
+        Write-Host "工作台端口: 复用项目登记（首次从默认端口起分配）" -ForegroundColor DarkGray
     }
 
     if ($useNpmFallback) {
         Write-Host "未找到运行时副本 $runtimeCli，回退 npm 模式启动" -ForegroundColor Yellow
-        & npx.cmd --no-install "@yc_yzkj/scenario-test" serve --config "$Config" --port $Port
+        & npx.cmd --no-install "@yc_yzkj/scenario-test" @serveArgs
     } else {
-        & node "$runtimeCli" serve --config "$configPath" --port $Port
+        & node "$runtimeCli" @serveArgs
     }
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
