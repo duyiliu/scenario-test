@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.14.0 */
+/*! scenario-test v0.15.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -240,9 +240,10 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs10 = __toESM(require("node:fs"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
-var import_node_crypto2 = __toESM(require("node:crypto"), 1);
+var import_node_fs11 = __toESM(require("node:fs"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
+var import_node_crypto3 = __toESM(require("node:crypto"), 1);
+var import_node_child_process = require("node:child_process");
 var import_promises2 = require("node:readline/promises");
 var import_node_url = require("node:url");
 
@@ -354,10 +355,10 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.14.0";
+var VERSION = "0.15.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 19;
+var CONTRACT_VERSION = 20;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -575,7 +576,7 @@ var contract = Object.freeze({
     note: "always: true \u7684\u6B65\u9AA4\u5728\u524D\u7F6E\u666E\u901A\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\u540E\u4ECD\u4F1A\u6267\u884C\uFF0C\u7528\u4E8E teardown\uFF1B\u7528\u6237\u53D6\u6D88\u6267\u884C\u65F6\u4E0D\u8FD0\u884C\u3002retryUntil \u7B2C n \u6B21\u91CD\u8BD5\u95F4\u9694 = intervalMs * intervalFactor^(n-1)\uFF0C\u5C01\u9876 maxIntervalMs\uFF0C\u4E14\u4E0D\u4F4E\u4E8E 100ms"
   }),
   cli: Object.freeze({
-    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import"]),
+    commands: Object.freeze(["run", "serve", "init", "capabilities", "doctor", "import", "projects"]),
     options: Object.freeze({
       config: { kind: "value", prop: "config", description: "\u573A\u666F\u914D\u7F6E\u6587\u4EF6" },
       env: { kind: "value", prop: "env", description: "\u914D\u7F6E\u4E2D\u7684\u73AF\u5883 key" },
@@ -601,7 +602,9 @@ var contract = Object.freeze({
       },
       bail: { kind: "flag", prop: "bail", description: "\u4EFB\u4E00\u573A\u666F\u5931\u8D25\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u573A\u666F\uFF08\u5DF2\u6267\u884C\u573A\u666F\u8DD1\u5B8C\uFF09" },
       "cookie-jar": { kind: "flag", prop: "cookieJar", description: "run \u4E3A\u6BCF\u4E2A\u573A\u666F\u542F\u7528\u5185\u5B58 Cookie Jar\uFF08\u81EA\u52A8\u643A\u5E26 Set-Cookie\uFF0C\u9ED8\u8BA4\u5173\u95ED\uFF09" },
-      port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF0C\u9ED8\u8BA4 4300" },
+      port: { kind: "value", prop: "port", parse: "number", description: "\u6D4F\u89C8\u5668\u670D\u52A1\u7AEF\u53E3\uFF1B\u7F3A\u7701\u590D\u7528\u9879\u76EE\u767B\u8BB0\u7AEF\u53E3\uFF0C\u9996\u6B21\u81EA\u52A8\u5206\u914D\uFF08\u9ED8\u8BA4 4300\uFF09\uFF0C\u663E\u5F0F\u6307\u5B9A\u4F1A\u66F4\u65B0\u767B\u8BB0" },
+      open: { kind: "flag", prop: "open", description: "serve \u76D1\u542C\u6210\u529F\u540E\u7528\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00\u5DE5\u4F5C\u53F0" },
+      reassign: { kind: "flag", prop: "reassign", description: "projects ensure\uFF1A\u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3\u5E76\u66F4\u65B0\u767B\u8BB0" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
@@ -987,10 +990,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path11 } = splitUrlFragment(url);
-  const queryIndex = path11.indexOf("?");
+  const { path: path12 } = splitUrlFragment(url);
+  const queryIndex = path12.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path11.slice(queryIndex + 1).split("&")) {
+  for (const pair of path12.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -999,8 +1002,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path11, fragment } = splitUrlFragment(text);
-  return `${path11}${path11.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path12, fragment } = splitUrlFragment(text);
+  return `${path12}${path12.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -1122,12 +1125,12 @@ function pushShapeFailure(failures, failure) {
     reason: failure.reason
   });
 }
-function collectShapeFailures(value, schema, path11, failures) {
+function collectShapeFailures(value, schema, path12, failures) {
   const type = schema.type !== void 0 ? schema.type : schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0;
   const actualType = shapeActualType(value);
   if (type !== void 0 && !shapeTypeMatches(value, type)) {
     pushShapeFailure(failures, {
-      path: path11,
+      path: path12,
       expected: `type: ${type}`,
       expectedType: type,
       actual: value,
@@ -1140,7 +1143,7 @@ function collectShapeFailures(value, schema, path11, failures) {
     const actualText = stableStringify(value);
     if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
       pushShapeFailure(failures, {
-        path: path11,
+        path: path12,
         expected: `enum: ${JSON.stringify(schema.enum)}`,
         actual: value,
         actualType,
@@ -1153,7 +1156,7 @@ function collectShapeFailures(value, schema, path11, failures) {
     for (const key of schema.required || []) {
       if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) {
         pushShapeFailure(failures, {
-          path: shapeChildPath(path11, key),
+          path: shapeChildPath(path12, key),
           expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728",
           actual: void 0,
           actualType: "undefined",
@@ -1163,13 +1166,13 @@ function collectShapeFailures(value, schema, path11, failures) {
     }
     for (const [key, child] of Object.entries(properties)) {
       if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) continue;
-      collectShapeFailures(value[key], child, shapeChildPath(path11, key), failures);
+      collectShapeFailures(value[key], child, shapeChildPath(path12, key), failures);
     }
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
         if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
         pushShapeFailure(failures, {
-          path: shapeChildPath(path11, key),
+          path: shapeChildPath(path12, key),
           expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5",
           actual: value[key],
           actualType: shapeActualType(value[key]),
@@ -1179,7 +1182,7 @@ function collectShapeFailures(value, schema, path11, failures) {
     }
   }
   if (Array.isArray(value) && schema.items !== void 0) {
-    value.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path11, index), failures));
+    value.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path12, index), failures));
   }
   return failures;
 }
@@ -1741,12 +1744,12 @@ function normalizeEnumDefinition(definition) {
   return { values, weights: normalized };
 }
 function randomUuid() {
-  const crypto3 = globalThis.crypto;
-  if (typeof crypto3?.randomUUID === "function") return crypto3.randomUUID();
-  if (typeof crypto3?.getRandomValues !== "function") {
+  const crypto4 = globalThis.crypto;
+  if (typeof crypto4?.randomUUID === "function") return crypto4.randomUUID();
+  if (typeof crypto4?.getRandomValues !== "function") {
     throw new Error("\u5F53\u524D\u73AF\u5883\u4E0D\u652F\u6301 crypto.randomUUID/getRandomValues");
   }
-  const bytes = crypto3.getRandomValues(new Uint8Array(16));
+  const bytes = crypto4.getRandomValues(new Uint8Array(16));
   bytes[6] = bytes[6] & 15 | 64;
   bytes[8] = bytes[8] & 63 | 128;
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -3678,14 +3681,14 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path11 = context && context.path || resolveString(step.path || "", runtime);
+      const path12 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path11,
+        path: path12,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -4387,16 +4390,8 @@ function createProjectFiles(directory = "scenario-test", options = {}) {
 setlocal
 cd /d "%~dp0"
 
-rem Ask Windows for a random free loopback port so projects can run together.
-for /f "usebackq delims=" %%P in (\`powershell.exe -NoProfile -Command "$listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,0); $listener.Start(); $port=($listener.LocalEndpoint).Port; $listener.Stop(); Write-Output $port"\`) do set "SCENARIO_TEST_PORT=%%P"
-if not defined SCENARIO_TEST_PORT (
-    echo Scenario Test failed to allocate a free port.
-    exit /b 1
-)
-
-set "SCENARIO_TEST_URL=http://127.0.0.1:%SCENARIO_TEST_PORT%/"
-start "" powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 700; Start-Process '%SCENARIO_TEST_URL%'"
-call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --port %SCENARIO_TEST_PORT%
+rem \u7AEF\u53E3\u7531\u7528\u6237\u7EA7\u9879\u76EE\u767B\u8BB0\u56FA\u5B9A\uFF1A\u9996\u6B21\u8FD0\u884C\u81EA\u52A8\u5206\u914D\uFF0C\u4E4B\u540E\u590D\u7528\uFF1B--open \u5728\u76D1\u542C\u6210\u529F\u540E\u6253\u5F00\u6D4F\u89C8\u5668\u3002
+call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --open
 
 if errorlevel 1 (
     echo.
@@ -4452,7 +4447,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 | \u8DEF\u5F84 | \u4F5C\u7528 | \u662F\u5426\u5E94\u4FEE\u6539 |
 | --- | --- | --- |
 | \`index.html\` | \u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0\u5165\u53E3 | \u901A\u5E38\u4E0D\u9700\u8981 |
-| \`start-scenario-test.cmd\` | Windows \u4EBA\u5DE5\u6D4B\u8BD5\u5165\u53E3\uFF1B\u53CC\u51FB\u540E\u542F\u52A8 HTTP Server \u5E76\u6253\u5F00\u5DE5\u4F5C\u53F0\u3002macOS / Linux \u7528 \`node .scenario-test/scenario-test-cli.cjs serve\`\uFF08\u7AEF\u53E3\u51B2\u7A81\u52A0 \`--port 4301\`\uFF09 | \u901A\u5E38\u4E0D\u9700\u8981 |
+| \`start-scenario-test.cmd\` | Windows \u4EBA\u5DE5\u6D4B\u8BD5\u5165\u53E3\uFF1B\u53CC\u51FB\u540E\u6309\u7528\u6237\u7EA7\u9879\u76EE\u767B\u8BB0\u542F\u52A8\u5DE5\u4F5C\u53F0\u5E76\u6253\u5F00\u6D4F\u89C8\u5668\uFF0C\u9996\u6B21\u81EA\u52A8\u5206\u914D\u56FA\u5B9A\u7AEF\u53E3\u3001\u4E4B\u540E\u590D\u7528\u3002macOS / Linux \u7528 \`node .scenario-test/scenario-test-cli.cjs serve --open\`\uFF1B\u7AEF\u53E3\u7528 \`projects list\` \u67E5\u770B\u3001\`projects set-port <\u7AEF\u53E3>\` \u4FEE\u6539 | \u901A\u5E38\u4E0D\u9700\u8981 |
 | \`scenario.config.js\` | \u73AF\u5883\u3001\u6D4B\u8BD5\u53D8\u91CF\u548C\u573A\u666F\u6E05\u5355\uFF1B\u901A\u5E38\u7531 AI \u6309\u7528\u6237\u63D0\u4F9B\u7684\u4FE1\u606F\u7EF4\u62A4 | \u6309\u9700 |
 | \`scenarios/\` | \u6309\u4E1A\u52A1\u529F\u80FD\u5EFA\u5B50\u76EE\u5F55\uFF1B\u76EE\u5F55\u5185\u4E00\u4E2A\u6587\u4EF6\u5BF9\u5E94\u8BE5\u529F\u80FD\u7684\u4E00\u6761\u72EC\u7ACB\u9A8C\u8BC1\u8DEF\u5F84 | \u7531 AI \u7EF4\u62A4 |
 | \`plugins/\` | \u4EC5\u5F53\u524D\u9879\u76EE\u9700\u8981\u7684\u6587\u4EF6\u3001Excel \u6216\u4E1A\u52A1\u6269\u5C55 | \u6309\u9700\u65B0\u5EFA |
@@ -6509,6 +6504,370 @@ function readHarFile(filePath) {
   }
 }
 
+// src/project-registry.js
+var import_node_crypto2 = __toESM(require("node:crypto"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_net = __toESM(require("node:net"), 1);
+var import_node_os = __toESM(require("node:os"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
+var REGISTRY_SCHEMA_VERSION = 1;
+var DEFAULT_PORT = 4300;
+var DEFAULT_SCENARIO_DIR = "scenario-test";
+var HOME_ENV = "SCENARIO_TEST_HOME";
+var REGISTRY_FILE = "projects.json";
+var LOCK_FILE = "projects.lock";
+var LOCK_RETRY_MS = 50;
+var LOCK_TIMEOUT_MS = 5e3;
+var LOCK_STALE_MS = 15e3;
+var MAX_PORT_PROBES = 200;
+function resolveRegistryHome(env = process.env) {
+  const explicit = env[HOME_ENV];
+  return explicit ? import_node_path10.default.resolve(explicit) : import_node_path10.default.join(import_node_os.default.homedir(), ".scenario-test");
+}
+function registryPath(home = resolveRegistryHome()) {
+  return import_node_path10.default.join(home, REGISTRY_FILE);
+}
+function isDirectory2(target) {
+  try {
+    return import_node_fs10.default.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function canonicalPath(target) {
+  let resolved = import_node_path10.default.resolve(target);
+  try {
+    resolved = import_node_fs10.default.realpathSync.native(resolved);
+  } catch {
+  }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+function nowIso() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function emptyRegistry() {
+  return {
+    schemaVersion: REGISTRY_SCHEMA_VERSION,
+    defaultPort: DEFAULT_PORT,
+    projects: {}
+  };
+}
+function readRegistry(home = resolveRegistryHome()) {
+  const file = registryPath(home);
+  let raw;
+  try {
+    raw = import_node_fs10.default.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return emptyRegistry();
+    throw error;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`\u9879\u76EE\u767B\u8BB0\u6587\u4EF6\u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${file}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`\u9879\u76EE\u767B\u8BB0\u6587\u4EF6\u7ED3\u6784\u65E0\u6548\uFF1A${file}`);
+  }
+  const registry = emptyRegistry();
+  if (Number.isInteger(parsed.defaultPort) && parsed.defaultPort >= 1 && parsed.defaultPort <= 65535) {
+    registry.defaultPort = parsed.defaultPort;
+  }
+  if (parsed.projects && typeof parsed.projects === "object" && !Array.isArray(parsed.projects)) {
+    for (const [key, value] of Object.entries(parsed.projects)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      if (typeof value.config !== "string" || typeof value.port !== "number") continue;
+      registry.projects[key] = {
+        name: typeof value.name === "string" ? value.name : import_node_path10.default.basename(import_node_path10.default.dirname(value.config)),
+        slug: typeof value.slug === "string" ? value.slug : "",
+        root: typeof value.root === "string" ? value.root : import_node_path10.default.dirname(value.config),
+        dir: typeof value.dir === "string" ? value.dir : import_node_path10.default.dirname(value.config),
+        config: value.config,
+        port: value.port,
+        createdAt: typeof value.createdAt === "string" ? value.createdAt : nowIso(),
+        updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : nowIso()
+      };
+    }
+  }
+  return registry;
+}
+function writeRegistry(registry, home = resolveRegistryHome()) {
+  import_node_fs10.default.mkdirSync(home, { recursive: true });
+  const file = registryPath(home);
+  const temp = `${file}.${process.pid}.${import_node_crypto2.default.randomBytes(4).toString("hex")}.tmp`;
+  import_node_fs10.default.writeFileSync(temp, `${JSON.stringify(registry, null, 2)}
+`, "utf8");
+  import_node_fs10.default.renameSync(temp, file);
+}
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function sleep(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+async function withRegistryLock(home, action) {
+  import_node_fs10.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path10.default.join(home, LOCK_FILE);
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let handle;
+  while (!handle) {
+    try {
+      handle = import_node_fs10.default.openSync(lock, "wx");
+      import_node_fs10.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      try {
+        const stat = import_node_fs10.default.statSync(lock);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          import_node_fs10.default.rmSync(lock, { force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`\u9879\u76EE\u767B\u8BB0\u9501\u7B49\u5F85\u8D85\u65F6\uFF1A${lock}`);
+      }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return await action();
+  } finally {
+    try {
+      import_node_fs10.default.closeSync(handle);
+    } catch {
+    }
+    import_node_fs10.default.rmSync(lock, { force: true });
+  }
+}
+function withRegistryLockSync(home, action) {
+  import_node_fs10.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path10.default.join(home, LOCK_FILE);
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let handle;
+  while (!handle) {
+    try {
+      handle = import_node_fs10.default.openSync(lock, "wx");
+      import_node_fs10.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      try {
+        const stat = import_node_fs10.default.statSync(lock);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          import_node_fs10.default.rmSync(lock, { force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`\u9879\u76EE\u767B\u8BB0\u9501\u7B49\u5F85\u8D85\u65F6\uFF1A${lock}`);
+      }
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return action();
+  } finally {
+    try {
+      import_node_fs10.default.closeSync(handle);
+    } catch {
+    }
+    import_node_fs10.default.rmSync(lock, { force: true });
+  }
+}
+function projectName(root) {
+  const base = import_node_path10.default.basename(import_node_path10.default.resolve(root));
+  return base && base !== import_node_path10.default.parse(import_node_path10.default.resolve(root)).root ? base : "project";
+}
+function slugify(name) {
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|[-._]+$/g, "");
+  if (slug) return slug;
+  const digest = import_node_crypto2.default.createHash("sha1").update(String(name)).digest("hex").slice(0, 6);
+  return `project-${digest}`;
+}
+function uniqueSlug(registry, name, key) {
+  const base = slugify(name);
+  const taken = new Set(
+    Object.entries(registry.projects).filter(([entryKey]) => entryKey !== key).map(([, entry]) => entry.slug).filter(Boolean)
+  );
+  if (!taken.has(base)) return base;
+  const digest = import_node_crypto2.default.createHash("sha1").update(key).digest("hex").slice(0, 6);
+  return `${base}-${digest}`;
+}
+function discoverProject(startDir = process.cwd()) {
+  let current = import_node_path10.default.resolve(startDir);
+  while (true) {
+    const directConfig = import_node_path10.default.join(current, "scenario.config.js");
+    if (import_node_fs10.default.existsSync(directConfig) && isDirectory2(import_node_path10.default.join(current, ".scenario-test"))) {
+      const root = import_node_path10.default.dirname(current);
+      return { root, dir: current, config: directConfig, name: projectName(root) };
+    }
+    const nestedDir = import_node_path10.default.join(current, DEFAULT_SCENARIO_DIR);
+    const nestedConfig = import_node_path10.default.join(nestedDir, "scenario.config.js");
+    if (import_node_fs10.default.existsSync(nestedConfig)) {
+      return { root: current, dir: nestedDir, config: nestedConfig, name: projectName(current) };
+    }
+    const parent = import_node_path10.default.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+function projectFromConfig(configPath) {
+  const config = import_node_path10.default.resolve(configPath);
+  const dir = import_node_path10.default.dirname(config);
+  return { root: import_node_path10.default.dirname(dir), dir, config, name: projectName(import_node_path10.default.dirname(dir)) };
+}
+function projectKey(configPath) {
+  return canonicalPath(configPath);
+}
+function listProjects(home = resolveRegistryHome()) {
+  const registry = readRegistry(home);
+  return Object.entries(registry.projects).map(([key, entry]) => ({ key, ...entry })).sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+}
+function isPortFree(port, host = "127.0.0.1") {
+  return new Promise((resolve2) => {
+    const server = import_node_net.default.createServer();
+    server.once("error", () => resolve2(false));
+    server.listen(port, host, () => {
+      server.close(() => resolve2(true));
+    });
+  });
+}
+function registeredPorts(registry, excludeKey) {
+  const used = /* @__PURE__ */ new Set();
+  for (const [key, entry] of Object.entries(registry.projects)) {
+    if (key === excludeKey) continue;
+    if (Number.isInteger(entry.port) && entry.port >= 1 && entry.port <= 65535) used.add(entry.port);
+  }
+  return used;
+}
+async function findFreePort(preferred, host = "127.0.0.1", excludedPorts = /* @__PURE__ */ new Set()) {
+  const start = Number.isInteger(preferred) && preferred >= 1 && preferred <= 65535 ? preferred : DEFAULT_PORT;
+  for (let offset = 0; offset < MAX_PORT_PROBES; offset += 1) {
+    const port = start + offset;
+    if (port > 65535) break;
+    if (excludedPorts.has(port)) continue;
+    if (await isPortFree(port, host)) return port;
+  }
+  throw new Error(`\u4ECE\u7AEF\u53E3 ${start} \u8D77\u672A\u627E\u5230\u7A7A\u95F2\u4E14\u672A\u88AB\u5176\u5B83\u9879\u76EE\u767B\u8BB0\u7684\u7AEF\u53E3\uFF0C\u8BF7\u7528 --port \u6307\u5B9A\u7AEF\u53E3`);
+}
+function normalizeEntry(registry, project, key) {
+  const now2 = nowIso();
+  const existing = registry.projects[key];
+  if (existing) {
+    let changed = false;
+    if (existing.name !== project.name) {
+      existing.name = project.name;
+      changed = true;
+    }
+    if (existing.root !== project.root) {
+      existing.root = project.root;
+      changed = true;
+    }
+    if (existing.dir !== project.dir) {
+      existing.dir = project.dir;
+      changed = true;
+    }
+    if (existing.config !== project.config) {
+      existing.config = project.config;
+      changed = true;
+    }
+    if (!existing.slug) {
+      existing.slug = uniqueSlug(registry, project.name, key);
+      changed = true;
+    }
+    if (changed) existing.updatedAt = now2;
+    return { entry: existing, created: false, changed };
+  }
+  const entry = {
+    name: project.name,
+    slug: uniqueSlug(registry, project.name, key),
+    root: project.root,
+    dir: project.dir,
+    config: project.config,
+    port: null,
+    createdAt: now2,
+    updatedAt: now2
+  };
+  registry.projects[key] = entry;
+  return { entry, created: true, changed: true };
+}
+async function ensureProject(project, options = {}) {
+  const home = options.home || resolveRegistryHome();
+  const explicitPort = options.port;
+  const reassign = options.reassign === true;
+  return withRegistryLock(home, async () => {
+    const registry = readRegistry(home);
+    const key = projectKey(project.config);
+    const normalized = normalizeEntry(registry, project, key);
+    const entry = normalized.entry;
+    const usedPorts = registeredPorts(registry, key);
+    let changed = normalized.changed;
+    if (Number.isInteger(explicitPort) && explicitPort >= 1 && explicitPort <= 65535) {
+      if (entry.port !== explicitPort) {
+        entry.port = explicitPort;
+        entry.updatedAt = nowIso();
+        changed = true;
+      }
+    } else if (!entry.port) {
+      entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
+      entry.updatedAt = nowIso();
+      changed = true;
+    } else if (reassign && !await isPortFree(entry.port)) {
+      entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
+      entry.updatedAt = nowIso();
+      changed = true;
+    }
+    if (changed) writeRegistry(registry, home);
+    const portAvailable = await isPortFree(entry.port);
+    return {
+      key,
+      entry: { ...entry },
+      created: normalized.created,
+      changed,
+      portAvailable
+    };
+  });
+}
+function setProjectPort(project, port, home = resolveRegistryHome()) {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("\u7AEF\u53E3\u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570");
+  }
+  return withRegistryLockSync(home, () => {
+    const registry = readRegistry(home);
+    const key = projectKey(project.config);
+    const normalized = normalizeEntry(registry, project, key);
+    normalized.entry.port = port;
+    normalized.entry.updatedAt = nowIso();
+    writeRegistry(registry, home);
+    return { key, entry: { ...normalized.entry } };
+  });
+}
+function setDefaultPort(port, home = resolveRegistryHome()) {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("\u9ED8\u8BA4\u7AEF\u53E3\u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570");
+  }
+  return withRegistryLockSync(home, () => {
+    const registry = readRegistry(home);
+    registry.defaultPort = port;
+    writeRegistry(registry, home);
+    return registry.defaultPort;
+  });
+}
+function removeProject(project, home = resolveRegistryHome()) {
+  return withRegistryLockSync(home, () => {
+    const registry = readRegistry(home);
+    const key = projectKey(project.config);
+    const entry = registry.projects[key] ? { ...registry.projects[key] } : null;
+    delete registry.projects[key];
+    if (entry) writeRegistry(registry, home);
+    return { key, removed: Boolean(entry), entry };
+  });
+}
+
 // src/cli.js
 var CliUsageError = class extends Error {
   constructor(message, hint) {
@@ -6580,7 +6939,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: 4300, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, insecure: false, har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -6609,6 +6968,7 @@ function parseArgs(argv) {
       } else {
         args[valueOption.prop] = parsed;
       }
+      if (item === "--port") args.portExplicit = true;
       if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
       continue;
     }
@@ -6629,8 +6989,10 @@ function parseArgs(argv) {
         `\u6B63\u786E\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs ${item} --config scenario.config.js\uFF1B\u82E5\u786E\u9700\u6267\u884C\u540C\u540D\u573A\u666F\uFF0C\u8BF7\u4F7F\u7528 --scenario "${item}"\u3002`
       );
     } else if (!args.scenario && args.command === "run") args.scenario = item;
+    else if (args.command === "projects") args.positionals.push(item);
     else throw new CliUsageError(`\u65E0\u6CD5\u8BC6\u522B\u7684\u53C2\u6570: ${item}`, "\u8BF7\u8FD0\u884C node scenario-test-cli.cjs --help \u67E5\u770B\u547D\u4EE4\u4E0E\u53C2\u6570\u7528\u6CD5\u3002");
   }
+  if (args.port === null) args.port = DEFAULT_PORT;
   if (args.all && args.scenario) throw new CliUsageError("--all \u4E0E --scenario \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528", "\u8BF7\u79FB\u9664\u5176\u4E2D\u4E00\u4E2A\u9009\u9879\u540E\u91CD\u8BD5\u3002");
   if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
     throw new CliUsageError("--port \u5FC5\u987B\u662F 1-65535 \u7684\u6574\u6570", "\u8BF7\u4E3A --port \u9009\u62E9 1 \u5230 65535 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
@@ -6747,20 +7109,20 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path10.default.resolve(projectRoot, relativePath);
+  const target = import_node_path11.default.resolve(projectRoot, relativePath);
   if (!isRealPathWithinRoot(projectRoot, target)) {
     throw new Error(`\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916\u8DEF\u5F84\uFF08\u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF09: ${relativePath}`);
   }
-  if (import_node_fs10.default.existsSync(target) && !force) return false;
-  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
-  import_node_fs10.default.writeFileSync(target, content, "utf8");
+  if (import_node_fs11.default.existsSync(target) && !force) return false;
+  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
+  import_node_fs11.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value) {
   const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path10.default.resolve(projectRoot, directory);
-  const relative = import_node_path10.default.relative(projectRoot, target);
-  if (!directory || !relative || import_node_path10.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) {
+  const target = import_node_path11.default.resolve(projectRoot, directory);
+  const relative = import_node_path11.default.relative(projectRoot, target);
+  if (!directory || !relative || import_node_path11.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path11.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55\uFF08\u4E0D\u80FD\u662F\u9879\u76EE\u6839\u672C\u8EAB\uFF09");
   }
   if (!isRealPathWithinRoot(projectRoot, target)) {
@@ -6788,30 +7150,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto2.default.createHash("sha256").update(import_node_fs10.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto3.default.createHash("sha256").update(import_node_fs11.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), fileName),
-    import_node_path10.default.resolve(import_node_path10.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path11.default.resolve(import_node_path11.default.dirname(process.argv[1]), fileName),
+    import_node_path11.default.resolve(import_node_path11.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs10.default.existsSync(target) && !force) return false;
-  const source = import_node_path10.default.resolve(process.argv[1]);
+  if (import_node_fs11.default.existsSync(target) && !force) return false;
+  const source = import_node_path11.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
-  import_node_fs10.default.copyFileSync(source, target);
+  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
+  import_node_fs11.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs10.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs10.default.existsSync(candidate));
-  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
+  if (import_node_fs11.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs11.default.existsSync(candidate));
+  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs10.default.copyFileSync(source, target);
+    import_node_fs11.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -6820,7 +7182,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs10.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs11.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -6833,7 +7195,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs10.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs11.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -6846,20 +7208,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(target), { recursive: true });
-  import_node_fs10.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
+  import_node_fs11.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs11.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs10.default.existsSync(lockPath)) return true;
+  if (!import_node_fs11.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs10.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs11.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -6875,17 +7237,17 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path10.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path11.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName = import_node_path10.default.basename(projectRoot).trim() || "project";
-  const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
+  const projectName2 = import_node_path11.default.basename(projectRoot).trim() || "project";
+  const storagePrefix = `scenario-test.${projectName2.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
-  if (!isRealPathWithinRoot(projectRoot, import_node_path10.default.join(projectRoot, directory, frameworkDirectory))) {
+  if (!isRealPathWithinRoot(projectRoot, import_node_path11.default.join(projectRoot, directory, frameworkDirectory))) {
     throw new Error(`\u76EE\u6807\u76EE\u5F55\u4E2D\u7684 ${frameworkDirectory} \u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF0C\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916`);
   }
   let force = args.force;
-  if (!force && import_node_fs10.default.existsSync(import_node_path10.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs11.default.existsSync(import_node_path11.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -6917,7 +7279,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs10.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs11.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -6929,12 +7291,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path10.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path11.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value) {
-  const candidate = import_node_path10.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs10.default.existsSync(candidate)) {
+  const candidate = import_node_path11.default.resolve(value || "scenario.config.js");
+  if (!import_node_fs11.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -6954,7 +7316,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path10.default.isAbsolute(pluginPath) ? pluginPath : import_node_path10.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path11.default.isAbsolute(pluginPath) ? pluginPath : import_node_path11.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -7019,7 +7381,7 @@ function configVariables(config, overrides = {}, environment = null) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path10.default.dirname(configPath);
+  const configDir = import_node_path11.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -7138,7 +7500,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path10.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path11.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -7371,10 +7733,35 @@ function printFailedStepBody(result, print = console.log, secretsOf = []) {
   print(`  \u54CD\u5E94\u4F53${note}:`);
   for (const line of shown.split("\n")) print(`    ${escapeBodyLine(line)}`);
 }
+function resolveServeProject(args) {
+  if (args.config) {
+    return projectFromConfig(resolveConfigPath(args.config));
+  }
+  const discovered = discoverProject(process.cwd());
+  if (!discovered) {
+    throw new CliUsageError(
+      "\u672A\u627E\u5230 scenario-test \u9879\u76EE\u914D\u7F6E",
+      `\u5728 ${process.cwd()} \u53CA\u4E0A\u7EA7\u76EE\u5F55\u672A\u627E\u5230 scenario.config.js\uFF1B\u8BF7\u7528 --config \u6307\u5B9A\uFF0C\u6216\u5728\u9879\u76EE\u7684 scenario-test/ \u76EE\u5F55\u5185\u8FD0\u884C\u3002`
+    );
+  }
+  return discovered;
+}
+function openInBrowser(url) {
+  const command = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
+  const commandArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = (0, import_node_child_process.spawn)(command, commandArgs, { detached: true, stdio: "ignore" });
+    child.on("error", () => {
+    });
+    child.unref();
+  } catch {
+  }
+}
 async function serveCommand(args) {
-  const configPath = resolveConfigPath(args.config);
-  const workspace = import_node_path10.default.dirname(configPath);
-  const libraryDist = import_node_path10.default.dirname(import_node_path10.default.resolve(process.argv[1]));
+  const project = resolveServeProject(args);
+  const configPath = project.config;
+  const workspace = import_node_path11.default.dirname(configPath);
+  const libraryDist = import_node_path11.default.dirname(import_node_path11.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
   if (startup.error) {
@@ -7384,10 +7771,14 @@ async function serveCommand(args) {
     );
   }
   const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
+  const ensured = await ensureProject(project, {
+    port: args.portExplicit ? args.port : void 0
+  });
+  const port = ensured.entry.port;
   const server = createServeServer({
     workspace,
     libraryDist,
-    port: args.port,
+    port,
     config,
     defaultTarget: startup,
     // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
@@ -7398,39 +7789,143 @@ async function serveCommand(args) {
   });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
-      console.error(`\u9519\u8BEF\uFF1A\u7AEF\u53E3 ${args.port} \u5DF2\u88AB\u5360\u7528`);
-      console.error("\u63D0\u793A\uFF1A\u8BF7\u4F7F\u7528 --port <\u5176\u4ED6\u7A7A\u95F2\u7AEF\u53E3> \u6307\u5B9A\u7AEF\u53E3\u540E\u91CD\u8BD5\uFF1B\u6216\u53CC\u51FB start-scenario-test.cmd \u91CD\u65B0\u7533\u8BF7\u7A7A\u95F2\u7AEF\u53E3\u3002");
+      console.error(`\u9519\u8BEF\uFF1A\u7AEF\u53E3 ${port} \u5DF2\u88AB\u5360\u7528`);
+      console.error(`\u63D0\u793A\uFF1A\u4F7F\u7528 --port <\u5176\u4ED6\u7A7A\u95F2\u7AEF\u53E3> \u4E34\u65F6\u6307\u5B9A\uFF1B\u6216\u7528 node "${process.argv[1]}" projects set-port <\u7AEF\u53E3> \u56FA\u5B9A\u8BE5\u9879\u76EE\u7AEF\u53E3\u3002`);
       process.exitCode = 1;
       return;
     }
     console.error(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0\u542F\u52A8\u5931\u8D25: ${escapeInlineText(error?.message || String(error))}`);
     process.exitCode = 1;
   });
-  server.listen(args.port, "127.0.0.1", () => {
-    console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: http://127.0.0.1:${args.port}/`);
+  server.listen(port, "127.0.0.1", () => {
+    const url = `http://127.0.0.1:${port}/`;
+    console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: ${url}`);
+    console.log(`\u9879\u76EE: ${ensured.entry.name} (${project.root})`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
+    console.log(`\u9879\u76EE\u767B\u8BB0: ${registryPath()}\uFF08\u7AEF\u53E3 ${port}${args.portExplicit ? "\uFF0C--port \u5DF2\u66F4\u65B0" : ensured.created ? "\uFF0C\u9996\u6B21\u5206\u914D" : "\uFF0C\u56FA\u5B9A\u590D\u7528"}\uFF09`);
     if (startup.target) {
       console.log(`\u63A5\u53E3\u4EE3\u7406: ${startup.key} -> ${startup.target}`);
       console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);
       if (args.insecure === true) console.log("\u63A5\u53E3\u4EE3\u7406: \u5DF2\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08--insecure\uFF09");
     }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
+    if (args.open) openInBrowser(url);
   });
+}
+function requireProject(args) {
+  if (args.config) return projectFromConfig(resolveConfigPath(args.config));
+  const discovered = discoverProject(process.cwd());
+  if (!discovered) {
+    throw new CliUsageError(
+      "\u672A\u627E\u5230 scenario-test \u9879\u76EE",
+      `\u5728 ${process.cwd()} \u53CA\u4E0A\u7EA7\u76EE\u5F55\u672A\u627E\u5230 scenario.config.js\uFF1B\u8BF7\u7528 --config \u6307\u5B9A\u9879\u76EE\u914D\u7F6E\u3002`
+    );
+  }
+  return discovered;
+}
+async function projectsCommand(args) {
+  const sub = args.positionals[0] || "list";
+  const home = resolveRegistryHome();
+  if (sub === "list") {
+    const registry = readRegistry(home);
+    const projects = listProjects(home);
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify({
+        schemaVersion: registry.schemaVersion,
+        defaultPort: registry.defaultPort,
+        projects
+      }, null, 2)}
+`);
+      return;
+    }
+    console.log(`\u9879\u76EE\u767B\u8BB0: ${registryPath(home)}`);
+    console.log(`\u9ED8\u8BA4\u7AEF\u53E3: ${registry.defaultPort}`);
+    if (!projects.length) {
+      console.log("\uFF08\u6682\u65E0\u767B\u8BB0\u9879\u76EE\uFF1B\u8FD0\u884C serve \u4F1A\u81EA\u52A8\u767B\u8BB0\u5F53\u524D\u9879\u76EE\uFF09");
+      return;
+    }
+    for (const item of projects) {
+      console.log(`  ${item.name}  \u7AEF\u53E3 ${item.port}  ${item.config}`);
+    }
+    return;
+  }
+  if (sub === "set-default-port") {
+    const port = Number(args.positionals[1]);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new CliUsageError(
+        "projects set-default-port \u9700\u8981 1-65535 \u7684\u7AEF\u53E3\u53F7",
+        "\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs projects set-default-port 4300"
+      );
+    }
+    setDefaultPort(port, home);
+    console.log(`\u9ED8\u8BA4\u7AEF\u53E3\u5DF2\u56FA\u5B9A\u4E3A ${port}\uFF1B\u672A\u767B\u8BB0\u9879\u76EE\u9996\u6B21\u542F\u52A8\u65F6\u4ECE\u8FD9\u91CC\u5F00\u59CB\u5206\u914D\u3002`);
+    return;
+  }
+  const project = requireProject(args);
+  if (sub === "set-port") {
+    const port = Number(args.positionals[1]);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new CliUsageError(
+        "projects set-port \u9700\u8981 1-65535 \u7684\u7AEF\u53E3\u53F7",
+        "\u793A\u4F8B\uFF1Anode scenario-test-cli.cjs projects set-port 4301"
+      );
+    }
+    const result = setProjectPort(project, port, home);
+    console.log(`\u5DF2\u56FA\u5B9A ${result.entry.name} \u7684\u7AEF\u53E3: ${port}`);
+    console.log(`\u914D\u7F6E: ${result.entry.config}`);
+    return;
+  }
+  if (sub === "remove") {
+    const result = removeProject(project, home);
+    console.log(result.removed ? `\u5DF2\u79FB\u9664\u9879\u76EE\u767B\u8BB0: ${result.entry?.config || project.config}` : `\u9879\u76EE\u672A\u767B\u8BB0: ${project.config}`);
+    return;
+  }
+  if (sub === "ensure") {
+    const ensured = await ensureProject(project, {
+      port: args.portExplicit ? args.port : void 0,
+      reassign: args.reassign === true,
+      home
+    });
+    const payload = {
+      name: ensured.entry.name,
+      slug: ensured.entry.slug,
+      root: ensured.entry.root,
+      dir: ensured.entry.dir,
+      config: ensured.entry.config,
+      port: ensured.entry.port,
+      portAvailable: ensured.portAvailable,
+      created: ensured.created,
+      changed: ensured.changed
+    };
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}
+`);
+      return;
+    }
+    console.log(`\u9879\u76EE: ${payload.name}`);
+    console.log(`\u914D\u7F6E: ${payload.config}`);
+    console.log(`\u7AEF\u53E3: ${payload.port}${payload.portAvailable ? "\uFF08\u53EF\u7528\uFF09" : "\uFF08\u88AB\u5360\u7528\uFF09"}`);
+    return;
+  }
+  throw new CliUsageError(
+    `\u672A\u77E5\u7684 projects \u5B50\u547D\u4EE4: ${sub}`,
+    "\u53EF\u7528\u5B50\u547D\u4EE4\uFF1Alist\u3001set-port <\u7AEF\u53E3>\u3001set-default-port <\u7AEF\u53E3>\u3001ensure\u3001remove\u3002"
+  );
 }
 function importTimestamp(date = /* @__PURE__ */ new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 function scenarioIdFromOutput(output, timestamp) {
-  const stem = import_node_path10.default.basename(output, import_node_path10.default.extname(output)).trim();
+  const stem = import_node_path11.default.basename(output, import_node_path11.default.extname(output)).trim();
   const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
   return normalized || `imported-${timestamp}`;
 }
 function defaultImportOutput(timestamp) {
-  let candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let candidate = import_node_path11.default.resolve("scenarios", `imported-${timestamp}.js`);
   let suffix = 2;
-  while (import_node_fs10.default.existsSync(candidate)) {
-    candidate = import_node_path10.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+  while (import_node_fs11.default.existsSync(candidate)) {
+    candidate = import_node_path11.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
     suffix += 1;
   }
   return candidate;
@@ -7450,12 +7945,12 @@ function importCommand(args) {
     throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
   }
   const timestamp = importTimestamp();
-  const output = args.output ? import_node_path10.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const output = args.output ? import_node_path11.default.resolve(args.output) : defaultImportOutput(timestamp);
   const id = scenarioIdFromOutput(output, timestamp);
   let draft;
   try {
     draft = args.har ? createHarDraft(readHarFile(args.har), {
-      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path10.default.basename(args.har),
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path11.default.basename(args.har),
       maxEntries,
       hosts: parseHostFilter(args.host)
     }) : createCurlDraft(args.curl);
@@ -7470,9 +7965,9 @@ function importCommand(args) {
     );
   }
   const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
-  import_node_fs10.default.mkdirSync(import_node_path10.default.dirname(output), { recursive: true });
-  import_node_fs10.default.writeFileSync(output, content, "utf8");
-  const relativeOutput = import_node_path10.default.relative(process.cwd(), output).split(import_node_path10.default.sep).join("/") || output;
+  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(output), { recursive: true });
+  import_node_fs11.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path11.default.relative(process.cwd(), output).split(import_node_path11.default.sep).join("/") || output;
   console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
   console.log(`\u573A\u666F id: ${id}`);
   console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
@@ -7505,10 +8000,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path10.default.dirname(configPath);
+    configDir = import_node_path11.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path10.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path10.default.dirname(configPath);
+    configPath = import_node_path11.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path11.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
@@ -7530,6 +8025,7 @@ async function main() {
   else if (args.command === "capabilities") capabilitiesCommand(args);
   else if (args.command === "doctor") doctorCommand(args);
   else if (args.command === "import") importCommand(args);
+  else if (args.command === "projects") await projectsCommand(args);
   else await runCommand(args);
 }
 main().catch((error) => {

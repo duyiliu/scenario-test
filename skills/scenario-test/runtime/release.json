@@ -1,11 +1,11 @@
 {
-  "version": "0.14.0",
+  "version": "0.15.0",
   "package": "@yc_yzkj/scenario-test",
-  "source": "https://github.com/duyiliu/scenario-test/tree/v0.14.0",
+  "source": "https://github.com/duyiliu/scenario-test/tree/v0.15.0",
   "sha256": {
-    "scenario-test-cli.cjs": "2637035add5f88a3e4dbbdd188748fb70c76b83e0faf96ab79b9e17acabfcd5e",
-    "scenario-test.umd.js": "ef219d7fdb9f7eafd32c36a1136922af38f15f63857f3f75ecba6d285e33ba05",
-    "scenario-test.d.ts": "8a6c2372a9dc343ea132fd75f1d22ccec8d4168625ead4c936c218e44f1b361b",
-    "scenario-test-capabilities.json": "b067f78e6e34ba2f5abfe8bedbe766dc88e62cd753d9777a38873c972f9cc894"
+    "scenario-test-cli.cjs": "d3301e0f3ff3d4b19b6f8a78c41ee0154529a4c79bf791fbbc5716790a065825",
+    "scenario-test.umd.js": "c602399d29701a0c9b5c83ee5aac7e814d93d93925d2fd78e0a36983f1ba5986",
+    "scenario-test.d.ts": "f6ee391dfcbe6c32482f129491ca06443707564e411b9a2116e6a07efed99f6a",
+    "scenario-test-capabilities.json": "28eaf944a7a36b20e0574cd02f7d463a000b7db4b858299fd2ce7539b28c26cf"
   }
 }

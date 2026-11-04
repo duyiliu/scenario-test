@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.15.0] - 2026-11-05
+
+### 新增
+
+- **CLI `projects` 用户级项目登记**：`serve` 缺省复用 `~/.scenario-test/projects.json` 中该项目的固定端口，首次从默认端口（4300）起分配；`projects list` / `set-port` / `set-default-port` / `ensure` / `remove` 管理登记，`SCENARIO_TEST_HOME` 可覆盖登记目录。`--port` 显式指定时写入登记，不再是一次性临时端口。
+- **场景设计评估夹具增加「证据隐藏」变体**（`tests/fixtures/scenario-design/hide-evidence.mjs`）：验证 Skill 在只给部分证据时仍能生成有效断言；同步修正后置验证判定与汇总口径。
+
+### 修复
+
+- **多项目固定端口冲突**：`ensureProject` 分配端口时未排除其它项目已登记的端口，三个项目首次登记会全部拿到同一端口（实测均为 4301），后启动的 `serve` 必然 `EADDRINUSE`。现在分配时跳过登记表内端口，并补多项目回归测试。
+- **`start-scenario-test.ps1` 覆盖固定端口**：未传 `-Port` 时脚本自行申请随机端口并以 `--port` 传给 `serve`，每次启动都会改写项目登记，与 init 生成的 `start-scenario-test.cmd` 行为不一致。现改为缺省交给 `serve` 复用登记端口，`-OpenBrowser` 改用 `serve --open`。
+
+### 文档
+
+- **SKILL.md 端口口径**：删除「禁止维护全局项目登记」与 `projects` 命令并存的矛盾表述；`projects` 能力按项目 CLI 的 `capabilities` 判定，旧版 CLI 不支持时按默认端口行为处理。
+- **references/execute.md**：端口说明从「默认 4300，被占用时加 `--port`」改为「复用登记端口；`--port` 更新登记」。
+- **CLAUDE.md** 与 AGENTS.md 对齐：补齐 `test:all` / `ui-style` / `check:all` / `check:eol`、`import` 子命令与 192.168.1.214 隔离验证环境。
+- **示例索引**注明 `examples/` 不含 `.scenario-test/` 运行时副本，直接跑 `doctor` 会提示缺文件；完整接入按 README 执行 `init`。
+
 ## [0.14.0] - 2026-11-01
 
 ### 新增

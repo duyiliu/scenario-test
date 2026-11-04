@@ -15,10 +15,18 @@
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
-npm test               # 运行所有 Node 单元/集成测试（node --test tests/*.test.js）
+npm test               # 单元/集成测试（node --test tests/*.test.js，与 test:unit 等价）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
-npm run check          # npm run build && npm test
+npm run test:ui-style  # 工作台视觉回归（Playwright）
+npm run test:all       # unit + browser + ui-style
+npm run check          # npm run build && test:unit && test:browser
+npm run check:all      # check + ui-style + 行尾审计
+npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
+
+行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制；
+`dist/` 与 `*.generated.js` 显式锁定 LF。若 `git status` 显示 M 而 `git diff` 为空，先跑 `npm run check:eol`，
+按提示用 `git checkout -- <路径>`（工作区漂移）或 `git add --renormalize .`（索引漂移）修复。
 
 测试使用 Node 内置的 `node:test` 运行器，从 `src/`（源码，而非 `dist/`）导入。运行单个文件或单个用例：
 
@@ -27,7 +35,33 @@ node --test tests/engine.test.js
 node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 ```
 
-公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`。选项见 `--help`。
+公开 CLI 为 `dist/scenario-test-cli.cjs`（由 `src/cli.js` 构建）。子命令：`run`、`serve`、`init`、`capabilities`、`doctor`、`import`（HAR/curl 导入场景草稿）。选项见 `--help`。
+
+## 隔离验证环境（192.168.1.214）
+
+Docker 相关的验证**不在 Windows 工作机执行**（本机没有 Docker daemon）：`tests/skill-e2e/` 的接入-执行冒烟、`tests/fixtures/scenario-design/` 的场景设计 A/B 都在 192.168.1.214 上跑。本机只跑 `npm test`、`npm run build`、`npm run check:eol`。
+
+```bash
+ssh root@192.168.1.214
+```
+
+| 项 | 值 |
+| --- | --- |
+| 系统 | CentOS 7 x86_64，Docker 25.0.3，Node v22.14.0 |
+| 仓库 | `/root/git/scenario-test`（**可能滞后于 master**，先 `git pull` 或重新 clone） |
+| pi | 预建镜像 `scenario-test-pi:1.4.0-node22`，pi 1.4.0；`ENTRYPOINT` 为 `pi`、默认 `USER` 为 uid 10001 的 `pi`，跑脚本时需 `--entrypoint bash --user root -e HOME=/root`，否则读不到 `/root/.pi/agent` |
+| 模型 | `deepseek-v4.1-flash`，凭据在 `~/.pi/agent/{auth,models}.json`；该机只认证了 `new-api`，pi 调用要写 `--model new-api/deepseek-v4.1-flash`，否则报同名模型歧义 |
+| 凭据 | 只存在于 214，**不要复制进仓库或提交** |
+
+场景设计 A/B（issue #107）：
+
+```bash
+cd /root/git/scenario-test && git pull && npm ci && npm run build
+PI_IMAGE=scenario-test-pi:1.4.0-node22 bash tests/fixtures/scenario-design/run-ab.sh --tag current-1
+node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design/artifacts
+```
+
+对比旧版 Skill 时用 `SKILL_DIR` 指向对应 tag 的 `skills/scenario-test`，并用 `--tag baseline-N` 命名，`summarize.mjs` 按 `-` 前的前缀分组。单轮结果不作为结论，至少各 6 轮看分布。
 
 ## 架构
 
@@ -50,7 +84,7 @@ node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 - 场景/配置文件是**可执行代码**，运行在 `node:vm` 沙箱（`node/loader.js`）中，全局暴露 `ScenarioTest`。场景文件必须调用 `ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))`；配置文件调用 `ScenarioTest.registerConfig(ScenarioTest.defineConfig({...}))`。配置中场景列表的 `id` **必须等于**该文件注册的 `id`。
 - `node/io.js` 实现 `fileUpload`（FormData）与 `saveResponseAs`，二者均受 `utils/path-validator.js`（路径穿越防护）约束，保证写入不超出配置工作区。
 - `init`（`cli.js` 的 `initCommand` + `init-templates.js`）写出一个自包含项目：模板在 `scenario-test/` 下，运行时副本在 `scenario-test/.scenario-test/` 下（`project-layout.js` 定义 `FRAMEWORK_FILES`）。`init` 记录一个含 SHA256 哈希的 `.scenario-test-version.json` 锁文件；`doctor` 用它检测被篡改或过期的运行时副本。
-- `serve` 是静态服务器 + 同源代理：向 HTML 注入 `window.__SCENARIO_TEST_SERVE_PROXY__`，将未匹配的请求转发到所选环境的 `baseUrl`，并剥离逐跳（hop-by-hop）头，使工作台无需 CORS。
+- `serve` 是静态服务器 + 同源代理：向 HTML 注入 `window.__SCENARIO_TEST_SERVE_PROXY__`，按浏览器当前环境逐请求选择 `baseUrl`（内部头 `X-Scenario-Test-Env` 转发前剔除），将未匹配的请求转发到目标并剥离逐跳（hop-by-hop）头，使工作台无需 CORS。实现位于 `src/cli/serve-server.js`（`createServeServer`），`src/cli.js` 只负责参数与启动。
 
 ## 生成文件——请勿手改
 

@@ -27,8 +27,8 @@
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.14.0/dist"
-    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.14.0/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.15.0/dist"
+    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.ps1 | iex
 #>
 
 param(
@@ -39,7 +39,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScenarioTestVersion = "0.14.0"
+$ScenarioTestVersion = "0.15.0"
 $DefaultSource = "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/dist"
 $RuntimeFiles = @(
     "scenario-test-cli.cjs",

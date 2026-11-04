@@ -13,6 +13,8 @@
 
 项目内生成的 `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md` 是后续场景设计规则，无需复制规则。npm 仅在用户明确要求时作为可选安装方式；两种方式不混用、不自动切换。
 
+> 示例目录只保留最小配置、场景与页面，**不含 `.scenario-test/` 运行时副本**。直接对示例运行 `doctor` 会提示缺少运行时与 AI 规则文件，这是预期；开发调试用 `npm run dev`，接入业务项目请按 README 执行安装或 `init`。
+
 ## 示例列表
 
 ### Basic：基础请求

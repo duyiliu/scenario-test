@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*! scenario-test v0.14.0 */
+/*! scenario-test v0.15.0 */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -355,7 +355,7 @@ __export(node_exports, {
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
-var VERSION = "0.14.0";
+var VERSION = "0.15.0";
 
 // src/contract.js
 var CONTRACT_VERSION = 20;
@@ -6736,14 +6736,23 @@ function isPortFree(port, host = "127.0.0.1") {
     });
   });
 }
-async function findFreePort(preferred, host = "127.0.0.1") {
+function registeredPorts(registry, excludeKey) {
+  const used = /* @__PURE__ */ new Set();
+  for (const [key, entry] of Object.entries(registry.projects)) {
+    if (key === excludeKey) continue;
+    if (Number.isInteger(entry.port) && entry.port >= 1 && entry.port <= 65535) used.add(entry.port);
+  }
+  return used;
+}
+async function findFreePort(preferred, host = "127.0.0.1", excludedPorts = /* @__PURE__ */ new Set()) {
   const start = Number.isInteger(preferred) && preferred >= 1 && preferred <= 65535 ? preferred : DEFAULT_PORT;
   for (let offset = 0; offset < MAX_PORT_PROBES; offset += 1) {
     const port = start + offset;
     if (port > 65535) break;
+    if (excludedPorts.has(port)) continue;
     if (await isPortFree(port, host)) return port;
   }
-  throw new Error(`\u4ECE\u7AEF\u53E3 ${start} \u8D77\u672A\u627E\u5230\u7A7A\u95F2\u7AEF\u53E3\uFF0C\u8BF7\u7528 --port \u6307\u5B9A\u7AEF\u53E3`);
+  throw new Error(`\u4ECE\u7AEF\u53E3 ${start} \u8D77\u672A\u627E\u5230\u7A7A\u95F2\u4E14\u672A\u88AB\u5176\u5B83\u9879\u76EE\u767B\u8BB0\u7684\u7AEF\u53E3\uFF0C\u8BF7\u7528 --port \u6307\u5B9A\u7AEF\u53E3`);
 }
 function normalizeEntry(registry, project, key) {
   const now2 = nowIso();
@@ -6795,6 +6804,7 @@ async function ensureProject(project, options = {}) {
     const key = projectKey(project.config);
     const normalized = normalizeEntry(registry, project, key);
     const entry = normalized.entry;
+    const usedPorts = registeredPorts(registry, key);
     let changed = normalized.changed;
     if (Number.isInteger(explicitPort) && explicitPort >= 1 && explicitPort <= 65535) {
       if (entry.port !== explicitPort) {
@@ -6803,11 +6813,11 @@ async function ensureProject(project, options = {}) {
         changed = true;
       }
     } else if (!entry.port) {
-      entry.port = await findFreePort(registry.defaultPort);
+      entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
       entry.updatedAt = nowIso();
       changed = true;
     } else if (reassign && !await isPortFree(entry.port)) {
-      entry.port = await findFreePort(registry.defaultPort);
+      entry.port = await findFreePort(registry.defaultPort, "127.0.0.1", usedPorts);
       entry.updatedAt = nowIso();
       changed = true;
     }
