@@ -126,6 +126,13 @@ try {
         await page.locator("#scenarioSearchInput").press("Control+Enter");
         await page.waitForFunction(() => !document.querySelector("#runBtn").disabled && document.querySelector('#stepsList li[data-passed="false"]'));
         assert.equal(await page.locator('#stepsList li[data-passed="false"]').count(), 1);
+        // #131 真实工作台断言失败后呈现同源字段差异。
+        await page.locator('#stepsList li').first().click();
+        await page.waitForSelector('.structural-diff');
+        assert.match(await page.locator('.structural-diff').first().textContent(), /字段差异/);
+        assert.match(await page.locator('.structural-diff').first().textContent(), /DOWN/);
+        await page.screenshot({ path: path.join(artifacts, 'issue-131-diff.png'), fullPage: true });
+
 
         // 步骤筛选：失败态下按结果筛选计数正确，清除筛选按钮随筛选状态显隐
         assert.equal(await page.locator("#filterBar #resetStepFiltersBtn").isVisible(), false, "无筛选时应隐藏清除按钮");

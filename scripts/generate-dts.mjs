@@ -139,8 +139,8 @@ export interface ExtractDefinition {
     path?: string;
     /** from:"headers" 配 path 时首段头名大小写不敏感匹配（与断言 from:"headers"、header 简写同口径）；from:"response" 仍按精确键匹配 */
     from?: ExtractSource;
-    /** 提取目标：status=HTTP 状态码（缺省按 body 取值） */
-    target?: "status";
+    /** 提取目标：status=HTTP 状态码，duration=请求耗时毫秒（缺省按 body 取值） */
+    target?: ${quote(contract.extract.targets)};
     /** 响应头名简写（与断言 header 同口径）；配合 path 可在头值上继续取子路径（如 length） */
     header?: string;
     /** required: true 且路径不存在时当前步骤失败；默认缺失产生 warning */
@@ -286,6 +286,7 @@ export interface AssertionShapeFailure {
 }
 
 export interface AssertionResult {
+    diff?: { entries: Array<{ path: string; expected?: unknown; actual?: unknown; expectedType: string; actualType: string }>; truncated: boolean };
     name: string;
     passed: boolean;
     actual?: unknown;

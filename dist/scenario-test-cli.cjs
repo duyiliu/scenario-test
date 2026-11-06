@@ -240,8 +240,8 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs11 = __toESM(require("node:fs"), 1);
-var import_node_path11 = __toESM(require("node:path"), 1);
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path12 = __toESM(require("node:path"), 1);
 var import_node_crypto3 = __toESM(require("node:crypto"), 1);
 var import_node_child_process = require("node:child_process");
 var import_promises2 = require("node:readline/promises");
@@ -351,6 +351,71 @@ __export(node_exports, {
   validateShapeSchema: () => validateShapeSchema
 });
 
+// src/utils/structural-diff.js
+function structuralDiff(expected, actual) {
+  const entries = [];
+  let visited = 0;
+  let truncated = false;
+  const type = (v) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+  const preview = (v) => {
+    if (Array.isArray(v)) return `Array(length ${v.length})`;
+    if (v && typeof v === "object") return "Object";
+    return typeof v === "string" && v.length > 240 ? "\uFF08\u957F\u5B57\u7B26\u4E32\u5DF2\u7701\u7565\uFF09" : v;
+  };
+  function walk(a, b, path13, depth, hasA = true, hasB = true) {
+    if (path13.length > 2e3 || ++visited > 2e3 || entries.length >= 50 || depth > 30) {
+      truncated = true;
+      return;
+    }
+    if (hasA && hasB && Object.is(a, b)) return;
+    const at = type(a), bt = type(b);
+    if (hasA && hasB && at === bt && (at === "object" || at === "array")) {
+      for (const key in a) {
+        if (!Object.hasOwn(a, key)) continue;
+        walk(a[key], b[key], path13 + (at === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, true, Object.hasOwn(b, key));
+        if (truncated) return;
+      }
+      for (const key in b) {
+        if (!Object.hasOwn(b, key) || Object.hasOwn(a, key)) continue;
+        walk(void 0, b[key], path13 + (bt === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, false, true);
+        if (truncated) return;
+      }
+      if (at !== "array" || a.length === b.length) return;
+      walk(a.length, b.length, path13 + ".length", depth + 1);
+      return;
+    }
+    entries.push({ path: path13, expected: hasA ? preview(a) : void 0, actual: hasB ? preview(b) : void 0, expectedType: hasA ? at : "missing", actualType: hasB ? bt : "missing" });
+  }
+  walk(expected, actual, "$", 0);
+  return { entries, truncated };
+}
+function esc(value2) {
+  return String(value2 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function renderStructuralDiff(diff) {
+  if (!diff) return "";
+  const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre>\u671F\u671B: ${esc(JSON.stringify(item.expected))}
+\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</pre></details>`).join("");
+  return `<details open class="structural-diff"><summary>\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09</summary>${rows}${diff.truncated ? "<p>\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD</p>" : ""}</details>`;
+}
+function assertionDiff(definition, expected, actual) {
+  if (Object.hasOwn(definition, "equals")) return structuralDiff(expected, actual);
+  if (Object.hasOwn(definition, "notEquals")) {
+    return { entries: [{ path: "$\uFF08\u8981\u6C42\u4E0D\u540C\uFF0C\u5B9E\u9645\u76F8\u7B49\uFF09", expected: "\u4E0D\u540C\u7684\u503C", actual: "\u4E24\u4FA7\u76F8\u7B49", expectedType: "notEquals", actualType: "equal" }], truncated: false };
+  }
+  if (Object.hasOwn(definition, "oneOf") && Array.isArray(expected)) {
+    const entries = [];
+    let truncated = expected.length > 5;
+    for (const [i, candidate] of expected.slice(0, 5).entries()) {
+      const diff = structuralDiff(candidate, actual);
+      entries.push(...diff.entries.map((entry) => ({ ...entry, path: `\u5019\u9009 ${i + 1} \xB7 ${entry.path}` })));
+      truncated ||= diff.truncated;
+    }
+    return { entries: entries.slice(0, 50), truncated: truncated || entries.length > 50 };
+  }
+  return void 0;
+}
+
 // src/core.js
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
@@ -358,7 +423,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.14.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 20;
+var CONTRACT_VERSION = 21;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -467,7 +532,7 @@ var contract = Object.freeze({
     // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
     from: Object.freeze(["body", "headers", "bodyText", "response"]),
     // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
-    targets: Object.freeze(["status"]),
+    targets: Object.freeze(["status", "duration"]),
     // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
@@ -477,7 +542,7 @@ var contract = Object.freeze({
     // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
     // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
     scope: "step",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
+    note: 'target: "duration" \u63D0\u53D6\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF08\u6BEB\u79D2\uFF0Cresponse.durationMs\uFF09\uFF0C\u4E0D\u542B\u91CD\u8BD5\u7B49\u5F85\uFF1B\u4E5F\u53EF\u7528 from: "response", path: "durationMs"\u3002required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -593,6 +658,7 @@ var contract = Object.freeze({
       "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
       insecure: { kind: "flag", prop: "insecure", description: "serve \u4EE3\u7406\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08\u9ED8\u8BA4\u6821\u9A8C\uFF1B\u4EC5\u5185\u7F51\u81EA\u7B7E\u8054\u8C03\u73AF\u5883\u4F7F\u7528\uFF09" },
       data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
+      report: { kind: "value", prop: "report", description: "\u8F93\u51FA\u81EA\u5305\u542B\u79BB\u7EBF HTML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       tag: {
         kind: "value",
@@ -641,11 +707,11 @@ var contract = Object.freeze({
 });
 
 // src/utils/safe-decode.js
-function safeDecodeComponent(value) {
+function safeDecodeComponent(value2) {
   try {
-    return decodeURIComponent(value);
+    return decodeURIComponent(value2);
   } catch {
-    return value;
+    return value2;
   }
 }
 
@@ -667,15 +733,15 @@ function mergeGlobals(...lists) {
   }
   return [...merged.values()];
 }
-function clone(value) {
-  return value === void 0 ? void 0 : JSON.parse(JSON.stringify(value));
+function clone(value2) {
+  return value2 === void 0 ? void 0 : JSON.parse(JSON.stringify(value2));
 }
-function isPlainObject(value) {
-  return Object.prototype.toString.call(value) === "[object Object]";
+function isPlainObject(value2) {
+  return Object.prototype.toString.call(value2) === "[object Object]";
 }
 var SAVED_RESPONSE = Symbol.for("scenario-test.savedResponse");
-function normalizeByteLimit(value) {
-  const limit = Number(value);
+function normalizeByteLimit(value2) {
+  const limit = Number(value2);
   return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
 }
 var PATH_SEGMENT = /[^.\[\]]+/y;
@@ -735,8 +801,8 @@ function getByPath(source, valuePath) {
   return cursor;
 }
 var WILDCARD_EXPANSION = Symbol("scenario-test.wildcardExpansion");
-function isWildcardExpansion(value) {
-  return value !== null && typeof value === "object" && value[WILDCARD_EXPANSION] === true;
+function isWildcardExpansion(value2) {
+  return value2 !== null && typeof value2 === "object" && value2[WILDCARD_EXPANSION] === true;
 }
 function navigatePathToken(cursor, token) {
   const inner = token.startsWith("[") ? token.slice(1, -1) : null;
@@ -757,7 +823,7 @@ function walkWildcardPath(cursor, tokens, index) {
       const result = walkWildcardPath(cursor[itemIndex], tokens, index + 1);
       if (result === void 0) continue;
       if (isWildcardExpansion(result)) {
-        for (const value of result.values) values.push(value);
+        for (const value2 of result.values) values.push(value2);
       } else values.push(result);
     }
     return { [WILDCARD_EXPANSION]: true, values };
@@ -799,10 +865,10 @@ function evalExpression(expression, runtime) {
   if (Object.prototype.hasOwnProperty.call(runtime.vars || {}, text)) return runtime.vars[text];
   return getByPath(runtime.vars, text);
 }
-function resolveString(value, runtime) {
-  if (typeof value !== "string") return value;
-  if (!value.includes("{{")) return value;
-  let current = value;
+function resolveString(value2, runtime) {
+  if (typeof value2 !== "string") return value2;
+  if (!value2.includes("{{")) return value2;
+  let current = value2;
   const seen = /* @__PURE__ */ new Set();
   for (let depth = 0; depth < 10; depth += 1) {
     if (seen.has(current)) return current;
@@ -825,12 +891,12 @@ function resolveString(value, runtime) {
   }
   return current;
 }
-function resolve(value, runtime) {
-  if (Array.isArray(value)) return value.map((item) => resolve(item, runtime));
-  if (isPlainObject(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolve(item, runtime)]));
+function resolve(value2, runtime) {
+  if (Array.isArray(value2)) return value2.map((item) => resolve(item, runtime));
+  if (isPlainObject(value2)) {
+    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, resolve(item, runtime)]));
   }
-  return resolveString(value, runtime);
+  return resolveString(value2, runtime);
 }
 function templateExpressionRoot(expression) {
   const text = String(expression || "").trim();
@@ -851,23 +917,23 @@ function templateExpressionRoot(expression) {
   }
   return token;
 }
-function collectMissingTemplateVars(value, vars, missing = /* @__PURE__ */ new Set(), seen = /* @__PURE__ */ new WeakSet()) {
-  if (typeof value === "string") {
-    if (!value.includes("{{")) return missing;
-    for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+function collectMissingTemplateVars(value2, vars, missing = /* @__PURE__ */ new Set(), seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value2 === "string") {
+    if (!value2.includes("{{")) return missing;
+    for (const match of value2.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
       const root = templateExpressionRoot(match[1]);
       if (root && !Object.prototype.hasOwnProperty.call(vars || {}, root)) missing.add(root);
     }
     return missing;
   }
-  if (value === null || typeof value !== "object" || seen.has(value)) return missing;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) collectMissingTemplateVars(item, vars, missing, seen);
+  if (value2 === null || typeof value2 !== "object" || seen.has(value2)) return missing;
+  seen.add(value2);
+  if (Array.isArray(value2)) {
+    for (const item of value2) collectMissingTemplateVars(item, vars, missing, seen);
     return missing;
   }
-  if (isPlainObject(value)) {
-    for (const item of Object.values(value)) collectMissingTemplateVars(item, vars, missing, seen);
+  if (isPlainObject(value2)) {
+    for (const item of Object.values(value2)) collectMissingTemplateVars(item, vars, missing, seen);
   }
   return missing;
 }
@@ -875,42 +941,42 @@ function missingTemplateVarWarnings(missing) {
   return [...missing].map((name) => `\u6A21\u677F\u53D8\u91CF vars.${name} \u672A\u5B9A\u4E49\uFF0C\u5DF2\u6309\u7A7A\u4E32\u89E3\u6790\uFF08\u68C0\u67E5\u53D8\u91CF\u540D\u62FC\u5199\uFF0C\u6216\u8865\u5145 config/scenario vars\u3001extract \u4E0E --vars\uFF09`);
 }
 var RESOLVE_CLONE_FALLBACK = Symbol("resolveCloneFallback");
-function resolveClone(value, runtime) {
-  const fast = resolveCloneFast(value, runtime, /* @__PURE__ */ new Set());
-  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value), runtime) : fast;
+function resolveClone(value2, runtime) {
+  const fast = resolveCloneFast(value2, runtime, /* @__PURE__ */ new Set());
+  return fast === RESOLVE_CLONE_FALLBACK ? resolve(clone(value2), runtime) : fast;
 }
-function resolveCloneFast(value, runtime, ancestors) {
-  if (typeof value === "string") return resolveString(value, runtime);
-  if (value === null) return null;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return null;
-    return value === 0 ? 0 : value;
+function resolveCloneFast(value2, runtime, ancestors) {
+  if (typeof value2 === "string") return resolveString(value2, runtime);
+  if (value2 === null) return null;
+  if (typeof value2 === "number") {
+    if (!Number.isFinite(value2)) return null;
+    return value2 === 0 ? 0 : value2;
   }
-  if (typeof value === "boolean") return value;
-  if (value === void 0) return void 0;
-  if (typeof value !== "object") return RESOLVE_CLONE_FALLBACK;
-  if (ancestors.has(value)) return RESOLVE_CLONE_FALLBACK;
-  if (Array.isArray(value)) {
-    if (typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
-    ancestors.add(value);
+  if (typeof value2 === "boolean") return value2;
+  if (value2 === void 0) return void 0;
+  if (typeof value2 !== "object") return RESOLVE_CLONE_FALLBACK;
+  if (ancestors.has(value2)) return RESOLVE_CLONE_FALLBACK;
+  if (Array.isArray(value2)) {
+    if (typeof value2.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+    ancestors.add(value2);
     try {
-      const result = new Array(value.length);
-      for (let index = 0; index < value.length; index += 1) {
-        const item = resolveCloneFast(value[index], runtime, ancestors);
+      const result = new Array(value2.length);
+      for (let index = 0; index < value2.length; index += 1) {
+        const item = resolveCloneFast(value2[index], runtime, ancestors);
         if (item === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
         result[index] = item === void 0 ? null : item;
       }
       return result;
     } finally {
-      ancestors.delete(value);
+      ancestors.delete(value2);
     }
   }
-  if (!isPlainObject(value) || typeof value.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
-  ancestors.add(value);
+  if (!isPlainObject(value2) || typeof value2.toJSON === "function") return RESOLVE_CLONE_FALLBACK;
+  ancestors.add(value2);
   try {
     const result = {};
-    for (const key of Object.keys(value)) {
-      const item = value[key];
+    for (const key of Object.keys(value2)) {
+      const item = value2[key];
       if (item === void 0) continue;
       const resolved = resolveCloneFast(item, runtime, ancestors);
       if (resolved === RESOLVE_CLONE_FALLBACK) return RESOLVE_CLONE_FALLBACK;
@@ -923,7 +989,7 @@ function resolveCloneFast(value, runtime, ancestors) {
     }
     return result;
   } finally {
-    ancestors.delete(value);
+    ancestors.delete(value2);
   }
 }
 function headerKey(headers, name) {
@@ -952,8 +1018,8 @@ function hasHeader(headers, name) {
 function headersToObject(headers) {
   const result = {};
   if (headers && typeof headers.forEach === "function") {
-    headers.forEach((value, key) => {
-      result[key] = value;
+    headers.forEach((value2, key) => {
+      result[key] = value2;
     });
   }
   return result;
@@ -975,13 +1041,13 @@ function completeProtocolRelativeUrl(url, baseUrl) {
   }
   return `${protocol}${text}`;
 }
-function queryPairs(key, value) {
+function queryPairs(key, value2) {
   const encodedKey = encodeURIComponent(key);
-  if (Array.isArray(value)) {
-    return value.filter((item) => item !== void 0 && item !== null).map((item) => `${encodedKey}=${encodeURIComponent(String(item))}`);
+  if (Array.isArray(value2)) {
+    return value2.filter((item) => item !== void 0 && item !== null).map((item) => `${encodedKey}=${encodeURIComponent(String(item))}`);
   }
-  if (value === void 0 || value === null) return [];
-  return [`${encodedKey}=${encodeURIComponent(String(value))}`];
+  if (value2 === void 0 || value2 === null) return [];
+  return [`${encodedKey}=${encodeURIComponent(String(value2))}`];
 }
 function splitUrlFragment(url) {
   const text = String(url || "");
@@ -990,10 +1056,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path12 } = splitUrlFragment(url);
-  const queryIndex = path12.indexOf("?");
+  const { path: path13 } = splitUrlFragment(url);
+  const queryIndex = path13.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path12.slice(queryIndex + 1).split("&")) {
+  for (const pair of path13.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -1002,8 +1068,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path12, fragment } = splitUrlFragment(text);
-  return `${path12}${path12.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path13, fragment } = splitUrlFragment(text);
+  return `${path13}${path13.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -1018,20 +1084,20 @@ function buildUrl(requestPath, params, runtime) {
   const rawPath = resolveString(requestPath || "", runtime);
   if (!params || !isPlainObject(params)) return rawPath;
   const resolved = resolve(params, runtime);
-  const pairs = Object.entries(resolved).flatMap(([key, value]) => queryPairs(key, value));
+  const pairs = Object.entries(resolved).flatMap(([key, value2]) => queryPairs(key, value2));
   return appendQueryPairs(rawPath, pairs);
 }
 function parseBody(text, contentType2) {
   if (!text) return null;
-  const value = String(text);
-  if (String(contentType2 || "").toLowerCase().includes("json") || /^[\[{]/.test(value.trim())) {
+  const value2 = String(text);
+  if (String(contentType2 || "").toLowerCase().includes("json") || /^[\[{]/.test(value2.trim())) {
     try {
-      return JSON.parse(value);
+      return JSON.parse(value2);
     } catch {
-      return value;
+      return value2;
     }
   }
-  return value;
+  return value2;
 }
 var ASSERTION_OPERATORS = Object.keys(contract.assertions.operators);
 var ASSERTION_META_KEYS = [...contract.assertions.metaKeys];
@@ -1082,27 +1148,27 @@ function validateShapeSchema(schema, trail = "shape") {
   }
   return schema;
 }
-function shapeActualType(value) {
-  if (value === null) return "null";
-  if (Array.isArray(value)) return "array";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "number";
-    return Number.isInteger(value) ? "integer" : "number";
+function shapeActualType(value2) {
+  if (value2 === null) return "null";
+  if (Array.isArray(value2)) return "array";
+  if (typeof value2 === "number") {
+    if (!Number.isFinite(value2)) return "number";
+    return Number.isInteger(value2) ? "integer" : "number";
   }
-  if (typeof value === "string") return "string";
-  if (typeof value === "boolean") return "boolean";
-  if (typeof value === "undefined") return "undefined";
-  if (typeof value === "bigint") return "bigint";
-  if (isPlainObject(value)) return "object";
-  return typeof value;
+  if (typeof value2 === "string") return "string";
+  if (typeof value2 === "boolean") return "boolean";
+  if (typeof value2 === "undefined") return "undefined";
+  if (typeof value2 === "bigint") return "bigint";
+  if (isPlainObject(value2)) return "object";
+  return typeof value2;
 }
-function shapeTypeMatches(value, type) {
-  if (type === "null") return value === null;
-  if (type === "array") return Array.isArray(value);
-  if (type === "object") return isPlainObject(value);
-  if (type === "integer") return typeof value === "number" && Number.isInteger(value);
-  if (type === "number") return typeof value === "number" && Number.isFinite(value);
-  return typeof value === type;
+function shapeTypeMatches(value2, type) {
+  if (type === "null") return value2 === null;
+  if (type === "array") return Array.isArray(value2);
+  if (type === "object") return isPlainObject(value2);
+  if (type === "integer") return typeof value2 === "number" && Number.isInteger(value2);
+  if (type === "number") return typeof value2 === "number" && Number.isFinite(value2);
+  return typeof value2 === type;
 }
 function shapeChildPath(parent, key) {
   const text = String(key);
@@ -1125,38 +1191,38 @@ function pushShapeFailure(failures, failure) {
     reason: failure.reason
   });
 }
-function collectShapeFailures(value, schema, path12, failures) {
+function collectShapeFailures(value2, schema, path13, failures) {
   const type = schema.type !== void 0 ? schema.type : schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0;
-  const actualType = shapeActualType(value);
-  if (type !== void 0 && !shapeTypeMatches(value, type)) {
+  const actualType = shapeActualType(value2);
+  if (type !== void 0 && !shapeTypeMatches(value2, type)) {
     pushShapeFailure(failures, {
-      path: path12,
+      path: path13,
       expected: `type: ${type}`,
       expectedType: type,
-      actual: value,
+      actual: value2,
       actualType,
       reason: `\u7C7B\u578B\u4E0D\u7B26\uFF1A\u671F\u671B ${type}\uFF0C\u5B9E\u9645 ${actualType}`
     });
     return failures;
   }
   if (Array.isArray(schema.enum)) {
-    const actualText = stableStringify(value);
+    const actualText = stableStringify(value2);
     if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
       pushShapeFailure(failures, {
-        path: path12,
+        path: path13,
         expected: `enum: ${JSON.stringify(schema.enum)}`,
-        actual: value,
+        actual: value2,
         actualType,
         reason: `\u53D6\u503C\u4E0D\u5728 enum \u5141\u8BB8\u8303\u56F4\uFF08\u5B9E\u9645 ${actualType}\uFF09`
       });
     }
   }
-  if (isPlainObject(value)) {
+  if (isPlainObject(value2)) {
     const properties = isPlainObject(schema.properties) ? schema.properties : {};
     for (const key of schema.required || []) {
-      if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) {
+      if (!Object.prototype.hasOwnProperty.call(value2, key) || value2[key] === void 0) {
         pushShapeFailure(failures, {
-          path: shapeChildPath(path12, key),
+          path: shapeChildPath(path13, key),
           expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728",
           actual: void 0,
           actualType: "undefined",
@@ -1165,24 +1231,24 @@ function collectShapeFailures(value, schema, path12, failures) {
       }
     }
     for (const [key, child] of Object.entries(properties)) {
-      if (!Object.prototype.hasOwnProperty.call(value, key) || value[key] === void 0) continue;
-      collectShapeFailures(value[key], child, shapeChildPath(path12, key), failures);
+      if (!Object.prototype.hasOwnProperty.call(value2, key) || value2[key] === void 0) continue;
+      collectShapeFailures(value2[key], child, shapeChildPath(path13, key), failures);
     }
     if (schema.additionalProperties === false) {
-      for (const key of Object.keys(value)) {
+      for (const key of Object.keys(value2)) {
         if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
         pushShapeFailure(failures, {
-          path: shapeChildPath(path12, key),
+          path: shapeChildPath(path13, key),
           expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5",
-          actual: value[key],
-          actualType: shapeActualType(value[key]),
+          actual: value2[key],
+          actualType: shapeActualType(value2[key]),
           reason: `additionalProperties:false\uFF1A\u51FA\u73B0\u672A\u58F0\u660E\u952E "${key}"`
         });
       }
     }
   }
-  if (Array.isArray(value) && schema.items !== void 0) {
-    value.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path12, index), failures));
+  if (Array.isArray(value2) && schema.items !== void 0) {
+    value2.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path13, index), failures));
   }
   return failures;
 }
@@ -1296,14 +1362,14 @@ function assertionActual(definition, response, runtime) {
   if (definition.from === "bodyText") return response.bodyText;
   return definition.path ? getByPath(response.body, definition.path) : response.body;
 }
-function stableStringify(value) {
-  if (value === void 0) return "undefined";
-  if (typeof value === "bigint") return `bigint:${value.toString()}`;
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+function stableStringify(value2) {
+  if (value2 === void 0) return "undefined";
+  if (typeof value2 === "bigint") return `bigint:${value2.toString()}`;
+  if (value2 === null || typeof value2 !== "object") return JSON.stringify(value2);
+  if (Array.isArray(value2)) return `[${value2.map((item) => stableStringify(item)).join(",")}]`;
   const entries = [];
-  for (const key of Object.keys(value).sort()) {
-    const text = stableStringify(value[key]);
+  for (const key of Object.keys(value2).sort()) {
+    const text = stableStringify(value2[key]);
     if (text !== "undefined") entries.push(`${JSON.stringify(key)}:${text}`);
   }
   return `{${entries.join(",")}}`;
@@ -1333,6 +1399,7 @@ function evaluateAssertion(definition, response, runtime, context) {
 }
 function evaluateValidatedAssertion(definition, response, runtime, context) {
   let actual = assertionActual(definition, response, runtime);
+  const comparisonActual = actual;
   let expected;
   let passed = true;
   let reason = "";
@@ -1471,11 +1538,24 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     else if (op === "lt") passed = passed && actual < expected;
     else passed = passed && actual <= expected;
   }
+  let diff;
+  if (!passed) {
+    for (const op of ["equals", "notEquals", "oneOf"]) {
+      if (!Object.hasOwn(definition, op)) continue;
+      const comparison = resolve(definition[op], runtime);
+      const equal = op === "oneOf" ? Array.isArray(comparison) && comparison.some((item) => stableStringify(item) === stableStringify(comparisonActual)) : stableStringify(comparison) === stableStringify(comparisonActual);
+      if (op === "notEquals" ? equal : !equal) {
+        diff = assertionDiff({ [op]: comparison }, comparison, comparisonActual);
+        break;
+      }
+    }
+  }
   return {
     name: definition.name || definition.path || "\u65AD\u8A00",
     passed,
     actual,
     expected,
+    ...diff ? { diff } : {},
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
     // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
@@ -1526,29 +1606,29 @@ function assertNoReservedVars(source, label) {
     assertNotReservedVar(name, label);
   }
 }
-function setRuntimeVar(vars, name, value) {
+function setRuntimeVar(vars, name, value2) {
   Object.defineProperty(vars, name, {
-    value,
+    value: value2,
     writable: true,
     enumerable: true,
     configurable: true
   });
-  return value;
+  return value2;
 }
 function applyExtract(step, response, runtime) {
   const warnings = [];
   const failures = [];
-  const storeSuite = (name, value) => {
+  const storeSuite = (name, value2) => {
     if (!isPlainObject(runtime.suite)) runtime.suite = {};
-    setRuntimeVar(runtime.suite, name, value);
+    setRuntimeVar(runtime.suite, name, value2);
     if (runtime.suiteVars !== runtime.suite) {
       if (!isPlainObject(runtime.suiteVars)) runtime.suiteVars = runtime.suite;
-      else setRuntimeVar(runtime.suiteVars, name, value);
+      else setRuntimeVar(runtime.suiteVars, name, value2);
     }
   };
-  const store = (name, value, suiteScope) => {
-    if (suiteScope) storeSuite(name, value);
-    else setRuntimeVar(runtime.vars, name, value);
+  const store = (name, value2, suiteScope) => {
+    if (suiteScope) storeSuite(name, value2);
+    else setRuntimeVar(runtime.vars, name, value2);
   };
   for (const definition of step.extract || []) {
     if (!definition || !definition.name) continue;
@@ -1559,13 +1639,14 @@ function applyExtract(step, response, runtime) {
     }
     let source = response.body;
     if (definition.target === "status") source = response.status;
+    else if (definition.target === "duration") source = response.durationMs;
     else if (definition.header) source = headerValue(response.headers, definition.header);
     else if (definition.from === "headers") source = response.headers;
     else if (definition.from === "bodyText") source = response.bodyText;
     else if (definition.from === "response") source = response;
-    const value = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
-    const emptyBodyWithoutPath = value === null && !definition.path && (definition.from === void 0 || definition.from === "body") && (response.bodyText === null || response.bodyText === void 0 || response.bodyText === "");
-    const missing = value === void 0 || emptyBodyWithoutPath;
+    const value2 = definition.path ? definition.from === "headers" ? getHeaderByPath(source, definition.path) : getByPath(source, definition.path) : source;
+    const emptyBodyWithoutPath = value2 === null && !definition.path && (definition.from === void 0 || definition.from === "body") && (response.bodyText === null || response.bodyText === void 0 || response.bodyText === "");
+    const missing = value2 === void 0 || emptyBodyWithoutPath;
     if (missing) {
       if (hasDefault) {
         store(definition.name, resolve(definition.default, runtime), definition.scope === "suite");
@@ -1582,12 +1663,12 @@ function applyExtract(step, response, runtime) {
         warnings.push(`\u63D0\u53D6\u53D8\u91CF ${definition.name}\uFF1A\u8DEF\u5F84 ${definition.path || "(\u6574\u4E2A\u54CD\u5E94)"} \u4E0D\u5B58\u5728\uFF0C\u53D8\u91CF\u503C\u4E3A undefined\uFF08required \u672A\u5F00\u542F\uFF0C\u4E0D\u5F71\u54CD\u6267\u884C\uFF09`);
       }
     }
-    store(definition.name, value, definition.scope === "suite");
+    store(definition.name, value2, definition.scope === "suite");
   }
   return { warnings, failures };
 }
-function md5(value) {
-  return (0, import_blueimp_md5.default)(String(value));
+function md5(value2) {
+  return (0, import_blueimp_md5.default)(String(value2));
 }
 function generateSignature(params, secretValue) {
   const pairs = Object.keys(params || {}).sort().map((key) => `${key}=${params[key] == null ? "" : params[key]}`);
@@ -1673,11 +1754,11 @@ function usccCheckChar(first17Chars) {
   }
   let sum = 0;
   for (let i = 0; i < 17; i += 1) {
-    const value = USCC_ALPHABET.indexOf(text[i]);
-    if (value < 0) {
+    const value2 = USCC_ALPHABET.indexOf(text[i]);
+    if (value2 < 0) {
       throw new Error(`USCC \u542B\u975E\u6CD5\u5B57\u7B26 ${text[i]}\uFF08\u5141\u8BB8\u5B57\u7B26\u96C6: ${USCC_ALPHABET}\uFF09`);
     }
-    sum += value * USCC_WEIGHTS[i];
+    sum += value2 * USCC_WEIGHTS[i];
   }
   return USCC_ALPHABET[(31 - sum % 31) % 31];
 }
@@ -1708,7 +1789,7 @@ function parseTimestampOffset(offset) {
 }
 function formatTimestamp(ms, format) {
   const date = new Date(ms);
-  const pad = (value) => String(value).padStart(2, "0");
+  const pad = (value2) => String(value2).padStart(2, "0");
   const tokens = {
     YYYY: String(date.getFullYear()).padStart(4, "0"),
     MM: pad(date.getMonth() + 1),
@@ -1732,11 +1813,11 @@ function normalizeEnumDefinition(definition) {
     throw new Error(`generatedVars enum \u7684 weights \u957F\u5EA6\u5FC5\u987B\u4E0E values \u4E00\u81F4\uFF08${weights.length} vs ${values.length}\uFF09: ${definition.name}`);
   }
   const normalized = weights.map((weight, index) => {
-    const value = Number(weight);
-    if (!Number.isFinite(value) || value < 0) {
+    const value2 = Number(weight);
+    if (!Number.isFinite(value2) || value2 < 0) {
       throw new Error(`generatedVars enum \u7684 weights \u7B2C ${index + 1} \u9879\u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u5B57: ${weight}`);
     }
-    return value;
+    return value2;
   });
   if (!normalized.some((weight) => weight > 0)) {
     throw new Error(`generatedVars enum \u7684 weights \u81F3\u5C11\u9700\u8981\u4E00\u9879\u5927\u4E8E 0: ${definition.name}`);
@@ -1880,28 +1961,28 @@ var SECRET_VAR_PATTERN = /(token|secret|password|passwd|auth|credential|api[-_]?
 function isSecretVarName(name) {
   return SECRET_VAR_PATTERN.test(String(name || ""));
 }
-function maskSecret(value) {
-  if (value === void 0 || value === null || value === "") return "";
-  const text = String(value);
+function maskSecret(value2) {
+  if (value2 === void 0 || value2 === null || value2 === "") return "";
+  const text = String(value2);
   return text.length > 12 ? `${text.slice(0, 4)}...${text.slice(-4)}` : "***";
 }
 function collectSecretValues(vars, extra = []) {
   const secrets = /* @__PURE__ */ new Set();
-  for (const [name, value] of Object.entries(vars || {})) {
+  for (const [name, value2] of Object.entries(vars || {})) {
     if (!isSecretVarName(name)) continue;
-    if (value === void 0 || value === null || value === "") continue;
-    if (typeof value === "object") continue;
-    secrets.add(String(value));
+    if (value2 === void 0 || value2 === null || value2 === "") continue;
+    if (typeof value2 === "object") continue;
+    secrets.add(String(value2));
   }
-  for (const value of extra || []) {
-    if (value === void 0 || value === null || value === "") continue;
-    secrets.add(String(value));
+  for (const value2 of extra || []) {
+    if (value2 === void 0 || value2 === null || value2 === "") continue;
+    secrets.add(String(value2));
   }
   return [...secrets];
 }
-function redactSecrets(value, secrets, seen = /* @__PURE__ */ new WeakMap()) {
-  if (typeof value === "string") {
-    let text = value;
+function redactSecrets(value2, secrets, seen = /* @__PURE__ */ new WeakMap()) {
+  if (typeof value2 === "string") {
+    let text = value2;
     for (const secret of secrets || []) {
       if (!secret) continue;
       if (text === secret) return maskSecret(secret);
@@ -1911,18 +1992,18 @@ function redactSecrets(value, secrets, seen = /* @__PURE__ */ new WeakMap()) {
     }
     return text;
   }
-  if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) return seen.get(value);
-  if (Array.isArray(value)) {
+  if (value2 === null || typeof value2 !== "object") return value2;
+  if (seen.has(value2)) return seen.get(value2);
+  if (Array.isArray(value2)) {
     const result2 = [];
-    seen.set(value, result2);
-    for (const item of value) result2.push(redactSecrets(item, secrets, seen));
+    seen.set(value2, result2);
+    for (const item of value2) result2.push(redactSecrets(item, secrets, seen));
     return result2;
   }
-  if (!isPlainObject(value)) return value;
+  if (!isPlainObject(value2)) return value2;
   const result = {};
-  seen.set(value, result);
-  for (const [key, item] of Object.entries(value)) {
+  seen.set(value2, result);
+  for (const [key, item] of Object.entries(value2)) {
     if (isSecretVarName(key) && item !== void 0 && item !== null && item !== "") {
       if (Array.isArray(item)) result[key] = item.map((entry) => entry !== null && typeof entry === "object" ? "***" : maskSecret(entry));
       else if (typeof item === "object") result[key] = "***";
@@ -1933,8 +2014,8 @@ function redactSecrets(value, secrets, seen = /* @__PURE__ */ new WeakMap()) {
   }
   return result;
 }
-function sanitizeSensitive(value, key = "", sensitiveNames = []) {
-  return value;
+function sanitizeSensitive(value2, key = "", sensitiveNames = []) {
+  return value2;
 }
 function formatDuration(milliseconds) {
   if (!Number.isFinite(milliseconds)) return "-";
@@ -1951,10 +2032,10 @@ var HUNK_SKIPPED_MARK = "\u2026\uFF08\u4E2D\u95F4\u76F8\u540C\u884C\u5DF2\u7701\
 var CONTEXT_RADIUS = 40;
 var MAX_LINE_WIDTH = 240;
 var LINE_TRUNCATED_MARK = "\u2026\uFF08\u672C\u884C\u5DF2\u622A\u65AD\uFF09";
-function isShortValue(value) {
-  if (value === void 0) return true;
+function isShortValue(value2) {
+  if (value2 === void 0) return true;
   try {
-    const serialized = JSON.stringify(value ?? null) ?? String(value);
+    const serialized = JSON.stringify(value2 ?? null) ?? String(value2);
     return serialized.length <= SHORT_VALUE_LIMIT;
   } catch {
     return false;
@@ -1967,12 +2048,12 @@ var CI_COMMAND_MARKER = /##\[|##vso\[|##teamcity\[/gi;
 function defuseCiCommandMarkers(text) {
   return String(text).replace(CI_COMMAND_MARKER, (m) => `${m.slice(0, -1)}\\u005b`);
 }
-function escapeInlineText(value) {
-  return escapeC1(defuseCiCommandMarkers(JSON.stringify(String(value ?? "")).slice(1, -1)));
+function escapeInlineText(value2) {
+  return escapeC1(defuseCiCommandMarkers(JSON.stringify(String(value2 ?? "")).slice(1, -1)));
 }
-function formatFailureValue(value) {
-  if (!isShortValue(value)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
-  return defuseCiCommandMarkers(escapeC1(JSON.stringify(value) ?? String(value)));
+function formatFailureValue(value2) {
+  if (!isShortValue(value2)) return "\uFF08\u957F\u503C\uFF0C\u89C1\u4E0B\u65B9\uFF09";
+  return defuseCiCommandMarkers(escapeC1(JSON.stringify(value2) ?? String(value2)));
 }
 function escapeStringLineContent(line) {
   return defuseCiCommandMarkers(escapeC1(JSON.stringify(line).slice(1, -1)));
@@ -1985,12 +2066,12 @@ function splitStringLines(text, prefix) {
   const width = String(raw.length).length;
   return raw.map((line, index) => `${prefix}${String(index + 1).padStart(width)} | ${escapeStringLineContent(line)}`);
 }
-function prettyLines(value) {
+function prettyLines(value2) {
   let text;
   try {
-    text = JSON.stringify(value, null, 2) ?? String(value);
+    text = JSON.stringify(value2, null, 2) ?? String(value2);
   } catch {
-    text = String(value);
+    text = String(value2);
   }
   const lines = text.split("\n").map(escapeJsonLineContent);
   if (lines.length > MAX_LINES) {
@@ -2046,13 +2127,13 @@ function failureDiffLines(expected, actual, prefix = "") {
   ));
   return lines;
 }
-function valueToRawLines(value, isStringValue) {
-  if (isStringValue) return String(value).split(/\r\n|\n|\r/);
+function valueToRawLines(value2, isStringValue) {
+  if (isStringValue) return String(value2).split(/\r\n|\n|\r/);
   let text;
   try {
-    text = JSON.stringify(value, null, 2) ?? String(value);
+    text = JSON.stringify(value2, null, 2) ?? String(value2);
   } catch {
-    text = String(value);
+    text = String(value2);
   }
   return text.split("\n");
 }
@@ -2156,9 +2237,9 @@ function alignedDiffLines(expected, actual, prefix) {
   }
   return lines;
 }
-function expandValueLines(value, prefix, baseLength) {
-  if (typeof value === "string") {
-    const lines = splitStringLines(value, `${prefix}| `).map((line) => capContentLine(line, baseLength));
+function expandValueLines(value2, prefix, baseLength) {
+  if (typeof value2 === "string") {
+    const lines = splitStringLines(value2, `${prefix}| `).map((line) => capContentLine(line, baseLength));
     if (lines.length > MAX_LINES) {
       return [
         ...lines.slice(0, MAX_LINES),
@@ -2167,7 +2248,7 @@ function expandValueLines(value, prefix, baseLength) {
     }
     return lines;
   }
-  return prettyLines(value).map((line) => capContentLine(`${prefix}${line}`, baseLength));
+  return prettyLines(value2).map((line) => capContentLine(`${prefix}${line}`, baseLength));
 }
 function capContentLine(line, baseLength) {
   if (line.length <= baseLength + MAX_LINE_WIDTH) return line;
@@ -2220,29 +2301,29 @@ function invariant(condition, message, code) {
     throw error;
   }
 }
-function nonEmptyString(value) {
-  return typeof value === "string" && Boolean(value.trim());
+function nonEmptyString(value2) {
+  return typeof value2 === "string" && Boolean(value2.trim());
 }
-function describeValue(value) {
-  if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return "\u6570\u7EC4";
-  if (isPlainObject(value)) return "\u5BF9\u8C61";
-  return String(value);
+function describeValue(value2) {
+  if (typeof value2 === "string") return JSON.stringify(value2);
+  if (Array.isArray(value2)) return "\u6570\u7EC4";
+  if (isPlainObject(value2)) return "\u5BF9\u8C61";
+  return String(value2);
 }
-function inheritedEnumerableKey(value) {
-  for (const key in value) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) return key;
+function inheritedEnumerableKey(value2) {
+  for (const key in value2) {
+    if (!Object.prototype.hasOwnProperty.call(value2, key)) return key;
   }
   return null;
 }
-function isPlainHeadersObject(value) {
-  if (!isPlainObject(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
+function isPlainHeadersObject(value2) {
+  if (!isPlainObject(value2)) return false;
+  const prototype = Object.getPrototypeOf(value2);
   if (prototype === null) return true;
   if (Object.getPrototypeOf(prototype) !== null) return false;
   if (typeof prototype.constructor !== "function" || prototype.constructor.name !== "Object") return false;
   if (prototype.constructor.prototype !== prototype) return false;
-  return inheritedEnumerableKey(value) === null;
+  return inheritedEnumerableKey(value2) === null;
 }
 function describeUnknownKeys(input, allowed) {
   const allowedSet = new Set(allowed);
@@ -2297,29 +2378,29 @@ function assertKnownKeys(input, allowed, label, hint = "") {
     "SCENARIO_CONFIG_UNKNOWN_KEY"
   );
 }
-function normalizeBaseUrl(value, label) {
-  if (value === void 0 || value === null) return value;
+function normalizeBaseUrl(value2, label) {
+  if (value2 === void 0 || value2 === null) return value2;
   invariant(
-    typeof value === "string",
-    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    typeof value2 === "string",
+    `${label} \u5FC5\u987B\u662F http(s):// URL \u5B57\u7B26\u4E32\uFF08\u5F53\u524D ${JSON.stringify(value2)}\uFF09`,
     "SCENARIO_CONFIG_BASE_URL"
   );
-  const trimmed = value.trim();
+  const trimmed = value2.trim();
   if (!trimmed) return "";
   invariant(
     /^https?:\/\//i.test(trimmed),
-    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    `${label} \u5FC5\u987B\u4EE5 http:// \u6216 https:// \u5F00\u5934\uFF08\u5F53\u524D ${JSON.stringify(value2)}\uFF09`,
     "SCENARIO_CONFIG_BASE_URL"
   );
   let parsed;
   try {
     parsed = new URL(trimmed);
   } catch {
-    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
+    invariant(false, `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value2)}\uFF09`, "SCENARIO_CONFIG_BASE_URL");
   }
   invariant(
     (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname),
-    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value)}\uFF09`,
+    `${label} \u4E0D\u662F\u5408\u6CD5\u7684 http(s) URL\uFF08\u5F53\u524D ${JSON.stringify(value2)}\uFF09`,
     "SCENARIO_CONFIG_BASE_URL"
   );
   return trimmed;
@@ -2327,18 +2408,18 @@ function normalizeBaseUrl(value, label) {
 function assertUnique(items, field, label) {
   const seen = /* @__PURE__ */ new Set();
   for (const item of items) {
-    const value = item[field];
-    invariant(!seen.has(value), `${label}\u91CD\u590D: ${value}`);
-    seen.add(value);
+    const value2 = item[field];
+    invariant(!seen.has(value2), `${label}\u91CD\u590D: ${value2}`);
+    seen.add(value2);
   }
 }
 var TEMPLATE_EXPR_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 var TEMPLATE_OPERATOR_CHARS = /[><=!&|?:()]/;
 var TEMPLATE_PATH_HINT = '\u6A21\u677F\u53EA\u505A\u8DEF\u5F84\u53D6\u503C\uFF08vars.* / lastResponse.* / lastResponseBody.*\uFF09\uFF0C\u6BD4\u8F83/\u4E09\u5143/\u903B\u8F91\u5224\u65AD\u8BF7\u6539\u7528\u65AD\u8A00\u6216 when \u5BF9\u8C61\u5F62\u5F0F\uFF1B\u82E5\u952E\u540D\u672C\u8EAB\u542B\u8FD0\u7B97\u7B26\u5B57\u7B26\uFF0C\u8BF7\u6539\u7528\u5F15\u53F7\u952E\u5199\u6CD5 vars["a:b"]';
-function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSet()) {
-  if (typeof value === "string") {
-    if (!value.includes("{{")) return;
-    for (const match of value.matchAll(TEMPLATE_EXPR_PATTERN)) {
+function assertTemplatePathsOnly(value2, trail, seen = /* @__PURE__ */ new WeakSet()) {
+  if (typeof value2 === "string") {
+    if (!value2.includes("{{")) return;
+    for (const match of value2.matchAll(TEMPLATE_EXPR_PATTERN)) {
       const expression = match[1].trim();
       const tokens = tokenizePath(expression);
       if (tokens === null) {
@@ -2359,14 +2440,14 @@ function assertTemplatePathsOnly(value, trail, seen = /* @__PURE__ */ new WeakSe
     }
     return;
   }
-  if (value === null || typeof value !== "object" || seen.has(value)) return;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => assertTemplatePathsOnly(item, `${trail}[${index}]`, seen));
+  if (value2 === null || typeof value2 !== "object" || seen.has(value2)) return;
+  seen.add(value2);
+  if (Array.isArray(value2)) {
+    value2.forEach((item, index) => assertTemplatePathsOnly(item, `${trail}[${index}]`, seen));
     return;
   }
-  if (isPlainObject(value)) {
-    for (const [key, item] of Object.entries(value)) {
+  if (isPlainObject(value2)) {
+    for (const [key, item] of Object.entries(value2)) {
       assertTemplatePathsOnly(item, `${trail}.${key}`, seen);
     }
   }
@@ -2894,9 +2975,9 @@ function resolveTimeoutMs(step, request, options) {
     const hasNumericType = typeof requestTimeoutSource === "number" || typeof requestTimeoutSource === "string" && requestTimeoutSource.trim() !== "";
     const requestTimeout = hasNumericType ? Number(requestTimeoutSource) : NaN;
     if (!hasNumericType || !Number.isFinite(requestTimeout) || requestTimeout <= 0) {
-      const value = typeof requestTimeoutSource === "string" || typeof requestTimeoutSource === "object" && requestTimeoutSource !== null ? JSON.stringify(requestTimeoutSource) : String(requestTimeoutSource);
+      const value2 = typeof requestTimeoutSource === "string" || typeof requestTimeoutSource === "object" && requestTimeoutSource !== null ? JSON.stringify(requestTimeoutSource) : String(requestTimeoutSource);
       throw new Error(
-        `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7684 request.timeoutMs \u89E3\u6790\u540E\u4E0D\u662F\u6709\u6548\u7684\u6B63\u6570\u6BEB\u79D2\uFF08\u5F53\u524D ${value}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u53D8\u91CF\u503C`
+        `\u6B65\u9AA4 ${step.name || "\u672A\u547D\u540D\u6B65\u9AA4"} \u7684 request.timeoutMs \u89E3\u6790\u540E\u4E0D\u662F\u6709\u6548\u7684\u6B63\u6570\u6BEB\u79D2\uFF08\u5F53\u524D ${value2}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u53D8\u91CF\u503C`
       );
     }
     return requestTimeout;
@@ -2945,8 +3026,8 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
   const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
-    const value = environmentVariables?.[environmentName] ?? vars[name];
-    if (value === void 0 || value === null || value === "") {
+    const value2 = environmentVariables?.[environmentName] ?? vars[name];
+    if (value2 === void 0 || value2 === null || value2 === "") {
       if (verboseErrors) {
         throw new Error(
           `\u7F3A\u5C11\u573A\u666F\u53D8\u91CF: vars.${name}
@@ -2961,7 +3042,7 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
         );
       }
     }
-    setRuntimeVar(vars, name, value);
+    setRuntimeVar(vars, name, value2);
   }
   for (const definition of scenario.generatedVars || []) {
     if (!definition?.name) continue;
@@ -3037,15 +3118,15 @@ function readBodyChunks(response, signal, maxBytes = 0) {
     (async () => {
       try {
         while (true) {
-          const { done, value } = await reader.read();
+          const { done, value: value2 } = await reader.read();
           if (done) break;
-          totalBytes += value.byteLength;
+          totalBytes += value2.byteLength;
           if (maxBytes > 0 && totalBytes > maxBytes) {
             reader.cancel().catch(() => {
             });
             throw createResponseTooLargeError(totalBytes, maxBytes);
           }
-          chunks.push(value);
+          chunks.push(value2);
         }
         resolve2(chunks);
       } catch (error) {
@@ -3063,12 +3144,12 @@ function createResponseTooLargeError(bytesRead, limitBytes) {
   return error;
 }
 function resolveMaxResponseBytes(options = {}) {
-  const value = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
-  return normalizeByteLimit(value);
+  const value2 = options.maxResponseBytes === void 0 ? options.config?.maxResponseBytes : options.maxResponseBytes;
+  return normalizeByteLimit(value2);
 }
 function resolveMaxUploadBytes(options = {}) {
-  const value = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
-  return value === void 0 ? void 0 : normalizeByteLimit(value);
+  const value2 = options.maxUploadBytes === void 0 ? options.config?.maxUploadBytes : options.maxUploadBytes;
+  return value2 === void 0 ? void 0 : normalizeByteLimit(value2);
 }
 function createSaveBodyStream(body, signal, maxBytes) {
   if (!body) {
@@ -3105,21 +3186,21 @@ function createSaveBodyStream(body, signal, maxBytes) {
     async pull(controller) {
       if (finished) return;
       try {
-        const { done, value } = await reader.read();
+        const { done, value: value2 } = await reader.read();
         if (finished) return;
         if (done) {
           cleanup();
           controller.close();
           return;
         }
-        totalBytes += value.byteLength;
+        totalBytes += value2.byteLength;
         if (maxBytes > 0 && totalBytes > maxBytes) {
           cleanup();
           cancelReader();
           controller.error(createResponseTooLargeError(totalBytes, maxBytes));
           return;
         }
-        controller.enqueue(value);
+        controller.enqueue(value2);
       } catch (error) {
         if (finished) return;
         cleanup();
@@ -3165,14 +3246,14 @@ function parseSetCookie(line, requestUrl) {
   for (const attribute of parts) {
     const eq = attribute.indexOf("=");
     const key = (eq >= 0 ? attribute.slice(0, eq) : attribute).trim().toLowerCase();
-    const value = eq >= 0 ? attribute.slice(eq + 1).trim() : "";
-    if (key === "domain" && value) cookie.domain = value.replace(/^\./, "").toLowerCase();
-    else if (key === "path" && value.startsWith("/")) cookie.path = value;
+    const value2 = eq >= 0 ? attribute.slice(eq + 1).trim() : "";
+    if (key === "domain" && value2) cookie.domain = value2.replace(/^\./, "").toLowerCase();
+    else if (key === "path" && value2.startsWith("/")) cookie.path = value2;
     else if (key === "max-age") {
-      const seconds2 = Number(value);
+      const seconds2 = Number(value2);
       if (Number.isFinite(seconds2)) cookie.expiresAt = Date.now() + seconds2 * 1e3;
     } else if (key === "expires") {
-      const timestamp = Date.parse(value);
+      const timestamp = Date.parse(value2);
       if (Number.isFinite(timestamp)) cookie.expiresAt = timestamp;
     } else if (key === "secure") cookie.secure = true;
   }
@@ -3238,11 +3319,11 @@ var PUBLIC_SUFFIXES = /* @__PURE__ */ new Set([
 ]);
 function isCookieDomainAllowed(requestHost, domain) {
   const host = String(requestHost || "").toLowerCase();
-  const value = String(domain || "").toLowerCase();
-  if (!host || !value) return false;
-  if (host === value) return true;
-  if (!hostMatchesCookie(host, value)) return false;
-  return !PUBLIC_SUFFIXES.has(value) && value.includes(".");
+  const value2 = String(domain || "").toLowerCase();
+  if (!host || !value2) return false;
+  if (host === value2) return true;
+  if (!hostMatchesCookie(host, value2)) return false;
+  return !PUBLIC_SUFFIXES.has(value2) && value2.includes(".");
 }
 function pathMatchesCookie(pathname, cookiePath) {
   if (pathname === cookiePath) return true;
@@ -3363,7 +3444,7 @@ async function executeHttp(step, runtime, options) {
     if (upload.body && (typeof upload.body.getReader === "function" || typeof upload.body[Symbol.asyncIterator] === "function")) {
       fetchOptions.duplex = "half";
     }
-    for (const [name, value] of Object.entries(upload.headers || {})) headers[name] = value;
+    for (const [name, value2] of Object.entries(upload.headers || {})) headers[name] = value2;
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "content-type" && upload.omitContentType) delete headers[key];
     }
@@ -3425,9 +3506,9 @@ function raceWithSignal(promise, signal) {
     const onAbort = () => rejectRace(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
-      (value) => {
+      (value2) => {
         signal.removeEventListener("abort", onAbort);
-        resolveRace(value);
+        resolveRace(value2);
       },
       (error) => {
         signal.removeEventListener("abort", onAbort);
@@ -3681,14 +3762,14 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path12 = context && context.path || resolveString(step.path || "", runtime);
+      const path13 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path12,
+        path: path13,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -4101,7 +4182,7 @@ function createNodeIo(workspace = process.cwd(), options = {}) {
       const form = new FormData();
       const blob = await import_node_fs2.default.openAsBlob(absolutePath);
       form.append(fieldName, blob, filename);
-      for (const [name, value] of Object.entries(definition.fields || {})) form.append(name, String(value));
+      for (const [name, value2] of Object.entries(definition.fields || {})) form.append(name, String(value2));
       return { body: form, omitContentType: true };
     },
     async saveResponse(relativePath, data, metadata = {}) {
@@ -5195,8 +5276,8 @@ function renderDoctorText(report) {
 // src/utils/data-file.js
 var import_node_fs6 = __toESM(require("node:fs"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
-function isPlainObject2(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+function isPlainObject2(value2) {
+  return value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 }
 function parseCsv(text) {
   const rows = [];
@@ -5254,7 +5335,7 @@ function parseCsv(text) {
   }
   row.push(cell);
   rows.push(row);
-  while (rows.length && rows[rows.length - 1].every((value) => value === "")) rows.pop();
+  while (rows.length && rows[rows.length - 1].every((value2) => value2 === "")) rows.pop();
   return rows;
 }
 function normalizeRows(rows, source) {
@@ -5321,16 +5402,20 @@ function loadDataset(filePath) {
   return { rows, format, file: source };
 }
 
+// src/utils/html-report.js
+var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_path8 = __toESM(require("node:path"), 1);
+
 // src/utils/junit.js
 var import_node_fs7 = __toESM(require("node:fs"), 1);
 var import_node_path7 = __toESM(require("node:path"), 1);
 var INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
-function escapeXml(value) {
-  return String(value == null ? "" : value).replace(INVALID_XML_CHARS, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+function escapeXml(value2) {
+  return String(value2 == null ? "" : value2).replace(INVALID_XML_CHARS, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 function seconds(milliseconds) {
-  const value = Number(milliseconds);
-  return Number.isFinite(value) ? (value / 1e3).toFixed(3) : "0.000";
+  const value2 = Number(milliseconds);
+  return Number.isFinite(value2) ? (value2 / 1e3).toFixed(3) : "0.000";
 }
 function failureMessage(step) {
   const failedAssertions = (step.assertions || []).filter((item) => !item.passed);
@@ -5356,11 +5441,11 @@ function failureDetail(step) {
   }
   return lines.join("\n");
 }
-function safeJson(value) {
+function safeJson(value2) {
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(value2);
   } catch {
-    return String(value);
+    return String(value2);
   }
 }
 function stepCase(step, scenarioId) {
@@ -5430,11 +5515,37 @@ function writeJUnitReport(filePath, reports, options = {}) {
   return target;
 }
 
+// src/utils/html-report.js
+function value(v) {
+  const text = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+  return escapeXml(text && text.length > 4e3 ? text.slice(0, 4e3) + "\u2026\uFF08\u5DF2\u622A\u65AD\uFF09" : text);
+}
+function buildHtmlReport(reports, options = {}) {
+  const sections = reports.map((report) => {
+    const steps = (report.results || []).map((step) => {
+      const state = step.cancelled ? "CANCELLED" : step.skipped ? "SKIP" : step.status === "TIMEOUT" ? "TIMEOUT" : step.status === "ERROR" ? "ERROR" : step.passed ? "PASS" : "FAIL";
+      const assertions = (step.assertions || []).map((a) => `<details${a.passed ? "" : " open"}><summary>${a.passed ? "PASS" : "FAIL"} ${value(a.name)}</summary><pre>\u671F\u671B: ${value(a.expected)}
+\u5B9E\u9645: ${value(a.actual)}</pre>${renderStructuralDiff(a.diff)}${a.detail ? `<pre>${value(a.detail)}</pre>` : ""}</details>`).join("");
+      return `<article><h3>${state} \xB7 ${value(step.name)}</h3><p>${value(step.method)} ${value(step.path)} \xB7 HTTP ${value(step.status)} \xB7 ${value(step.duration)} ms</p>${step.error ? `<pre>${value(step.error)}</pre>` : ""}${assertions}</article>`;
+    }).join("");
+    const pending = (report.unexecuted || []).map((step) => `<li>\u672A\u6267\u884C\uFF1A${value(step.name || step)}</li>`).join("");
+    return `<section><h2>${value(report.scenarioId || report.name)} \xB7 ${value(report.status)}</h2>${steps}${pending ? `<ul>${pending}</ul>` : ""}</section>`;
+  }).join("");
+  const notRun = (options.notRun || []).map((item) => `<li>\u672A\u6267\u884C\u573A\u666F\uFF1A${value(item)}</li>`).join("");
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
+}
+function writeHtmlReport(file, reports, options) {
+  const target = import_node_path8.default.resolve(file);
+  import_node_fs8.default.mkdirSync(import_node_path8.default.dirname(target), { recursive: true });
+  import_node_fs8.default.writeFileSync(target, buildHtmlReport(reports, options), "utf8");
+  return target;
+}
+
 // src/cli/serve-server.js
-var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_fs9 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path8 = __toESM(require("node:path"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
 var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "connection",
   "keep-alive",
@@ -5457,18 +5568,18 @@ function contentType(filePath) {
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
     ".txt": "text/plain; charset=utf-8"
-  }[import_node_path8.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+  }[import_node_path9.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 function safeFile(root, relativePath) {
-  const candidate = import_node_path8.default.resolve(root, relativePath);
-  const relative = import_node_path8.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path8.default.isAbsolute(relative)) return null;
+  const candidate = import_node_path9.default.resolve(root, relativePath);
+  const relative = import_node_path9.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path9.default.isAbsolute(relative)) return null;
   return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 function serveStaticFile(response, filePath) {
   const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path8.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs8.default.createReadStream(filePath);
+  if (import_node_path9.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs9.default.createReadStream(filePath);
     stream.on("error", () => {
       if (response.headersSent) {
         response.destroy();
@@ -5486,7 +5597,7 @@ function serveStaticFile(response, filePath) {
     });
     return;
   }
-  import_node_fs8.default.readFile(filePath, "utf8", function(error, html) {
+  import_node_fs9.default.readFile(filePath, "utf8", function(error, html) {
     if (error) {
       response.writeHead(500);
       response.end("Internal Server Error");
@@ -5631,10 +5742,10 @@ function respondProxyError(response, message) {
 function buildProxyRequestHeaders(request, targetUrl) {
   const headers = {};
   const requestCloseNamed = new Set(connectionNamedHeaders(request.headers.connection));
-  for (const [name, value] of Object.entries(request.headers)) {
+  for (const [name, value2] of Object.entries(request.headers)) {
     const lower = String(name).toLowerCase();
     if (lower === PROXY_ENV_HEADER) continue;
-    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value;
+    if (!HOP_BY_HOP_HEADERS.has(lower) && !requestCloseNamed.has(lower)) headers[name] = value2;
   }
   rewriteProxyOriginHeaders(headers, request.headers.host, targetUrl);
   return headers;
@@ -5663,9 +5774,9 @@ function proxyRequest(request, response, targetUrl, options = {}) {
     }, (upstreamResponse) => {
       const responseHeaders = {};
       const upstreamCloseNamed = new Set(connectionNamedHeaders(upstreamResponse.headers.connection));
-      for (const [name, value] of Object.entries(upstreamResponse.headers)) {
+      for (const [name, value2] of Object.entries(upstreamResponse.headers)) {
         const lower = String(name).toLowerCase();
-        if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value;
+        if (!HOP_BY_HOP_HEADERS.has(lower) && !upstreamCloseNamed.has(lower)) responseHeaders[name] = value2;
       }
       response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
       upstreamResponse.on("error", () => abortProxyResponse(response));
@@ -5708,11 +5819,11 @@ function createServeServer(options) {
       }
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
       let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
       else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
       } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path8.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
       } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
         filePath = safeFile(workspace, relativePath);
@@ -5722,7 +5833,7 @@ function createServeServer(options) {
         response.end("Forbidden");
         return;
       }
-      import_node_fs8.default.stat(filePath, (error, stat) => {
+      import_node_fs9.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
           if (!defaultTarget?.target) {
             response.writeHead(404);
@@ -5760,8 +5871,8 @@ function createServeServer(options) {
 }
 
 // src/import.js
-var import_node_fs9 = __toESM(require("node:fs"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 var DEFAULT_MAX_IMPORT_ENTRIES = 50;
 var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
   ".js",
@@ -5855,11 +5966,11 @@ var ImportError = class extends Error {
     this.hint = hint || "";
   }
 };
-function isEmpty(value) {
-  return value === void 0 || value === null || value === "";
+function isEmpty(value2) {
+  return value2 === void 0 || value2 === null || value2 === "";
 }
-function safeText(value) {
-  return String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\u2028\u2029]/g, " ").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
+function safeText(value2) {
+  return String(value2 ?? "").replace(/\r\n?/g, "\n").replace(/[\u2028\u2029]/g, " ").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, " ").replace(/\n+/g, " ").trim();
 }
 var HTTP_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 function normalizeMethod(raw, label = "\u8BF7\u6C42\u65B9\u6CD5") {
@@ -5885,9 +5996,9 @@ function normalizeHeaders(headers) {
       pairs.push([String(item.name), String(item.value)]);
     }
   } else if (headers && typeof headers === "object") {
-    for (const [name, value] of Object.entries(headers)) {
-      if (value === void 0 || value === null) continue;
-      pairs.push([String(name), Array.isArray(value) ? value.join(", ") : String(value)]);
+    for (const [name, value2] of Object.entries(headers)) {
+      if (value2 === void 0 || value2 === null) continue;
+      pairs.push([String(name), Array.isArray(value2) ? value2.join(", ") : String(value2)]);
     }
   }
   const result = [];
@@ -5902,13 +6013,13 @@ function normalizeHeaders(headers) {
       );
     }
     const lower = name.toLowerCase();
-    const value = rawValue.trim();
+    const value2 = rawValue.trim();
     if (seen.has(lower)) {
       const existing = seen.get(lower);
-      existing.value = `${existing.value}${lower === "cookie" ? "; " : ", "}${value}`;
+      existing.value = `${existing.value}${lower === "cookie" ? "; " : ", "}${value2}`;
       continue;
     }
-    const entry = { name, value };
+    const entry = { name, value: value2 };
     seen.set(lower, entry);
     result.push(entry);
   }
@@ -5923,11 +6034,11 @@ function maskSensitiveHeaders(headers) {
   const notices = [];
   const usedNames = /* @__PURE__ */ new Set();
   const result = {};
-  for (const { name, value } of headers) {
+  for (const { name, value: value2 } of headers) {
     const lower = name.toLowerCase();
     const sensitive = SENSITIVE_HEADER_NAMES.has(lower) || lower.endsWith("-token") || lower.endsWith("_token") || lower.includes("token") || lower.endsWith("-secret") || lower.endsWith("_secret") || lower.includes("secret") || lower.endsWith("-key") || lower.endsWith("_key") || lower.includes("apikey") || lower.includes("auth");
-    if (!sensitive || value.includes("{{")) {
-      result[name] = value;
+    if (!sensitive || value2.includes("{{")) {
+      result[name] = value2;
       continue;
     }
     let variableName = headerVariableName(name);
@@ -5947,12 +6058,12 @@ function isSensitiveQueryName(name) {
   const lower = String(name).toLowerCase();
   return SENSITIVE_QUERY_NAMES.has(lower) || lower.endsWith("_token") || lower.endsWith("-token") || lower.endsWith("_key") || lower.endsWith("-key") || lower.endsWith("_secret") || lower.endsWith("-secret");
 }
-function maskQueryParams(value) {
+function maskQueryParams(value2) {
   const vars = {};
   const notices = [];
   const usedNames = /* @__PURE__ */ new Set();
   const entries = [];
-  for (const [name, raw] of value) {
+  for (const [name, raw] of value2) {
     if (!isSensitiveQueryName(name) || String(raw).includes("{{")) {
       entries.push([name, raw]);
       continue;
@@ -6001,10 +6112,10 @@ function urlToStepPath(parsed) {
 }
 function queryFromUrl(parsed) {
   const values = /* @__PURE__ */ new Map();
-  for (const [name, value] of parsed.searchParams) {
-    if (!values.has(name)) values.set(name, value);
-    else if (Array.isArray(values.get(name))) values.get(name).push(value);
-    else values.set(name, [values.get(name), value]);
+  for (const [name, value2] of parsed.searchParams) {
+    if (!values.has(name)) values.set(name, value2);
+    else if (Array.isArray(values.get(name))) values.get(name).push(value2);
+    else values.set(name, [values.get(name), value2]);
   }
   return Array.from(values);
 }
@@ -6021,7 +6132,7 @@ function isStaticOrPreflight(entry) {
     return true;
   }
   if (!/^https?:$/i.test(parsed.protocol)) return true;
-  const extension = import_node_path9.default.extname(parsed.pathname).toLowerCase();
+  const extension = import_node_path10.default.extname(parsed.pathname).toLowerCase();
   if (STATIC_EXTENSIONS.has(extension)) return true;
   const mimeType = String(entry?.response?.content?.mimeType || "");
   if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
@@ -6127,8 +6238,8 @@ function normalizeHar(input) {
   }
   return har;
 }
-function parseHostFilter(value) {
-  return String(value || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+function parseHostFilter(value2) {
+  return String(value2 || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
 }
 function createHarDraft(input, options = {}) {
   const har = normalizeHar(input);
@@ -6292,10 +6403,10 @@ var CURL_OPTIONS_WITH_VALUE = /* @__PURE__ */ new Set([
   "--write-out",
   "-w"
 ]);
-function curlHeaderValue(value) {
-  const separator = String(value).indexOf(":");
+function curlHeaderValue(value2) {
+  const separator = String(value2).indexOf(":");
   if (separator <= 0) return null;
-  return [String(value).slice(0, separator).trim(), String(value).slice(separator + 1).trim()];
+  return [String(value2).slice(0, separator).trim(), String(value2).slice(separator + 1).trim()];
 }
 function createCurlDraft(command, options = {}) {
   const tokens = tokenizeCurl(command);
@@ -6313,10 +6424,10 @@ function createCurlDraft(command, options = {}) {
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     const takeValue = (option) => {
-      const value = tokens[index + 1];
-      if (value === void 0) throw new ImportError(`curl \u9009\u9879 ${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
+      const value2 = tokens[index + 1];
+      if (value2 === void 0) throw new ImportError(`curl \u9009\u9879 ${option} \u7F3A\u5C11\u53C2\u6570\u503C`);
       index += 1;
-      return value;
+      return value2;
     };
     if (token === "-X" || token === "--request") {
       method = takeValue(token).toUpperCase();
@@ -6382,7 +6493,7 @@ function createCurlDraft(command, options = {}) {
     } else if (["GET", "HEAD"].includes(method) || isGet) {
       if (isGet || method === "GET") {
         const extra = new URLSearchParams(rawBody);
-        for (const [name, value] of extra) parsed.searchParams.append(name, value);
+        for (const [name, value2] of extra) parsed.searchParams.append(name, value2);
         notes.push("curl -G/GET \u7684 -d \u6570\u636E\u5DF2\u8F6C\u4E3A query \u53C2\u6570");
       } else {
         notes.push(`${method} \u8BF7\u6C42\u4F53\u5DF2\u7701\u7565\uFF08DSL \u4E0D\u5141\u8BB8 GET/HEAD \u643A\u5E26 body\uFF09`);
@@ -6498,7 +6609,7 @@ function renderDraftFile(draft, meta = {}) {
 }
 function readHarFile(filePath) {
   try {
-    return import_node_fs9.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+    return import_node_fs10.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
   } catch (error) {
     throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
   }
@@ -6506,10 +6617,10 @@ function readHarFile(filePath) {
 
 // src/project-registry.js
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_node_fs10 = __toESM(require("node:fs"), 1);
+var import_node_fs11 = __toESM(require("node:fs"), 1);
 var import_node_net = __toESM(require("node:net"), 1);
 var import_node_os = __toESM(require("node:os"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
 var REGISTRY_SCHEMA_VERSION = 1;
 var DEFAULT_PORT = 4300;
 var DEFAULT_SCENARIO_DIR = "scenario-test";
@@ -6522,22 +6633,22 @@ var LOCK_STALE_MS = 15e3;
 var MAX_PORT_PROBES = 200;
 function resolveRegistryHome(env = process.env) {
   const explicit = env[HOME_ENV];
-  return explicit ? import_node_path10.default.resolve(explicit) : import_node_path10.default.join(import_node_os.default.homedir(), ".scenario-test");
+  return explicit ? import_node_path11.default.resolve(explicit) : import_node_path11.default.join(import_node_os.default.homedir(), ".scenario-test");
 }
 function registryPath(home = resolveRegistryHome()) {
-  return import_node_path10.default.join(home, REGISTRY_FILE);
+  return import_node_path11.default.join(home, REGISTRY_FILE);
 }
 function isDirectory2(target) {
   try {
-    return import_node_fs10.default.statSync(target).isDirectory();
+    return import_node_fs11.default.statSync(target).isDirectory();
   } catch {
     return false;
   }
 }
 function canonicalPath(target) {
-  let resolved = import_node_path10.default.resolve(target);
+  let resolved = import_node_path11.default.resolve(target);
   try {
-    resolved = import_node_fs10.default.realpathSync.native(resolved);
+    resolved = import_node_fs11.default.realpathSync.native(resolved);
   } catch {
   }
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
@@ -6556,7 +6667,7 @@ function readRegistry(home = resolveRegistryHome()) {
   const file = registryPath(home);
   let raw;
   try {
-    raw = import_node_fs10.default.readFileSync(file, "utf8");
+    raw = import_node_fs11.default.readFileSync(file, "utf8");
   } catch (error) {
     if (error?.code === "ENOENT") return emptyRegistry();
     throw error;
@@ -6575,30 +6686,30 @@ function readRegistry(home = resolveRegistryHome()) {
     registry.defaultPort = parsed.defaultPort;
   }
   if (parsed.projects && typeof parsed.projects === "object" && !Array.isArray(parsed.projects)) {
-    for (const [key, value] of Object.entries(parsed.projects)) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      if (typeof value.config !== "string" || typeof value.port !== "number") continue;
+    for (const [key, value2] of Object.entries(parsed.projects)) {
+      if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) continue;
+      if (typeof value2.config !== "string" || typeof value2.port !== "number") continue;
       registry.projects[key] = {
-        name: typeof value.name === "string" ? value.name : import_node_path10.default.basename(import_node_path10.default.dirname(value.config)),
-        slug: typeof value.slug === "string" ? value.slug : "",
-        root: typeof value.root === "string" ? value.root : import_node_path10.default.dirname(value.config),
-        dir: typeof value.dir === "string" ? value.dir : import_node_path10.default.dirname(value.config),
-        config: value.config,
-        port: value.port,
-        createdAt: typeof value.createdAt === "string" ? value.createdAt : nowIso(),
-        updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : nowIso()
+        name: typeof value2.name === "string" ? value2.name : import_node_path11.default.basename(import_node_path11.default.dirname(value2.config)),
+        slug: typeof value2.slug === "string" ? value2.slug : "",
+        root: typeof value2.root === "string" ? value2.root : import_node_path11.default.dirname(value2.config),
+        dir: typeof value2.dir === "string" ? value2.dir : import_node_path11.default.dirname(value2.config),
+        config: value2.config,
+        port: value2.port,
+        createdAt: typeof value2.createdAt === "string" ? value2.createdAt : nowIso(),
+        updatedAt: typeof value2.updatedAt === "string" ? value2.updatedAt : nowIso()
       };
     }
   }
   return registry;
 }
 function writeRegistry(registry, home = resolveRegistryHome()) {
-  import_node_fs10.default.mkdirSync(home, { recursive: true });
+  import_node_fs11.default.mkdirSync(home, { recursive: true });
   const file = registryPath(home);
   const temp = `${file}.${process.pid}.${import_node_crypto2.default.randomBytes(4).toString("hex")}.tmp`;
-  import_node_fs10.default.writeFileSync(temp, `${JSON.stringify(registry, null, 2)}
+  import_node_fs11.default.writeFileSync(temp, `${JSON.stringify(registry, null, 2)}
 `, "utf8");
-  import_node_fs10.default.renameSync(temp, file);
+  import_node_fs11.default.renameSync(temp, file);
 }
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -6607,20 +6718,20 @@ function sleep(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 async function withRegistryLock(home, action) {
-  import_node_fs10.default.mkdirSync(home, { recursive: true });
-  const lock = import_node_path10.default.join(home, LOCK_FILE);
+  import_node_fs11.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path11.default.join(home, LOCK_FILE);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   let handle;
   while (!handle) {
     try {
-      handle = import_node_fs10.default.openSync(lock, "wx");
-      import_node_fs10.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+      handle = import_node_fs11.default.openSync(lock, "wx");
+      import_node_fs11.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       try {
-        const stat = import_node_fs10.default.statSync(lock);
+        const stat = import_node_fs11.default.statSync(lock);
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          import_node_fs10.default.rmSync(lock, { force: true });
+          import_node_fs11.default.rmSync(lock, { force: true });
           continue;
         }
       } catch {
@@ -6636,27 +6747,27 @@ async function withRegistryLock(home, action) {
     return await action();
   } finally {
     try {
-      import_node_fs10.default.closeSync(handle);
+      import_node_fs11.default.closeSync(handle);
     } catch {
     }
-    import_node_fs10.default.rmSync(lock, { force: true });
+    import_node_fs11.default.rmSync(lock, { force: true });
   }
 }
 function withRegistryLockSync(home, action) {
-  import_node_fs10.default.mkdirSync(home, { recursive: true });
-  const lock = import_node_path10.default.join(home, LOCK_FILE);
+  import_node_fs11.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path11.default.join(home, LOCK_FILE);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   let handle;
   while (!handle) {
     try {
-      handle = import_node_fs10.default.openSync(lock, "wx");
-      import_node_fs10.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+      handle = import_node_fs11.default.openSync(lock, "wx");
+      import_node_fs11.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       try {
-        const stat = import_node_fs10.default.statSync(lock);
+        const stat = import_node_fs11.default.statSync(lock);
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          import_node_fs10.default.rmSync(lock, { force: true });
+          import_node_fs11.default.rmSync(lock, { force: true });
           continue;
         }
       } catch {
@@ -6672,15 +6783,15 @@ function withRegistryLockSync(home, action) {
     return action();
   } finally {
     try {
-      import_node_fs10.default.closeSync(handle);
+      import_node_fs11.default.closeSync(handle);
     } catch {
     }
-    import_node_fs10.default.rmSync(lock, { force: true });
+    import_node_fs11.default.rmSync(lock, { force: true });
   }
 }
 function projectName(root) {
-  const base = import_node_path10.default.basename(import_node_path10.default.resolve(root));
-  return base && base !== import_node_path10.default.parse(import_node_path10.default.resolve(root)).root ? base : "project";
+  const base = import_node_path11.default.basename(import_node_path11.default.resolve(root));
+  return base && base !== import_node_path11.default.parse(import_node_path11.default.resolve(root)).root ? base : "project";
 }
 function slugify(name) {
   const slug = String(name).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|[-._]+$/g, "");
@@ -6698,27 +6809,27 @@ function uniqueSlug(registry, name, key) {
   return `${base}-${digest}`;
 }
 function discoverProject(startDir = process.cwd()) {
-  let current = import_node_path10.default.resolve(startDir);
+  let current = import_node_path11.default.resolve(startDir);
   while (true) {
-    const directConfig = import_node_path10.default.join(current, "scenario.config.js");
-    if (import_node_fs10.default.existsSync(directConfig) && isDirectory2(import_node_path10.default.join(current, ".scenario-test"))) {
-      const root = import_node_path10.default.dirname(current);
+    const directConfig = import_node_path11.default.join(current, "scenario.config.js");
+    if (import_node_fs11.default.existsSync(directConfig) && isDirectory2(import_node_path11.default.join(current, ".scenario-test"))) {
+      const root = import_node_path11.default.dirname(current);
       return { root, dir: current, config: directConfig, name: projectName(root) };
     }
-    const nestedDir = import_node_path10.default.join(current, DEFAULT_SCENARIO_DIR);
-    const nestedConfig = import_node_path10.default.join(nestedDir, "scenario.config.js");
-    if (import_node_fs10.default.existsSync(nestedConfig)) {
+    const nestedDir = import_node_path11.default.join(current, DEFAULT_SCENARIO_DIR);
+    const nestedConfig = import_node_path11.default.join(nestedDir, "scenario.config.js");
+    if (import_node_fs11.default.existsSync(nestedConfig)) {
       return { root: current, dir: nestedDir, config: nestedConfig, name: projectName(current) };
     }
-    const parent = import_node_path10.default.dirname(current);
+    const parent = import_node_path11.default.dirname(current);
     if (parent === current) return null;
     current = parent;
   }
 }
 function projectFromConfig(configPath) {
-  const config = import_node_path10.default.resolve(configPath);
-  const dir = import_node_path10.default.dirname(config);
-  return { root: import_node_path10.default.dirname(dir), dir, config, name: projectName(import_node_path10.default.dirname(dir)) };
+  const config = import_node_path11.default.resolve(configPath);
+  const dir = import_node_path11.default.dirname(config);
+  return { root: import_node_path11.default.dirname(dir), dir, config, name: projectName(import_node_path11.default.dirname(dir)) };
 }
 function projectKey(configPath) {
   return canonicalPath(configPath);
@@ -6867,11 +6978,11 @@ var CliUsageError = class extends Error {
   }
 };
 function argumentValue(argv, index, option) {
-  const value = argv[index + 1];
-  if (!value || value === "-h" || value.startsWith("--")) {
+  const value2 = argv[index + 1];
+  if (!value2 || value2 === "-h" || value2.startsWith("--")) {
     throw new CliUsageError(`${option} \u7F3A\u5C11\u53C2\u6570\u503C`, `\u8BF7\u4E3A ${option} \u63D0\u4F9B\u4E00\u4E2A\u503C\uFF0C\u518D\u91CD\u65B0\u8FD0\u884C\u3002`);
   }
-  return value;
+  return value2;
 }
 var FLAG_OPTIONS = /* @__PURE__ */ new Map();
 var VALUE_OPTIONS = /* @__PURE__ */ new Map();
@@ -6929,7 +7040,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: void 0, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: void 0, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -7099,20 +7210,20 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path11.default.resolve(projectRoot, relativePath);
+  const target = import_node_path12.default.resolve(projectRoot, relativePath);
   if (!isRealPathWithinRoot(projectRoot, target)) {
     throw new Error(`\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916\u8DEF\u5F84\uFF08\u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF09: ${relativePath}`);
   }
-  if (import_node_fs11.default.existsSync(target) && !force) return false;
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
-  import_node_fs11.default.writeFileSync(target, content, "utf8");
+  if (import_node_fs12.default.existsSync(target) && !force) return false;
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
+  import_node_fs12.default.writeFileSync(target, content, "utf8");
   return true;
 }
-function resolveInitDirectory(projectRoot, value) {
-  const directory = String(value || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path11.default.resolve(projectRoot, directory);
-  const relative = import_node_path11.default.relative(projectRoot, target);
-  if (!directory || !relative || import_node_path11.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path11.default.isAbsolute(relative)) {
+function resolveInitDirectory(projectRoot, value2) {
+  const directory = String(value2 || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  const target = import_node_path12.default.resolve(projectRoot, directory);
+  const relative = import_node_path12.default.relative(projectRoot, target);
+  if (!directory || !relative || import_node_path12.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path12.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55\uFF08\u4E0D\u80FD\u662F\u9879\u76EE\u6839\u672C\u8EAB\uFF09");
   }
   if (!isRealPathWithinRoot(projectRoot, target)) {
@@ -7140,30 +7251,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto3.default.createHash("sha256").update(import_node_fs11.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto3.default.createHash("sha256").update(import_node_fs12.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path11.default.resolve(import_node_path11.default.dirname(process.argv[1]), fileName),
-    import_node_path11.default.resolve(import_node_path11.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path12.default.resolve(import_node_path12.default.dirname(process.argv[1]), fileName),
+    import_node_path12.default.resolve(import_node_path12.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs11.default.existsSync(target) && !force) return false;
-  const source = import_node_path11.default.resolve(process.argv[1]);
+  if (import_node_fs12.default.existsSync(target) && !force) return false;
+  const source = import_node_path12.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
-  import_node_fs11.default.copyFileSync(source, target);
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
+  import_node_fs12.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs11.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs11.default.existsSync(candidate));
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
+  if (import_node_fs12.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs12.default.existsSync(candidate));
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs11.default.copyFileSync(source, target);
+    import_node_fs12.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -7172,7 +7283,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs11.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs12.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -7185,7 +7296,7 @@ function writeVersionLock(layout) {
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs11.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs12.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -7198,20 +7309,20 @@ function writeVersionLock(layout) {
     },
     sha256
   };
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(target), { recursive: true });
-  import_node_fs11.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
+  import_node_fs12.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs11.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs12.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs11.default.existsSync(lockPath)) return true;
+  if (!import_node_fs12.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs11.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs12.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -7227,17 +7338,17 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path11.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path12.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName2 = import_node_path11.default.basename(projectRoot).trim() || "project";
+  const projectName2 = import_node_path12.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName2.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
-  if (!isRealPathWithinRoot(projectRoot, import_node_path11.default.join(projectRoot, directory, frameworkDirectory))) {
+  if (!isRealPathWithinRoot(projectRoot, import_node_path12.default.join(projectRoot, directory, frameworkDirectory))) {
     throw new Error(`\u76EE\u6807\u76EE\u5F55\u4E2D\u7684 ${frameworkDirectory} \u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF0C\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916`);
   }
   let force = args.force;
-  if (!force && import_node_fs11.default.existsSync(import_node_path11.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs12.default.existsSync(import_node_path12.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -7269,7 +7380,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs11.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs12.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -7281,14 +7392,14 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path11.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path12.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
-function resolveConfigPath(value) {
-  const candidate = import_node_path11.default.resolve(value || "scenario.config.js");
-  if (!import_node_fs11.default.existsSync(candidate)) {
+function resolveConfigPath(value2) {
+  const candidate = import_node_path12.default.resolve(value2 || "scenario.config.js");
+  if (!import_node_fs12.default.existsSync(candidate)) {
     throw new CliUsageError(
-      `${value ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
+      `${value2 ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
         `\u4F7F\u7528 --config "<\u5B9E\u9645\u914D\u7F6E\u6587\u4EF6\u8DEF\u5F84>" \u6307\u5411\u5DF2\u6709\u914D\u7F6E\uFF0C\u4F8B\u5982\uFF1Anode scenario-test-cli.cjs run --config "<\u5B9E\u9645\u914D\u7F6E\u6587\u4EF6\u8DEF\u5F84>"`,
         `\u521D\u59CB\u5316\u9879\u76EE\u6A21\u677F\uFF1Anode scenario-test-cli.cjs init --project "."`
@@ -7306,7 +7417,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path11.default.isAbsolute(pluginPath) ? pluginPath : import_node_path11.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path12.default.isAbsolute(pluginPath) ? pluginPath : import_node_path12.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -7356,8 +7467,8 @@ function configVariables(config, overrides = {}, environment = null) {
   const provided = overrides && typeof overrides === "object" ? overrides : {};
   for (const definition of config.variables || []) {
     const environmentName = definition.env;
-    const value = environmentName ? process.env[environmentName] : void 0;
-    if (value !== void 0) values[definition.name] = value;
+    const value2 = environmentName ? process.env[environmentName] : void 0;
+    if (value2 !== void 0) values[definition.name] = value2;
     else if (values[definition.name] === void 0 && definition.defaultValue !== void 0) values[definition.name] = definition.defaultValue;
     const effective = Object.prototype.hasOwnProperty.call(provided, definition.name) ? provided[definition.name] : values[definition.name];
     if (definition.required && (effective === void 0 || effective === "")) {
@@ -7371,7 +7482,7 @@ function configVariables(config, overrides = {}, environment = null) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path11.default.dirname(configPath);
+  const configDir = import_node_path12.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -7490,7 +7601,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path11.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path12.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -7528,7 +7639,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => resolveString(item.value, runtimeForResolve))
         ]);
         for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
-        const redact = (value) => redactSecrets(value, stepSecrets);
+        const redact = (value2) => redactSecrets(value2, stepSecrets);
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
         entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
@@ -7568,7 +7679,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
     }
-    rememberSecrets({ ...report.vars || {}, ...report.suite || report.suiteVars || {} }, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value]) => value).filter((value) => typeof value === "string")));
+    rememberSecrets({ ...report.vars || {}, ...report.suite || report.suiteVars || {} }, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value2]) => value2).filter((value2) => typeof value2 === "string")));
     report.scenarioId = entry.id;
     report.tags = entry.tags || [];
     return report;
@@ -7609,7 +7720,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           nextIndex += 1;
           if (index >= entries.length) return;
           const bufferedLines = [];
-          const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+          const bufferedPrint = (...values) => bufferedLines.push(values.map((value2) => String(value2)).join(" "));
           try {
             const report = await runEntry(entries[index], bufferedPrint);
             markDataRow(report, entries[index], rowIndex, dataset);
@@ -7654,6 +7765,14 @@ Overall: ${passedTotal}/${total} passed`);
     print(`
 JUnit \u62A5\u544A: ${target}`);
   }
+  if (args.report) {
+    const target = writeHtmlReport(args.report, safeReports, {
+      notRun: redactSecrets(notRun, secretList),
+      environment: redactSecrets(environment?.name || environment?.key || "\u9ED8\u8BA4", secretList)
+    });
+    print(`
+HTML \u62A5\u544A: ${target}`);
+  }
   const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65`;
   if (actualFailedTotal > 0) {
     print(`
@@ -7695,7 +7814,7 @@ function escapeErrorText(error) {
   return String(error?.stack || error).split("\n").map(escapeBodyLine).join("\n");
 }
 function printFailedStepBody(result, print = console.log, secretsOf = []) {
-  const redact = (value) => redactSecrets(value, typeof secretsOf === "function" ? secretsOf() : secretsOf);
+  const redact = (value2) => redactSecrets(value2, typeof secretsOf === "function" ? secretsOf() : secretsOf);
   const response = result?.response;
   if (!response || typeof response !== "object") return;
   const body = response.body;
@@ -7750,8 +7869,8 @@ function openInBrowser(url) {
 async function serveCommand(args) {
   const project = resolveServeProject(args);
   const configPath = project.config;
-  const workspace = import_node_path11.default.dirname(configPath);
-  const libraryDist = import_node_path11.default.dirname(import_node_path11.default.resolve(process.argv[1]));
+  const workspace = import_node_path12.default.dirname(configPath);
+  const libraryDist = import_node_path12.default.dirname(import_node_path12.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
   if (startup.error) {
@@ -7903,19 +8022,19 @@ async function projectsCommand(args) {
   );
 }
 function importTimestamp(date = /* @__PURE__ */ new Date()) {
-  const pad = (value) => String(value).padStart(2, "0");
+  const pad = (value2) => String(value2).padStart(2, "0");
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 function scenarioIdFromOutput(output, timestamp) {
-  const stem = import_node_path11.default.basename(output, import_node_path11.default.extname(output)).trim();
+  const stem = import_node_path12.default.basename(output, import_node_path12.default.extname(output)).trim();
   const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
   return normalized || `imported-${timestamp}`;
 }
 function defaultImportOutput(timestamp) {
-  let candidate = import_node_path11.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let candidate = import_node_path12.default.resolve("scenarios", `imported-${timestamp}.js`);
   let suffix = 2;
-  while (import_node_fs11.default.existsSync(candidate)) {
-    candidate = import_node_path11.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+  while (import_node_fs12.default.existsSync(candidate)) {
+    candidate = import_node_path12.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
     suffix += 1;
   }
   return candidate;
@@ -7935,12 +8054,12 @@ function importCommand(args) {
     throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
   }
   const timestamp = importTimestamp();
-  const output = args.output ? import_node_path11.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const output = args.output ? import_node_path12.default.resolve(args.output) : defaultImportOutput(timestamp);
   const id = scenarioIdFromOutput(output, timestamp);
   let draft;
   try {
     draft = args.har ? createHarDraft(readHarFile(args.har), {
-      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path11.default.basename(args.har),
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path12.default.basename(args.har),
       maxEntries,
       hosts: parseHostFilter(args.host)
     }) : createCurlDraft(args.curl);
@@ -7955,9 +8074,9 @@ function importCommand(args) {
     );
   }
   const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
-  import_node_fs11.default.mkdirSync(import_node_path11.default.dirname(output), { recursive: true });
-  import_node_fs11.default.writeFileSync(output, content, "utf8");
-  const relativeOutput = import_node_path11.default.relative(process.cwd(), output).split(import_node_path11.default.sep).join("/") || output;
+  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(output), { recursive: true });
+  import_node_fs12.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path12.default.relative(process.cwd(), output).split(import_node_path12.default.sep).join("/") || output;
   console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
   console.log(`\u573A\u666F id: ${id}`);
   console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
@@ -7990,10 +8109,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path11.default.dirname(configPath);
+    configDir = import_node_path12.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path11.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path11.default.dirname(configPath);
+    configPath = import_node_path12.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path12.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {
