@@ -14,6 +14,12 @@
 
 典型流程：在业务项目根目录接入 → 提供一个业务功能及其代码或接口入口 → 检查生成的场景和环境配置 → 使用工作台或 CLI 执行。执行场景会调用实际接口，可能产生业务数据，请先确认目标环境和场景内容。
 
+## 结果留档与耗时提取（主分支新增）
+
+`run --all --report reports/result.html --junit reports/result.xml --json` 可同时导出离线 HTML、JUnit 与 JSON。HTML 仅保留运行证据，不嵌入源码；已识别敏感变量值沿用 CLI 脱敏，长证据截断。
+
+`extract: [{ name: "elapsed", target: "duration", required: true }]` 提取单次请求毫秒耗时；直接检查阈值仍可使用 `{ target: "duration", lte: 800 }`。单次耗时不代表 p99，统计分位需要多样本测量。
+
 ## 安装全局 AI Skill
 
 在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中按用户安装一次，即可在多个业务项目中使用：

@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.14.0",
-  "contractVersion": 20,
+  "contractVersion": 21,
   "assertions": {
     "operators": {
       "exists": {
@@ -146,12 +146,13 @@
       "suite"
     ],
     "targets": [
-      "status"
+      "status",
+      "duration"
     ],
     "required": "boolean",
     "default": "any",
     "scope": "step",
-    "note": "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+    "note": "target: \"duration\" 提取单次请求耗时（毫秒，response.durationMs），不含重试等待；也可用 from: \"response\", path: \"durationMs\"。required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
   },
   "reservedVars": [
     "runId",
@@ -357,6 +358,10 @@
       "data": {
         "kind": "value",
         "description": "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景"
+      },
+      "report": {
+        "kind": "value",
+        "description": "输出自包含离线 HTML 报告到指定文件"
       },
       "junit": {
         "kind": "value",
