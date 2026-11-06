@@ -115,6 +115,18 @@ async function waitForFile(file, timeoutMs = 10000) {
     throw new Error(`等待文件超时: ${file}`);
 }
 
+// 与 waitForFile 相同的等待，但超时返回 null 而不是抛 Error：
+// 调用方要把它转成断言失败。变异验证器只把断言失败（ERR_ASSERTION）算作检出，
+// 抛普通 Error 会被判为基础设施错误（ERR_TEST_FAILURE → INFRA），
+// 那会把真实缺陷（比如观测桩根本没被调用）误报成环境问题。
+async function waitForFileOrNull(file, timeoutMs = 10000) {
+    try {
+        return await waitForFile(file, timeoutMs);
+    } catch {
+        return null;
+    }
+}
+
 function serveUrlOf(output) {
     const match = /场景测试工作台: http:\/\/127\.0\.0\.1:(\d+)\//.exec(output);
     if (!match) throw new Error(`日志中未找到工作台地址:
@@ -1015,7 +1027,10 @@ test("C13 serve --open：经可注入 PATH 桩观测打开的 URL，不真的启
     try {
         await serve.waitFor("场景测试工作台:");
         const logged = serveUrlOf(serve.output());
-        const opened = await waitForFile(marker);
+        // --open 未生效时标记文件不会出现：必须落成断言失败而不是抛 Error，
+        // 否则变异验证器会把 M50 判成基础设施错误（INFRA）而非检出（killed）。
+        const opened = await waitForFileOrNull(marker);
+        assert.ok(opened, `xdg-open 观测桩未被调用（--open 未生效）：标记文件未出现 ${marker}`);
         const url = opened.trim();
         assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/$/, "打开的必须是工作台根地址");
         assert.equal(new URL(url).port, String(logged), "打开的端口必须与实际监听端口一致");
