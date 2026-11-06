@@ -3473,7 +3473,10 @@ function createEngine(engineOptions = {}) {
             errorType: attemptErrorType,
             errorMessage: attemptError ? describeError(attemptError) : ""
           };
-          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext ? attemptCallback(callbackInfo, {
+            runtime,
+            request: attemptError ? attemptError.scenarioContext?.request || null : lastExecution?.request || null
+          }) : attemptCallback(callbackInfo));
           if (enforceAttemptDeadline) {
             const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
             if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
