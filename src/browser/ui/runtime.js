@@ -1,4 +1,5 @@
 import * as core from "../../core.js";
+import { collectRequestSecretValues, redactKnownOutput } from "../../utils/output-secrets.js";
 import { createEngine } from "../../engine.js";
 import { esc, isSecretName, safeJson, copyText } from "./ui-utils.js";
 import workbenchStyle from './ui-style.js';
@@ -581,9 +582,24 @@ export function createWorkbenchRuntime(options) {
         }
     }
 
+    function outputSecrets() {
+        var values = [];
+        (state.steps || []).forEach(function (step) { values.push(...collectRequestSecretValues(step.request)); });
+        var runtime = state.activeRuntime || state.stepRuntime || { vars: buildScenarioRuntimeVars(), suite: {} };
+        (state.scenario && state.scenario.steps || []).forEach(function (step) {
+            values.push(...collectRequestSecretValues(step.request || {}));
+            try { values.push(...collectRequestSecretValues(core.resolveClone(step.request || {}, runtime))); }
+            catch (_) { /* 待执行步骤的模板尚不可解析时不影响渲染 */ }
+        });
+        return values;
+    }
+    function safeOutput(value, additionalSecrets) {
+        return redactKnownOutput(value, outputSecrets().concat(additionalSecrets || []));
+    }
+
     function renderStepsAll() {
         var varsViews = (state.steps || []).map(function (_, idx) { return buildVarsView(idx); });
-        uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
+        uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews));
         updateExecutionFooter();
     }
 
@@ -599,7 +615,7 @@ export function createWorkbenchRuntime(options) {
     }
 
     function renderReportPanel() {
-        state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+        state.lastReport = uiView.renderReportPanel(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
 
     function setSidePanelTab(tabName, options) {
@@ -647,15 +663,17 @@ export function createWorkbenchRuntime(options) {
             authorization: runtime.authorization,
             globals: runtime.globals,
             requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 30000),
+            _includeAttemptContext: true,
             // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
-            onAttempt: function (info) {
+            onAttempt: function (info, context) {
                 var label = info.errorType === 'timeout' ? '超时' : (info.errorType ? '连接失败' : '未通过');
                 var detail = info.errorType
                     ? (info.errorMessage || '')
                     : 'status ' + info.status + (info.failedAssertion ? '，' + info.failedAssertion : '');
-                uiView.setRunState('running',
+                uiView.setRunState('running', safeOutput(
                     '轮询 ' + (info.step && info.step.name || '未命名步骤') + ' 第 ' + info.attempt + '/' + info.totalAttempts
-                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试');
+                    + ' 次' + label + (detail ? '（' + detail + '）' : '') + '，' + info.intervalMs + 'ms 后重试',
+                    collectRequestSecretValues(context && context.request)));
             }
         });
     }
@@ -1059,7 +1077,7 @@ export function createWorkbenchRuntime(options) {
                     state.suiteTrail[i] = { ...runtime.suite };
                     renderStatsAll();
                     renderFilterAll();
-                    uiView.appendStepResult(skippedResult, i, list, state.executionMode, buildVarsView(i));
+                    uiView.appendStepResult(safeOutput(skippedResult), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
                     renderReportPanel();
                     continue;
                 }
@@ -1072,7 +1090,7 @@ export function createWorkbenchRuntime(options) {
                 state.suiteTrail[i] = { ...runtime.suite };
                 renderStatsAll();
                 renderFilterAll();
-                uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
+                uiView.appendStepResult(safeOutput(result), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
                 renderReportPanel();
                 // 与 engine.runScenario 对齐：stop 策略失败后标记 halted（后续 always 仍执行），
                 // 取消信号中止时不论本步成败都停。
@@ -1140,7 +1158,7 @@ export function createWorkbenchRuntime(options) {
             state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
             renderStatsAll();
             renderFilterAll();
-            uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
+            uiView.appendStepResult(safeOutput(result), stepIndex, safeOutput(list), state.executionMode, safeOutput(buildVarsView(stepIndex)));
             expandStepDetails(stepIndex);
             renderReportPanel();
 
@@ -1501,7 +1519,7 @@ export function createWorkbenchRuntime(options) {
             }, 1500);
         }
         function handleCopy(btn, getText) {
-            var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+            var report = state.lastReport || uiView.buildOverallReport(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
             if (!report) return;
             Promise.resolve()
                 .then(function () { return getText(report); })

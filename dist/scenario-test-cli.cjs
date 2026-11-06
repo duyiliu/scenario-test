@@ -3710,7 +3710,10 @@ function createEngine(engineOptions = {}) {
             errorType: attemptErrorType,
             errorMessage: attemptError ? describeError(attemptError) : ""
           };
-          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext ? attemptCallback(callbackInfo, {
+            runtime,
+            request: attemptError ? attemptError.scenarioContext?.request || null : lastExecution?.request || null
+          }) : attemptCallback(callbackInfo));
           if (enforceAttemptDeadline) {
             const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
             if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
@@ -5271,6 +5274,43 @@ function renderDoctorText(report) {
   lines.push(`\u6458\u8981: ${report.summary.passed} PASS, ${report.summary.warned} WARN, ${report.summary.failed} FAIL, ${report.summary.info} INFO`);
   lines.push(report.exitCode === 0 ? "\u7ED3\u679C: OK\uFF08\u9000\u51FA\u7801 0\uFF09" : "\u7ED3\u679C: FAILED\uFF08\u9000\u51FA\u7801 1\uFF09");
   return lines.join("\n");
+}
+
+// src/utils/output-secrets.js
+function collectRequestSecretValues(request) {
+  const found = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new WeakSet();
+  function visit(value2, sensitive = false) {
+    if (typeof value2 === "string") {
+      if (sensitive && value2) found.add(value2);
+      return;
+    }
+    if (!value2 || typeof value2 !== "object" || seen.has(value2)) return;
+    seen.add(value2);
+    for (const [key, child] of Object.entries(value2)) visit(child, sensitive || isSecretVarName(key));
+  }
+  visit(request?.headers);
+  let body = request?.body;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+    }
+  }
+  visit(body);
+  return [...found];
+}
+function outputSecretVariants(values) {
+  const result = /* @__PURE__ */ new Set();
+  for (const value2 of values || []) {
+    if (typeof value2 !== "string" || !value2) continue;
+    let variant = value2;
+    for (let depth = 0; depth < 4; depth++) {
+      result.add(variant);
+      variant = JSON.stringify(variant).slice(1, -1);
+    }
+  }
+  return [...result].sort((a, b) => b.length - a.length);
 }
 
 // src/utils/data-file.js
@@ -7615,20 +7655,37 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
-    entryPrint(`
-# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+    let headerPrinted = false;
+    const printHeader = () => {
+      if (headerPrinted) return;
+      headerPrinted = true;
+      const secrets = outputSecretVariants([...allSecrets]);
+      entryPrint(`
+# ${escapeInlineText(redactSecrets(scenario.name, secrets))} (${escapeInlineText(redactSecrets(entry.id, secrets))})`);
+    };
     const entrySuite = { ...suiteContext };
+    let entryRuntime = { vars: baseOptions.vars || {}, suite: entrySuite };
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
       suite: entrySuite,
+      _includeAttemptContext: true,
       // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
-      async onAttempt(info) {
+      async onAttempt(info, context) {
+        if (context?.runtime) entryRuntime = context.runtime;
+        for (const secret of collectRequestSecretValues(context?.request)) allSecrets.add(secret);
+        try {
+          for (const secret of collectRequestSecretValues(resolveClone(info.step?.request || {}, entryRuntime))) allSecrets.add(secret);
+        } catch {
+        }
+        printHeader();
+        const redact = (value2) => redactSecrets(value2, outputSecretVariants([...allSecrets]));
         const label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
-        const detail = info.errorType ? info.errorMessage ? escapeInlineText(info.errorMessage) : "" : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `\uFF0C${escapeInlineText(info.failedAssertion)}` : ""}`;
-        entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4")} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
+        const detail = info.errorType ? info.errorMessage ? escapeInlineText(redact(info.errorMessage)) : "" : `status ${escapeInlineText(redact(info.status))}${info.failedAssertion ? `\uFF0C${escapeInlineText(redact(info.failedAssertion))}` : ""}`;
+        entryPrint(`  [RETRY] ${escapeInlineText(redact(info.step?.name || "\u672A\u547D\u540D\u6B65\u9AA4"))} \u7B2C ${info.attempt}/${info.totalAttempts} \u6B21${label}${detail ? `\uFF08${detail}\uFF09` : ""}\uFF0C${formatDuration(info.intervalMs)}\u540E\u91CD\u8BD5`);
       },
       async onStep(result, _stepIndex, runtime) {
+        if (runtime) entryRuntime = runtime;
         const runtimeForResolve = runtime || { vars: {} };
         const stepSecretVars = {
           ...runtimeForResolve.vars || {},
@@ -7636,10 +7693,12 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
         };
         const stepSecrets = collectSecretValues(stepSecretVars, [
           baseOptions.authorization,
+          ...collectRequestSecretValues(result.request),
           ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => resolveString(item.value, runtimeForResolve))
         ]);
         for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
-        const redact = (value2) => redactSecrets(value2, stepSecrets);
+        printHeader();
+        const redact = (value2) => redactSecrets(value2, outputSecretVariants([...allSecrets]));
         const mark = result.skipped ? "SKIP" : result.passed ? "PASS" : "FAIL";
         entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${formatDuration(result.duration)})`);
         for (const warning of result.warnings || []) {
@@ -7649,13 +7708,13 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           for (const item of detail || []) {
             if (!item) continue;
             if (!Array.isArray(item.assertions) || item.index === void 0) {
-              entryPrint(`      \u21B3 ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+              entryPrint(`      \u21B3 ${escapeInlineText(redact(prefix))}${escapeInlineText(redact(item.path))}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
               continue;
             }
             const label = `${prefix}${item.path !== void 0 && item.path !== null && item.path !== "" ? item.path : `\u7B2C ${item.index + 1} \u9879`}`;
             for (const sub of item.assertions) {
               if (sub.passed) continue;
-              entryPrint(`      \u21B3 ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
+              entryPrint(`      \u21B3 ${escapeInlineText(redact(label))} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
               if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(redact(sub.reason))}`);
               for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
                 entryPrint(line);
@@ -7672,9 +7731,10 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
           }
           printEachDetail(assertion.detail, "");
         }
-        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => stepSecrets);
+        if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => outputSecretVariants([...allSecrets]));
       }
     });
+    printHeader();
     Object.assign(suiteContext, report.suite || {});
     for (const plugin of plugins) {
       await plugin?.afterScenario?.(report, { config, configDir, entry, environment, scenario });
@@ -7758,10 +7818,10 @@ Overall: ${passedTotal}/${total} passed`);
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
     process.exitCode = 1;
   }
-  const secretList = [...allSecrets];
+  const secretList = outputSecretVariants([...allSecrets]);
   const safeReports = reports.map((report) => redactSecrets(report, secretList));
   if (args.junit) {
-    const target = writeJUnitReport(args.junit, safeReports);
+    const target = writeJUnitReport(args.junit, safeReports, { notRun: redactSecrets(notRun, secretList) });
     print(`
 JUnit \u62A5\u544A: ${target}`);
   }
@@ -7796,8 +7856,8 @@ HTML \u62A5\u544A: ${target}`);
         vars: redactSecrets(row.vars, secretList),
         scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
       })),
-      ...notRun.length ? { notRun } : {}
-    } : safeReports.length === 1 && !notRun.length ? safeReports[0] : { scenarios: safeReports, ...notRun.length ? { notRun } : {} };
+      ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}
+    } : safeReports.length === 1 && !notRun.length ? safeReports[0] : { scenarios: safeReports, ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {} };
     process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
   }
@@ -7881,7 +7941,8 @@ async function serveCommand(args) {
   }
   const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
   const ensured = await ensureProject(project, {
-    port: args.portExplicit ? args.port : void 0
+    port: args.portExplicit ? args.port : void 0,
+    reassign: args.reassign === true
   });
   const port = ensured.entry.port;
   const server = createServeServer({
@@ -7911,7 +7972,7 @@ async function serveCommand(args) {
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: ${url}`);
     console.log(`\u9879\u76EE: ${ensured.entry.name} (${project.root})`);
     console.log(`\u914D\u7F6E\u76EE\u5F55: ${workspace}`);
-    console.log(`\u9879\u76EE\u767B\u8BB0: ${registryPath()}\uFF08\u7AEF\u53E3 ${port}${args.portExplicit ? "\uFF0C--port \u5DF2\u66F4\u65B0" : ensured.created ? "\uFF0C\u9996\u6B21\u5206\u914D" : "\uFF0C\u56FA\u5B9A\u590D\u7528"}\uFF09`);
+    console.log(`\u9879\u76EE\u767B\u8BB0: ${registryPath()}\uFF08\u7AEF\u53E3 ${port}${args.portExplicit ? "\uFF0C--port \u5DF2\u66F4\u65B0" : ensured.created ? "\uFF0C\u9996\u6B21\u5206\u914D" : ensured.changed && args.reassign ? "\uFF0C\u91CD\u65B0\u5206\u914D" : "\uFF0C\u56FA\u5B9A\u590D\u7528"}\uFF09`);
     if (startup.target) {
       console.log(`\u63A5\u53E3\u4EE3\u7406: ${startup.key} -> ${startup.target}`);
       console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);

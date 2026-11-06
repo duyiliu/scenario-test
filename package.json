@@ -29,10 +29,13 @@
     "test": "node scripts/run-tests.mjs",
     "test:unit": "node scripts/run-tests.mjs",
     "test:browser": "node tests/browser.test.mjs",
+    "test:browser-comprehensive": "node tests/browser-comprehensive.test.mjs",
+    "test:browser-comprehensive:dist": "node scripts/run-browser-comprehensive.mjs dist",
+    "test:mutation": "node --test tests/mutation/run-mutations.selftest.test.js && node tests/mutation/run-mutations.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
-    "test:all": "npm run test:unit && npm run test:browser && npm run test:ui-style",
+    "test:all": "npm run test:unit && npm run test:browser && npm run test:browser-comprehensive && npm run test:browser-comprehensive:dist && npm run test:ui-style",
     "check:eol": "node scripts/check-eol.mjs",
-    "check": "npm run build && npm run test:unit && npm run test:browser",
+    "check": "npm run build && npm run test:unit && npm run test:browser && npm run test:browser-comprehensive && npm run test:browser-comprehensive:dist",
     "check:all": "npm run check && npm run test:ui-style && npm run check:eol"
   },
   "dependencies": {

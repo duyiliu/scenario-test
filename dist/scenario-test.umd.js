@@ -3478,7 +3478,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
               errorType: attemptErrorType,
               errorMessage: attemptError ? describeError(attemptError) : ""
             };
-            const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+            const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext ? attemptCallback(callbackInfo, {
+              runtime,
+              request: attemptError ? attemptError.scenarioContext?.request || null : lastExecution?.request || null
+            }) : attemptCallback(callbackInfo));
             if (enforceAttemptDeadline) {
               const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
               if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
@@ -3809,6 +3812,57 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       lines.push(`  ${flags.padEnd(36)}${spec.description}`);
     }
     return lines.join("\n");
+  }
+
+  // src/utils/output-secrets.js
+  function collectRequestSecretValues(request) {
+    const found = /* @__PURE__ */ new Set();
+    const seen = /* @__PURE__ */ new WeakSet();
+    function visit(value, sensitive = false) {
+      if (typeof value === "string") {
+        if (sensitive && value) found.add(value);
+        return;
+      }
+      if (!value || typeof value !== "object" || seen.has(value)) return;
+      seen.add(value);
+      for (const [key, child] of Object.entries(value)) visit(child, sensitive || isSecretVarName(key));
+    }
+    visit(request?.headers);
+    let body = request?.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+      }
+    }
+    visit(body);
+    return [...found];
+  }
+  function outputSecretVariants(values) {
+    const result = /* @__PURE__ */ new Set();
+    for (const value of values || []) {
+      if (typeof value !== "string" || !value) continue;
+      let variant = value;
+      for (let depth = 0; depth < 4; depth++) {
+        result.add(variant);
+        variant = JSON.stringify(variant).slice(1, -1);
+      }
+    }
+    return [...result].sort((a, b) => b.length - a.length);
+  }
+  function redactKnownOutput(value, values) {
+    const secrets = outputSecretVariants(values);
+    const seen = /* @__PURE__ */ new WeakMap();
+    function copy(item) {
+      if (typeof item === "string") return redactSecrets(item, secrets);
+      if (!item || typeof item !== "object") return item;
+      if (seen.has(item)) return seen.get(item);
+      const result = Array.isArray(item) ? [] : {};
+      seen.set(item, result);
+      for (const key of Object.keys(item)) result[key] = copy(item[key]);
+      return result;
+    }
+    return copy(value);
   }
 
   // src/browser/ui/ui-utils.js
@@ -6870,6 +6924,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         node.innerHTML = "";
         return;
       }
+      result = redactKnownOutput(result, collectRequestSecretValues(result.request));
       var statusClass = result.passed ? "text-emerald-700" : "text-rose-700";
       var response = result.response || { headers: {}, body: null };
       node.classList.remove("hidden");
@@ -7664,11 +7719,29 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         durEl.classList.toggle("text-slate-500", executed === 0);
       }
     }
+    function outputSecrets() {
+      var values = [];
+      (state.steps || []).forEach(function(step) {
+        values.push(...collectRequestSecretValues(step.request));
+      });
+      var runtime = state.activeRuntime || state.stepRuntime || { vars: buildScenarioRuntimeVars(), suite: {} };
+      (state.scenario && state.scenario.steps || []).forEach(function(step) {
+        values.push(...collectRequestSecretValues(step.request || {}));
+        try {
+          values.push(...collectRequestSecretValues(resolveClone(step.request || {}, runtime)));
+        } catch (_) {
+        }
+      });
+      return values;
+    }
+    function safeOutput(value, additionalSecrets) {
+      return redactKnownOutput(value, outputSecrets().concat(additionalSecrets || []));
+    }
     function renderStepsAll() {
       var varsViews = (state.steps || []).map(function(_, idx) {
         return buildVarsView(idx);
       });
-      uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
+      uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews));
       updateExecutionFooter();
     }
     function renderStatsAll() {
@@ -7679,7 +7752,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       uiView.renderFilterAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : []);
     }
     function renderReportPanel() {
-      state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+      state.lastReport = uiView.renderReportPanel(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
     }
     function setSidePanelTab(tabName, options2) {
       var showReport = tabName === "report";
@@ -7720,14 +7793,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         authorization: runtime.authorization,
         globals: runtime.globals,
         requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4),
+        _includeAttemptContext: true,
         // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
-        onAttempt: function(info) {
+        onAttempt: function(info, context) {
           var label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
           var detail = info.errorType ? info.errorMessage || "" : "status " + info.status + (info.failedAssertion ? "\uFF0C" + info.failedAssertion : "");
-          uiView.setRunState(
-            "running",
-            "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21" + label + (detail ? "\uFF08" + detail + "\uFF09" : "") + "\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5"
-          );
+          uiView.setRunState("running", safeOutput(
+            "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21" + label + (detail ? "\uFF08" + detail + "\uFF09" : "") + "\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5",
+            collectRequestSecretValues(context && context.request)
+          ));
         }
       });
     }
@@ -8076,7 +8150,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             state.suiteTrail[i] = { ...runtime.suite };
             renderStatsAll();
             renderFilterAll();
-            uiView.appendStepResult(skippedResult, i, list, state.executionMode, buildVarsView(i));
+            uiView.appendStepResult(safeOutput(skippedResult), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
             renderReportPanel();
             continue;
           }
@@ -8089,7 +8163,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           state.suiteTrail[i] = { ...runtime.suite };
           renderStatsAll();
           renderFilterAll();
-          uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
+          uiView.appendStepResult(safeOutput(result), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
           renderReportPanel();
           if (!result.passed && failurePolicy !== "continue") halted = true;
           if (runtime.abortController.signal.aborted) break;
@@ -8150,7 +8224,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
         renderStatsAll();
         renderFilterAll();
-        uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
+        uiView.appendStepResult(safeOutput(result), stepIndex, safeOutput(list), state.executionMode, safeOutput(buildVarsView(stepIndex)));
         expandStepDetails(stepIndex);
         renderReportPanel();
         if (runtime.cancelled || result.cancelled || result.timedOut) {
@@ -8477,7 +8551,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
         }, 1500);
       }
       function handleCopy(btn, getText) {
-        var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+        var report = state.lastReport || uiView.buildOverallReport(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
         if (!report) return;
         Promise.resolve().then(function() {
           return getText(report);
