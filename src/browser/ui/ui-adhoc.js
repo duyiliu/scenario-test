@@ -366,7 +366,12 @@ const workbenchAdhoc = (function () {
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         window.requestAnimationFrame(function () {
-            document.getElementById('adhocNameInput').focus();
+            // 仅补默认聚焦：焦点已进入弹窗其他控件（如自动化先 fill 了请求头）时不抢回名称框，
+            // 否则聚焦移动与 Playwright insertText 的竞态会把输入文本写进错误的输入框
+            var active = document.activeElement;
+            if (!active || active === document.body || !modal.contains(active)) {
+                document.getElementById('adhocNameInput').focus();
+            }
         });
     }
 
