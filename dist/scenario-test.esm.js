@@ -6909,7 +6909,10 @@ var workbenchAdhoc = function() {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     window.requestAnimationFrame(function() {
-      document.getElementById("adhocNameInput").focus();
+      var active = document.activeElement;
+      if (!active || active === document.body || !modal.contains(active)) {
+        document.getElementById("adhocNameInput").focus();
+      }
     });
   }
   function closeAdhocModal() {

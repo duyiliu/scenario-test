@@ -83,6 +83,11 @@ try {
         await page.locator(button).click();
         await page.waitForFunction(() => !document.querySelector('#runBtn').disabled && !document.querySelector('#stepBtn').disabled);
     };
+    // adhoc 弹窗在 rAF 里补默认聚焦，fill 前先等聚焦落定，避免 insertText 写进错误输入框
+    const openAdhoc = async index => {
+        await page.locator(`[data-adhoc-step="${index}"]`).click();
+        await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'adhocNameInput');
+    };
     const count = selector => page.locator(`#stepsList li${selector}`).count();
     await select('flow');
     await check('正例：all变量传递和环境A实际到达', async () => {
@@ -135,7 +140,7 @@ try {
         await page.screenshot({ path: path.join(artifacts, 'nested-length.png'), fullPage: true });
     });
     await check('反例：临时请求无效JSON不发请求', async () => {
-        await page.locator('[data-adhoc-step="0"]').click();
+        await openAdhoc(0);
         await page.locator('#adhocHeadersInput').fill('{broken');
         const before = hits.length; await page.locator('#adhocExecuteBtn').click();
         assert.match(await page.locator('#adhocError').textContent(), /请求头.*合法 JSON/);
@@ -162,7 +167,7 @@ try {
     });
     await check('临时请求特殊字符：服务接收原值，响应展示隐藏', async () => {
         await select('special');
-        await page.locator('[data-adhoc-step="0"]').click();
+        await openAdhoc(0);
         await page.locator('#adhocHeadersInput').fill('{}');
         await page.locator('#adhocBodyInput').fill(JSON.stringify({ password: special, label: 'visible-control' }));
         await page.locator('#adhocExecuteBtn').click();
@@ -213,7 +218,7 @@ try {
         fs.writeFileSync(path.join(artifacts, 'exported-report.json'), JSON.stringify(report, null, 2));
     });
     await check('正例：临时请求实际执行及敏感头草稿遮蔽', async () => {
-        await page.locator('[data-adhoc-step="0"]').click();
+        await openAdhoc(0);
         await page.locator('#adhocHeadersInput').fill(JSON.stringify({ Authorization: 'Bearer fixture-secret', 'X-Test': 'local' }));
         const before = hits.length; await page.locator('#adhocExecuteBtn').click();
         await page.waitForFunction(() => !document.querySelector('#adhocDraftBtn').disabled);
