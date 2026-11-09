@@ -40,7 +40,7 @@ E2E_BASE_URL=http://127.0.0.1:5174 npm run test:e2e
 PowerShell：`$env:E2E_BASE_URL='http://127.0.0.1:5174'; npm run test:e2e`。
 
 不自动启动服务，避免测试访问未经确认的目标；本示例无账号、无真实业务数据。
-失败截图与 Trace 存放在 `scenario-test/e2e/test-results/`，HTML 报告位于 `scenario-test/e2e/playwright-report/`，已通过 .gitignore 排除。
+失败截图与 Trace 存放在 `scenario-test/e2e/test-results/`，HTML 报告生成在 demo 根目录 `playwright-report/`（Playwright 以最近 package.json 所在目录为基准解析默认输出），已通过 .gitignore 排除。
 
 ## 后续验收
 
