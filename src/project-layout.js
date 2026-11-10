@@ -9,6 +9,7 @@ export const FRAMEWORK_FILES = Object.freeze({
     authoringPrompt: "AI_SCENARIO_PROMPT.md",
     patterns: "SCENARIO_PATTERNS.md",
     cli: "scenario-test-cli.cjs",
+    e2eReporter: "e2e-reporter.cjs",
     umd: "scenario-test.umd.js",
     dts: "scenario-test.d.ts",
     capabilities: "scenario-test-capabilities.json",

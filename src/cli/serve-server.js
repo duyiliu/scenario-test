@@ -9,6 +9,8 @@ import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import path from "node:path";
+import * as runtimeVersion from "../version.generated.js";
+import { contract } from "../contract.js";
 import { isRealPathWithinRoot } from "../utils/path-validator.js";
 
 export const HOP_BY_HOP_HEADERS = new Set([
@@ -28,6 +30,9 @@ export function contentType(filePath) {
         ".json": "application/json; charset=utf-8",
         ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".webp": "image/webp",
         ".txt": "text/plain; charset=utf-8"
     })[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
@@ -40,7 +45,7 @@ export function safeFile(root, relativePath) {
     return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 
-export function serveStaticFile(response, filePath) {
+export function serveStaticFile(response, filePath, { e2eNavigation = false } = {}) {
     const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
     if (path.extname(filePath).toLowerCase() !== ".html") {
         const stream = fs.createReadStream(filePath);
@@ -67,9 +72,15 @@ export function serveStaticFile(response, filePath) {
         }
         const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
         const headPattern = /<head(?:\s[^>]*)?>/i;
-        const content = headPattern.test(html)
+        let content = headPattern.test(html)
             ? html.replace(headPattern, function (head) { return head + marker; })
             : marker + html;
+        if (e2eNavigation && !html.includes("data-scenario-test-e2e")) {
+            const navigation = '<nav data-scenario-test-e2e aria-label="测试类型" style="display:flex;gap:20px;padding:12px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:14px system-ui"><a href="/" style="color:#334155">HTTP 场景</a><a href="/e2e/" style="color:#2563eb">浏览器 E2E</a></nav>';
+            content = /<body(?:\s[^>]*)?>/i.test(content)
+                ? content.replace(/<body(?:\s[^>]*)?>/i, (body) => body + navigation)
+                : navigation + content;
+        }
         response.writeHead(200, headers);
         response.end(content);
     });
@@ -299,7 +310,49 @@ export function proxyRequest(request, response, targetUrl, options = {}) {
     request.pipe(upstream);
 }
 
-// 静态服务 + 同源代理。proxyTarget 形如 { key, envKey, target }。
+// 扩展不强制来源校验的安全方法（页面导航/资源加载允许外部链接跳入）；
+// 写方法在交给扩展前统一按代理口径校验本机来源，阻断跨站页面向回环地址发起副作用请求
+const EXTENSION_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export function isPrivateServePath(pathname) {
+    const segments = pathname.replaceAll("\\", "/").split("/").filter(Boolean);
+    return segments.some((segment) => {
+        const lower = segment.toLowerCase();
+        return lower.includes(":") || lower === ".git" || lower === ".auth" || lower === "node_modules" ||
+            lower === "e2e-evidence" || lower === "e2e-results" || lower === "test-results" ||
+            lower === "playwright-report" || lower === ".env" || lower.startsWith(".env.") ||
+            lower === "storage-state.json" || lower === "storagestate.json" ||
+            lower.endsWith(".pem") || lower.endsWith(".key");
+    });
+}
+
+// 依次询问各扩展是否接管；返回 true 表示已有人处理（返回 true 或响应已结束均算接管）
+async function dispatchToExtensions(extensions, request, response, pathname, hostHeader, port) {
+    const method = String(request.method || "GET").toUpperCase();
+    if (!EXTENSION_SAFE_METHODS.has(method) &&
+        !isProxyOriginAllowed(request.headers, hostHeader, port)) {
+        response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Forbidden: 扩展接口只接受本机工作台来源的写请求");
+        return true;
+    }
+    for (const extension of extensions) {
+        let handled;
+        try {
+            handled = await extension.handle(request, response, pathname);
+        } catch (extensionError) {
+            if (response.headersSent) { abortProxyResponse(response); return true; }
+            response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+            response.end(`扩展 ${extension.name} 处理失败: ${extensionError.message}`);
+            return true;
+        }
+        if (handled === true || response.writableEnded || response.destroyed) return true;
+    }
+    return false;
+}
+
+// 静态服务 + 同源代理。proxyTarget 形如 { key, envKey, target }；
+// extensions 形如 [{ name, handle(request, response, pathname) => boolean }]，
+// 在静态文件与代理之前优先接管请求（见 src/cli/serve-extensions.js）。
 export function createServeServer(options) {
     const {
         workspace,
@@ -309,9 +362,19 @@ export function createServeServer(options) {
         defaultTarget,
         overrideBaseUrl = "",
         proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS,
-        insecure = false
+        insecure = false,
+        extensions = []
     } = options;
-    return http.createServer((request, response) => {
+    const identity = Object.freeze({
+        version: runtimeVersion.VERSION,
+        buildId: runtimeVersion.BUILD_ID ?? "source-unbuilt",
+        contractVersion: contract.contractVersion,
+        pid: process.pid,
+        workspace: path.resolve(workspace),
+        startedAt: new Date().toISOString(),
+        extensions: extensions.map((extension) => extension.name)
+    });
+    const server = http.createServer(async (request, response) => {
         try {
             if (!isAllowedServeHost(request.headers.host, port)) {
                 response.writeHead(403);
@@ -319,7 +382,24 @@ export function createServeServer(options) {
                 return;
             }
             const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
+            if (pathname === "/__scenario-test__/status") {
+                if (request.method !== "GET" && request.method !== "HEAD") {
+                    response.writeHead(405, { Allow: "GET, HEAD" }); response.end(); return;
+                }
+                response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+                response.end(request.method === "HEAD" ? undefined : JSON.stringify(identity));
+                return;
+            }
+            // 兼容唯一公开 npm UMD 路径，其他依赖/状态文件不进入静态层或代理。
+            if (pathname !== "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js" && isPrivateServePath(pathname)) {
+                response.writeHead(403); response.end("Forbidden"); return;
+            }
+            if (extensions.length &&
+                await dispatchToExtensions(extensions, request, response, pathname, request.headers.host, port)) {
+                return;
+            }
             let filePath;
+            const publicRuntime = ["/__scenario-test__/scenario-test.umd.js", "/dist/scenario-test.umd.js", "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"].includes(pathname);
             if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = path.join(libraryDist, "scenario-test.umd.js");
             else if (pathname === "/dist/scenario-test.umd.js") {
                 // 仓库内示例的 index.html 引用 ../../dist/scenario-test.umd.js（浏览器规范化为 /dist/...）
@@ -334,6 +414,9 @@ export function createServeServer(options) {
                 filePath = safeFile(workspace, relativePath);
             }
             if (!filePath) { response.writeHead(403); response.end("Forbidden"); return; }
+            if (!publicRuntime && isPrivateServePath(path.relative(workspace, filePath))) {
+                response.writeHead(403); response.end("Forbidden"); return;
+            }
             fs.stat(filePath, (error, stat) => {
                 if (error || !stat.isFile()) {
                     // 静态文件未命中且配置了接口代理时，按同源请求转发到后端，绕开浏览器 CORS
@@ -360,11 +443,28 @@ export function createServeServer(options) {
                     proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs, insecure });
                     return;
                 }
-                serveStaticFile(response, filePath);
+                // 检查真实路径，不能用公开名称的 junction 绕过私有目录限制。
+                let realPath;
+                try { realPath = fs.realpathSync(filePath); }
+                catch { response.writeHead(404); response.end("Not Found"); return; }
+                if (!publicRuntime && isPrivateServePath(path.relative(workspace, realPath))) {
+                    response.writeHead(403); response.end("Forbidden"); return;
+                }
+                serveStaticFile(response, filePath, { e2eNavigation: pathname === "/" && extensions.some((extension) => extension.name === "e2e") });
             });
         } catch {
             response.writeHead(400);
             response.end("Bad Request");
         }
     });
+    let disposal;
+    server.disposeExtensions = () => disposal ??= Promise.allSettled(
+        extensions.map((extension) => Promise.resolve().then(() => extension.dispose?.()))
+    ).then((results) => {
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "serve 扩展清理失败");
+    });
+    // close 事件作为兜底；有 SSE 的调用方应先 await disposeExtensions 再 close。
+    server.on("close", () => { server.disposeExtensions().catch((error) => server.emit("extensionDisposeError", error)); });
+    return server;
 }

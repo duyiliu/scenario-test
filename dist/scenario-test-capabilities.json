@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.15.0",
-  "contractVersion": 21,
+  "contractVersion": 22,
   "assertions": {
     "operators": {
       "exists": {
@@ -397,6 +397,10 @@
         "kind": "value",
         "description": "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行",
         "parse": "number"
+      },
+      "e2e": {
+        "kind": "flag",
+        "description": "init 可选初始化浏览器 E2E 项目"
       },
       "project": {
         "kind": "value",

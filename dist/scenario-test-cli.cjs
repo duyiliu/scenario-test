@@ -240,12 +240,12 @@ var require_md5 = __commonJS({
 });
 
 // src/cli.js
-var import_node_fs12 = __toESM(require("node:fs"), 1);
-var import_node_path12 = __toESM(require("node:path"), 1);
-var import_node_crypto3 = __toESM(require("node:crypto"), 1);
-var import_node_child_process = require("node:child_process");
+var import_node_fs14 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_crypto4 = __toESM(require("node:crypto"), 1);
+var import_node_child_process2 = require("node:child_process");
 var import_promises2 = require("node:readline/promises");
-var import_node_url = require("node:url");
+var import_node_url2 = require("node:url");
 
 // src/node.js
 var node_exports = {};
@@ -362,8 +362,8 @@ function structuralDiff(expected, actual) {
     if (v && typeof v === "object") return "Object";
     return typeof v === "string" && v.length > 240 ? "\uFF08\u957F\u5B57\u7B26\u4E32\u5DF2\u7701\u7565\uFF09" : v;
   };
-  function walk(a, b, path13, depth, hasA = true, hasB = true) {
-    if (path13.length > 2e3 || ++visited > 2e3 || entries.length >= 50 || depth > 30) {
+  function walk(a, b, path15, depth, hasA = true, hasB = true) {
+    if (path15.length > 2e3 || ++visited > 2e3 || entries.length >= 50 || depth > 30) {
       truncated = true;
       return;
     }
@@ -372,19 +372,19 @@ function structuralDiff(expected, actual) {
     if (hasA && hasB && at === bt && (at === "object" || at === "array")) {
       for (const key in a) {
         if (!Object.hasOwn(a, key)) continue;
-        walk(a[key], b[key], path13 + (at === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, true, Object.hasOwn(b, key));
+        walk(a[key], b[key], path15 + (at === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, true, Object.hasOwn(b, key));
         if (truncated) return;
       }
       for (const key in b) {
         if (!Object.hasOwn(b, key) || Object.hasOwn(a, key)) continue;
-        walk(void 0, b[key], path13 + (bt === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, false, true);
+        walk(void 0, b[key], path15 + (bt === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, false, true);
         if (truncated) return;
       }
       if (at !== "array" || a.length === b.length) return;
-      walk(a.length, b.length, path13 + ".length", depth + 1);
+      walk(a.length, b.length, path15 + ".length", depth + 1);
       return;
     }
-    entries.push({ path: path13, expected: hasA ? preview(a) : void 0, actual: hasB ? preview(b) : void 0, expectedType: hasA ? at : "missing", actualType: hasB ? bt : "missing" });
+    entries.push({ path: path15, expected: hasA ? preview(a) : void 0, actual: hasB ? preview(b) : void 0, expectedType: hasA ? at : "missing", actualType: hasB ? bt : "missing" });
   }
   walk(expected, actual, "$", 0);
   return { entries, truncated };
@@ -421,9 +421,10 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
+var BUILD_ID = "c9d7ca9a98a710bd8e9880d1da5b01b5c3df94bbdfe4b567f6565a88036f7e13";
 
 // src/contract.js
-var CONTRACT_VERSION = 21;
+var CONTRACT_VERSION = 22;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -672,6 +673,7 @@ var contract = Object.freeze({
       open: { kind: "flag", prop: "open", description: "serve \u76D1\u542C\u6210\u529F\u540E\u7528\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00\u5DE5\u4F5C\u53F0" },
       reassign: { kind: "flag", prop: "reassign", description: "projects ensure\uFF1A\u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3\u5E76\u66F4\u65B0\u767B\u8BB0" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
+      e2e: { kind: "flag", prop: "e2e", description: "init \u53EF\u9009\u521D\u59CB\u5316\u6D4F\u89C8\u5668 E2E \u9879\u76EE" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },
@@ -1056,10 +1058,10 @@ function splitUrlFragment(url) {
 }
 function queryKeys(url) {
   const keys = /* @__PURE__ */ new Set();
-  const { path: path13 } = splitUrlFragment(url);
-  const queryIndex = path13.indexOf("?");
+  const { path: path15 } = splitUrlFragment(url);
+  const queryIndex = path15.indexOf("?");
   if (queryIndex < 0) return keys;
-  for (const pair of path13.slice(queryIndex + 1).split("&")) {
+  for (const pair of path15.slice(queryIndex + 1).split("&")) {
     const key = pair.split("=")[0];
     if (key) keys.add(safeDecodeComponent(key));
   }
@@ -1068,8 +1070,8 @@ function queryKeys(url) {
 function appendQueryPairs(url, pairs) {
   const text = String(url || "");
   if (!pairs || !pairs.length) return text;
-  const { path: path13, fragment } = splitUrlFragment(text);
-  return `${path13}${path13.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
+  const { path: path15, fragment } = splitUrlFragment(text);
+  return `${path15}${path15.includes("?") ? "&" : "?"}${pairs.join("&")}${fragment}`;
 }
 function appendGlobalQuery(url, globals, runtime) {
   const existingKeys = queryKeys(url);
@@ -1191,12 +1193,12 @@ function pushShapeFailure(failures, failure) {
     reason: failure.reason
   });
 }
-function collectShapeFailures(value2, schema, path13, failures) {
+function collectShapeFailures(value2, schema, path15, failures) {
   const type = schema.type !== void 0 ? schema.type : schema.properties !== void 0 || schema.required !== void 0 || schema.additionalProperties !== void 0 ? "object" : schema.items !== void 0 ? "array" : void 0;
   const actualType = shapeActualType(value2);
   if (type !== void 0 && !shapeTypeMatches(value2, type)) {
     pushShapeFailure(failures, {
-      path: path13,
+      path: path15,
       expected: `type: ${type}`,
       expectedType: type,
       actual: value2,
@@ -1209,7 +1211,7 @@ function collectShapeFailures(value2, schema, path13, failures) {
     const actualText = stableStringify(value2);
     if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
       pushShapeFailure(failures, {
-        path: path13,
+        path: path15,
         expected: `enum: ${JSON.stringify(schema.enum)}`,
         actual: value2,
         actualType,
@@ -1222,7 +1224,7 @@ function collectShapeFailures(value2, schema, path13, failures) {
     for (const key of schema.required || []) {
       if (!Object.prototype.hasOwnProperty.call(value2, key) || value2[key] === void 0) {
         pushShapeFailure(failures, {
-          path: shapeChildPath(path13, key),
+          path: shapeChildPath(path15, key),
           expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728",
           actual: void 0,
           actualType: "undefined",
@@ -1232,13 +1234,13 @@ function collectShapeFailures(value2, schema, path13, failures) {
     }
     for (const [key, child] of Object.entries(properties)) {
       if (!Object.prototype.hasOwnProperty.call(value2, key) || value2[key] === void 0) continue;
-      collectShapeFailures(value2[key], child, shapeChildPath(path13, key), failures);
+      collectShapeFailures(value2[key], child, shapeChildPath(path15, key), failures);
     }
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value2)) {
         if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
         pushShapeFailure(failures, {
-          path: shapeChildPath(path13, key),
+          path: shapeChildPath(path15, key),
           expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5",
           actual: value2[key],
           actualType: shapeActualType(value2[key]),
@@ -1248,7 +1250,7 @@ function collectShapeFailures(value2, schema, path13, failures) {
     }
   }
   if (Array.isArray(value2) && schema.items !== void 0) {
-    value2.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path13, index), failures));
+    value2.forEach((item, index) => collectShapeFailures(item, schema.items, shapeIndexPath(path15, index), failures));
   }
   return failures;
 }
@@ -3765,14 +3767,14 @@ function createEngine(engineOptions = {}) {
       const causeText = causeDetail && !String(error?.message || "").includes(causeDetail) ? `\uFF08${causeDetail}\uFF09` : "";
       const errorMessage = cancelled ? "\u7528\u6237\u5DF2\u53D6\u6D88\u6267\u884C" : timedOut ? error?.message?.includes("\u8D85\u65F6") ? error.message : context?.timeoutMs ? timeoutErrorMessage(context.timeoutMs) : "\u8BF7\u6C42\u8D85\u65F6" : `${error?.message || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}${causeText}`;
       const method = context && context.method || String(step.method || step.request && step.request.method || "GET").toUpperCase();
-      const path13 = context && context.path || resolveString(step.path || "", runtime);
+      const path15 = context && context.path || resolveString(step.path || "", runtime);
       const responseTooLarge = error?.responseTooLarge || null;
       const uploadTooLarge = error?.uploadTooLarge || null;
       const errorCode = responseTooLarge ? "responseTooLarge" : uploadTooLarge ? "uploadTooLarge" : "";
       return {
         name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
         method,
-        path: path13,
+        path: path15,
         status: cancelled ? "CANCELLED" : timedOut ? "TIMEOUT" : "ERROR",
         duration: now() - startedAt,
         passed: false,
@@ -4713,30 +4715,724 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
   };
 }
 
-// src/doctor.js
-var import_node_fs5 = __toESM(require("node:fs"), 1);
-var import_node_path5 = __toESM(require("node:path"), 1);
-var import_node_crypto = __toESM(require("node:crypto"), 1);
+// src/e2e/templates.js
+function createE2eProjectFiles(directory) {
+  const prefix = `${directory}/e2e`;
+  return {
+    [`${prefix}/package.json`]: JSON.stringify({ private: true, type: "module", scenarioTestE2e: true, scripts: { test: "playwright test" }, devDependencies: { "@playwright/test": "1.55.1" } }, null, 2) + "\n",
+    [`${prefix}/playwright.config.js`]: `import { defineConfig } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.dirname(fileURLToPath(import.meta.url));
+process.env.E2E_RUN_ID ||= randomUUID();
+export default defineConfig({
+  testDir: './tests', timeout: 60000, workers: 1,
+  reporter: [['list'], ['html', { open: 'never', outputFolder: path.resolve(root, '../e2e-results', process.env.E2E_RUN_ID, 'report') }], ['../.scenario-test/e2e-reporter.cjs']],
+  use: { baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3000', ...(process.env.E2E_BROWSER_CHANNEL ? { channel: process.env.E2E_BROWSER_CHANNEL } : {}), screenshot: 'only-on-failure', trace: 'retain-on-failure' }
+});
+`,
+    [`${prefix}/auth-adapter.js`]: `// \u6309\u9879\u76EE\u771F\u5B9E\u8BA4\u8BC1\u65B9\u5F0F\u5B9E\u73B0\uFF1B\u51ED\u636E\u53EA\u4ECE\u73AF\u5883\u53D8\u91CF\u8BFB\u53D6\u3002\u65E0\u8BA4\u8BC1\u9879\u76EE\u53EF\u4FDD\u7559\u7A7A\u5B9E\u73B0\u3002
+// \u8C03\u7528\u65B9\u5FC5\u987B\u5728\u5404\u81EA\u7684 test.step \u4E2D\u8C03\u7528\uFF1Bcontext \u4E3A\u72EC\u7ACB\u7684 Playwright BrowserContext\u3002
+export async function login({ context, account }) {
+  void context;
+  if (account) throw new Error('\u8BF7\u5148\u5728 auth-adapter.js \u5B9E\u73B0\u9879\u76EE\u8BA4\u8BC1');
+}
+`,
+    [`${prefix}/tests/example.spec.js`]: `import { test, expect } from '@playwright/test';
+import { login } from '../auth-adapter.js';
+const scenario = { account: process.env.E2E_EXAMPLE_ACCOUNT || '' };
+test('\u793A\u4F8B\uFF1A\u9875\u9762\u53EF\u8BBF\u95EE', async ({ page, context }, info) => {
+  await test.step('\u4F7F\u7528\u573A\u666F\u8D26\u53F7\u767B\u5F55', async () => login({ context, account: scenario.account }));
+  await test.step('\u6253\u5F00\u9996\u9875\u5E76\u68C0\u67E5\u6807\u9898', async () => {
+    await page.goto('/');
+    await expect(page).toHaveTitle(/.+/);
+    await info.attach('\u9996\u9875', { body: await page.screenshot(), contentType: 'image/png' });
+  });
+});
+`,
+    [`${prefix}/.gitignore`]: `node_modules/
+test-results/
+playwright-report/
+.env
+`,
+    [`${prefix}/README.md`]: `# \u6D4F\u89C8\u5668 E2E
 
-// src/project-layout.js
+\u5728\u672C\u76EE\u5F55\u6267\u884C npm install \u548C npx playwright install chromium\u3002\u6309\u9879\u76EE\u5B9E\u9645\u60C5\u51B5\u5B9E\u73B0 auth-adapter.js\uFF1B\u6BCF\u4E2A\u573A\u666F\u7528\u72EC\u7ACB context \u548C test.step \u663E\u5F0F\u8C03\u7528\u3002\u8BBE\u7F6E E2E_BASE_URL \u548C\u53EF\u9009 E2E_BROWSER_CHANNEL\uFF0C\u518D\u8FD0\u884C npm test\u3002\u9ED8\u8BA4\u793A\u4F8B\u53EA\u68C0\u67E5\u9996\u9875\uFF0C\u5FC5\u987B\u6309\u4E1A\u52A1\u8BC1\u636E\u66FF\u6362\u3002\u8FD0\u884C\u7ED3\u679C\u5199\u5165 ../e2e-results\uFF0C\u4E0D\u5E94\u63D0\u4EA4\u3002
+`
+  };
+}
+
+// src/e2e/reporter-template.js
+var E2E_REPORTER = "const fs = require('node:fs');\nconst path = require('node:path');\nconst { createHash } = require('node:crypto');\n\nconst e2eRoot = path.resolve(__dirname, '../e2e');\nconst root = path.resolve(e2eRoot, '../e2e-results');\nconst specKey = spec => createHash('sha256').update(spec).digest('hex');\nconst specPath = test => path.relative(e2eRoot, test.location.file).replaceAll('\\\\', '/');\n\nfunction atomicWrite(file, value) {\n  fs.mkdirSync(path.dirname(file), { recursive: true });\n  const temp = `${file}.${process.pid}.tmp`;\n  fs.writeFileSync(temp, JSON.stringify(value, null, 2));\n  fs.renameSync(temp, file);\n}\n\nmodule.exports = class EvidenceReporter {\n  onBegin(_config, suite) {\n    this.runId = process.env.E2E_RUN_ID;\n    this.dir = path.join(root, this.runId);\n    fs.mkdirSync(this.dir, { recursive: true });\n    this.specs = [...new Set(suite.allTests().map(specPath))];\n    this.manifest = { runId: this.runId, startedAt: new Date().toISOString(), finishedAt: null, schemaVersion: 1, status: 'running', specs: this.specs, screenshots: [], logs: {}, results: {}, steps: {}, globalErrors: [] };\n    for (const spec of this.specs) { this.manifest.logs[spec] = []; this.manifest.results[spec] = []; this.manifest.steps[spec] = []; }\n    this.save();\n  }\n\n  event(test, text) {\n    const spec = specPath(test);\n    if (this.manifest?.logs[spec]) this.manifest.logs[spec].push(`${new Date().toLocaleTimeString('zh-CN')} ${text}`);\n  }\n\n  onError(error) { if (this.manifest) { this.manifest.globalErrors.push(error.message || String(error)); this.save(); } }\n\n  onTestBegin(test) { this.event(test, `\u5F00\u59CB\uFF1A${test.title}`); this.save(); }\n  onStepBegin(test, _result, step) {\n    if (step.category === 'test.step') { this.event(test, `\u6B65\u9AA4\uFF1A${step.title}`); this.save(); }\n  }\n  onStepEnd(test, _result, step) {\n    if (step.category !== 'test.step') return;\n    const spec = specPath(test);\n    this.manifest.steps[spec].push({ scenarioId: test.id, title: step.title, startedAt: step.startTime.toISOString(), duration: step.duration, status: step.error ? 'failed' : 'passed', error: step.error?.message || null });\n    this.save();\n  }\n  onStdOut(chunk, test) { if (test) this.event(test, String(chunk).trimEnd()); }\n  onStdErr(chunk, test) { if (test) this.event(test, String(chunk).trimEnd()); }\n\n  onTestEnd(test, result) {\n    const spec = specPath(test);\n    this.event(test, `\u7ED3\u679C\uFF1A${result.status}\uFF08${result.duration} ms\uFF09`);\n    const errors = (result.errors || []).map(error => error.message || String(error));\n    this.manifest.results[spec].push({ scenarioId: test.id, title: test.title, status: result.status, duration: result.duration, errors });\n    for (const error of errors) this.event(test, `\u5931\u8D25\u8BE6\u60C5\uFF1A${error}`);\n    for (const attachment of result.attachments) {\n      if (attachment.contentType !== 'image/png') continue;\n      const filename = `${this.manifest.screenshots.length + 1}.png`;\n      const target = path.join(this.dir, filename);\n      try {\n        if (attachment.body) fs.writeFileSync(target, attachment.body);\n        else if (attachment.path) fs.copyFileSync(attachment.path, target);\n        else continue;\n        this.manifest.screenshots.push({ spec, name: attachment.name, test: test.titlePath().slice(1).join(' / '), status: result.status, capturedAt: new Date().toISOString(), file: filename });\n      } catch (error) { this.event(test, `\u622A\u56FE\u4FDD\u5B58\u5931\u8D25\uFF1A${error.message}`); }\n    }\n    this.save();\n  }\n\n  onEnd(result) {\n    if (!this.manifest) return;\n    this.manifest.status = result.status;\n    this.manifest.finishedAt = new Date().toISOString();\n    this.manifest.reportAvailable = fs.existsSync(path.join(this.dir, 'report', 'index.html'));\n    this.save();\n    const indexSpecs = this.specs.filter(spec => this.manifest.results[spec].length > 0);\n    if (indexSpecs.length && !process.argv.some(arg => arg.endsWith('.spec.ts'))) indexSpecs.push('');\n    for (const spec of indexSpecs) {\n      const file = path.join(root, 'by-spec', `${specKey(spec)}.json`);\n      let previous;\n      try { previous = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* \u9996\u6B21\u8FD0\u884C */ }\n      if (!previous || previous.startedAt <= this.manifest.startedAt) atomicWrite(file, { spec, runId: this.runId, startedAt: this.manifest.startedAt });\n    }\n  }\n\n  save() { atomicWrite(path.join(this.dir, 'manifest.json'), this.manifest); }\n};\n";
+
+// src/e2e/extension.js
 var import_node_fs4 = __toESM(require("node:fs"), 1);
 var import_node_path4 = __toESM(require("node:path"), 1);
+var import_node_child_process = require("node:child_process");
+var import_node_crypto = require("node:crypto");
+
+// src/e2e/page.js
+var E2E_PAGE = `<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u6D4F\u89C8\u5668 E2E \xB7 \u6D4B\u8BD5\u5DE5\u4F5C\u53F0</title>
+<style>
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --canvas:#f8fafc; --surface:#fff; --border:#e2e8f0; --line:#f1f5f9; --text:#0f172a;
+  --muted:#64748b; --subtle:#94a3b8; --primary:#0f172a; --primary-hover:#1e293b;
+  --hover:#f1f5f9; --selected:#e2e8f0; --selected-line:#cbd5e1; --accent:#10b981;
+  --success:#059669; --success-bg:#ecfdf5; --success-line:#a7f3d0;
+  --danger:#e11d48; --danger-bg:#fff1f2; --danger-line:#fecdd3;
+  --info:#2563eb; --info-bg:#eff6ff; --info-line:#bfdbfe;
+  color:var(--text); background:var(--canvas); font-synthesis:none;
+}
+* {box-sizing:border-box;}
+body {margin:0;font-size:12px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+button,input,a { -webkit-tap-highlight-color:transparent; }
+button,input {font:inherit;}
+button,a,input,summary {transition:background .15s,border-color .15s,box-shadow .15s,color .15s,transform .1s;}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible {outline:2px solid rgba(51,65,85,.35);outline-offset:2px;}
+header {height:56px;display:flex;align-items:center;gap:32px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.02);}
+header>strong {display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;}
+.brand-icon {display:grid;place-items:center;width:26px;height:26px;color:#fff;background:var(--primary);border-radius:7px;}
+svg {width:15px;height:15px;flex-shrink:0;vertical-align:middle;}
+header nav {display:flex;gap:24px;align-self:stretch;}
+header nav a {display:flex;align-items:center;gap:8px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;font-size:12.5px;}
+header nav a:hover {color:var(--text);}
+header nav a.current {color:var(--text);border-bottom-color:var(--accent);font-weight:600;}
+body.embedded header {display:none;}
+.toolbar {height:48px;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);}
+.toolbar h1 {margin:0;font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;}
+.env-badge {display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:2px 8px;border-radius:6px;background:rgba(241,245,249,.8);border:1px solid rgba(226,232,240,.6);color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap;}
+.env-badge .dot {width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+.env-badge b {font-weight:600;overflow:hidden;text-overflow:ellipsis;}
+.toolbar .sep {color:#cbd5e1;user-select:none;}
+.toolbar .note {margin-right:auto;padding-left:14px;border-left:1px solid var(--border);font-size:11px;}
+.note {margin:0;color:var(--subtle);font-size:11.5px;line-height:1.6;}
+button,a.button {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);text-decoration:none;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.02);}
+button:hover:not(:disabled),a.button:hover {background:var(--hover);border-color:var(--selected-line);}
+button:active:not(:disabled),a.button:active {transform:scale(.97);}
+button.primary {background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.15);}
+button.primary:hover:not(:disabled) {background:var(--primary-hover);border-color:var(--primary-hover);color:#fff;}
+button.text-action {border-color:transparent;background:transparent;color:var(--muted);box-shadow:none;}
+button.text-action:hover:not(:disabled) {background:var(--hover);border-color:transparent;color:var(--text);}
+button.text-action.danger {color:var(--danger);}
+button:disabled {opacity:.4;cursor:not-allowed;box-shadow:none;}
+.workspace {position:relative;height:calc(100dvh - 104px);display:grid;grid-template-columns:var(--list-w,260px) minmax(0,1fr) minmax(250px,290px);gap:8px;padding:8px;min-height:0;}
+.list-resizer {position:absolute;top:0;bottom:0;left:calc(var(--list-w,260px) + 8px - 4px);z-index:7;width:8px;cursor:col-resize;touch-action:none;}
+.list-resizer::after {content:"";position:absolute;top:8px;left:3px;bottom:8px;width:2px;border-radius:999px;background:color-mix(in srgb,var(--line) 65%,transparent);transition:background-color .15s ease;}
+.list-resizer:hover::after,.list-resizer:focus-visible::after,.list-resizer.is-dragging::after {background:color-mix(in srgb,var(--primary) 45%,transparent);}
+body.list-resizing {cursor:col-resize;user-select:none;}
+body.list-resizing * {cursor:col-resize !important;}
+body.embedded .workspace {height:calc(100dvh - 48px);}
+.pane {min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.02);}
+.pane-head {padding:12px 14px;border-bottom:1px solid var(--line);background:rgba(248,250,252,.5);flex-shrink:0;}
+.pane-title {display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);}
+.pane-title .pane-icon {width:14px;height:14px;color:var(--muted);}
+#file-count {margin-left:auto;border-radius:4px;padding:1px 7px;background:var(--line);color:var(--muted);font-size:10.5px;font-weight:500;}
+.search {position:relative;margin-top:8px;}
+.search .search-icon {position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--subtle);pointer-events:none;}
+.search input {width:100%;height:30px;border:1px solid var(--border);border-radius:6px;padding:0 30px 0 30px;background:var(--surface);color:var(--text);font-size:12px;outline:none;}
+.search input::placeholder {color:var(--subtle);}
+.search input:focus {border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);}
+button.search-clear {position:absolute;right:5px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:5px;background:transparent;box-shadow:none;color:var(--subtle);cursor:pointer;}
+button.search-clear:hover {background:var(--hover);color:var(--muted);}
+button.search-clear svg {width:12px;height:12px;}
+.spec-list {flex:1;min-height:0;overflow:auto;padding:8px;}
+.spec-tree {display:flex;flex-direction:column;gap:4px;min-width:0;}
+.spec-dir {display:flex;flex-direction:column;min-width:0;}
+.spec-dir-toggle {display:flex;align-items:center;gap:4px;width:100%;min-height:32px;padding:4px 8px;border-radius:6px;color:var(--muted);font-size:12px;font-weight:600;line-height:20px;text-align:left;cursor:pointer;user-select:none;transition:background-color .15s,color .15s;}
+.spec-dir-toggle:hover {background:var(--hover);color:var(--text);}
+.spec-dir-toggle .chevron {width:12px;height:12px;flex:0 0 auto;transition:transform .15s ease;}
+.spec-dir-toggle[aria-expanded="false"] .chevron {transform:rotate(-90deg);}
+.spec-dir-toggle .folder {width:16px;height:16px;flex:0 0 auto;color:var(--muted);}
+.spec-dir-toggle[aria-expanded="true"] .folder {color:var(--primary);}
+.spec-dir-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.spec-dir-count {flex:0 0 auto;margin-left:auto;min-width:20px;padding:0 4px;border-radius:4px;background:color-mix(in srgb,var(--muted) 8%,transparent);color:var(--muted);font-size:10px;font-weight:500;line-height:20px;text-align:center;font-variant-numeric:tabular-nums;}
+.spec-children {position:relative;display:flex;flex-direction:column;min-width:0;}
+.spec-children::before {content:"";position:absolute;top:0;bottom:8px;left:var(--tree-guide,14px);width:1px;background:color-mix(in srgb,var(--line) 35%,transparent);pointer-events:none;transition:background-color .15s;}
+.spec-children:has(> .spec-item.is-active)::before {background:color-mix(in srgb,var(--primary) 25%,transparent);}
+.spec-dir:has(.spec-item.is-active) > .spec-dir-toggle .spec-dir-name {color:var(--text);}
+.spec-children[hidden] {display:none;}
+.spec-item {position:relative;min-width:0;border-radius:6px;transition:background-color .15s;}
+.spec-item:hover {background:var(--hover);}
+.spec-item.is-active {background:color-mix(in srgb,var(--primary) 10%,var(--surface));box-shadow:inset 2px 0 0 var(--primary);}
+button.spec-item-main {display:flex;align-items:center;justify-content:flex-start;gap:6px;width:100%;min-width:0;min-height:32px;padding:6px 32px 6px 28px;border:0;border-radius:inherit;background:transparent;box-shadow:none;color:var(--text);font-weight:400;text-align:left;white-space:normal;cursor:pointer;}
+.spec-item-icon {width:14px;height:14px;flex:0 0 auto;color:var(--muted);}
+.spec-item.is-active .spec-item-icon {color:var(--primary);}
+.spec-item-text {display:flex;flex:1;flex-direction:column;min-width:0;gap:2px;}
+.spec-item-name {display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;font-weight:500;color:var(--text);}
+.spec-item.is-active .spec-item-name {font-weight:600;color:var(--primary);}
+.spec-item-file {display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Consolas,monospace;font-size:10px;line-height:14px;color:var(--muted);}
+.spec-item.is-active .spec-item-file {display:block;}
+.spec-item.is-active button.spec-item-main {min-height:48px;}
+.service {padding:12px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;flex-shrink:0;}
+.service summary,.log-details summary {cursor:pointer;user-select:none;font-weight:600;}
+.service p {overflow-wrap:anywhere;font-size:11px;line-height:1.8;font-family:Consolas,monospace;}
+.headbar {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);flex-shrink:0;}
+.headbar-main {min-width:0;}
+.headbar-row {display:flex;align-items:center;gap:8px;min-width:0;}
+.headbar h2 {margin:0;font-size:14px;line-height:1.4;font-weight:700;letter-spacing:-.01em;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#selected-path {margin-top:2px;font-family:Consolas,monospace;font-size:11px;color:var(--subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#report {min-height:26px;padding:2px 10px;font-size:11px;font-weight:600;flex-shrink:0;}
+.headed {display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px;cursor:pointer;white-space:nowrap;}
+.headed input {width:14px;height:14px;margin:0;accent-color:var(--success);}
+.status {display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;background:var(--line);color:var(--muted);font-size:11px;font-weight:700;border:1px solid var(--border);flex-shrink:0;}
+.status.ok {background:var(--success-bg);color:var(--success);border-color:var(--success-line);}
+.status.fail {background:var(--danger-bg);color:var(--danger);border-color:var(--danger-line);}
+.status.running {background:var(--info-bg);color:var(--info);border-color:var(--info-line);}
+.filterbar {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--line);background:rgba(248,250,252,.5);flex-shrink:0;}
+.filter-options {display:inline-flex;flex:0 0 auto;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--hover);}
+button.filter-option {display:inline-flex;align-items:center;gap:4px;min-height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;box-shadow:none;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;}
+button.filter-option:hover:not(.is-active) {color:var(--text);background:var(--surface);}
+button.filter-option.is-active {color:var(--text);background:var(--surface);box-shadow:0 1px 3px rgba(15,23,42,.08);}
+button.filter-option .n {font-family:Consolas,monospace;font-size:10px;font-variant-numeric:tabular-nums;opacity:.75;}
+.filter-tools {display:flex;min-width:0;flex:1 1 220px;align-items:center;justify-content:flex-end;gap:8px;}
+.filter-summary {flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+#step-search {width:150px;height:26px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px;outline:none;}
+#step-search::placeholder {color:var(--subtle);}
+#step-search:focus {border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);}
+.mid-scroll {flex:1;min-height:0;overflow-y:auto;}
+#steps {margin:0;padding:0;list-style:none;}
+.step-row {border-bottom:1px solid var(--line);background:var(--surface);}
+.step-head {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;}
+.step-lead {display:flex;align-items:center;gap:10px;min-width:0;flex:1;}
+.seq {display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;flex-shrink:0;font-size:10.5px;font-weight:700;font-family:Consolas,monospace;background:#94a3b8;color:#fff;}
+.seq.ok {background:var(--accent);}
+.seq.fail {background:var(--danger);}
+.seq svg {width:12px;height:12px;}
+.step-title {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;color:var(--text);}
+.step-row[data-status="failed"] .step-title {font-weight:700;}
+.step-tail {display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.step-badge {padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:700;font-family:Consolas,monospace;border:1px solid transparent;}
+.step-badge.ok {background:var(--success-bg);color:var(--success);border-color:var(--success-line);}
+.step-badge.fail {background:var(--danger-bg);color:var(--danger);border-color:var(--danger-line);}
+.step-dur {width:64px;text-align:right;color:var(--subtle);font-size:11px;font-family:Consolas,monospace;font-variant-numeric:tabular-nums;}
+.step-error {margin:0 16px 10px;padding:10px 12px;border:1px solid var(--danger-line);border-radius:8px;background:var(--danger-bg);color:#9f1239;font-size:11px;font-family:Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
+.steps-empty {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:140px;margin:8px;padding:32px 24px;border:1px dashed var(--line);border-radius:8px;background:color-mix(in srgb,var(--hover) 40%,transparent);color:var(--muted);font-size:12px;text-align:center;}
+.evidence {padding:12px 16px 16px;border-top:1px solid var(--line);}
+.evidence h3 {margin:0;font-size:12px;font-weight:700;}
+.evidence>.note {margin-top:2px;margin-bottom:10px;}
+.evidence-list {display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;}
+.evidence-item {display:block;min-width:0;padding:6px 6px 10px;border:1px solid var(--border);border-radius:8px;color:var(--text);text-decoration:none;background:var(--surface);transition:box-shadow .15s,border-color .15s,transform .15s;}
+.evidence-item:hover {border-color:var(--selected-line);box-shadow:0 4px 8px rgba(0,0,0,.06);transform:translateY(-1px);}
+.evidence-item img {display:block;width:100%;aspect-ratio:16/10;object-fit:contain;background:var(--canvas);border:1px solid var(--line);border-radius:5px;}
+.evidence-item strong,.evidence-item small {display:block;margin:8px 4px 0;overflow-wrap:anywhere;}
+.evidence-item strong {font-size:12px;font-weight:600;}.evidence-item small {margin-top:3px;font-size:11px;color:var(--subtle);}
+.log-details {border-top:1px solid var(--line);}
+.log-details summary {padding:11px 16px;color:var(--muted);font-size:11.5px;}
+.log-details summary:hover {background:var(--hover);}
+.log-details[open] summary {border-bottom:1px solid var(--line);}
+.log-details pre {max-height:280px;min-height:80px;margin:0;padding:12px 16px;overflow:auto;color:#cbd5e1;background:var(--primary);font:11px/1.7 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
+.exec-footer {display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:8px 16px;border-top:1px solid var(--line);background:rgba(248,250,252,.7);color:var(--muted);font-family:Consolas,monospace;font-size:11px;flex-shrink:0;}
+.exec-footer b {color:var(--text);font-weight:600;}
+.side-tabs {display:flex;align-items:center;gap:4px;padding:4px 10px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--hover) 58%,transparent);flex-shrink:0;}
+button.side-tab {flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:28px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;box-shadow:none;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;}
+button.side-tab:hover:not(:disabled):not(.is-active) {color:var(--text);background:var(--surface);border-color:var(--line);}
+button.side-tab.is-active {color:var(--text);background:var(--surface);border-color:var(--line);box-shadow:0 2px 4px rgba(15,23,42,.06);}
+button.side-tab:disabled {opacity:.48;cursor:not-allowed;}
+.side-tab .badge {display:inline-flex;min-width:17px;height:17px;align-items:center;justify-content:center;padding:0 4px;border-radius:999px;background:var(--selected);color:var(--muted);font-family:Consolas,monospace;font-size:10px;font-variant-numeric:tabular-nums;}
+.side-tab .badge.alert {background:var(--danger-bg);color:var(--danger);}
+.side-panel {flex:1;min-height:0;overflow-y:auto;padding:12px;}
+.side-panel[hidden] {display:none;}
+.stat-label {font-size:11px;font-weight:600;color:var(--muted);}
+.stat-progress-row {display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.stat-progress-val {font-family:Consolas,monospace;font-size:12px;font-weight:700;color:var(--text);}
+.stat-progress-val em {font-style:normal;color:var(--success);font-weight:600;font-family:inherit;}
+.seg-bar {display:flex;gap:3px;height:8px;}
+.seg-bar i {flex:1;border-radius:999px;background:var(--selected);}
+.seg-bar i.ok {background:var(--accent);}
+.seg-bar i.fail {background:var(--danger);}
+.stat-cards {display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.stat-card {padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);}
+.stat-card .num {font-size:18px;font-weight:700;font-family:Consolas,monospace;line-height:1.2;}
+.stat-card.ok .num {color:var(--success);}
+.stat-card.fail .num {color:var(--danger);}
+.stat-card .lab {margin-top:2px;font-size:10px;font-weight:600;color:var(--subtle);}
+.stat-meta {margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--muted);}
+.stat-meta .row {display:flex;justify-content:space-between;gap:8px;}
+.stat-meta .v {font-family:Consolas,monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;}
+.side-empty {padding:24px 8px;text-align:center;color:var(--subtle);font-size:12px;}
+.report-case {margin-bottom:10px;padding:10px 12px;border:1px solid var(--danger-line);border-radius:8px;background:var(--danger-bg);}
+.report-case .t {font-size:12px;font-weight:700;color:#9f1239;}
+.report-case .err {margin-top:6px;color:var(--danger);font-size:10.5px;font-family:Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
+#no-files {padding:16px;}[hidden] {display:none!important;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after {animation:none!important;transition:none!important;}}
+@media(max-width:1100px){.workspace,body.embedded .workspace {grid-template-columns:minmax(180px,220px) minmax(0,1fr);}.right {grid-column:1 / -1;}.list-resizer {display:none;}}
+@media(max-width:800px){.toolbar .note {display:none;}.env-badge {max-width:180px;}.workspace,body.embedded .workspace {display:flex;flex-direction:column;height:auto;}.spec-list {max-height:240px;flex:none;}.mid-scroll {overflow:visible;}}
+@media(max-width:560px){header {gap:20px;padding:0 16px;}header nav {gap:16px;}header>strong {font-size:12px;}.brand-icon {display:none;}.toolbar {height:auto;min-height:48px;flex-wrap:wrap;row-gap:6px;padding:8px 14px;}}
+</style></head>
+<body>
+  <header data-scenario-test-e2e><strong><span class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 9l3 2-3 2m6 0h4"/></svg></span>\u6D4B\u8BD5\u5DE5\u4F5C\u53F0</strong><nav aria-label="\u6D4B\u8BD5\u7C7B\u578B"><a href="/">\u63A5\u53E3\u573A\u666F</a><a class="current" aria-current="page" href="/e2e/">\u6D4F\u89C8\u5668 E2E</a></nav></header>
+  <div class="toolbar"><span class="env-badge" title="\u6267\u884C\u73AF\u5883"><i class="dot"></i><b id="env">\u6B63\u5728\u8BFB\u53D6\u914D\u7F6E\u2026</b></span><span class="sep" aria-hidden="true">\u203A</span><h1>\u6D4F\u89C8\u5668 E2E</h1><p class="note" id="active-run">\u6BCF\u4E2A\u573A\u666F\u4F7F\u7528\u81EA\u5DF1\u7684\u8D26\u53F7\u4E0E\u72EC\u7ACB\u767B\u5F55\u72B6\u6001</p><label class="headed"><input id="headed" type="checkbox">\u6709\u5934\u6A21\u5F0F</label><button class="primary" id="run" aria-label="\u8FD0\u884C"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5a1 1 0 011.5-.86l10 6a1.6 1.6 0 010 2.72l-10 6A1 1 0 018 18.5z"/></svg>\u8FD0\u884C\u6D4B\u8BD5</button><button id="stop" class="text-action danger" disabled>\u505C\u6B62\u8FD0\u884C</button></div>
+  <main class="workspace">
+    <aside class="pane left">
+      <div class="pane-head"><div class="pane-title"><svg class="pane-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>\u6D4B\u8BD5\u6587\u4EF6<span id="file-count" class="note">\u52A0\u8F7D\u4E2D\u2026</span></div>
+      <div class="search"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg><input id="search" type="text" aria-label="\u641C\u7D22\u6D4B\u8BD5\u6587\u4EF6" title="\u641C\u7D22\u6D4B\u8BD5\u6587\u4EF6\uFF08Ctrl+K / \u2318+K\uFF1B\u975E\u7F16\u8F91\u72B6\u6001\u4E5F\u53EF\u6309 /\uFF09" placeholder="\u641C\u7D22\u540D\u79F0\u6216\u8DEF\u5F84\u2026"><button id="search-clear" class="search-clear" type="button" aria-label="\u6E05\u9664\u641C\u7D22" title="\u6E05\u9664\u641C\u7D22" hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke-linecap="round"/></svg></button></div></div>
+      <div id="list" class="spec-list" aria-label="\u6D4B\u8BD5\u6587\u4EF6\u5217\u8868"></div><p id="no-files" class="note" hidden>\u6CA1\u6709\u5339\u914D\u7684\u6D4B\u8BD5\u6587\u4EF6</p>
+      <details class="service"><summary>\u670D\u52A1\u4FE1\u606F</summary><p id="identity">\u6B63\u5728\u8BFB\u53D6\u2026</p></details>
+    </aside>
+    <div class="list-resizer" id="list-resizer" role="separator" aria-orientation="vertical" aria-label="\u8C03\u6574\u6D4B\u8BD5\u6587\u4EF6\u5217\u8868\u5BBD\u5EA6" tabindex="0" title="\u62D6\u52A8\u8C03\u6574\u5BBD\u5EA6\uFF0C\u53CC\u51FB\u6062\u590D\u9ED8\u8BA4"></div>
+    <section class="pane middle">
+      <div class="headbar"><div class="headbar-main"><div class="headbar-row"><h2 id="title">\u9009\u62E9\u6D4B\u8BD5\u6587\u4EF6</h2><span id="status" class="status" role="status">\u5F85\u6267\u884C</span></div><p id="selected-path">\u4ECE\u5DE6\u4FA7\u9009\u62E9\u6D4B\u8BD5\u6587\u4EF6\uFF0C\u67E5\u770B\u6267\u884C\u7ED3\u679C\u4E0E\u8BC1\u636E</p></div><a class="button" id="report" target="_blank" rel="noopener" hidden>\u67E5\u770B\u62A5\u544A</a></div>
+      <div class="filterbar"><div class="filter-options" role="group" aria-label="\u6309\u6267\u884C\u7ED3\u679C\u7B5B\u9009\u6B65\u9AA4"><button class="filter-option is-active" data-filter="all" type="button">\u5168\u90E8 <span class="n">0</span></button><button class="filter-option" data-filter="passed" type="button">\u6210\u529F <span class="n">0</span></button><button class="filter-option" data-filter="failed" type="button">\u5931\u8D25 <span class="n">0</span></button></div><div class="filter-tools"><span class="filter-summary" id="filter-summary">\u672A\u52A0\u8F7D\u6D4B\u8BD5\u6587\u4EF6</span><input id="step-search" type="text" aria-label="\u641C\u7D22\u6B65\u9AA4" placeholder="\u641C\u7D22\u6B65\u9AA4\u2026"></div></div>
+      <div class="mid-scroll"><ul id="steps"></ul><div class="steps-empty" id="steps-empty"><div>\u70B9\u51FB\u300C\u8FD0\u884C\u6D4B\u8BD5\u300D\u5F00\u59CB\u6267\u884C</div><div class="note">\u6267\u884C\u540E\u5728\u6B64\u67E5\u770B\u6BCF\u4E2A\u6B65\u9AA4\u7684\u7ED3\u679C\u4E0E\u8017\u65F6</div></div>
+        <div class="evidence"><h3>\u622A\u56FE\u8BC1\u636E</h3><p class="note" id="empty">\u9009\u62E9\u6D4B\u8BD5\u6587\u4EF6\u540E\u67E5\u770B\u622A\u56FE\uFF0C\u70B9\u51FB\u53EF\u6253\u5F00\u539F\u56FE</p><div class="evidence-list" id="shots"></div></div>
+        <details class="log-details"><summary>\u8FD0\u884C\u65E5\u5FD7</summary><pre id="log">\u6682\u65E0\u65E5\u5FD7</pre></details>
+      </div>
+      <div class="exec-footer"><span>\u5F00\u59CB\u65F6\u95F4: <b id="exec-start">-</b></span><span>\u7ED3\u675F\u65F6\u95F4: <b id="exec-end">-</b></span><span>\u603B\u8017\u65F6: <b id="exec-duration">-</b></span></div>
+    </section>
+    <aside class="pane right">
+      <div class="pane-head"><div class="pane-title"><svg class="pane-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>\u6267\u884C\u7ED3\u679C</div></div>
+      <div class="side-tabs" role="tablist" aria-label="\u6267\u884C\u7ED3\u679C\u89C6\u56FE"><button class="side-tab is-active" id="stats-tab" type="button" role="tab" aria-selected="true" aria-controls="stats-panel">\u6267\u884C\u6458\u8981</button><button class="side-tab" id="report-tab" type="button" role="tab" aria-selected="false" aria-controls="report-panel" disabled>\u5931\u8D25\u8BCA\u65AD <span class="badge" id="report-badge" hidden>0</span></button></div>
+      <div class="side-panel" id="stats-panel" role="tabpanel" aria-labelledby="stats-tab"><div class="side-empty">\u6D4B\u8BD5\u6587\u4EF6\u672A\u52A0\u8F7D\u6216\u672A\u6267\u884C</div></div>
+      <div class="side-panel" id="report-panel" role="tabpanel" aria-labelledby="report-tab" hidden><div class="side-empty">\u6267\u884C\u540E\u751F\u6210\u8BCA\u65AD<br><span class="note">\u5931\u8D25\u6B65\u9AA4\u548C\u9519\u8BEF\u8BE6\u60C5\u5C06\u5728\u8FD9\u91CC\u5C55\u793A</span></div></div>
+    </aside>
+  </main>
+<script>const $=id=>document.getElementById(id);let specs=[],selected='',active=null,running=false,rev=0,stepFilter='all';
+const CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
+const CROSS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
+function controls(){ $('run').disabled=running||!selected;$('headed').disabled=running;$('stop').disabled=!running;$('stop').textContent=running?'\u505C\u6B62\u8FD0\u884C':'\u505C\u6B62\u8FD0\u884C';$('active-run').textContent=running?'\u6B63\u5728\u6267\u884C\uFF1A'+(active||'\u672A\u77E5'):'\u6BCF\u4E2A\u573A\u666F\u4F7F\u7528\u81EA\u5DF1\u7684\u8D26\u53F7\u4E0E\u72EC\u7ACB\u767B\u5F55\u72B6\u6001';$('status').className='status'+(running&&active===selected?' running':''); }
+const FILE_ICON='<svg class="spec-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+const CHEVRON='<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const FOLDER='<svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const collapsed=new Set();
+function specName(spec){return spec.split('/').pop().replace(/[.]spec[.](?:js|ts|mjs)$/,'')}
+function specItem(spec,depth){
+  const wrap=document.createElement('div');wrap.className='spec-item'+(selected===spec?' is-active':'');
+  const b=document.createElement('button');b.type='button';b.className='spec-item-main';b.setAttribute('aria-label',spec);if(selected===spec)b.setAttribute('aria-current','true');
+  b.title=spec;b.style.paddingLeft=(28+depth*12)+'px';b.innerHTML=FILE_ICON;
+  const text=document.createElement('span');text.className='spec-item-text';
+  const name=document.createElement('span');name.className='spec-item-name';name.textContent=specName(spec);
+  const file=document.createElement('span');file.className='spec-item-file';file.textContent=spec.split('/').pop();
+  text.append(name,file);b.append(text);b.onclick=()=>{selected=spec;listing();show()};wrap.append(b);return wrap;
+}
+function renderDir(dir,depth,parent){
+  const off=collapsed.has(dir.path);
+  const wrap=document.createElement('div');wrap.className='spec-dir';
+  const toggle=document.createElement('div');toggle.className='spec-dir-toggle';toggle.setAttribute('role','button');toggle.tabIndex=0;toggle.setAttribute('aria-expanded',String(!off));toggle.title=dir.path;toggle.style.paddingLeft=(8+depth*12)+'px';toggle.innerHTML=CHEVRON+FOLDER;
+  const name=document.createElement('span');name.className='spec-dir-name';name.textContent=dir.name;
+  const count=document.createElement('span');count.className='spec-dir-count';count.textContent=dir.count;
+  toggle.append(name,count);
+  const children=document.createElement('div');children.className='spec-children';children.style.setProperty('--tree-guide',(14+depth*12)+'px');children.hidden=off;
+  renderTree(dir,depth+1,children);
+  const flip=()=>{off?collapsed.delete(dir.path):collapsed.add(dir.path);listing()};
+  toggle.onclick=flip;toggle.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip()}};
+  wrap.append(toggle,children);parent.append(wrap);
+}
+function renderTree(node,depth,parent){for(const dir of node.dirs.values())renderDir(dir,depth,parent);for(const spec of node.files)parent.append(specItem(spec,depth))}
+function listing(){
+  const query=$('search').value.trim().toLowerCase();$('list').replaceChildren();
+  const visible=specs.filter(spec=>spec.toLowerCase().includes(query));
+  $('file-count').textContent=visible.length+' \u4E2A\u6587\u4EF6';$('no-files').hidden=visible.length>0;
+  const root={dirs:new Map(),files:[]};
+  for(const spec of visible){
+    const parts=spec.split('/');let node=root,dirPath='';
+    for(let i=0;i<parts.length-1;i++){
+      dirPath=dirPath?dirPath+'/'+parts[i]:parts[i];
+      if(!node.dirs.has(dirPath))node.dirs.set(dirPath,{name:parts[i],path:dirPath,dirs:new Map(),files:[],count:0});
+      node=node.dirs.get(dirPath);node.count++;
+    }
+    node.files.push(spec);
+  }
+  const wrap=document.createElement('div');wrap.className='spec-tree';
+  if(query)for(const spec of visible)wrap.append(specItem(spec,0));
+  else renderTree(root,0,wrap);
+  $('list').append(wrap);
+}
+async function api(url,opt){const r=await fetch(url,opt);if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
+function cleanErr(text){return String(text).replace(/\\x1b\\[[0-9;]*m/g,'')}
+const STATUS_CN={passed:'\u901A\u8FC7',failed:'\u5931\u8D25',interrupted:'\u5DF2\u505C\u6B62',timedOut:'\u8D85\u65F6',skipped:'\u8DF3\u8FC7',running:'\u8FD0\u884C\u4E2D'};
+function fmtTime(iso){if(!iso)return '-';const d=new Date(iso);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')}
+function fmtDur(ms){if(ms==null||isNaN(ms))return '-';return ms>=1000?(ms/1000).toFixed(2)+' s':Math.round(ms)+' ms'}
+function applyFilter(){
+  const q=$('step-search').value.trim().toLowerCase();let shown=0,total=0;
+  for(const row of $('steps').children){total++;const ok=(stepFilter==='all'||row.dataset.status===stepFilter)&&(!q||row.dataset.search.includes(q));row.hidden=!ok;if(ok)shown++}
+  $('filter-summary').textContent=total?'\u663E\u793A '+shown+' / '+total+' \u4E2A\u6B65\u9AA4':'\u672A\u52A0\u8F7D\u6D4B\u8BD5\u6587\u4EF6';
+  $('steps-empty').style.display=shown===0?'flex':'none';
+}
+function renderSteps(steps){
+  $('steps').replaceChildren();let passed=0,failed=0;
+  steps.forEach((step,i)=>{
+    const ok=step.status==='passed';ok?passed++:failed++;
+    const li=document.createElement('li');li.className='step-row';li.dataset.status=ok?'passed':'failed';li.dataset.search=step.title.toLowerCase();
+    const head=document.createElement('div');head.className='step-head';
+    const lead=document.createElement('div');lead.className='step-lead';
+    const seq=document.createElement('span');seq.className='seq '+(ok?'ok':'fail');seq.innerHTML=ok?CHECK:CROSS;
+    const title=document.createElement('span');title.className='step-title';title.textContent=step.title;title.title=step.title;
+    lead.append(seq,title);
+    const tail=document.createElement('div');tail.className='step-tail';
+    const badge=document.createElement('span');badge.className='step-badge '+(ok?'ok':'fail');badge.textContent=ok?'\u6210\u529F':'\u5931\u8D25';
+    const dur=document.createElement('span');dur.className='step-dur';dur.textContent=step.duration!=null?fmtDur(step.duration):'';
+    tail.append(badge,dur);head.append(lead,tail);li.append(head);
+    if(step.error){const err=document.createElement('div');err.className='step-error';err.textContent=cleanErr(step.error);li.append(err)}
+    $('steps').append(li);
+  });
+  const nums=document.querySelectorAll('.filter-option .n');
+  nums[0].textContent=steps.length;nums[1].textContent=passed;nums[2].textContent=failed;
+  applyFilter();
+}
+function renderStats(r,spec,steps){
+  const cases=r?.results?.[spec]||[];
+  const passed=steps.filter(s=>s.status==='passed').length,failed=steps.filter(s=>s.status!=='passed').length;
+  const pct=steps.length?((passed/steps.length)*100).toFixed(1):'0.0';
+  const panel=$('stats-panel');panel.replaceChildren();
+  if(!r){panel.innerHTML='<div class="side-empty">\u6D4B\u8BD5\u6587\u4EF6\u672A\u52A0\u8F7D\u6216\u672A\u6267\u884C</div>';return}
+  const label=document.createElement('div');label.className='stat-progress-row';
+  label.innerHTML='<span class="stat-label">\u603B\u6B65\u9AA4\u8FDB\u5EA6</span><span class="stat-progress-val">'+passed+' / '+steps.length+' <em>('+pct+'%)</em></span>';
+  const bar=document.createElement('div');bar.className='seg-bar';
+  for(const s of steps){const seg=document.createElement('i');seg.className=s.status==='passed'?'ok':'fail';seg.title=s.title+'\uFF1A'+(s.status==='passed'?'\u6210\u529F':'\u5931\u8D25');bar.append(seg)}
+  if(!steps.length){const seg=document.createElement('i');bar.append(seg)}
+  const cards=document.createElement('div');cards.className='stat-cards';
+  cards.innerHTML='<div class="stat-card ok"><div class="num">'+passed+'</div><div class="lab">\u6210\u529F\u6B65\u9AA4</div></div><div class="stat-card fail"><div class="num">'+failed+'</div><div class="lab">\u5931\u8D25\u6B65\u9AA4</div></div>';
+  const meta=document.createElement('div');meta.className='stat-meta';
+  const caseCount=cases.length;
+  meta.innerHTML='<div class="row"><span>\u6D4B\u8BD5\u7528\u4F8B</span><span class="v">'+caseCount+' \u4E2A</span></div><div class="row"><span>\u8FD0\u884C\u6279\u6B21</span><span class="v" title="'+(r.runId||'')+'">'+String(r.runId||'').slice(0,8)+'</span></div><div class="row"><span>\u8FD0\u884C\u72B6\u6001</span><span class="v">'+(STATUS_CN[r.status]||r.status||'-')+'</span></div>';
+  panel.append(label,bar,cards,meta);
+}
+function renderReport(r,spec){
+  const cases=(r?.results?.[spec]||[]).filter(c=>c.status!=='passed');
+  const globals=r?.globalErrors||[];
+  const count=cases.length+globals.length;
+  $('report-badge').hidden=!count;$('report-badge').textContent=count;$('report-badge').classList.toggle('alert',count>0);
+  $('report-tab').disabled=!count;
+  const panel=$('report-panel');panel.replaceChildren();
+  if(!count){panel.innerHTML='<div class="side-empty">\u672C\u6B21\u8FD0\u884C\u6CA1\u6709\u5931\u8D25\u9879<br><span class="note">\u5931\u8D25\u7528\u4F8B\u548C\u9519\u8BEF\u8BE6\u60C5\u5C06\u5728\u8FD9\u91CC\u5C55\u793A</span></div>';if($('report-tab').classList.contains('is-active'))switchTab('stats');return}
+  for(const c of cases){const box=document.createElement('div');box.className='report-case';const t=document.createElement('div');t.className='t';t.textContent=c.title+'\uFF08'+(STATUS_CN[c.status]||c.status)+'\uFF09';box.append(t);for(const e of c.errors||[]){const err=document.createElement('div');err.className='err';err.textContent=cleanErr(e);box.append(err)}panel.append(box)}
+  for(const e of globals){const box=document.createElement('div');box.className='report-case';const t=document.createElement('div');t.className='t';t.textContent='\u5168\u5C40\u9519\u8BEF';const err=document.createElement('div');err.className='err';err.textContent=cleanErr(e);box.append(t,err);panel.append(box)}
+}
+function switchTab(name){
+  const stats=name==='stats';
+  $('stats-tab').classList.toggle('is-active',stats);$('stats-tab').setAttribute('aria-selected',String(stats));
+  $('report-tab').classList.toggle('is-active',!stats);$('report-tab').setAttribute('aria-selected',String(!stats));
+  $('stats-panel').hidden=!stats;$('report-panel').hidden=stats;
+}
+$('stats-tab').onclick=()=>switchTab('stats');
+$('report-tab').onclick=()=>{if(!$('report-tab').disabled)switchTab('report')};
+for(const b of document.querySelectorAll('.filter-option'))b.onclick=()=>{stepFilter=b.dataset.filter;for(const x of document.querySelectorAll('.filter-option'))x.classList.toggle('is-active',x===b);applyFilter()};
+$('step-search').oninput=applyFilter;
+async function show(){const spec=selected,n=++rev;$('title').textContent=spec?specName(spec):'\u9009\u62E9\u6D4B\u8BD5\u6587\u4EF6';$('selected-path').textContent=spec||'\u4ECE\u5DE6\u4FA7\u9009\u62E9\u6D4B\u8BD5\u6587\u4EF6\uFF0C\u67E5\u770B\u6267\u884C\u7ED3\u679C\u4E0E\u8BC1\u636E';$('shots').replaceChildren();$('steps').replaceChildren();$('steps-empty').style.display='flex';$('report').hidden=true;$('log').textContent='\u6682\u65E0\u65E5\u5FD7';$('filter-summary').textContent='\u672A\u52A0\u8F7D\u6D4B\u8BD5\u6587\u4EF6';for(const x of document.querySelectorAll('.filter-option .n'))x.textContent='0';$('exec-start').textContent='-';$('exec-end').textContent='-';$('exec-duration').textContent='-';controls();if(!spec){$('status').textContent='\u6682\u65E0\u6D4B\u8BD5\u6587\u4EF6';renderStats(null);renderReport(null);return}if(running&&active===spec){$('status').textContent='\u8FD0\u884C\u4E2D';$('log').textContent=window.liveLog||'\u7B49\u5F85\u65E5\u5FD7';const live=window.liveData;const pseudo={results:{[spec]:live?.results||[]},globalErrors:[],runId:window.liveRunId,status:'running',startedAt:live?.startedAt};renderSteps(live?.steps||[]);renderStats(pseudo,spec,live?.steps||[]);renderReport(pseudo,spec);$('exec-start').textContent=fmtTime(live?.startedAt);for(const s of (live?.screenshots||[])){const a=document.createElement('a');a.className='evidence-item';a.href='/e2e/api/artifacts/'+window.liveRunId+'/'+s.file;a.target='_blank';a.rel='noopener';const img=document.createElement('img');img.src=a.href;img.alt=s.name;const name=document.createElement('strong');name.textContent=s.name;const label=document.createElement('small');label.textContent=s.test;a.append(img,name,label);$('shots').append(a)}$('empty').textContent=$('shots').childElementCount?'\u70B9\u51FB\u622A\u56FE\u67E5\u770B\u539F\u56FE':'\u7B49\u5F85\u622A\u56FE\u751F\u6210';return}try{const r=await api('/e2e/api/result?spec='+encodeURIComponent(spec));if(n!==rev)return;if(!r){$('status').textContent='\u5C1A\u672A\u8FD0\u884C';$('empty').textContent='\u8BE5\u6D4B\u8BD5\u6587\u4EF6\u6682\u65E0\u622A\u56FE';renderStats(null);renderReport(null,spec);return}const cases=r.results?.[spec]||[];if(!cases.length){$('status').textContent='\u5C1A\u672A\u8FD0\u884C';renderStats(r,spec,[]);renderReport(r,spec);return}const status=cases.every(c=>c.status==='passed')?'\u901A\u8FC7':cases.map(c=>STATUS_CN[c.status]||c.status).join(', ');$('status').textContent=status;if(cases.length===1&&cases[0].title)$('title').textContent=cases[0].title;$('status').className='status '+(cases.every(c=>c.status==='passed')?'ok':'fail');const steps=r.steps?.[spec]||[];renderSteps(steps);renderStats(r,spec,steps);renderReport(r,spec);$('exec-start').textContent=fmtTime(r.startedAt);$('exec-end').textContent=fmtTime(r.finishedAt);$('exec-duration').textContent=r.startedAt&&r.finishedAt?fmtDur(new Date(r.finishedAt)-new Date(r.startedAt)):'-';$('log').textContent=(r.logs?.[spec]||[]).join('\\n')||'\u6682\u65E0\u65E5\u5FD7';if(r.reportAvailable){$('report').href='/e2e/api/artifacts/'+r.runId+'/report/index.html';$('report').hidden=false}for(const s of (r.screenshots||[]).filter(x=>x.spec===spec)){const a=document.createElement('a');a.className='evidence-item';a.href='/e2e/api/artifacts/'+r.runId+'/'+s.file;a.target='_blank';a.rel='noopener';const img=document.createElement('img');img.src=a.href;img.alt=s.name;const name=document.createElement('strong');name.textContent=s.name;const label=document.createElement('small');label.textContent=s.test;a.append(img,name,label);$('shots').append(a)}$('empty').textContent=$('shots').childElementCount?'\u70B9\u51FB\u622A\u56FE\u67E5\u770B\u539F\u56FE':'\u8BE5\u6B21\u8FD0\u884C\u672A\u751F\u6210\u622A\u56FE'}catch(e){if(n===rev)$('status').textContent='\u7ED3\u679C\u8BFB\u53D6\u5931\u8D25\uFF1A'+e.message}}
+async function state(){try{const s=await api('/e2e/api/state');specs=s.specs;if(!selected)selected=specs[0]||'';running=s.running;active=s.spec||null;window.liveLog=s.log||'';window.liveData=s.live||null;window.liveRunId=s.runId||null;$('env').textContent=s.configSummary||'';listing();await show()}catch(e){$('status').textContent='\u8FDE\u63A5\u5931\u8D25\uFF1A'+e.message}}
+$('search').oninput=()=>{$('search-clear').hidden=!$('search').value;listing()};
+$('search-clear').onclick=()=>{$('search').value='';$('search-clear').hidden=true;$('search').focus();listing()};
+$('search').onkeydown=e=>{if(e.key==='Escape'){$('search').value='';$('search-clear').hidden=true;listing();$('search').blur()}};
+document.addEventListener('keydown',e=>{
+  const tag=(e.target&&e.target.tagName)||'';
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('search').focus();$('search').select()}
+  else if(e.key==='/'&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();$('search').focus()}
+});
+(()=>{
+  const ws=document.querySelector('.workspace'),bar=$('list-resizer');
+  const clamp=x=>Math.min(420,Math.max(180,x));
+  const setW=v=>ws.style.setProperty('--list-w',clamp(v)+'px');
+  const curW=()=>parseFloat(getComputedStyle(ws).getPropertyValue('--list-w'))||260;
+  bar.addEventListener('pointerdown',e=>{e.preventDefault();bar.setPointerCapture(e.pointerId);bar.classList.add('is-dragging');document.body.classList.add('list-resizing')});
+  bar.addEventListener('pointermove',e=>{if(bar.classList.contains('is-dragging'))setW(e.clientX-ws.getBoundingClientRect().left-8)});
+  const end=e=>{bar.classList.remove('is-dragging');document.body.classList.remove('list-resizing')};
+  bar.addEventListener('pointerup',end);bar.addEventListener('pointercancel',end);
+  bar.addEventListener('dblclick',()=>ws.style.removeProperty('--list-w'));
+  bar.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){e.preventDefault();setW(curW()-16)}else if(e.key==='ArrowRight'){e.preventDefault();setW(curW()+16)}});
+})();
+document.body.classList.toggle('embedded',new URLSearchParams(location.search).get('embedded')==='1');
+$('run').onclick=async()=>{try{await api('/e2e/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({spec:selected,headed:$('headed').checked})});await state()}catch(e){$('status').textContent='\u542F\u52A8\u5931\u8D25\uFF1A'+e.message}};
+$('stop').onclick=async()=>{try{await api('/e2e/api/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await state()}catch(e){$('status').textContent='\u505C\u6B62\u5931\u8D25\uFF1A'+e.message}};
+fetch('/__scenario-test__/status').then(r=>r.json()).then(s=>{$('identity').textContent='\u7248\u672C '+s.version+' \xB7 \u6784\u5EFA '+String(s.buildId||'').slice(0,8)+' \xB7 PID '+s.pid+' \xB7 '+s.workspace}).catch(()=>{$('identity').textContent='\u8EAB\u4EFD\u8BFB\u53D6\u5931\u8D25'});setInterval(()=>{if(running)state()},2000);state();
+</script></body></html>`;
+
+// src/e2e/extension.js
+var mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json; charset=utf-8", ".png": "image/png", ".svg": "image/svg+xml", ".webp": "image/webp", ".zip": "application/zip", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webm": "video/webm" };
+var indexKey = (value2) => (0, import_node_crypto.createHash)("sha256").update(value2).digest("hex");
+var json = (res, code, value2) => {
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(value2));
+};
+function listSpecs(root) {
+  const found = [];
+  function walk(dir) {
+    if (!import_node_fs4.default.existsSync(dir)) return;
+    for (const entry of import_node_fs4.default.readdirSync(dir, { withFileTypes: true })) {
+      const file = import_node_path4.default.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (entry.isFile() && /\.spec\.(?:js|ts|mjs)$/.test(entry.name) && isRealPathWithinRoot(root, file)) found.push(import_node_path4.default.relative(root, file).replace(/\\/g, "/"));
+    }
+  }
+  walk(import_node_path4.default.join(root, "tests"));
+  return found.sort();
+}
+function exactSpecPattern(root, spec) {
+  const absolute = import_node_path4.default.resolve(root, spec).replace(/\\/g, "/");
+  return "^" + absolute.split("/").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[/\\\\]") + "$";
+}
+function safeArtifact(root, relative) {
+  const candidate = import_node_path4.default.resolve(root, relative);
+  const rel = import_node_path4.default.relative(root, candidate);
+  if (!rel || rel === ".." || rel.startsWith(".." + import_node_path4.default.sep) || import_node_path4.default.isAbsolute(rel) || !isRealPathWithinRoot(root, candidate)) return null;
+  return candidate;
+}
+async function readBody(req) {
+  let body = "";
+  for await (const part of req) {
+    body += part;
+    if (body.length > 16384) throw new Error("\u8BF7\u6C42\u4F53\u8FC7\u5927");
+  }
+  return body ? JSON.parse(body) : {};
+}
+function isE2eProject(workspace) {
+  try {
+    return JSON.parse(import_node_fs4.default.readFileSync(import_node_path4.default.join(workspace, "e2e", "package.json"), "utf8")).scenarioTestE2e === true;
+  } catch {
+    return false;
+  }
+}
+function createE2eExtension({ workspace }) {
+  const root = import_node_path4.default.join(workspace, "e2e");
+  const results = import_node_path4.default.join(workspace, "e2e-results");
+  let child = null, run = null, stopping = false, disposed = false, stopRequested = false;
+  let liveLog = [];
+  function append(chunk) {
+    liveLog.push(String(chunk));
+    if (liveLog.length > 2e3) liveLog.shift();
+  }
+  async function stop() {
+    if (!child) return false;
+    if (stopping) return true;
+    stopping = true;
+    stopRequested = true;
+    const target = child;
+    if (target.pid) {
+      if (process.platform === "win32") {
+        try {
+          await new Promise((resolve2, reject) => (0, import_node_child_process.execFile)("taskkill", ["/pid", String(target.pid), "/T", "/F"], (error) => error && child === target ? reject(error) : resolve2()));
+        } catch (error) {
+          stopping = false;
+          stopRequested = false;
+          throw error;
+        }
+      } else {
+        try {
+          process.kill(-target.pid, "SIGTERM");
+          const timer = setTimeout(() => {
+            if (child === target) {
+              try {
+                process.kill(-target.pid, "SIGKILL");
+              } catch {
+              }
+            }
+          }, 3e3);
+          target.once("close", () => clearTimeout(timer));
+        } catch {
+        }
+      }
+    }
+    return true;
+  }
+  async function dispose() {
+    if (disposed) return;
+    disposed = true;
+    const target = child;
+    if (target) {
+      const closed = new Promise((resolve2) => target.once("close", resolve2));
+      await stop();
+      let timeout;
+      await Promise.race([closed, new Promise((resolve2) => {
+        timeout = setTimeout(resolve2, 3e3);
+      })]);
+      clearTimeout(timeout);
+      if (child === target && process.platform !== "win32" && target.pid) {
+        try {
+          process.kill(-target.pid, "SIGKILL");
+        } catch {
+        }
+        await Promise.race([closed, new Promise((resolve2) => setTimeout(resolve2, 2e3))]);
+      }
+    }
+  }
+  async function handle(req, res, pathname) {
+    if (pathname === "/e2e") {
+      res.writeHead(302, { Location: "/e2e/" });
+      res.end();
+      return true;
+    }
+    if (!pathname.startsWith("/e2e/")) return false;
+    if (req.method === "GET" && pathname === "/e2e/") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(E2E_PAGE);
+      return true;
+    }
+    if (req.method === "GET" && pathname === "/e2e/api/state") {
+      let live = null;
+      if (run?.runId && run?.spec) {
+        try {
+          const manifest = JSON.parse(import_node_fs4.default.readFileSync(import_node_path4.default.join(results, run.runId, "manifest.json"), "utf8"));
+          if (manifest?.runId === run.runId) live = { steps: manifest.steps?.[run.spec] || [], results: manifest.results?.[run.spec] || [], screenshots: (manifest.screenshots || []).filter((x) => x.spec === run.spec), startedAt: manifest.startedAt || run.startedAt };
+        } catch {
+        }
+      }
+      json(res, 200, { specs: listSpecs(root), running: !!child, spec: run?.spec || null, runId: run?.runId || null, log: liveLog.join(""), live, configSummary: "\u73AF\u5883\u7531\u9879\u76EE E2E \u914D\u7F6E\u4E0E\u73AF\u5883\u53D8\u91CF\u51B3\u5B9A" });
+      return true;
+    }
+    if (req.method === "POST" && pathname === "/e2e/api/run") {
+      let body;
+      try {
+        body = await readBody(req);
+      } catch {
+        json(res, 400, { error: "\u8BF7\u6C42\u4F53\u65E0\u6548" });
+        return true;
+      }
+      if (!body || typeof body !== "object" || !listSpecs(root).includes(body.spec)) {
+        json(res, 400, { error: "\u8BF7\u9009\u62E9\u6709\u6548\u6D4B\u8BD5\u6587\u4EF6" });
+        return true;
+      }
+      if (child || disposed) {
+        json(res, 409, { error: "\u5DF2\u6709\u4EFB\u52A1\u8FD0\u884C\u6216\u670D\u52A1\u6B63\u5728\u5173\u95ED" });
+        return true;
+      }
+      const cli = import_node_path4.default.join(root, "node_modules", "@playwright", "test", "cli.js");
+      if (!import_node_fs4.default.existsSync(cli)) {
+        json(res, 409, { error: "\u672A\u5B89\u88C5 Playwright\uFF1A\u8BF7\u5728 e2e \u76EE\u5F55\u6267\u884C npm install" });
+        return true;
+      }
+      const id = (0, import_node_crypto.randomUUID)();
+      run = { runId: id, spec: body.spec, startedAt: (/* @__PURE__ */ new Date()).toISOString() };
+      stopRequested = false;
+      liveLog = [];
+      const args = [cli, "test", exactSpecPattern(root, body.spec)];
+      if (body.headed === true) args.push("--headed");
+      child = (0, import_node_child_process.spawn)(process.execPath, args, { cwd: root, shell: false, detached: process.platform !== "win32", env: { ...process.env, E2E_RUN_ID: id } });
+      const target = child;
+      target.stdout.on("data", append);
+      target.stderr.on("data", append);
+      target.once("error", (error) => append(`\u542F\u52A8\u5931\u8D25\uFF1A${error.message}
+`));
+      target.once("close", (code) => {
+        append(`\u8FDB\u7A0B\u9000\u51FA\uFF1A${code}
+`);
+        const status = stopRequested ? "interrupted" : "failed";
+        try {
+          const dir = import_node_path4.default.join(results, id);
+          const manifestFile = import_node_path4.default.join(dir, "manifest.json");
+          let manifest;
+          try {
+            manifest = JSON.parse(import_node_fs4.default.readFileSync(manifestFile, "utf8"));
+          } catch {
+          }
+          if (!manifest?.finishedAt || !manifest.results?.[run.spec]?.length || code !== 0 && manifest.results[run.spec].every((item) => item.status === "passed")) {
+            import_node_fs4.default.mkdirSync(dir, { recursive: true });
+            manifest = { schemaVersion: 1, runId: id, startedAt: run.startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), status, specs: [run.spec], screenshots: manifest?.screenshots || [], logs: { [run.spec]: [...liveLog] }, results: { [run.spec]: [{ title: run.spec, status, errors: [stopRequested ? "\u8FD0\u884C\u5DF2\u505C\u6B62" : `\u8FD0\u884C\u672A\u5B8C\u6210\uFF0C\u9000\u51FA\u7801 ${code}`] }] }, reportAvailable: false };
+            import_node_fs4.default.writeFileSync(manifestFile, JSON.stringify(manifest));
+            const indexDir = import_node_path4.default.join(results, "by-spec");
+            import_node_fs4.default.mkdirSync(indexDir, { recursive: true });
+            import_node_fs4.default.writeFileSync(import_node_path4.default.join(indexDir, indexKey(run.spec) + ".json"), JSON.stringify({ spec: run.spec, runId: id, startedAt: run.startedAt }));
+          }
+        } catch (error) {
+          append(`\u7ED3\u679C\u4FDD\u5B58\u5931\u8D25\uFF1A${error.message}
+`);
+        }
+        if (child === target) child = null;
+        stopping = false;
+      });
+      json(res, 202, run);
+      return true;
+    }
+    if (req.method === "POST" && pathname === "/e2e/api/stop") {
+      try {
+        if (!await stop()) {
+          json(res, 409, { error: "\u6CA1\u6709\u6D3B\u52A8\u8FD0\u884C" });
+          return true;
+        }
+        json(res, 202, { ok: true });
+      } catch {
+        stopping = false;
+        stopRequested = false;
+        json(res, 500, { error: "\u505C\u6B62\u8FDB\u7A0B\u5931\u8D25" });
+      }
+      return true;
+    }
+    if (req.method === "GET" && pathname === "/e2e/api/result") {
+      const spec = new URL(req.url, "http://localhost").searchParams.get("spec");
+      if (!listSpecs(root).includes(spec)) {
+        json(res, 400, { error: "\u65E0\u6548\u6D4B\u8BD5\u6587\u4EF6" });
+        return true;
+      }
+      try {
+        const index = JSON.parse(import_node_fs4.default.readFileSync(import_node_path4.default.join(results, "by-spec", indexKey(spec) + ".json"), "utf8"));
+        if (index.spec !== spec || !/^[a-f0-9-]{36}$/i.test(index.runId)) throw new Error("\u7D22\u5F15\u65E0\u6548");
+        const file = safeArtifact(results, `${index.runId}/manifest.json`);
+        if (!file) throw new Error("\u6E05\u5355\u8DEF\u5F84\u65E0\u6548");
+        const result = JSON.parse(import_node_fs4.default.readFileSync(file, "utf8"));
+        if (result.runId !== index.runId || !result.results?.[spec]?.length || !result.finishedAt) throw new Error("\u6E05\u5355\u5F52\u5C5E\u65E0\u6548");
+        json(res, 200, result);
+      } catch (error) {
+        if (error.code === "ENOENT") json(res, 200, null);
+        else json(res, 500, { error: "\u8BFB\u53D6\u8FD0\u884C\u7ED3\u679C\u5931\u8D25" });
+      }
+      return true;
+    }
+    if (req.method === "GET" && pathname.startsWith("/e2e/api/artifacts/")) {
+      const rel = pathname.slice("/e2e/api/artifacts/".length);
+      if (!/^[a-f0-9-]{36}\/(?:\d+\.png|report\/.+)$/i.test(rel)) {
+        res.writeHead(404);
+        res.end();
+        return true;
+      }
+      const slash = rel.indexOf("/");
+      const runRoot = import_node_path4.default.join(results, rel.slice(0, slash));
+      const file = safeArtifact(runRoot, rel.slice(slash + 1));
+      if (!file || !mime[import_node_path4.default.extname(file).toLowerCase()] || !import_node_fs4.default.existsSync(file) || !import_node_fs4.default.statSync(file).isFile()) {
+        res.writeHead(404);
+        res.end();
+        return true;
+      }
+      const stream = import_node_fs4.default.createReadStream(file);
+      stream.on("error", () => {
+        if (res.headersSent) res.destroy();
+        else {
+          res.writeHead(500);
+          res.end();
+        }
+      });
+      res.on("close", () => {
+        if (!res.writableEnded) stream.destroy();
+      });
+      stream.on("open", () => {
+        res.writeHead(200, { "Content-Type": mime[import_node_path4.default.extname(file).toLowerCase()], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+        stream.pipe(res);
+      });
+      return true;
+    }
+    res.writeHead(404);
+    res.end("not found");
+    return true;
+  }
+  return { name: "e2e", handle, dispose };
+}
+
+// src/doctor.js
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_crypto2 = __toESM(require("node:crypto"), 1);
+
+// src/project-layout.js
+var import_node_fs5 = __toESM(require("node:fs"), 1);
+var import_node_path5 = __toESM(require("node:path"), 1);
 var INTERNAL_DIRECTORY = ".scenario-test";
 var FRAMEWORK_FILES = Object.freeze({
   authoringPrompt: "AI_SCENARIO_PROMPT.md",
   patterns: "SCENARIO_PATTERNS.md",
   cli: "scenario-test-cli.cjs",
+  e2eReporter: "e2e-reporter.cjs",
   umd: "scenario-test.umd.js",
   dts: "scenario-test.d.ts",
   capabilities: "scenario-test-capabilities.json",
   versionLock: ".scenario-test-version.json"
 });
 function toRelativePath(...segments) {
-  return import_node_path4.default.join(...segments).replace(/\\/g, "/");
+  return import_node_path5.default.join(...segments).replace(/\\/g, "/");
 }
 function createProjectLayout(projectRoot, directory) {
-  const publicDir = import_node_path4.default.resolve(projectRoot, directory);
-  const frameworkDir = import_node_path4.default.join(publicDir, INTERNAL_DIRECTORY);
+  const publicDir = import_node_path5.default.resolve(projectRoot, directory);
+  const frameworkDir = import_node_path5.default.join(publicDir, INTERNAL_DIRECTORY);
   const frameworkRelativeDir = toRelativePath(directory, INTERNAL_DIRECTORY);
   return Object.freeze({
     publicDir,
@@ -4744,36 +5440,36 @@ function createProjectLayout(projectRoot, directory) {
     frameworkRelativeDir,
     publicRelativePath: (fileName) => toRelativePath(directory, fileName),
     frameworkRelativePath: (fileName) => toRelativePath(frameworkRelativeDir, fileName),
-    frameworkPath: (fileName) => import_node_path4.default.join(frameworkDir, fileName)
+    frameworkPath: (fileName) => import_node_path5.default.join(frameworkDir, fileName)
   });
 }
 function isDirectory(target) {
-  return import_node_fs4.default.existsSync(target) && import_node_fs4.default.statSync(target).isDirectory();
+  return import_node_fs5.default.existsSync(target) && import_node_fs5.default.statSync(target).isDirectory();
 }
 function resolveProjectLayout(projectRoot, directory) {
   const layout = createProjectLayout(projectRoot, directory);
-  if (import_node_fs4.default.existsSync(layout.frameworkDir) && !isDirectory(layout.frameworkDir)) {
+  if (import_node_fs5.default.existsSync(layout.frameworkDir) && !isDirectory(layout.frameworkDir)) {
     throw new Error(`${layout.frameworkDir} \u5FC5\u987B\u662F\u76EE\u5F55\uFF1B\u8BF7\u79FB\u8D70\u540C\u540D\u6587\u4EF6\u540E\u91CD\u8BD5`);
   }
   return layout;
 }
 function resolveLayoutFromConfigDir(configDir) {
-  return resolveProjectLayout(import_node_path4.default.dirname(configDir), import_node_path4.default.basename(configDir));
+  return resolveProjectLayout(import_node_path5.default.dirname(configDir), import_node_path5.default.basename(configDir));
 }
 
 // src/doctor.js
 var UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
 var DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
 function extractArtifactVersion(filePath, pattern) {
-  const head = import_node_fs5.default.readFileSync(filePath, "utf8").slice(0, 4096);
+  const head = import_node_fs6.default.readFileSync(filePath, "utf8").slice(0, 4096);
   const match = pattern.exec(head);
   return match ? match[1] : null;
 }
 function sha256Of(filePath) {
-  return import_node_crypto.default.createHash("sha256").update(import_node_fs5.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto2.default.createHash("sha256").update(import_node_fs6.default.readFileSync(filePath)).digest("hex");
 }
 function checkRuntimeArtifact(filePath, fileName, key, pattern) {
-  if (!import_node_fs5.default.existsSync(filePath)) {
+  if (!import_node_fs6.default.existsSync(filePath)) {
     return {
       name: key,
       status: "WARN",
@@ -4782,10 +5478,10 @@ function checkRuntimeArtifact(filePath, fileName, key, pattern) {
     };
   }
   try {
-    const stat = import_node_fs5.default.statSync(filePath);
+    const stat = import_node_fs6.default.statSync(filePath);
     if (!stat.isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
     const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
-    if (pattern === null) import_node_fs5.default.accessSync(filePath, import_node_fs5.default.constants.R_OK);
+    if (pattern === null) import_node_fs6.default.accessSync(filePath, import_node_fs6.default.constants.R_OK);
     if (version !== null && version !== VERSION) {
       return {
         name: key,
@@ -4810,7 +5506,7 @@ function checkRuntimeArtifact(filePath, fileName, key, pattern) {
   }
 }
 function checkCapabilitiesFile(filePath) {
-  if (!import_node_fs5.default.existsSync(filePath)) {
+  if (!import_node_fs6.default.existsSync(filePath)) {
     return {
       name: "capabilities",
       status: "WARN",
@@ -4819,7 +5515,7 @@ function checkCapabilitiesFile(filePath) {
     };
   }
   try {
-    const parsed = JSON.parse(import_node_fs5.default.readFileSync(filePath, "utf8"));
+    const parsed = JSON.parse(import_node_fs6.default.readFileSync(filePath, "utf8"));
     if (parsed.schema !== "scenario-test-capabilities") {
       return {
         name: "capabilities",
@@ -4847,7 +5543,7 @@ function checkCapabilitiesFile(filePath) {
   }
 }
 function checkVersionLock(filePath) {
-  if (!import_node_fs5.default.existsSync(filePath)) {
+  if (!import_node_fs6.default.existsSync(filePath)) {
     return {
       name: "version-lock",
       status: "WARN",
@@ -4857,7 +5553,7 @@ function checkVersionLock(filePath) {
   }
   let lock;
   try {
-    lock = JSON.parse(import_node_fs5.default.readFileSync(filePath, "utf8"));
+    lock = JSON.parse(import_node_fs6.default.readFileSync(filePath, "utf8"));
   } catch (error) {
     return {
       name: "version-lock",
@@ -4893,8 +5589,8 @@ function checkVersionLock(filePath) {
     });
   } else {
     for (const [kind, fileName] of Object.entries(files)) {
-      const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), String(fileName));
-      if (!import_node_fs5.default.existsSync(target)) {
+      const target = import_node_path6.default.join(import_node_path6.default.dirname(filePath), String(fileName));
+      if (!import_node_fs6.default.existsSync(target)) {
         extras.push({
           name: "version-lock",
           status: "WARN",
@@ -4916,11 +5612,11 @@ function checkVersionLock(filePath) {
     const declaredFiles = files ? new Set(Object.values(files)) : null;
     for (const [fileName, expected] of Object.entries(sha256)) {
       if (declaredFiles && !declaredFiles.has(fileName)) continue;
-      const target = import_node_path5.default.join(import_node_path5.default.dirname(filePath), fileName);
-      if (!import_node_fs5.default.existsSync(target)) continue;
+      const target = import_node_path6.default.join(import_node_path6.default.dirname(filePath), fileName);
+      if (!import_node_fs6.default.existsSync(target)) continue;
       let actual;
       try {
-        if (!import_node_fs5.default.statSync(target).isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
+        if (!import_node_fs6.default.statSync(target).isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
         actual = sha256Of(target);
       } catch (error) {
         extras.push({
@@ -5041,7 +5737,7 @@ function satisfiesNodeEngine(version, range) {
   return curPatch >= patch;
 }
 function checkReadableFile(filePath, key, fileName) {
-  if (!import_node_fs5.default.existsSync(filePath)) {
+  if (!import_node_fs6.default.existsSync(filePath)) {
     return {
       name: key,
       status: "FAIL",
@@ -5050,9 +5746,9 @@ function checkReadableFile(filePath, key, fileName) {
     };
   }
   try {
-    const stat = import_node_fs5.default.statSync(filePath);
+    const stat = import_node_fs6.default.statSync(filePath);
     if (!stat.isFile()) throw new Error("\u8DEF\u5F84\u4E0D\u662F\u666E\u901A\u6587\u4EF6");
-    import_node_fs5.default.readFileSync(filePath, "utf8");
+    import_node_fs6.default.readFileSync(filePath, "utf8");
     return { name: key, status: "PASS", message: `AI \u89C4\u5219\u5C31\u7EEA: ${fileName}`, fix: "" };
   } catch (error) {
     return {
@@ -5075,7 +5771,7 @@ function buildDoctorReport(options) {
     fix: "\u5347\u7EA7 Node.js \u5230\u6EE1\u8DB3 engines \u7684\u7248\u672C\u540E\u91CD\u8BD5"
   });
   let config = null;
-  if (!import_node_fs5.default.existsSync(configPath)) {
+  if (!import_node_fs6.default.existsSync(configPath)) {
     checks.push({
       name: "config",
       status: "FAIL",
@@ -5138,7 +5834,7 @@ function buildDoctorReport(options) {
         }
         let scenarioPath;
         try {
-          scenarioPath = import_node_path5.default.isAbsolute(entry.url) ? entry.url : validatePath(configDir, entry.url);
+          scenarioPath = import_node_path6.default.isAbsolute(entry.url) ? entry.url : validatePath(configDir, entry.url);
         } catch (error) {
           listOk = false;
           checks.push({
@@ -5149,7 +5845,7 @@ function buildDoctorReport(options) {
           });
           continue;
         }
-        if (import_node_path5.default.isAbsolute(entry.url)) {
+        if (import_node_path6.default.isAbsolute(entry.url)) {
           checks.push({
             name: "absolute-scenario-path",
             status: "WARN",
@@ -5157,7 +5853,7 @@ function buildDoctorReport(options) {
             fix: "\u5C06 scenario.config.js \u4E2D\u8BE5\u573A\u666F\u7684 url \u6539\u4E3A\u76F8\u5BF9\u8DEF\u5F84"
           });
         }
-        if (!import_node_fs5.default.existsSync(scenarioPath)) {
+        if (!import_node_fs6.default.existsSync(scenarioPath)) {
           listOk = false;
           checks.push({
             name: "scenario-list",
@@ -5215,7 +5911,7 @@ function buildDoctorReport(options) {
   try {
     layout = resolveLayoutFromConfigDir(configDir);
   } catch (error) {
-    layout = createProjectLayout(import_node_path5.default.dirname(configDir), import_node_path5.default.basename(configDir));
+    layout = createProjectLayout(import_node_path6.default.dirname(configDir), import_node_path6.default.basename(configDir));
     checks.push({
       name: "framework-directory",
       status: "FAIL",
@@ -5239,6 +5935,17 @@ function buildDoctorReport(options) {
   const lockResult = checkVersionLock(layout.frameworkPath(FRAMEWORK_FILES.versionLock));
   checks.push({ name: lockResult.name, status: lockResult.status, message: lockResult.message, fix: lockResult.fix });
   if (lockResult.extra) checks.push(...lockResult.extra);
+  const e2eDir = import_node_path6.default.join(configDir, "e2e");
+  if (isE2eProject(configDir)) {
+    const required = ["package.json", "playwright.config.js", "auth-adapter.js"];
+    for (const fileName of required) checks.push(checkReadableFile(import_node_path6.default.join(e2eDir, fileName), `e2e-${fileName}`, fileName));
+    checks.push(checkReadableFile(layout.frameworkPath(FRAMEWORK_FILES.e2eReporter), "e2e-reporter", FRAMEWORK_FILES.e2eReporter));
+    const cli = import_node_path6.default.join(e2eDir, "node_modules", "@playwright", "test", "cli.js");
+    checks.push(import_node_fs6.default.existsSync(cli) ? { name: "e2e-dependencies", status: "PASS", message: "\u5DF2\u5B89\u88C5\u672C\u5730 Playwright", fix: "" } : { name: "e2e-dependencies", status: "WARN", message: "\u5C1A\u672A\u5B89\u88C5\u672C\u5730 Playwright", fix: `\u8FDB\u5165 ${e2eDir} \u6267\u884C npm install\uFF0C\u518D\u6267\u884C npx playwright install chromium` });
+    info.push({ name: "e2e-browser", message: "\u6D4F\u89C8\u5668\u53EF\u7528\u6027\u4E0E E2E_BASE_URL \u9700\u5728\u9879\u76EE\u73AF\u5883\u786E\u8BA4\uFF1Bdoctor \u4E0D\u542F\u52A8\u6D4F\u89C8\u5668" });
+  } else if (import_node_fs6.default.existsSync(e2eDir)) {
+    info.push({ name: "e2e-external", message: "\u68C0\u6D4B\u5230\u81EA\u7BA1 E2E \u76EE\u5F55\uFF0C\u672A\u542F\u7528\u6846\u67B6\u6258\u7BA1 E2E" });
+  }
   const summary = { passed: 0, warned: 0, failed: 0, info: info.length };
   for (const check of checks) {
     if (check.status === "PASS") summary.passed += 1;
@@ -5314,8 +6021,8 @@ function outputSecretVariants(values) {
 }
 
 // src/utils/data-file.js
-var import_node_fs6 = __toESM(require("node:fs"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 function isPlainObject2(value2) {
   return value2 !== null && typeof value2 === "object" && !Array.isArray(value2);
 }
@@ -5433,22 +6140,22 @@ function parseDatasetText(text, format, source = "<dataset>") {
   return format === "jsonl" ? parseJsonl(text, source) : parseJson(text, source);
 }
 function loadDataset(filePath) {
-  const source = import_node_path6.default.resolve(filePath);
-  if (!import_node_fs6.default.existsSync(source)) throw new Error(`\u6570\u636E\u96C6\u6587\u4EF6\u4E0D\u5B58\u5728: ${source}`);
-  const text = import_node_fs6.default.readFileSync(source, "utf8");
-  const extension = import_node_path6.default.extname(source).toLowerCase();
+  const source = import_node_path7.default.resolve(filePath);
+  if (!import_node_fs7.default.existsSync(source)) throw new Error(`\u6570\u636E\u96C6\u6587\u4EF6\u4E0D\u5B58\u5728: ${source}`);
+  const text = import_node_fs7.default.readFileSync(source, "utf8");
+  const extension = import_node_path7.default.extname(source).toLowerCase();
   const format = extension === ".csv" ? "csv" : extension === ".jsonl" || extension === ".ndjson" ? "jsonl" : "json";
   const rows = parseDatasetText(text, format, source);
   return { rows, format, file: source };
 }
 
 // src/utils/html-report.js
-var import_node_fs8 = __toESM(require("node:fs"), 1);
-var import_node_path8 = __toESM(require("node:path"), 1);
+var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_path9 = __toESM(require("node:path"), 1);
 
 // src/utils/junit.js
-var import_node_fs7 = __toESM(require("node:fs"), 1);
-var import_node_path7 = __toESM(require("node:path"), 1);
+var import_node_fs8 = __toESM(require("node:fs"), 1);
+var import_node_path8 = __toESM(require("node:path"), 1);
 var INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
 function escapeXml(value2) {
   return String(value2 == null ? "" : value2).replace(INVALID_XML_CHARS, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -5549,9 +6256,9 @@ ${suites.join("\n")}${suites.length ? "\n" : ""}</testsuites>
 `;
 }
 function writeJUnitReport(filePath, reports, options = {}) {
-  const target = import_node_path7.default.resolve(filePath);
-  import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(target), { recursive: true });
-  import_node_fs7.default.writeFileSync(target, buildJUnitXml(reports, options), "utf8");
+  const target = import_node_path8.default.resolve(filePath);
+  import_node_fs8.default.mkdirSync(import_node_path8.default.dirname(target), { recursive: true });
+  import_node_fs8.default.writeFileSync(target, buildJUnitXml(reports, options), "utf8");
   return target;
 }
 
@@ -5575,17 +6282,17 @@ function buildHtmlReport(reports, options = {}) {
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
 }
 function writeHtmlReport(file, reports, options) {
-  const target = import_node_path8.default.resolve(file);
-  import_node_fs8.default.mkdirSync(import_node_path8.default.dirname(target), { recursive: true });
-  import_node_fs8.default.writeFileSync(target, buildHtmlReport(reports, options), "utf8");
+  const target = import_node_path9.default.resolve(file);
+  import_node_fs9.default.mkdirSync(import_node_path9.default.dirname(target), { recursive: true });
+  import_node_fs9.default.writeFileSync(target, buildHtmlReport(reports, options), "utf8");
   return target;
 }
 
 // src/cli/serve-server.js
-var import_node_fs9 = __toESM(require("node:fs"), 1);
+var import_node_fs10 = __toESM(require("node:fs"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
 var import_node_https = __toESM(require("node:https"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 var HOP_BY_HOP_HEADERS = /* @__PURE__ */ new Set([
   "connection",
   "keep-alive",
@@ -5607,19 +6314,22 @@ function contentType(filePath) {
     ".json": "application/json; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".webp": "image/webp",
     ".txt": "text/plain; charset=utf-8"
-  }[import_node_path9.default.extname(filePath).toLowerCase()] || "application/octet-stream";
+  }[import_node_path10.default.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 function safeFile(root, relativePath) {
-  const candidate = import_node_path9.default.resolve(root, relativePath);
-  const relative = import_node_path9.default.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || import_node_path9.default.isAbsolute(relative)) return null;
+  const candidate = import_node_path10.default.resolve(root, relativePath);
+  const relative = import_node_path10.default.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || import_node_path10.default.isAbsolute(relative)) return null;
   return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
-function serveStaticFile(response, filePath) {
+function serveStaticFile(response, filePath, { e2eNavigation = false } = {}) {
   const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
-  if (import_node_path9.default.extname(filePath).toLowerCase() !== ".html") {
-    const stream = import_node_fs9.default.createReadStream(filePath);
+  if (import_node_path10.default.extname(filePath).toLowerCase() !== ".html") {
+    const stream = import_node_fs10.default.createReadStream(filePath);
     stream.on("error", () => {
       if (response.headersSent) {
         response.destroy();
@@ -5637,7 +6347,7 @@ function serveStaticFile(response, filePath) {
     });
     return;
   }
-  import_node_fs9.default.readFile(filePath, "utf8", function(error, html) {
+  import_node_fs10.default.readFile(filePath, "utf8", function(error, html) {
     if (error) {
       response.writeHead(500);
       response.end("Internal Server Error");
@@ -5645,9 +6355,13 @@ function serveStaticFile(response, filePath) {
     }
     const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
     const headPattern = /<head(?:\s[^>]*)?>/i;
-    const content = headPattern.test(html) ? html.replace(headPattern, function(head) {
+    let content = headPattern.test(html) ? html.replace(headPattern, function(head) {
       return head + marker;
     }) : marker + html;
+    if (e2eNavigation && !html.includes("data-scenario-test-e2e")) {
+      const navigation = '<nav data-scenario-test-e2e aria-label="\u6D4B\u8BD5\u7C7B\u578B" style="display:flex;gap:20px;padding:12px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:14px system-ui"><a href="/" style="color:#334155">HTTP \u573A\u666F</a><a href="/e2e/" style="color:#2563eb">\u6D4F\u89C8\u5668 E2E</a></nav>';
+      content = /<body(?:\s[^>]*)?>/i.test(content) ? content.replace(/<body(?:\s[^>]*)?>/i, (body) => body + navigation) : navigation + content;
+    }
     response.writeHead(200, headers);
     response.end(content);
   });
@@ -5839,6 +6553,38 @@ function proxyRequest(request, response, targetUrl, options = {}) {
   });
   request.pipe(upstream);
 }
+var EXTENSION_SAFE_METHODS = /* @__PURE__ */ new Set(["GET", "HEAD", "OPTIONS"]);
+function isPrivateServePath(pathname) {
+  const segments = pathname.replaceAll("\\", "/").split("/").filter(Boolean);
+  return segments.some((segment) => {
+    const lower = segment.toLowerCase();
+    return lower.includes(":") || lower === ".git" || lower === ".auth" || lower === "node_modules" || lower === "e2e-evidence" || lower === "e2e-results" || lower === "test-results" || lower === "playwright-report" || lower === ".env" || lower.startsWith(".env.") || lower === "storage-state.json" || lower === "storagestate.json" || lower.endsWith(".pem") || lower.endsWith(".key");
+  });
+}
+async function dispatchToExtensions(extensions, request, response, pathname, hostHeader, port) {
+  const method = String(request.method || "GET").toUpperCase();
+  if (!EXTENSION_SAFE_METHODS.has(method) && !isProxyOriginAllowed(request.headers, hostHeader, port)) {
+    response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Forbidden: \u6269\u5C55\u63A5\u53E3\u53EA\u63A5\u53D7\u672C\u673A\u5DE5\u4F5C\u53F0\u6765\u6E90\u7684\u5199\u8BF7\u6C42");
+    return true;
+  }
+  for (const extension of extensions) {
+    let handled;
+    try {
+      handled = await extension.handle(request, response, pathname);
+    } catch (extensionError) {
+      if (response.headersSent) {
+        abortProxyResponse(response);
+        return true;
+      }
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end(`\u6269\u5C55 ${extension.name} \u5904\u7406\u5931\u8D25: ${extensionError.message}`);
+      return true;
+    }
+    if (handled === true || response.writableEnded || response.destroyed) return true;
+  }
+  return false;
+}
 function createServeServer(options) {
   const {
     workspace,
@@ -5848,9 +6594,19 @@ function createServeServer(options) {
     defaultTarget,
     overrideBaseUrl = "",
     proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS,
-    insecure = false
+    insecure = false,
+    extensions = []
   } = options;
-  return import_node_http.default.createServer((request, response) => {
+  const identity = Object.freeze({
+    version: VERSION,
+    buildId: BUILD_ID ?? "source-unbuilt",
+    contractVersion: contract.contractVersion,
+    pid: process.pid,
+    workspace: import_node_path10.default.resolve(workspace),
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    extensions: extensions.map((extension) => extension.name)
+  });
+  const server = import_node_http.default.createServer(async (request, response) => {
     try {
       if (!isAllowedServeHost(request.headers.host, port)) {
         response.writeHead(403);
@@ -5858,12 +6614,31 @@ function createServeServer(options) {
         return;
       }
       const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
+      if (pathname === "/__scenario-test__/status") {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          response.writeHead(405, { Allow: "GET, HEAD" });
+          response.end();
+          return;
+        }
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        response.end(request.method === "HEAD" ? void 0 : JSON.stringify(identity));
+        return;
+      }
+      if (pathname !== "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js" && isPrivateServePath(pathname)) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      if (extensions.length && await dispatchToExtensions(extensions, request, response, pathname, request.headers.host, port)) {
+        return;
+      }
       let filePath;
-      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
+      const publicRuntime = ["/__scenario-test__/scenario-test.umd.js", "/dist/scenario-test.umd.js", "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js"].includes(pathname);
+      if (pathname === "/__scenario-test__/scenario-test.umd.js") filePath = import_node_path10.default.join(libraryDist, "scenario-test.umd.js");
       else if (pathname === "/dist/scenario-test.umd.js") {
-        filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path10.default.join(libraryDist, "scenario-test.umd.js");
       } else if (pathname === "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js") {
-        filePath = import_node_path9.default.join(libraryDist, "scenario-test.umd.js");
+        filePath = import_node_path10.default.join(libraryDist, "scenario-test.umd.js");
       } else {
         const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
         filePath = safeFile(workspace, relativePath);
@@ -5873,7 +6648,12 @@ function createServeServer(options) {
         response.end("Forbidden");
         return;
       }
-      import_node_fs9.default.stat(filePath, (error, stat) => {
+      if (!publicRuntime && isPrivateServePath(import_node_path10.default.relative(workspace, filePath))) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+      import_node_fs10.default.stat(filePath, (error, stat) => {
         if (error || !stat.isFile()) {
           if (!defaultTarget?.target) {
             response.writeHead(404);
@@ -5901,18 +6681,68 @@ function createServeServer(options) {
           proxyRequest(request, response, target.target, { timeoutMs: proxyTimeoutMs, insecure });
           return;
         }
-        serveStaticFile(response, filePath);
+        let realPath;
+        try {
+          realPath = import_node_fs10.default.realpathSync(filePath);
+        } catch {
+          response.writeHead(404);
+          response.end("Not Found");
+          return;
+        }
+        if (!publicRuntime && isPrivateServePath(import_node_path10.default.relative(workspace, realPath))) {
+          response.writeHead(403);
+          response.end("Forbidden");
+          return;
+        }
+        serveStaticFile(response, filePath, { e2eNavigation: pathname === "/" && extensions.some((extension) => extension.name === "e2e") });
       });
     } catch {
       response.writeHead(400);
       response.end("Bad Request");
     }
   });
+  let disposal;
+  server.disposeExtensions = () => disposal ??= Promise.allSettled(
+    extensions.map((extension) => Promise.resolve().then(() => extension.dispose?.()))
+  ).then((results) => {
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "serve \u6269\u5C55\u6E05\u7406\u5931\u8D25");
+  });
+  server.on("close", () => {
+    server.disposeExtensions().catch((error) => server.emit("extensionDisposeError", error));
+  });
+  return server;
+}
+
+// src/cli/serve-extensions.js
+var import_node_fs11 = __toESM(require("node:fs"), 1);
+var import_node_path11 = __toESM(require("node:path"), 1);
+var import_node_url = require("node:url");
+var SERVE_EXTENSIONS_DIR = "serve-extensions";
+async function loadServeExtensions(workspace, { warn = console.warn } = {}) {
+  const dir = import_node_path11.default.join(workspace, SERVE_EXTENSIONS_DIR);
+  if (!import_node_fs11.default.existsSync(dir) || !import_node_fs11.default.statSync(dir).isDirectory()) return [];
+  const extensions = [];
+  const files = import_node_fs11.default.readdirSync(dir).filter((file) => file.endsWith(".mjs")).sort();
+  for (const file of files) {
+    try {
+      const mod = await import((0, import_node_url.pathToFileURL)(import_node_path11.default.join(dir, file)).href);
+      const extension = mod.default ?? mod.extension;
+      if (!extension || typeof extension.name !== "string" || typeof extension.handle !== "function") {
+        warn(`\u8B66\u544A: serve \u6269\u5C55 ${file} \u5BFC\u51FA\u4E0D\u7B26\u5408\u7EA6\u5B9A\uFF08\u9700\u8981 default { name, handle }\uFF09\uFF0C\u5DF2\u8DF3\u8FC7`);
+        continue;
+      }
+      extensions.push({ ...extension, file });
+    } catch (error) {
+      warn(`\u8B66\u544A: serve \u6269\u5C55 ${file} \u52A0\u8F7D\u5931\u8D25\uFF08${error.message}\uFF09\uFF0C\u5DF2\u8DF3\u8FC7`);
+    }
+  }
+  return extensions;
 }
 
 // src/import.js
-var import_node_fs10 = __toESM(require("node:fs"), 1);
-var import_node_path10 = __toESM(require("node:path"), 1);
+var import_node_fs12 = __toESM(require("node:fs"), 1);
+var import_node_path12 = __toESM(require("node:path"), 1);
 var DEFAULT_MAX_IMPORT_ENTRIES = 50;
 var STATIC_EXTENSIONS = /* @__PURE__ */ new Set([
   ".js",
@@ -6172,7 +7002,7 @@ function isStaticOrPreflight(entry) {
     return true;
   }
   if (!/^https?:$/i.test(parsed.protocol)) return true;
-  const extension = import_node_path10.default.extname(parsed.pathname).toLowerCase();
+  const extension = import_node_path12.default.extname(parsed.pathname).toLowerCase();
   if (STATIC_EXTENSIONS.has(extension)) return true;
   const mimeType = String(entry?.response?.content?.mimeType || "");
   if (/^text\/html(?:;|$)/i.test(mimeType)) return true;
@@ -6649,18 +7479,18 @@ function renderDraftFile(draft, meta = {}) {
 }
 function readHarFile(filePath) {
   try {
-    return import_node_fs10.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
+    return import_node_fs12.default.readFileSync(filePath === "-" ? 0 : filePath, "utf8");
   } catch (error) {
     throw new ImportError(`\u65E0\u6CD5\u8BFB\u53D6 HAR \u6587\u4EF6: ${filePath}\uFF08${error.message}\uFF09`, "\u8BF7\u786E\u8BA4\u8DEF\u5F84\u5B58\u5728\u4E14\u5F53\u524D\u7528\u6237\u6709\u8BFB\u53D6\u6743\u9650\u3002");
   }
 }
 
 // src/project-registry.js
-var import_node_crypto2 = __toESM(require("node:crypto"), 1);
-var import_node_fs11 = __toESM(require("node:fs"), 1);
+var import_node_crypto3 = __toESM(require("node:crypto"), 1);
+var import_node_fs13 = __toESM(require("node:fs"), 1);
 var import_node_net = __toESM(require("node:net"), 1);
 var import_node_os = __toESM(require("node:os"), 1);
-var import_node_path11 = __toESM(require("node:path"), 1);
+var import_node_path13 = __toESM(require("node:path"), 1);
 var REGISTRY_SCHEMA_VERSION = 1;
 var DEFAULT_PORT = 4300;
 var DEFAULT_SCENARIO_DIR = "scenario-test";
@@ -6673,22 +7503,22 @@ var LOCK_STALE_MS = 15e3;
 var MAX_PORT_PROBES = 200;
 function resolveRegistryHome(env = process.env) {
   const explicit = env[HOME_ENV];
-  return explicit ? import_node_path11.default.resolve(explicit) : import_node_path11.default.join(import_node_os.default.homedir(), ".scenario-test");
+  return explicit ? import_node_path13.default.resolve(explicit) : import_node_path13.default.join(import_node_os.default.homedir(), ".scenario-test");
 }
 function registryPath(home = resolveRegistryHome()) {
-  return import_node_path11.default.join(home, REGISTRY_FILE);
+  return import_node_path13.default.join(home, REGISTRY_FILE);
 }
 function isDirectory2(target) {
   try {
-    return import_node_fs11.default.statSync(target).isDirectory();
+    return import_node_fs13.default.statSync(target).isDirectory();
   } catch {
     return false;
   }
 }
 function canonicalPath(target) {
-  let resolved = import_node_path11.default.resolve(target);
+  let resolved = import_node_path13.default.resolve(target);
   try {
-    resolved = import_node_fs11.default.realpathSync.native(resolved);
+    resolved = import_node_fs13.default.realpathSync.native(resolved);
   } catch {
   }
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
@@ -6707,7 +7537,7 @@ function readRegistry(home = resolveRegistryHome()) {
   const file = registryPath(home);
   let raw;
   try {
-    raw = import_node_fs11.default.readFileSync(file, "utf8");
+    raw = import_node_fs13.default.readFileSync(file, "utf8");
   } catch (error) {
     if (error?.code === "ENOENT") return emptyRegistry();
     throw error;
@@ -6730,10 +7560,10 @@ function readRegistry(home = resolveRegistryHome()) {
       if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) continue;
       if (typeof value2.config !== "string" || typeof value2.port !== "number") continue;
       registry.projects[key] = {
-        name: typeof value2.name === "string" ? value2.name : import_node_path11.default.basename(import_node_path11.default.dirname(value2.config)),
+        name: typeof value2.name === "string" ? value2.name : import_node_path13.default.basename(import_node_path13.default.dirname(value2.config)),
         slug: typeof value2.slug === "string" ? value2.slug : "",
-        root: typeof value2.root === "string" ? value2.root : import_node_path11.default.dirname(value2.config),
-        dir: typeof value2.dir === "string" ? value2.dir : import_node_path11.default.dirname(value2.config),
+        root: typeof value2.root === "string" ? value2.root : import_node_path13.default.dirname(value2.config),
+        dir: typeof value2.dir === "string" ? value2.dir : import_node_path13.default.dirname(value2.config),
         config: value2.config,
         port: value2.port,
         createdAt: typeof value2.createdAt === "string" ? value2.createdAt : nowIso(),
@@ -6744,12 +7574,12 @@ function readRegistry(home = resolveRegistryHome()) {
   return registry;
 }
 function writeRegistry(registry, home = resolveRegistryHome()) {
-  import_node_fs11.default.mkdirSync(home, { recursive: true });
+  import_node_fs13.default.mkdirSync(home, { recursive: true });
   const file = registryPath(home);
-  const temp = `${file}.${process.pid}.${import_node_crypto2.default.randomBytes(4).toString("hex")}.tmp`;
-  import_node_fs11.default.writeFileSync(temp, `${JSON.stringify(registry, null, 2)}
+  const temp = `${file}.${process.pid}.${import_node_crypto3.default.randomBytes(4).toString("hex")}.tmp`;
+  import_node_fs13.default.writeFileSync(temp, `${JSON.stringify(registry, null, 2)}
 `, "utf8");
-  import_node_fs11.default.renameSync(temp, file);
+  import_node_fs13.default.renameSync(temp, file);
 }
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -6758,20 +7588,20 @@ function sleep(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 async function withRegistryLock(home, action) {
-  import_node_fs11.default.mkdirSync(home, { recursive: true });
-  const lock = import_node_path11.default.join(home, LOCK_FILE);
+  import_node_fs13.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path13.default.join(home, LOCK_FILE);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   let handle;
   while (!handle) {
     try {
-      handle = import_node_fs11.default.openSync(lock, "wx");
-      import_node_fs11.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+      handle = import_node_fs13.default.openSync(lock, "wx");
+      import_node_fs13.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       try {
-        const stat = import_node_fs11.default.statSync(lock);
+        const stat = import_node_fs13.default.statSync(lock);
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          import_node_fs11.default.rmSync(lock, { force: true });
+          import_node_fs13.default.rmSync(lock, { force: true });
           continue;
         }
       } catch {
@@ -6787,27 +7617,27 @@ async function withRegistryLock(home, action) {
     return await action();
   } finally {
     try {
-      import_node_fs11.default.closeSync(handle);
+      import_node_fs13.default.closeSync(handle);
     } catch {
     }
-    import_node_fs11.default.rmSync(lock, { force: true });
+    import_node_fs13.default.rmSync(lock, { force: true });
   }
 }
 function withRegistryLockSync(home, action) {
-  import_node_fs11.default.mkdirSync(home, { recursive: true });
-  const lock = import_node_path11.default.join(home, LOCK_FILE);
+  import_node_fs13.default.mkdirSync(home, { recursive: true });
+  const lock = import_node_path13.default.join(home, LOCK_FILE);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   let handle;
   while (!handle) {
     try {
-      handle = import_node_fs11.default.openSync(lock, "wx");
-      import_node_fs11.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
+      handle = import_node_fs13.default.openSync(lock, "wx");
+      import_node_fs13.default.writeFileSync(handle, JSON.stringify({ pid: process.pid, at: Date.now() }));
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       try {
-        const stat = import_node_fs11.default.statSync(lock);
+        const stat = import_node_fs13.default.statSync(lock);
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-          import_node_fs11.default.rmSync(lock, { force: true });
+          import_node_fs13.default.rmSync(lock, { force: true });
           continue;
         }
       } catch {
@@ -6823,20 +7653,20 @@ function withRegistryLockSync(home, action) {
     return action();
   } finally {
     try {
-      import_node_fs11.default.closeSync(handle);
+      import_node_fs13.default.closeSync(handle);
     } catch {
     }
-    import_node_fs11.default.rmSync(lock, { force: true });
+    import_node_fs13.default.rmSync(lock, { force: true });
   }
 }
 function projectName(root) {
-  const base = import_node_path11.default.basename(import_node_path11.default.resolve(root));
-  return base && base !== import_node_path11.default.parse(import_node_path11.default.resolve(root)).root ? base : "project";
+  const base = import_node_path13.default.basename(import_node_path13.default.resolve(root));
+  return base && base !== import_node_path13.default.parse(import_node_path13.default.resolve(root)).root ? base : "project";
 }
 function slugify(name) {
   const slug = String(name).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-._]+|[-._]+$/g, "");
   if (slug) return slug;
-  const digest = import_node_crypto2.default.createHash("sha1").update(String(name)).digest("hex").slice(0, 6);
+  const digest = import_node_crypto3.default.createHash("sha1").update(String(name)).digest("hex").slice(0, 6);
   return `project-${digest}`;
 }
 function uniqueSlug(registry, name, key) {
@@ -6845,31 +7675,31 @@ function uniqueSlug(registry, name, key) {
     Object.entries(registry.projects).filter(([entryKey]) => entryKey !== key).map(([, entry]) => entry.slug).filter(Boolean)
   );
   if (!taken.has(base)) return base;
-  const digest = import_node_crypto2.default.createHash("sha1").update(key).digest("hex").slice(0, 6);
+  const digest = import_node_crypto3.default.createHash("sha1").update(key).digest("hex").slice(0, 6);
   return `${base}-${digest}`;
 }
 function discoverProject(startDir = process.cwd()) {
-  let current = import_node_path11.default.resolve(startDir);
+  let current = import_node_path13.default.resolve(startDir);
   while (true) {
-    const directConfig = import_node_path11.default.join(current, "scenario.config.js");
-    if (import_node_fs11.default.existsSync(directConfig) && isDirectory2(import_node_path11.default.join(current, ".scenario-test"))) {
-      const root = import_node_path11.default.dirname(current);
+    const directConfig = import_node_path13.default.join(current, "scenario.config.js");
+    if (import_node_fs13.default.existsSync(directConfig) && isDirectory2(import_node_path13.default.join(current, ".scenario-test"))) {
+      const root = import_node_path13.default.dirname(current);
       return { root, dir: current, config: directConfig, name: projectName(root) };
     }
-    const nestedDir = import_node_path11.default.join(current, DEFAULT_SCENARIO_DIR);
-    const nestedConfig = import_node_path11.default.join(nestedDir, "scenario.config.js");
-    if (import_node_fs11.default.existsSync(nestedConfig)) {
+    const nestedDir = import_node_path13.default.join(current, DEFAULT_SCENARIO_DIR);
+    const nestedConfig = import_node_path13.default.join(nestedDir, "scenario.config.js");
+    if (import_node_fs13.default.existsSync(nestedConfig)) {
       return { root: current, dir: nestedDir, config: nestedConfig, name: projectName(current) };
     }
-    const parent = import_node_path11.default.dirname(current);
+    const parent = import_node_path13.default.dirname(current);
     if (parent === current) return null;
     current = parent;
   }
 }
 function projectFromConfig(configPath) {
-  const config = import_node_path11.default.resolve(configPath);
-  const dir = import_node_path11.default.dirname(config);
-  return { root: import_node_path11.default.dirname(dir), dir, config, name: projectName(import_node_path11.default.dirname(dir)) };
+  const config = import_node_path13.default.resolve(configPath);
+  const dir = import_node_path13.default.dirname(config);
+  return { root: import_node_path13.default.dirname(dir), dir, config, name: projectName(import_node_path13.default.dirname(dir)) };
 }
 function projectKey(configPath) {
   return canonicalPath(configPath);
@@ -7260,20 +8090,20 @@ ${optionHelp}
   node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
-  const target = import_node_path12.default.resolve(projectRoot, relativePath);
+  const target = import_node_path14.default.resolve(projectRoot, relativePath);
   if (!isRealPathWithinRoot(projectRoot, target)) {
     throw new Error(`\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916\u8DEF\u5F84\uFF08\u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF09: ${relativePath}`);
   }
-  if (import_node_fs12.default.existsSync(target) && !force) return false;
-  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
-  import_node_fs12.default.writeFileSync(target, content, "utf8");
+  if (import_node_fs14.default.existsSync(target) && !force) return false;
+  import_node_fs14.default.mkdirSync(import_node_path14.default.dirname(target), { recursive: true });
+  import_node_fs14.default.writeFileSync(target, content, "utf8");
   return true;
 }
 function resolveInitDirectory(projectRoot, value2) {
   const directory = String(value2 || "scenario-test").trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
-  const target = import_node_path12.default.resolve(projectRoot, directory);
-  const relative = import_node_path12.default.relative(projectRoot, target);
-  if (!directory || !relative || import_node_path12.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path12.default.isAbsolute(relative)) {
+  const target = import_node_path14.default.resolve(projectRoot, directory);
+  const relative = import_node_path14.default.relative(projectRoot, target);
+  if (!directory || !relative || import_node_path14.default.isAbsolute(directory) || relative.startsWith("..") || import_node_path14.default.isAbsolute(relative)) {
     throw new Error("--dir \u5FC5\u987B\u662F\u9879\u76EE\u5185\u7684\u76F8\u5BF9\u76EE\u5F55\uFF08\u4E0D\u80FD\u662F\u9879\u76EE\u6839\u672C\u8EAB\uFF09");
   }
   if (!isRealPathWithinRoot(projectRoot, target)) {
@@ -7301,30 +8131,30 @@ async function askInitMode(directory) {
   }
 }
 function sha256File(filePath) {
-  return import_node_crypto3.default.createHash("sha256").update(import_node_fs12.default.readFileSync(filePath)).digest("hex");
+  return import_node_crypto4.default.createHash("sha256").update(import_node_fs14.default.readFileSync(filePath)).digest("hex");
 }
 function runtimeSourceCandidates(fileName) {
   return [
-    import_node_path12.default.resolve(import_node_path12.default.dirname(process.argv[1]), fileName),
-    import_node_path12.default.resolve(import_node_path12.default.dirname(process.argv[1]), "../dist", fileName)
+    import_node_path14.default.resolve(import_node_path14.default.dirname(process.argv[1]), fileName),
+    import_node_path14.default.resolve(import_node_path14.default.dirname(process.argv[1]), "../dist", fileName)
   ];
 }
 function copyRuntimeCli(layout, force) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-  if (import_node_fs12.default.existsSync(target) && !force) return false;
-  const source = import_node_path12.default.resolve(process.argv[1]);
+  if (import_node_fs14.default.existsSync(target) && !force) return false;
+  const source = import_node_path14.default.resolve(process.argv[1]);
   if (!source.endsWith(".cjs")) return null;
-  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
-  import_node_fs12.default.copyFileSync(source, target);
+  import_node_fs14.default.mkdirSync(import_node_path14.default.dirname(target), { recursive: true });
+  import_node_fs14.default.copyFileSync(source, target);
   return true;
 }
 async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   const target = layout.frameworkPath(fileName);
-  if (import_node_fs12.default.existsSync(target) && !force) return false;
-  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs12.default.existsSync(candidate));
-  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
+  if (import_node_fs14.default.existsSync(target) && !force) return false;
+  const source = runtimeSourceCandidates(fileName).find((candidate) => import_node_fs14.default.existsSync(candidate));
+  import_node_fs14.default.mkdirSync(import_node_path14.default.dirname(target), { recursive: true });
   if (source) {
-    import_node_fs12.default.copyFileSync(source, target);
+    import_node_fs14.default.copyFileSync(source, target);
     return true;
   }
   if (!libraryUrl) return null;
@@ -7333,7 +8163,7 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
   try {
     const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    import_node_fs12.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+    import_node_fs14.default.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
     return true;
   } catch (error) {
     console.warn(`\u8B66\u544A: ${fileName} \u4E0B\u8F7D\u5931\u8D25\uFF08${downloadSignal.aborted ? "\u4E0B\u8F7D\u8D85\u65F6\uFF0830 \u79D2\uFF09" : escapeInlineText(error.message)}\uFF09`);
@@ -7343,10 +8173,12 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
 function writeVersionLock(layout) {
   const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
   const fileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+  const hasE2e = isE2eProject(layout.publicDir);
+  if (hasE2e) fileNames.push(FRAMEWORK_FILES.e2eReporter);
   const sha256 = {};
   for (const fileName of fileNames) {
     const filePath = layout.frameworkPath(fileName);
-    if (import_node_fs12.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
+    if (import_node_fs14.default.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
   }
   const lock = {
     runtimeVersion: VERSION,
@@ -7355,24 +8187,25 @@ function writeVersionLock(layout) {
       cli: FRAMEWORK_FILES.cli,
       umd: FRAMEWORK_FILES.umd,
       dts: FRAMEWORK_FILES.dts,
-      capabilities: FRAMEWORK_FILES.capabilities
+      capabilities: FRAMEWORK_FILES.capabilities,
+      ...hasE2e ? { e2eReporter: FRAMEWORK_FILES.e2eReporter } : {}
     },
     sha256
   };
-  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(target), { recursive: true });
-  import_node_fs12.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
+  import_node_fs14.default.mkdirSync(import_node_path14.default.dirname(target), { recursive: true });
+  import_node_fs14.default.writeFileSync(target, `${JSON.stringify(lock, null, 2)}
 `, "utf8");
   return true;
 }
 function shouldRefreshFramework(layout, force) {
   if (force) return true;
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  if (runtimeFileNames.some((fileName) => !import_node_fs12.default.existsSync(layout.frameworkPath(fileName)))) return true;
+  if (runtimeFileNames.some((fileName) => !import_node_fs14.default.existsSync(layout.frameworkPath(fileName)))) return true;
   const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-  if (!import_node_fs12.default.existsSync(lockPath)) return true;
+  if (!import_node_fs14.default.existsSync(lockPath)) return true;
   let lock;
   try {
-    lock = JSON.parse(import_node_fs12.default.readFileSync(lockPath, "utf8"));
+    lock = JSON.parse(import_node_fs14.default.readFileSync(lockPath, "utf8"));
   } catch {
     return true;
   }
@@ -7388,17 +8221,20 @@ function recordRuntimeResult(created, skipped, relativePath, status, failed) {
   else if (failed) failed.push(relativePath);
 }
 async function initCommand(args) {
-  const projectRoot = import_node_path12.default.resolve(args.project || process.cwd());
+  const projectRoot = import_node_path14.default.resolve(args.project || process.cwd());
   const directory = resolveInitDirectory(projectRoot, args.dir);
-  const projectName2 = import_node_path12.default.basename(projectRoot).trim() || "project";
+  const projectName2 = import_node_path14.default.basename(projectRoot).trim() || "project";
   const storagePrefix = `scenario-test.${projectName2.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
   const layout = resolveProjectLayout(projectRoot, directory);
   const frameworkDirectory = ".scenario-test";
-  if (!isRealPathWithinRoot(projectRoot, import_node_path12.default.join(projectRoot, directory, frameworkDirectory))) {
+  if (args.e2e && import_node_fs14.default.existsSync(import_node_path14.default.join(layout.publicDir, "e2e")) && !isE2eProject(layout.publicDir)) {
+    throw new Error("\u68C0\u6D4B\u5230\u5DF2\u6709\u81EA\u7BA1 e2e \u76EE\u5F55\uFF1B\u8BF7\u4FDD\u7559\u73B0\u6709\u76EE\u5F55\uFF0C\u624B\u52A8\u8FC1\u79FB\u540E\u518D\u542F\u7528\u6846\u67B6 E2E\uFF0Cinit \u4E0D\u4F1A\u8986\u76D6\u6216\u6DF7\u5165\u6A21\u677F");
+  }
+  if (!isRealPathWithinRoot(projectRoot, import_node_path14.default.join(projectRoot, directory, frameworkDirectory))) {
     throw new Error(`\u76EE\u6807\u76EE\u5F55\u4E2D\u7684 ${frameworkDirectory} \u7ECF\u94FE\u63A5/\u8054\u63A5\u70B9\u8D8A\u754C\uFF0C\u62D2\u7EDD\u5199\u5165\u9879\u76EE\u5916`);
   }
   let force = args.force;
-  if (!force && import_node_fs12.default.existsSync(import_node_path12.default.join(projectRoot, directory)) && !args.noInput) {
+  if (!force && import_node_fs14.default.existsSync(import_node_path14.default.join(projectRoot, directory)) && !args.noInput) {
     const mode = await askInitMode(directory);
     if (mode === "cancel") {
       console.log("\u5DF2\u53D6\u6D88\u521D\u59CB\u5316\u3002");
@@ -7418,6 +8254,19 @@ async function initCommand(args) {
     const overwrite = force || frameworkTemplatePaths.has(relativePath);
     (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
   }
+  if (args.e2e || isE2eProject(layout.publicDir)) {
+    if (args.e2e) {
+      for (const [relativePath, content] of Object.entries(createE2eProjectFiles(directory))) {
+        (writeProjectFile(projectRoot, relativePath, content, false) ? created : skipped).push(relativePath);
+      }
+      const ignorePath = import_node_path14.default.join(layout.publicDir, ".gitignore");
+      if (!isRealPathWithinRoot(projectRoot, ignorePath)) throw new Error(".gitignore \u8DEF\u5F84\u8D8A\u754C");
+      const existing = import_node_fs14.default.existsSync(ignorePath) ? import_node_fs14.default.readFileSync(ignorePath, "utf8") : "";
+      if (!existing.split(/\r?\n/).includes("/e2e-results/")) import_node_fs14.default.writeFileSync(ignorePath, existing + (existing && !existing.endsWith("\n") ? "\n" : "") + "/e2e-results/\n");
+    }
+    writeProjectFile(projectRoot, layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter), E2E_REPORTER, true);
+    created.push(layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter));
+  }
   const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
   recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework), failedRuntimeFiles);
   recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework), failedRuntimeFiles);
@@ -7430,7 +8279,7 @@ async function initCommand(args) {
     );
   }
   const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs12.default.existsSync(layout.frameworkPath(fileName)));
+  const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !import_node_fs14.default.existsSync(layout.frameworkPath(fileName)));
   if (missingRuntimeFiles.length) {
     throw new Error(
       `\u8FD0\u884C\u65F6\u526F\u672C\u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11: ${missingRuntimeFiles.join(", ")}
@@ -7442,12 +8291,12 @@ async function initCommand(args) {
   console.log(`\u9879\u76EE\u5E03\u5C40: \u5185\u90E8\u6587\u4EF6\u4F4D\u4E8E ${layout.frameworkRelativeDir}`);
   if (created.length) console.log(`\u5DF2\u521B\u5EFA: ${created.join(", ")}`);
   if (skipped.length) console.log(`\u5DF2\u4FDD\u7559\u73B0\u6709\u6587\u4EF6: ${skipped.join(", ")}`);
-  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path12.default.join(projectRoot, directory, "index.html")}`);
+  console.log(`\u6D4F\u89C8\u5668\u5DE5\u4F5C\u53F0: ${import_node_path14.default.join(projectRoot, directory, "index.html")}`);
   console.log("\u63D0\u793A: \u53CC\u51FB start-scenario-test.cmd \u542F\u52A8\u5DE5\u4F5C\u53F0\uFF1Bserve \u4F1A\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF0C\u7ED5\u5F00\u6D4F\u89C8\u5668 CORS\u3002");
 }
 function resolveConfigPath(value2) {
-  const candidate = import_node_path12.default.resolve(value2 || "scenario.config.js");
-  if (!import_node_fs12.default.existsSync(candidate)) {
+  const candidate = import_node_path14.default.resolve(value2 || "scenario.config.js");
+  if (!import_node_fs14.default.existsSync(candidate)) {
     throw new CliUsageError(
       `${value2 ? "\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728" : "\u672A\u627E\u5230\u9ED8\u8BA4\u914D\u7F6E\u6587\u4EF6"}\uFF1A${candidate}`,
       [
@@ -7467,7 +8316,7 @@ async function loadPlugins(config, configDir, options = {}) {
     } catch (error) {
       if (options.allowExternalPlugins) {
         console.warn(`\u26A0\uFE0F  \u52A0\u8F7D\u5916\u90E8\u63D2\u4EF6: ${escapeInlineText(pluginPath)}`);
-        absolutePath = import_node_path12.default.isAbsolute(pluginPath) ? pluginPath : import_node_path12.default.resolve(configDir, pluginPath);
+        absolutePath = import_node_path14.default.isAbsolute(pluginPath) ? pluginPath : import_node_path14.default.resolve(configDir, pluginPath);
       } else {
         throw new Error(
           `\u63D2\u4EF6\u8DEF\u5F84\u4E0D\u5B89\u5168: ${pluginPath}
@@ -7476,7 +8325,7 @@ async function loadPlugins(config, configDir, options = {}) {
         );
       }
     }
-    const imported = await import((0, import_node_url.pathToFileURL)(absolutePath).href);
+    const imported = await import((0, import_node_url2.pathToFileURL)(absolutePath).href);
     const factory = imported.default || imported;
     const pluginApi = { ...node_exports };
     const plugin = typeof factory === "function" ? await factory(pluginApi) : factory;
@@ -7532,7 +8381,7 @@ function configVariables(config, overrides = {}, environment = null) {
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
-  const configDir = import_node_path12.default.dirname(configPath);
+  const configDir = import_node_path14.default.dirname(configPath);
   const config = loadConfigFile(configPath, node_exports);
   const envGlobals = parseGlobalsEnv();
   const environment = selectEnvironment(config, args.env);
@@ -7651,7 +8500,7 @@ ${choices.join("\n")}${remaining > 0 ? `
   const runEntry = async (entry, entryPrint) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
-    if (import_node_path12.default.isAbsolute(entry.url)) scenarioPath = entry.url;
+    if (import_node_path14.default.isAbsolute(entry.url)) scenarioPath = entry.url;
     else {
       try {
         scenarioPath = validatePath(configDir, entry.url);
@@ -7929,7 +8778,7 @@ function openInBrowser(url) {
   const command = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
   const commandArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
   try {
-    const child = (0, import_node_child_process.spawn)(command, commandArgs, { detached: true, stdio: "ignore" });
+    const child = (0, import_node_child_process2.spawn)(command, commandArgs, { detached: true, stdio: "ignore" });
     child.on("error", () => {
     });
     child.unref();
@@ -7939,8 +8788,8 @@ function openInBrowser(url) {
 async function serveCommand(args) {
   const project = resolveServeProject(args);
   const configPath = project.config;
-  const workspace = import_node_path12.default.dirname(configPath);
-  const libraryDist = import_node_path12.default.dirname(import_node_path12.default.resolve(process.argv[1]));
+  const workspace = import_node_path14.default.dirname(configPath);
+  const libraryDist = import_node_path14.default.dirname(import_node_path14.default.resolve(process.argv[1]));
   const config = loadConfigFile(configPath, node_exports);
   const startup = resolveStartupProxyTarget(config, args.env, args.baseUrl);
   if (startup.error) {
@@ -7955,6 +8804,8 @@ async function serveCommand(args) {
     reassign: args.reassign === true
   });
   const port = ensured.entry.port;
+  const extensions = await loadServeExtensions(workspace);
+  if (isE2eProject(workspace)) extensions.unshift(createE2eExtension({ workspace }));
   const server = createServeServer({
     workspace,
     libraryDist,
@@ -7965,7 +8816,8 @@ async function serveCommand(args) {
     overrideBaseUrl: args.baseUrl || "",
     proxyTimeoutMs: args.proxyTimeout ?? void 0,
     // 默认校验上游 https 证书；只有显式 --insecure 才放宽（自签联调环境）
-    insecure: args.insecure === true
+    insecure: args.insecure === true,
+    extensions
   });
   server.on("error", (error) => {
     if (error?.code === "EADDRINUSE") {
@@ -7977,6 +8829,20 @@ async function serveCommand(args) {
     console.error(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0\u542F\u52A8\u5931\u8D25: ${escapeInlineText(error?.message || String(error))}`);
     process.exitCode = 1;
   });
+  let closing = false;
+  const shutdown = async () => {
+    if (closing) return;
+    closing = true;
+    try {
+      await server.disposeExtensions();
+    } catch (error) {
+      console.error(`\u6269\u5C55\u6E05\u7406\u5931\u8D25\uFF1A${error.message}`);
+    } finally {
+      server.close();
+    }
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
   server.listen(port, "127.0.0.1", () => {
     const url = `http://127.0.0.1:${port}/`;
     console.log(`\u573A\u666F\u6D4B\u8BD5\u5DE5\u4F5C\u53F0: ${url}`);
@@ -7987,6 +8853,9 @@ async function serveCommand(args) {
       console.log(`\u63A5\u53E3\u4EE3\u7406: ${startup.key} -> ${startup.target}`);
       console.log(`\u63A5\u53E3\u4EE3\u7406\u7A7A\u95F2\u8D85\u65F6: ${proxyTimeoutMs}ms${args.proxyTimeout === void 0 ? "\uFF08\u9ED8\u8BA4\uFF09" : "\uFF08--proxy-timeout\uFF09"}`);
       if (args.insecure === true) console.log("\u63A5\u53E3\u4EE3\u7406: \u5DF2\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08--insecure\uFF09");
+    }
+    if (extensions.length) {
+      console.log(`serve \u6269\u5C55: ${extensions.map((item) => `${item.name}\uFF08serve-extensions/${item.file}\uFF09`).join(", ")}`);
     }
     console.log("\u63D0\u793A: serve \u5DF2\u81EA\u52A8\u542F\u7528\u540C\u6E90\u63A5\u53E3\u4EE3\u7406\uFF1B\u6D4F\u89C8\u5668\u8BF7\u6C42\u4F1A\u5148\u5230\u5F53\u524D\u5DE5\u4F5C\u53F0\u5730\u5740\u3002\u53CC\u51FB\u9879\u76EE\u5185 start-scenario-test.cmd \u53EF\u4E00\u952E\u542F\u52A8\u3002");
     if (args.open) openInBrowser(url);
@@ -8097,15 +8966,15 @@ function importTimestamp(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 function scenarioIdFromOutput(output, timestamp) {
-  const stem = import_node_path12.default.basename(output, import_node_path12.default.extname(output)).trim();
+  const stem = import_node_path14.default.basename(output, import_node_path14.default.extname(output)).trim();
   const normalized = stem.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "");
   return normalized || `imported-${timestamp}`;
 }
 function defaultImportOutput(timestamp) {
-  let candidate = import_node_path12.default.resolve("scenarios", `imported-${timestamp}.js`);
+  let candidate = import_node_path14.default.resolve("scenarios", `imported-${timestamp}.js`);
   let suffix = 2;
-  while (import_node_fs12.default.existsSync(candidate)) {
-    candidate = import_node_path12.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
+  while (import_node_fs14.default.existsSync(candidate)) {
+    candidate = import_node_path14.default.resolve("scenarios", `imported-${timestamp}-${suffix}.js`);
     suffix += 1;
   }
   return candidate;
@@ -8125,12 +8994,12 @@ function importCommand(args) {
     throw new CliUsageError("--max-entries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u9ED8\u8BA4 50\uFF1B\u8BF7\u9009\u62E9\u4E00\u4E2A\u6B63\u6574\u6570\u4E0A\u9650\u540E\u91CD\u8BD5\u3002");
   }
   const timestamp = importTimestamp();
-  const output = args.output ? import_node_path12.default.resolve(args.output) : defaultImportOutput(timestamp);
+  const output = args.output ? import_node_path14.default.resolve(args.output) : defaultImportOutput(timestamp);
   const id = scenarioIdFromOutput(output, timestamp);
   let draft;
   try {
     draft = args.har ? createHarDraft(readHarFile(args.har), {
-      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path12.default.basename(args.har),
+      source: args.har === "-" ? "stdin\uFF08HAR\uFF09" : import_node_path14.default.basename(args.har),
       maxEntries,
       hosts: parseHostFilter(args.host)
     }) : createCurlDraft(args.curl);
@@ -8145,9 +9014,9 @@ function importCommand(args) {
     );
   }
   const content = renderDraftFile(draft, { id, generatedAt: (/* @__PURE__ */ new Date()).toISOString() });
-  import_node_fs12.default.mkdirSync(import_node_path12.default.dirname(output), { recursive: true });
-  import_node_fs12.default.writeFileSync(output, content, "utf8");
-  const relativeOutput = import_node_path12.default.relative(process.cwd(), output).split(import_node_path12.default.sep).join("/") || output;
+  import_node_fs14.default.mkdirSync(import_node_path14.default.dirname(output), { recursive: true });
+  import_node_fs14.default.writeFileSync(output, content, "utf8");
+  const relativeOutput = import_node_path14.default.relative(process.cwd(), output).split(import_node_path14.default.sep).join("/") || output;
   console.log(`\u5DF2\u751F\u6210\u573A\u666F\u8349\u7A3F: ${relativeOutput}`);
   console.log(`\u573A\u666F id: ${id}`);
   console.log(`\u5BFC\u5165\u6B65\u9AA4: ${draft.scenario.steps.length}`);
@@ -8180,10 +9049,10 @@ function doctorCommand(args) {
   let configDir;
   try {
     configPath = resolveConfigPath(args.config);
-    configDir = import_node_path12.default.dirname(configPath);
+    configDir = import_node_path14.default.dirname(configPath);
   } catch (error) {
-    configPath = import_node_path12.default.resolve(args.config || "scenario.config.js");
-    configDir = import_node_path12.default.dirname(configPath);
+    configPath = import_node_path14.default.resolve(args.config || "scenario.config.js");
+    configDir = import_node_path14.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
   if (args.json) {

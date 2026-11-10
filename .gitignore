@@ -3,6 +3,9 @@ dist/*.map
 dist/**/*.map
 test-results/
 playwright-report/
+examples/e2e/.scenario-test/
+examples/e2e/e2e-results/
+examples/e2e/e2e/test-results/
 examples/**/downloads/
 examples/**/temp/
 *.log

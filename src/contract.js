@@ -13,7 +13,7 @@ import { VERSION } from "./version.generated.js";
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
 // v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）；
 // v20：用户级项目登记（projects 命令、serve 固定端口、--open/--reassign）
-export const CONTRACT_VERSION = 21;
+export const CONTRACT_VERSION = 22;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -255,6 +255,7 @@ export const contract = Object.freeze({
             open: { kind: "flag", prop: "open", description: "serve 监听成功后用默认浏览器打开工作台" },
             reassign: { kind: "flag", prop: "reassign", description: "projects ensure：登记端口被占用时自动顺延到空闲端口并更新登记" },
             concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
+            e2e: { kind: "flag", prop: "e2e", description: "init 可选初始化浏览器 E2E 项目" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
             "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },

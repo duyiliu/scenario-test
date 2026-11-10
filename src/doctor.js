@@ -12,6 +12,7 @@ import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { loadConfigFile, loadScenarioFile } from "./node/loader.js";
 import { FRAMEWORK_FILES, createProjectLayout, resolveLayoutFromConfigDir } from "./project-layout.js";
+import { isE2eProject } from "./e2e/extension.js";
 
 const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
 const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
@@ -552,6 +553,21 @@ export function buildDoctorReport(options) {
     const lockResult = checkVersionLock(layout.frameworkPath(FRAMEWORK_FILES.versionLock));
     checks.push({ name: lockResult.name, status: lockResult.status, message: lockResult.message, fix: lockResult.fix });
     if (lockResult.extra) checks.push(...lockResult.extra);
+
+    // E2E 为显式可选能力：不触发安装，也不访问被测服务。
+    const e2eDir = path.join(configDir, "e2e");
+    if (isE2eProject(configDir)) {
+        const required = ["package.json", "playwright.config.js", "auth-adapter.js"];
+        for (const fileName of required) checks.push(checkReadableFile(path.join(e2eDir, fileName), `e2e-${fileName}`, fileName));
+        checks.push(checkReadableFile(layout.frameworkPath(FRAMEWORK_FILES.e2eReporter), "e2e-reporter", FRAMEWORK_FILES.e2eReporter));
+        const cli = path.join(e2eDir, "node_modules", "@playwright", "test", "cli.js");
+        checks.push(fs.existsSync(cli)
+            ? { name: "e2e-dependencies", status: "PASS", message: "已安装本地 Playwright", fix: "" }
+            : { name: "e2e-dependencies", status: "WARN", message: "尚未安装本地 Playwright", fix: `进入 ${e2eDir} 执行 npm install，再执行 npx playwright install chromium` });
+        info.push({ name: "e2e-browser", message: "浏览器可用性与 E2E_BASE_URL 需在项目环境确认；doctor 不启动浏览器" });
+    } else if (fs.existsSync(e2eDir)) {
+        info.push({ name: "e2e-external", message: "检测到自管 E2E 目录，未启用框架托管 E2E" });
+    }
 
     const summary = { passed: 0, warned: 0, failed: 0, info: info.length };
     for (const check of checks) {

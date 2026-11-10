@@ -407,7 +407,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.15.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 21;
+var CONTRACT_VERSION = 22;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -656,6 +656,7 @@ var contract = Object.freeze({
       open: { kind: "flag", prop: "open", description: "serve \u76D1\u542C\u6210\u529F\u540E\u7528\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00\u5DE5\u4F5C\u53F0" },
       reassign: { kind: "flag", prop: "reassign", description: "projects ensure\uFF1A\u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3\u5E76\u66F4\u65B0\u767B\u8BB0" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
+      e2e: { kind: "flag", prop: "e2e", description: "init \u53EF\u9009\u521D\u59CB\u5316\u6D4F\u89C8\u5668 E2E \u9879\u76EE" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
       "library-url": { kind: "value", prop: "libraryUrl", description: "init \u8FD0\u884C\u65F6\u526F\u672C\u4E0B\u8F7D\u76EE\u5F55\uFF08CLI/UMD/d.ts/capabilities\uFF0C\u9ED8\u8BA4 GitHub Tag dist\uFF09" },

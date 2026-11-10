@@ -9,6 +9,7 @@
 | 首次使用：安装全局 AI Skill | [安装全局 AI Skill](#安装全局-ai-skill) |
 | 首次接入业务项目 | [快速接入](#快速接入) |
 | 运行、导入或检查场景 | [常用操作](#常用操作) |
+| 同一工作台运行前端 E2E | [可选浏览器 E2E](#可选浏览器-e2e主分支新增) |
 | 升级已有项目 | [升级](#升级) |
 | 开发和发布本工具 | [维护者](#维护者) |
 
@@ -19,6 +20,34 @@
 `run --all --report reports/result.html --junit reports/result.xml --json` 可同时导出离线 HTML、JUnit 与 JSON。HTML 仅保留运行证据，不嵌入源码；已识别敏感变量值沿用 CLI 脱敏，长证据截断。
 
 `extract: [{ name: "elapsed", target: "duration", required: true }]` 提取单次请求毫秒耗时；直接检查阈值仍可使用 `{ target: "duration", lte: 800 }`。单次耗时不代表 p99，统计分位需要多样本测量。
+
+## 可选浏览器 E2E（主分支新增）
+
+HTTP 场景和前端 E2E 共用本地 Node 服务与工作台入口，分别使用 HTTP 引擎和 Playwright 执行。默认 HTTP 接入仍免 npm；仅启用 E2E 后，在独立的 `scenario-test/e2e/` 内安装浏览器测试依赖。
+
+以下命令要求使用包含本功能的本地构建或后续发布版；上方固定的 `v0.15.0` Tag 尚不包含这些新增能力。
+
+```powershell
+# 在业务项目根目录，使用支持 --e2e 的 CLI 显式初始化
+node scenario-test/.scenario-test/scenario-test-cli.cjs init --project . --dir scenario-test --e2e --no-input
+cd scenario-test/e2e
+npm install
+# 使用系统 Chrome 时设定 channel；使用 Playwright Chromium 时先显式安装
+$env:E2E_BROWSER_CHANNEL = "chrome"
+$env:E2E_BASE_URL = "http://127.0.0.1:3000"
+cd ../..
+node scenario-test/.scenario-test/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js --open
+```
+
+工作台主页提供“浏览器 E2E”入口，也可在同一服务地址下打开 `/e2e/`。页面可选择测试文件、勾选有头模式、停止活动运行，并按文件查看各次执行的截图、日志和 HTML 报告。首版的运行选择粒度是测试文件，文件内各测试的结果分别留档。
+
+- `e2e/playwright.config.js`、`auth-adapter.js` 和 `tests/` 由业务项目维护。每个场景在 `test.step` 中显式调用登录适配器，并使用独立 context；账号属于场景，密码等凭据通过环境变量或项目凭据提供器取得。
+- 默认示例验证公共首页。设置了账号而没有实现登录适配器时会报错，不能把空操作视为登录成功。示例通过也不代表业务流程已经验收。
+- 公共 reporter 位于 `.scenario-test/`，随运行时更新。执行结果位于 `e2e-results/`，不入库；每次运行具有独立 runId，切换测试文件不会混用截图和结果。枚举测试不产生通过记录。
+- 已有自管 `e2e/` 时，初始化会明确拒绝混入模板，需要先人工迁移；重复初始化已启用的项目会保留配置、登录适配器和测试文件。
+- 页面“服务身份”显示运行中的版本、构建摘要、PID 和工作区。磁盘文件更新后需重启服务才会加载新构建；此功能不自动终止已有服务。
+
+测试编写与认证适配说明见 [Skill E2E 指引](skills/scenario-test/references/e2e.md)，可控本地验证见 [E2E 示例](examples/e2e/README.md)。
 
 ## 安装全局 AI Skill
 

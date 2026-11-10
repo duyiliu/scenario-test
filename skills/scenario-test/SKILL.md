@@ -1,6 +1,6 @@
 ---
 name: scenario-test
-description: 为当前业务项目接入、设计、维护、诊断或执行 scenario-test HTTP 业务场景测试。用户提到为某个业务功能、Controller、接口链路生成场景测试，或操作 scenario-test 时使用；普通单元测试、代码审查和无关 E2E 测试不要触发。
+description: 为当前业务项目接入、设计、维护、诊断或执行 scenario-test HTTP 场景及其浏览器 E2E 测试。普通单元测试、代码审查和无关 E2E 测试不要触发。
 metadata:
   version: "0.15.0"
 ---
@@ -16,6 +16,7 @@ metadata:
 3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录使用 Skill 自带的发布版 CLI 初始化（见 [init.md](references/init.md)，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。
 5. 按本次意图选择：**接入/修复/升级** → [init.md](references/init.md)；**生成/修改/补充场景** → [author.md](references/author.md)；**执行/调试/启动工作台** → [execute.md](references/execute.md)。用户只要求**评估测试设计/还有哪些值得补测**时，只读分析：不改文件、不初始化、不执行，也不按此流程产出场景。一次请求可以按先后顺序使用多个工作流；初始化按第 3 条自动执行，编写阶段不调用接口，执行阶段仍需用户明确提出。
+6. 用户明确要求 scenario-test 浏览器 E2E 时，阅读 [E2E 工作流](references/e2e.md)；该能力需显式初始化与独立依赖，优先检查项目 CLI 能力，保留已有项目运行时。
 
 ## 不变约束
 

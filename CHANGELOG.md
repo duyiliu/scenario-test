@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 新增可选 `init --e2e`（契约版本 22）：生成独立 Playwright 项目与业务登录适配器，共用 Node 工作台服务；HTTP 默认接入保持免 npm。
+- 新增通用 E2E 执行、精确测试文件选择、有头模式、停止进程树，以及按 runId 留存的步骤、截图、日志和报告；失败或中断不会沿用旧的通过结果。
+- 新增服务身份端点与页面详情，区分运行进程和磁盘构建；扩展支持异步清理，静态服务限制环境文件、认证状态及原始结果目录的读取。
+- E2E 项目文件保留用户所有权，公共 reporter 受运行时锁校验；已有自管 E2E 目录明确提示迁移，Skill 补充可选接入与执行说明。
+
 - #131：失败 equals 断言附带有界字段路径差异证据，工作台、JSON 和 HTML 报告同源；不改变断言判定。
 - #133：run --report <file.html> 生成自包含、脱敏的离线报告，可与 --json/--junit 共存。
 - #134：extract target 新增 duration，复用 response.durationMs 单次请求计时，契约版本升为 21。已有 duration 断言保持原样。

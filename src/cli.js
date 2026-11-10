@@ -6,6 +6,9 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
 import { createProjectFiles, DEFAULT_LIBRARY_URL } from "./init-templates.js";
+import { createE2eProjectFiles } from "./e2e/templates.js";
+import { E2E_REPORTER } from "./e2e/reporter-template.js";
+import { createE2eExtension, isE2eProject } from "./e2e/extension.js";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
@@ -24,6 +27,7 @@ import {
     createServeServer,
     resolveStartupProxyTarget
 } from "./cli/serve-server.js";
+import { loadServeExtensions } from "./cli/serve-extensions.js";
 import { createCurlDraft, createHarDraft, DEFAULT_MAX_IMPORT_ENTRIES, ImportError, parseHostFilter, readHarFile, renderDraftFile } from "./import.js";
 import {
     DEFAULT_PORT as DEFAULT_PROJECT_PORT,
@@ -407,6 +411,8 @@ async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
 function writeVersionLock(layout) {
     const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
     const fileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
+    const hasE2e = isE2eProject(layout.publicDir);
+    if (hasE2e) fileNames.push(FRAMEWORK_FILES.e2eReporter);
     const sha256 = {};
     for (const fileName of fileNames) {
         const filePath = layout.frameworkPath(fileName);
@@ -419,7 +425,8 @@ function writeVersionLock(layout) {
             cli: FRAMEWORK_FILES.cli,
             umd: FRAMEWORK_FILES.umd,
             dts: FRAMEWORK_FILES.dts,
-            capabilities: FRAMEWORK_FILES.capabilities
+            capabilities: FRAMEWORK_FILES.capabilities,
+            ...(hasE2e ? { e2eReporter: FRAMEWORK_FILES.e2eReporter } : {})
         },
         sha256
     };
@@ -464,6 +471,9 @@ async function initCommand(args) {
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
     const frameworkDirectory = ".scenario-test";
+    if (args.e2e && fs.existsSync(path.join(layout.publicDir, "e2e")) && !isE2eProject(layout.publicDir)) {
+        throw new Error("检测到已有自管 e2e 目录；请保留现有目录，手动迁移后再启用框架 E2E，init 不会覆盖或混入模板");
+    }
     // 目标目录内的 .scenario-test 也可能是预置跳转链接：运行时副本写入前先做真实路径校验
     if (!isRealPathWithinRoot(projectRoot, path.join(projectRoot, directory, frameworkDirectory))) {
         throw new Error(`目标目录中的 ${frameworkDirectory} 经链接/联接点越界，拒绝写入项目外`);
@@ -494,6 +504,19 @@ async function initCommand(args) {
     for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
         const overwrite = force || frameworkTemplatePaths.has(relativePath);
         (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
+    }
+    if (args.e2e || isE2eProject(layout.publicDir)) {
+        if (args.e2e) {
+            for (const [relativePath, content] of Object.entries(createE2eProjectFiles(directory))) {
+                (writeProjectFile(projectRoot, relativePath, content, false) ? created : skipped).push(relativePath);
+            }
+            const ignorePath = path.join(layout.publicDir, ".gitignore");
+            if (!isRealPathWithinRoot(projectRoot, ignorePath)) throw new Error(".gitignore 路径越界");
+            const existing = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, "utf8") : "";
+            if (!existing.split(/\r?\n/).includes("/e2e-results/")) fs.writeFileSync(ignorePath, existing + (existing && !existing.endsWith("\n") ? "\n" : "") + "/e2e-results/\n");
+        }
+        writeProjectFile(projectRoot, layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter), E2E_REPORTER, true);
+        created.push(layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter));
     }
     const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
     recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework), failedRuntimeFiles);
@@ -1142,6 +1165,9 @@ async function serveCommand(args) {
         reassign: args.reassign === true
     });
     const port = ensured.entry.port;
+    // 项目扩展（serve-extensions/*.mjs）：与工作台同服务同端口挂载本地能力，如浏览器 e2e 触发器
+    const extensions = await loadServeExtensions(workspace);
+    if (isE2eProject(workspace)) extensions.unshift(createE2eExtension({ workspace }));
     const server = createServeServer({
         workspace,
         libraryDist,
@@ -1152,7 +1178,8 @@ async function serveCommand(args) {
         overrideBaseUrl: args.baseUrl || "",
         proxyTimeoutMs: args.proxyTimeout ?? undefined,
         // 默认校验上游 https 证书；只有显式 --insecure 才放宽（自签联调环境）
-        insecure: args.insecure === true
+        insecure: args.insecure === true,
+        extensions
     });
     server.on("error", (error) => {
         if (error?.code === "EADDRINUSE") {
@@ -1164,6 +1191,16 @@ async function serveCommand(args) {
         console.error(`场景测试工作台启动失败: ${escapeInlineText(error?.message || String(error))}`);
         process.exitCode = 1;
     });
+    let closing = false;
+    const shutdown = async () => {
+        if (closing) return;
+        closing = true;
+        try { await server.disposeExtensions(); }
+        catch (error) { console.error(`扩展清理失败：${error.message}`); }
+        finally { server.close(); }
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
     server.listen(port, "127.0.0.1", () => {
         const url = `http://127.0.0.1:${port}/`;
         console.log(`场景测试工作台: ${url}`);
@@ -1174,6 +1211,9 @@ async function serveCommand(args) {
             console.log(`接口代理: ${startup.key} -> ${startup.target}`);
             console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);
             if (args.insecure === true) console.log("接口代理: 已跳过上游 https 证书校验（--insecure）");
+        }
+        if (extensions.length) {
+            console.log(`serve 扩展: ${extensions.map((item) => `${item.name}（serve-extensions/${item.file}）`).join(", ")}`);
         }
         console.log("提示: serve 已自动启用同源接口代理；浏览器请求会先到当前工作台地址。双击项目内 start-scenario-test.cmd 可一键启动。");
         if (args.open) openInBrowser(url);
