@@ -3,8 +3,8 @@
   "package": "@yc_yzkj/scenario-test",
   "source": "local-build-unreleased",
   "sha256": {
-    "scenario-test-cli.cjs": "46e3fe94023db6e013d51ca281762dec41bca352e1f18a89985ef60104d79fbf",
-    "scenario-test.umd.js": "61434343ba771d3d132b8586db4925f97e3565b616a3b1f4bdf332010906d8c5",
+    "scenario-test-cli.cjs": "e2638e402bde93343f8b9b971f30367c867183ee620ea8cc8db16bf4f7fe2882",
+    "scenario-test.umd.js": "df00fc7bbea014aea50785af34d2f4a4ef513d2321b13c2f6ab99ce0c880930f",
     "scenario-test.d.ts": "08790477a2b619ff87bc4d8130e2b3ed4d2cc8e0218bd56a218ce4e84533c814",
     "scenario-test-capabilities.json": "7411841526962ad7557dffdd5a77674febdb202e9c87b390b210eda3c10a3e1e"
   }
