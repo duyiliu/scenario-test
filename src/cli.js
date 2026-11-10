@@ -11,8 +11,10 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveString, SAVED_RESPONSE } from "./core.js";
+import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveClone, resolveString, SAVED_RESPONSE } from "./core.js";
+import { collectRequestSecretValues, outputSecretVariants } from "./utils/output-secrets.js";
 import { loadDataset } from "./utils/data-file.js";
+import { writeHtmlReport } from "./utils/html-report.js";
 import { writeJUnitReport } from "./utils/junit.js";
 import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
@@ -118,7 +120,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", proxyTimeout: undefined, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: undefined, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -788,23 +790,39 @@ async function runCommand(args) {
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
-        entryPrint(`\n# ${escapeInlineText(scenario.name)} (${escapeInlineText(entry.id)})`);
+        let headerPrinted = false;
+        const printHeader = () => {
+            if (headerPrinted) return;
+            headerPrinted = true;
+            const secrets = outputSecretVariants([...allSecrets]);
+            entryPrint(`\n# ${escapeInlineText(redactSecrets(scenario.name, secrets))} (${escapeInlineText(redactSecrets(entry.id, secrets))})`);
+        };
         // 场景启动时快照 suite，场景内跨步骤稳定；结束时整体合并回 run 级上下文。
         // 串行下等价于逐场景顺序传递；并发下写序为完成顺序，不暴露半写入状态。
         const entrySuite = { ...suiteContext };
+        let entryRuntime = { vars: baseOptions.vars || {}, suite: entrySuite };
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             suite: entrySuite,
+            _includeAttemptContext: true,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
-            async onAttempt(info) {
+            async onAttempt(info, context) {
+                if (context?.runtime) entryRuntime = context.runtime;
+                for (const secret of collectRequestSecretValues(context?.request)) allSecrets.add(secret);
+                try {
+                    for (const secret of collectRequestSecretValues(resolveClone(info.step?.request || {}, entryRuntime))) allSecrets.add(secret);
+                } catch { /* 执行引擎负责报告模板错误，输出层不得改变运行语义 */ }
+                printHeader();
+                const redact = value => redactSecrets(value, outputSecretVariants([...allSecrets]));
                 const label = info.errorType === "timeout" ? "超时" : (info.errorType ? "连接失败" : "未通过");
                 const detail = info.errorType
-                    ? (info.errorMessage ? escapeInlineText(info.errorMessage) : "")
-                    : `status ${escapeInlineText(info.status)}${info.failedAssertion ? `，${escapeInlineText(info.failedAssertion)}` : ""}`;
-                entryPrint(`  [RETRY] ${escapeInlineText(info.step?.name || "未命名步骤")} 第 ${info.attempt}/${info.totalAttempts} 次${label}${detail ? `（${detail}）` : ""}，${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
+                    ? (info.errorMessage ? escapeInlineText(redact(info.errorMessage)) : "")
+                    : `status ${escapeInlineText(redact(info.status))}${info.failedAssertion ? `，${escapeInlineText(redact(info.failedAssertion))}` : ""}`;
+                entryPrint(`  [RETRY] ${escapeInlineText(redact(info.step?.name || "未命名步骤"))} 第 ${info.attempt}/${info.totalAttempts} 次${label}${detail ? `（${detail}）` : ""}，${ScenarioTest.formatDuration(info.intervalMs)}后重试`);
             },
             async onStep(result, _stepIndex, runtime) {
+                if (runtime) entryRuntime = runtime;
                 const runtimeForResolve = runtime || { vars: {} };
                 const stepSecretVars = {
                     ...(runtimeForResolve.vars || {}),
@@ -812,11 +830,13 @@ async function runCommand(args) {
                 };
                 const stepSecrets = collectSecretValues(stepSecretVars, [
                     baseOptions.authorization,
+                    ...collectRequestSecretValues(result.request),
                     ...baseOptions.globals.filter((item) => isSecretVarName(item.name))
                         .map((item) => resolveString(item.value, runtimeForResolve))
                 ]);
                 for (const secret of stepSecrets) if (secret) allSecrets.add(secret);
-                const redact = (value) => redactSecrets(value, stepSecrets);
+                printHeader();
+                const redact = (value) => redactSecrets(value, outputSecretVariants([...allSecrets]));
                 const mark = result.skipped ? "SKIP" : (result.passed ? "PASS" : "FAIL");
                 entryPrint(`[${mark}] ${escapeInlineText(redact(result.name))} ${escapeInlineText(redact(result.method))} ${escapeInlineText(redact(result.path))} -> ${escapeInlineText(redact(result.status))} (${ScenarioTest.formatDuration(result.duration)})`);
                 for (const warning of result.warnings || []) {
@@ -830,7 +850,7 @@ async function runCommand(args) {
                         if (!Array.isArray(item.assertions) || item.index === undefined) {
                             // shape 失败明细：{ path, expected, actual }
                             // 必须走场景私有 entryPrint：并发输出时明细不能插到其他场景块
-                            entryPrint(`      ↳ ${prefix}${escapeInlineText(item.path)}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
+                            entryPrint(`      ↳ ${escapeInlineText(redact(prefix))}${escapeInlineText(redact(item.path))}: expected=${formatFailureValue(redact(item.expected))} actual=${formatFailureValue(redact(item.actual))}`);
                             continue;
                         }
                         const label = `${prefix}${item.path !== undefined && item.path !== null && item.path !== ""
@@ -838,7 +858,7 @@ async function runCommand(args) {
                             : `第 ${item.index + 1} 项`}`;
                         for (const sub of item.assertions) {
                             if (sub.passed) continue;
-                            entryPrint(`      ↳ ${label} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
+                            entryPrint(`      ↳ ${escapeInlineText(redact(label))} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
                             // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
                             if (sub.reason) entryPrint(`        原因: ${escapeInlineText(redact(sub.reason))}`);
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
@@ -867,9 +887,10 @@ async function runCommand(args) {
                 // 请求体与请求头刻意不输出——注入后的 Authorization、登录密码类字段不应进日志；
                 // 响应体可能回显 token（登录步骤断言失败时），日志合规敏感的团队可设
                 // SCENARIO_NO_BODY_PRINT=1 关闭本输出
-                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => stepSecrets);
+                if (!result.passed && !result.skipped && !process.env.SCENARIO_NO_BODY_PRINT) printFailedStepBody(result, entryPrint, () => outputSecretVariants([...allSecrets]));
             }
         });
+        printHeader();
         // 先合并 suite 再跑 afterScenario：与串行时共享对象已被写入的可见性一致，
         // 插件即使拒绝也不回滚已完成的场景产物（进程最终非零退出）。
         Object.assign(suiteContext, report.suite || {});
@@ -970,11 +991,19 @@ async function runCommand(args) {
     }
 
     // #57 JUnit：与 stdout 人类输出/退出码正交；报告先脱敏再落盘（#90）
-    const secretList = [...allSecrets];
+    const secretList = outputSecretVariants([...allSecrets]);
     const safeReports = reports.map((report) => redactSecrets(report, secretList));
     if (args.junit) {
-        const target = writeJUnitReport(args.junit, safeReports);
+        const target = writeJUnitReport(args.junit, safeReports, { notRun: redactSecrets(notRun, secretList) });
         print(`\nJUnit 报告: ${target}`);
+    }
+
+    if (args.report) {
+        const target = writeHtmlReport(args.report, safeReports, {
+            notRun: redactSecrets(notRun, secretList),
+            environment: redactSecrets(environment?.name || environment?.key || "默认", secretList)
+        });
+        print(`\nHTML 报告: ${target}`);
     }
 
     const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
@@ -1000,11 +1029,11 @@ async function runCommand(args) {
                     vars: redactSecrets(row.vars, secretList),
                     scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
                 })),
-                ...(notRun.length ? { notRun } : {})
+                ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {})
             }
             : (safeReports.length === 1 && !notRun.length
                 ? safeReports[0]
-                : { scenarios: safeReports, ...(notRun.length ? { notRun } : {}) });
+                : { scenarios: safeReports, ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}) });
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     }
 }
@@ -1109,7 +1138,8 @@ async function serveCommand(args) {
     const proxyTimeoutMs = args.proxyTimeout ?? DEFAULT_PROXY_TIMEOUT_MS;
     // 端口来源优先级：显式 --port（并更新登记） > 项目登记端口 > 首次从默认端口起分配
     const ensured = await ensureProject(project, {
-        port: args.portExplicit ? args.port : undefined
+        port: args.portExplicit ? args.port : undefined,
+        reassign: args.reassign === true
     });
     const port = ensured.entry.port;
     const server = createServeServer({
@@ -1139,7 +1169,7 @@ async function serveCommand(args) {
         console.log(`场景测试工作台: ${url}`);
         console.log(`项目: ${ensured.entry.name} (${project.root})`);
         console.log(`配置目录: ${workspace}`);
-        console.log(`项目登记: ${registryPath()}（端口 ${port}${args.portExplicit ? "，--port 已更新" : ensured.created ? "，首次分配" : "，固定复用"}）`);
+        console.log(`项目登记: ${registryPath()}（端口 ${port}${args.portExplicit ? "，--port 已更新" : ensured.created ? "，首次分配" : ensured.changed && args.reassign ? "，重新分配" : "，固定复用"}）`);
         if (startup.target) {
             console.log(`接口代理: ${startup.key} -> ${startup.target}`);
             console.log(`接口代理空闲超时: ${proxyTimeoutMs}ms${args.proxyTimeout === undefined ? "（默认）" : "（--proxy-timeout）"}`);

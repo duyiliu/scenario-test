@@ -1,3 +1,4 @@
+import { renderStructuralDiff } from '../../utils/structural-diff.js';
 import { esc, fmt, safeJson } from './ui-utils.js';
 import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
@@ -55,6 +56,7 @@ const workbenchView = (function () {
                         '<td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">原因: ' + esc(sub.reason) + '</td>' +
                     '</tr>';
                 }
+                if (sub.diff) html += '<tr><td colspan="4">' + renderStructuralDiff(sub.diff) + '</td></tr>';
                 html += eachDetailRows(sub.detail, label);
             });
         });
@@ -1203,7 +1205,7 @@ const workbenchView = (function () {
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-700') + '">' + esc(stringify(a.expected)) + '</td>' +
                     '<td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? 'text-slate-600' : 'text-rose-900 font-bold') + '">' + esc(stringify(a.actual)) + '</td>' +
                     '<td class="px-3.5 py-2 text-xs">' + resLabel + '</td>' +
-                '</tr>' + reasonRow + detailRows;
+                '</tr>' + reasonRow + detailRows + (!rowOk && a.diff ? '<tr><td colspan="4">' + renderStructuralDiff(a.diff) + '</td></tr>' : '');
             }).join('');
 
             assertHtml =
@@ -1528,6 +1530,7 @@ const workbenchView = (function () {
                     '<div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || '') + '">' + esc(step.path || '-') + '</span></div>' +
                     (canLocateStep ? '<button type="button" class="report-step__locate" data-locate-step-index="' + stepIndex + '" aria-label="' + esc('定位到步骤 ' + step.stepNo + '：' + (step.name || '未命名步骤')) + '">定位步骤</button>' : '') +
                     (issue ? '<div class="report-step__issue">' + esc(issue) + '</div>' : '') +
+                    failedAssertions.map(function (a) { return renderStructuralDiff(a.diff); }).join('') +
                     responseHtml +
                 '</div>' +
                 '<div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || '-')) + '</span><span class="report-step__duration">' + esc(step.durationFmt || '-') + '</span></div>' +

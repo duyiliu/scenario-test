@@ -344,6 +344,62 @@ __export(node_exports, {
 });
 module.exports = __toCommonJS(node_exports);
 
+// src/utils/structural-diff.js
+function structuralDiff(expected, actual) {
+  const entries = [];
+  let visited = 0;
+  let truncated = false;
+  const type = (v) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+  const preview = (v) => {
+    if (Array.isArray(v)) return `Array(length ${v.length})`;
+    if (v && typeof v === "object") return "Object";
+    return typeof v === "string" && v.length > 240 ? "\uFF08\u957F\u5B57\u7B26\u4E32\u5DF2\u7701\u7565\uFF09" : v;
+  };
+  function walk(a, b, path4, depth, hasA = true, hasB = true) {
+    if (path4.length > 2e3 || ++visited > 2e3 || entries.length >= 50 || depth > 30) {
+      truncated = true;
+      return;
+    }
+    if (hasA && hasB && Object.is(a, b)) return;
+    const at = type(a), bt = type(b);
+    if (hasA && hasB && at === bt && (at === "object" || at === "array")) {
+      for (const key in a) {
+        if (!Object.hasOwn(a, key)) continue;
+        walk(a[key], b[key], path4 + (at === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, true, Object.hasOwn(b, key));
+        if (truncated) return;
+      }
+      for (const key in b) {
+        if (!Object.hasOwn(b, key) || Object.hasOwn(a, key)) continue;
+        walk(void 0, b[key], path4 + (bt === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, false, true);
+        if (truncated) return;
+      }
+      if (at !== "array" || a.length === b.length) return;
+      walk(a.length, b.length, path4 + ".length", depth + 1);
+      return;
+    }
+    entries.push({ path: path4, expected: hasA ? preview(a) : void 0, actual: hasB ? preview(b) : void 0, expectedType: hasA ? at : "missing", actualType: hasB ? bt : "missing" });
+  }
+  walk(expected, actual, "$", 0);
+  return { entries, truncated };
+}
+function assertionDiff(definition, expected, actual) {
+  if (Object.hasOwn(definition, "equals")) return structuralDiff(expected, actual);
+  if (Object.hasOwn(definition, "notEquals")) {
+    return { entries: [{ path: "$\uFF08\u8981\u6C42\u4E0D\u540C\uFF0C\u5B9E\u9645\u76F8\u7B49\uFF09", expected: "\u4E0D\u540C\u7684\u503C", actual: "\u4E24\u4FA7\u76F8\u7B49", expectedType: "notEquals", actualType: "equal" }], truncated: false };
+  }
+  if (Object.hasOwn(definition, "oneOf") && Array.isArray(expected)) {
+    const entries = [];
+    let truncated = expected.length > 5;
+    for (const [i, candidate] of expected.slice(0, 5).entries()) {
+      const diff = structuralDiff(candidate, actual);
+      entries.push(...diff.entries.map((entry) => ({ ...entry, path: `\u5019\u9009 ${i + 1} \xB7 ${entry.path}` })));
+      truncated ||= diff.truncated;
+    }
+    return { entries: entries.slice(0, 50), truncated: truncated || entries.length > 50 };
+  }
+  return void 0;
+}
+
 // src/core.js
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
@@ -351,7 +407,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.15.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 20;
+var CONTRACT_VERSION = 21;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -460,7 +516,7 @@ var contract = Object.freeze({
     // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
     from: Object.freeze(["body", "headers", "bodyText", "response"]),
     // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
-    targets: Object.freeze(["status"]),
+    targets: Object.freeze(["status", "duration"]),
     // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
@@ -470,7 +526,7 @@ var contract = Object.freeze({
     // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
     // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
     scope: "step",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
+    note: 'target: "duration" \u63D0\u53D6\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF08\u6BEB\u79D2\uFF0Cresponse.durationMs\uFF09\uFF0C\u4E0D\u542B\u91CD\u8BD5\u7B49\u5F85\uFF1B\u4E5F\u53EF\u7528 from: "response", path: "durationMs"\u3002required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -586,6 +642,7 @@ var contract = Object.freeze({
       "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
       insecure: { kind: "flag", prop: "insecure", description: "serve \u4EE3\u7406\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08\u9ED8\u8BA4\u6821\u9A8C\uFF1B\u4EC5\u5185\u7F51\u81EA\u7B7E\u8054\u8C03\u73AF\u5883\u4F7F\u7528\uFF09" },
       data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
+      report: { kind: "value", prop: "report", description: "\u8F93\u51FA\u81EA\u5305\u542B\u79BB\u7EBF HTML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       tag: {
         kind: "value",
@@ -1326,6 +1383,7 @@ function evaluateAssertion(definition, response, runtime, context) {
 }
 function evaluateValidatedAssertion(definition, response, runtime, context) {
   let actual = assertionActual(definition, response, runtime);
+  const comparisonActual = actual;
   let expected;
   let passed = true;
   let reason = "";
@@ -1464,11 +1522,24 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     else if (op === "lt") passed = passed && actual < expected;
     else passed = passed && actual <= expected;
   }
+  let diff;
+  if (!passed) {
+    for (const op of ["equals", "notEquals", "oneOf"]) {
+      if (!Object.hasOwn(definition, op)) continue;
+      const comparison = resolve(definition[op], runtime);
+      const equal = op === "oneOf" ? Array.isArray(comparison) && comparison.some((item) => stableStringify(item) === stableStringify(comparisonActual)) : stableStringify(comparison) === stableStringify(comparisonActual);
+      if (op === "notEquals" ? equal : !equal) {
+        diff = assertionDiff({ [op]: comparison }, comparison, comparisonActual);
+        break;
+      }
+    }
+  }
   return {
     name: definition.name || definition.path || "\u65AD\u8A00",
     passed,
     actual,
     expected,
+    ...diff ? { diff } : {},
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
     // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
@@ -1552,6 +1623,7 @@ function applyExtract(step, response, runtime) {
     }
     let source = response.body;
     if (definition.target === "status") source = response.status;
+    else if (definition.target === "duration") source = response.durationMs;
     else if (definition.header) source = headerValue(response.headers, definition.header);
     else if (definition.from === "headers") source = response.headers;
     else if (definition.from === "bodyText") source = response.bodyText;
@@ -3401,7 +3473,10 @@ function createEngine(engineOptions = {}) {
             errorType: attemptErrorType,
             errorMessage: attemptError ? describeError(attemptError) : ""
           };
-          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext ? attemptCallback(callbackInfo, {
+            runtime,
+            request: attemptError ? attemptError.scenarioContext?.request || null : lastExecution?.request || null
+          }) : attemptCallback(callbackInfo));
           if (enforceAttemptDeadline) {
             const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
             if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);

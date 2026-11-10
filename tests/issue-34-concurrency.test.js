@@ -98,7 +98,7 @@ test("契约 v17：--concurrency 为 number 型 run 选项并投射到 --help", 
     assert.match(help.stdout, /--concurrency <number>/);
 });
 
-test("默认串行、--concurrency 并发执行：报告内容/顺序/退出码与串行一致且耗时缩短", async () => {
+test("默认串行、--concurrency 并发执行：报告内容/顺序/退出码与串行一致且并发真实重叠", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-concurrency-"));
     const phases = {
         serial: { active: 0, maxActive: 0, completed: [] },
@@ -160,11 +160,8 @@ test("默认串行、--concurrency 并发执行：报告内容/顺序/退出码�
             "并发 JSON 必须保持配置清单顺序"
         );
         assert.deepEqual(normalizeReport(concurrentPayload), normalizeReport(serialPayload));
-        // 串行 ≈ 160+220+280 + 快速失败；并发总耗时由最慢场景主导
-        assert.ok(
-            concurrent.elapsed < serial.elapsed - 250,
-            `并发应显著缩短多场景总耗时（串行 ${serial.elapsed}ms，并发 ${concurrent.elapsed}ms）`
-        );
+        // 并发是否真实生效由上方 maxActive===1/3 与完成顺序断言判定，负载无关；
+        // 墙钟耗时受机器负载影响（统一回归曾在串行 3161ms/并发 3232ms 下抖动），不作为判定依据。
 
         // 文本模式输出防交错：每个场景的进度块必须连续（缓冲后整块输出）
         phase = phases.serial;

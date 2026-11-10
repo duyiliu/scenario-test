@@ -1,5 +1,6 @@
 import { copyText, esc, fmt, isSecretName, safeJson, sanitizeSensitive } from './ui-utils.js';
 import { clone, isPlainObject, evalExpression } from '../../core.js';
+import { collectRequestSecretValues, redactKnownOutput } from '../../utils/output-secrets.js';
 import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
 const workbenchAdhoc = (function () {
@@ -262,6 +263,7 @@ const workbenchAdhoc = (function () {
             node.innerHTML = '';
             return;
         }
+        result = redactKnownOutput(result, collectRequestSecretValues(result.request));
         var statusClass = result.passed ? 'text-emerald-700' : 'text-rose-700';
         var response = result.response || { headers: {}, body: null };
         node.classList.remove('hidden');

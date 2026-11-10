@@ -234,6 +234,71 @@ var require_md5 = __commonJS({
   }
 });
 
+// src/utils/structural-diff.js
+function structuralDiff(expected, actual) {
+  const entries = [];
+  let visited = 0;
+  let truncated = false;
+  const type = (v) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+  const preview = (v) => {
+    if (Array.isArray(v)) return `Array(length ${v.length})`;
+    if (v && typeof v === "object") return "Object";
+    return typeof v === "string" && v.length > 240 ? "\uFF08\u957F\u5B57\u7B26\u4E32\u5DF2\u7701\u7565\uFF09" : v;
+  };
+  function walk(a, b, path, depth, hasA = true, hasB = true) {
+    if (path.length > 2e3 || ++visited > 2e3 || entries.length >= 50 || depth > 30) {
+      truncated = true;
+      return;
+    }
+    if (hasA && hasB && Object.is(a, b)) return;
+    const at = type(a), bt = type(b);
+    if (hasA && hasB && at === bt && (at === "object" || at === "array")) {
+      for (const key in a) {
+        if (!Object.hasOwn(a, key)) continue;
+        walk(a[key], b[key], path + (at === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, true, Object.hasOwn(b, key));
+        if (truncated) return;
+      }
+      for (const key in b) {
+        if (!Object.hasOwn(b, key) || Object.hasOwn(a, key)) continue;
+        walk(void 0, b[key], path + (bt === "array" ? `[${key}]` : `[${JSON.stringify(key)}]`), depth + 1, false, true);
+        if (truncated) return;
+      }
+      if (at !== "array" || a.length === b.length) return;
+      walk(a.length, b.length, path + ".length", depth + 1);
+      return;
+    }
+    entries.push({ path, expected: hasA ? preview(a) : void 0, actual: hasB ? preview(b) : void 0, expectedType: hasA ? at : "missing", actualType: hasB ? bt : "missing" });
+  }
+  walk(expected, actual, "$", 0);
+  return { entries, truncated };
+}
+function esc(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function renderStructuralDiff(diff) {
+  if (!diff) return "";
+  const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre>\u671F\u671B: ${esc(JSON.stringify(item.expected))}
+\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</pre></details>`).join("");
+  return `<details open class="structural-diff"><summary>\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09</summary>${rows}${diff.truncated ? "<p>\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD</p>" : ""}</details>`;
+}
+function assertionDiff(definition, expected, actual) {
+  if (Object.hasOwn(definition, "equals")) return structuralDiff(expected, actual);
+  if (Object.hasOwn(definition, "notEquals")) {
+    return { entries: [{ path: "$\uFF08\u8981\u6C42\u4E0D\u540C\uFF0C\u5B9E\u9645\u76F8\u7B49\uFF09", expected: "\u4E0D\u540C\u7684\u503C", actual: "\u4E24\u4FA7\u76F8\u7B49", expectedType: "notEquals", actualType: "equal" }], truncated: false };
+  }
+  if (Object.hasOwn(definition, "oneOf") && Array.isArray(expected)) {
+    const entries = [];
+    let truncated = expected.length > 5;
+    for (const [i, candidate] of expected.slice(0, 5).entries()) {
+      const diff = structuralDiff(candidate, actual);
+      entries.push(...diff.entries.map((entry) => ({ ...entry, path: `\u5019\u9009 ${i + 1} \xB7 ${entry.path}` })));
+      truncated || (truncated = diff.truncated);
+    }
+    return { entries: entries.slice(0, 50), truncated: truncated || entries.length > 50 };
+  }
+  return void 0;
+}
+
 // src/core.js
 var import_blueimp_md5 = __toESM(require_md5(), 1);
 
@@ -241,7 +306,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.15.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 20;
+var CONTRACT_VERSION = 21;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -350,7 +415,7 @@ var contract = Object.freeze({
     // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
     from: Object.freeze(["body", "headers", "bodyText", "response"]),
     // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
-    targets: Object.freeze(["status"]),
+    targets: Object.freeze(["status", "duration"]),
     // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
     required: "boolean",
     // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
@@ -360,7 +425,7 @@ var contract = Object.freeze({
     // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
     // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
     scope: "step",
-    note: 'required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
+    note: 'target: "duration" \u63D0\u53D6\u5355\u6B21\u8BF7\u6C42\u8017\u65F6\uFF08\u6BEB\u79D2\uFF0Cresponse.durationMs\uFF09\uFF0C\u4E0D\u542B\u91CD\u8BD5\u7B49\u5F85\uFF1B\u4E5F\u53EF\u7528 from: "response", path: "durationMs"\u3002required: true \u4E14\u8DEF\u5F84\u4E0D\u5B58\u5728\u65F6\u5F53\u524D\u6B65\u9AA4\u5931\u8D25\uFF1B\u58F0\u660E default \u65F6\u7F3A\u5931\u53D6\u515C\u5E95\u503C\uFF08\u652F\u6301\u6A21\u677F\u3001\u4E0D\u4EA7\u751F warning\uFF09\uFF1B\u5426\u5219\u7F3A\u5931\u4EA7\u751F warning\uFF08\u4E0D\u542B\u54CD\u5E94\u5185\u5BB9\uFF09\uFF0C\u53D8\u91CF\u4E3A undefined\uFF1Brequired \u4E0E default \u4E92\u65A5\uFF0C\u53EA\u80FD\u58F0\u660E\u5176\u4E00\uFF1Bfrom: "headers" \u914D path \u65F6\u9996\u6BB5\u5934\u540D\u5927\u5C0F\u5199\u4E0D\u654F\u611F\u5339\u914D\uFF08\u4E0E\u65AD\u8A00 from: "headers"\u3001header \u7B80\u5199\u540C\u53E3\u5F84\uFF09\uFF0C\u9996\u6BB5\u540E\u7684\u5B50\u8DEF\u5F84\u5728\u5934\u503C\u4E0A\u53D6\uFF0Cfrom: "response" \u4ECD\u6309\u7CBE\u786E\u952E\u5339\u914D\u3002scope: "suite" \u65F6\u63D0\u53D6\u7ED3\u679C\u5199\u5165\u672C\u6B21 run \u5171\u4EAB\u7684 suite \u547D\u540D\u7A7A\u95F4\uFF08\u6A21\u677F\u7528 {{suite.<name>}} \u5F15\u7528\uFF1B\u4E3A\u517C\u5BB9 v16\uFF0C\u540E\u7EED\u573A\u666F\u4E5F\u53EF\u7528 {{vars.<name>}} \u8BFB\u53D6\uFF0C\u914D\u7F6E/\u573A\u666F vars \u540C\u540D\u65F6\u4F18\u5148\uFF1BCLI \u6BCF\u4E2A\u573A\u666F\u542F\u52A8\u65F6\u53D6\u5FEB\u7167\u3001\u7ED3\u675F\u65F6\u5408\u5E76\uFF0C\u9ED8\u8BA4\u4E32\u884C\u6309\u6E05\u5355\u987A\u5E8F\uFF0C\u5E76\u53D1\u65F6\u6309\u5B8C\u6210\u987A\u5E8F\u3001\u540C\u540D\u952E\u540E\u5B8C\u6210\u8005\u8986\u76D6\uFF1B\u9ED8\u8BA4 scope: "step" \u4ECD\u5199\u5165\u5F53\u524D\u573A\u666F vars\uFF09\u3002path \u652F\u6301\u901A\u914D\u6BB5 [*]\uFF1Aitems[*].id \u9010\u5143\u7D20\u63D0\u53D6 id \u4EA7\u51FA\u6570\u7EC4\uFF0C\u7A7A\u6570\u7EC4\u4EA7\u51FA []\uFF1B\u5143\u7D20\u7F3A\u5931\u5B50\u8DEF\u5F84\u65F6\u8DF3\u8FC7\u8BE5\u5143\u7D20\uFF1B\u901A\u914D\u6BB5\u53EA\u5728\u6570\u7EC4\u4E0A\u5C55\u5F00\uFF0C\u975E\u6570\u7EC4\u6309\u8DEF\u5F84\u7F3A\u5931\u5904\u7406\uFF08required/default/warning \u7167\u5E38\u751F\u6548\uFF09\uFF1B\u8FDE\u7EED\u901A\u914D\u5C55\u5E73\u4E3A\u4E00\u7EA7\u6570\u7EC4\u3002'
   }),
   // 运行时自动生成的保留变量：禁止在 vars/envVars/generatedVars/extract 中声明或覆盖。
   // __proto__/constructor/prototype 为原型链安全键：声明同名变量会触发对象原型
@@ -476,6 +541,7 @@ var contract = Object.freeze({
       "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve \u4EE3\u7406\u4E0A\u6E38\u7A7A\u95F2\u8D85\u65F6\uFF08\u6BEB\u79D2\uFF0C\u9ED8\u8BA4 30000\uFF0C\u4E0A\u9650 600000\uFF09" },
       insecure: { kind: "flag", prop: "insecure", description: "serve \u4EE3\u7406\u8DF3\u8FC7\u4E0A\u6E38 https \u8BC1\u4E66\u6821\u9A8C\uFF08\u9ED8\u8BA4\u6821\u9A8C\uFF1B\u4EC5\u5185\u7F51\u81EA\u7B7E\u8054\u8C03\u73AF\u5883\u4F7F\u7528\uFF09" },
       data: { kind: "value", prop: "dataFile", description: "\u6570\u636E\u9A71\u52A8\u6267\u884C\uFF1AJSON/JSONL/CSV \u6570\u636E\u96C6\u6587\u4EF6\uFF0C\u6BCF\u884C\u53D8\u91CF\u96C6\u6267\u884C\u4E00\u6B21\u573A\u666F" },
+      report: { kind: "value", prop: "report", description: "\u8F93\u51FA\u81EA\u5305\u542B\u79BB\u7EBF HTML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       junit: { kind: "value", prop: "junit", description: "\u8F93\u51FA JUnit XML \u62A5\u544A\u5230\u6307\u5B9A\u6587\u4EF6" },
       tag: {
         kind: "value",
@@ -1216,6 +1282,7 @@ function evaluateAssertion(definition, response, runtime, context) {
 }
 function evaluateValidatedAssertion(definition, response, runtime, context) {
   let actual = assertionActual(definition, response, runtime);
+  const comparisonActual = actual;
   let expected;
   let passed = true;
   let reason = "";
@@ -1354,11 +1421,24 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
     else if (op === "lt") passed = passed && actual < expected;
     else passed = passed && actual <= expected;
   }
+  let diff;
+  if (!passed) {
+    for (const op of ["equals", "notEquals", "oneOf"]) {
+      if (!Object.hasOwn(definition, op)) continue;
+      const comparison = resolve(definition[op], runtime);
+      const equal = op === "oneOf" ? Array.isArray(comparison) && comparison.some((item) => stableStringify(item) === stableStringify(comparisonActual)) : stableStringify(comparison) === stableStringify(comparisonActual);
+      if (op === "notEquals" ? equal : !equal) {
+        diff = assertionDiff({ [op]: comparison }, comparison, comparisonActual);
+        break;
+      }
+    }
+  }
   return {
     name: definition.name || definition.path || "\u65AD\u8A00",
     passed,
     actual,
     expected,
+    ...diff ? { diff } : {},
     // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
     ...reason ? { reason } : {},
     // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
@@ -1442,6 +1522,7 @@ function applyExtract(step, response, runtime) {
     }
     let source = response.body;
     if (definition.target === "status") source = response.status;
+    else if (definition.target === "duration") source = response.durationMs;
     else if (definition.header) source = headerValue(response.headers, definition.header);
     else if (definition.from === "headers") source = response.headers;
     else if (definition.from === "bodyText") source = response.bodyText;
@@ -3291,7 +3372,10 @@ function createEngine(engineOptions = {}) {
             errorType: attemptErrorType,
             errorMessage: attemptError ? describeError(attemptError) : ""
           };
-          const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+          const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext ? attemptCallback(callbackInfo, {
+            runtime,
+            request: attemptError ? attemptError.scenarioContext?.request || null : lastExecution?.request || null
+          }) : attemptCallback(callbackInfo));
           if (enforceAttemptDeadline) {
             const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
             if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);
@@ -3624,8 +3708,59 @@ function renderCapabilitiesText(capabilities) {
   return lines.join("\n");
 }
 
+// src/utils/output-secrets.js
+function collectRequestSecretValues(request) {
+  const found = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new WeakSet();
+  function visit(value, sensitive = false) {
+    if (typeof value === "string") {
+      if (sensitive && value) found.add(value);
+      return;
+    }
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    for (const [key, child] of Object.entries(value)) visit(child, sensitive || isSecretVarName(key));
+  }
+  visit(request?.headers);
+  let body = request?.body;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+    }
+  }
+  visit(body);
+  return [...found];
+}
+function outputSecretVariants(values) {
+  const result = /* @__PURE__ */ new Set();
+  for (const value of values || []) {
+    if (typeof value !== "string" || !value) continue;
+    let variant = value;
+    for (let depth = 0; depth < 4; depth++) {
+      result.add(variant);
+      variant = JSON.stringify(variant).slice(1, -1);
+    }
+  }
+  return [...result].sort((a, b) => b.length - a.length);
+}
+function redactKnownOutput(value, values) {
+  const secrets = outputSecretVariants(values);
+  const seen = /* @__PURE__ */ new WeakMap();
+  function copy(item) {
+    if (typeof item === "string") return redactSecrets(item, secrets);
+    if (!item || typeof item !== "object") return item;
+    if (seen.has(item)) return seen.get(item);
+    const result = Array.isArray(item) ? [] : {};
+    seen.set(item, result);
+    for (const key of Object.keys(item)) result[key] = copy(item[key]);
+    return result;
+  }
+  return copy(value);
+}
+
 // src/browser/ui/ui-utils.js
-function esc(s) {
+function esc2(s) {
   if (s == null) return "";
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -5321,10 +5456,11 @@ var workbenchView = function() {
       var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
       d.assertions.forEach(function(sub) {
         if (sub.passed) return;
-        html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 ' + label + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
+        html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-rose-600">\u21B3 ' + label + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-700">' + esc2(stringify(sub.expected)) + '</td><td class="px-3.5 py-1.5 font-mono text-[11px] text-rose-900">' + esc2(stringify(sub.actual)) + '</td><td class="px-3.5 py-1.5"></td></tr>';
         if (sub.reason) {
-          html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5"></td><td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">\u539F\u56E0: ' + esc(sub.reason) + "</td></tr>";
+          html += '<tr class="bg-rose-50/40"><td class="px-3.5 py-1.5"></td><td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">\u539F\u56E0: ' + esc2(sub.reason) + "</td></tr>";
         }
+        if (sub.diff) html += '<tr><td colspan="4">' + renderStructuralDiff(sub.diff) + "</td></tr>";
         html += eachDetailRows2(sub.detail, label);
       });
     });
@@ -5651,7 +5787,7 @@ var workbenchView = function() {
         label.textContent = activeOpt ? activeOpt.textContent : "-";
         menu.innerHTML = options.map(function(opt) {
           var isActive = opt.value === val;
-          return '<button type="button" role="option" aria-selected="' + (isActive ? "true" : "false") + '" tabindex="-1" class="custom-dropdown__item' + (isActive ? " active" : "") + '" data-value="' + esc(opt.value) + '"><span>' + esc(opt.textContent) + '</span><svg class="custom-dropdown__check' + (isActive ? "" : " hidden") + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg></button>';
+          return '<button type="button" role="option" aria-selected="' + (isActive ? "true" : "false") + '" tabindex="-1" class="custom-dropdown__item' + (isActive ? " active" : "") + '" data-value="' + esc2(opt.value) + '"><span>' + esc2(opt.textContent) + '</span><svg class="custom-dropdown__check' + (isActive ? "" : " hidden") + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg></button>';
         }).join("");
       }
       function closeDropdown(restoreFocus) {
@@ -5760,7 +5896,7 @@ var workbenchView = function() {
     var gutterHtml = lines.map(function(_, i) {
       return '<span class="code-line-number">' + (i + 1) + "</span>";
     }).join("\n");
-    return '<div class="code-editor-block relative bg-slate-950 rounded-lg border border-slate-800 overflow-hidden flex font-mono text-[11px] leading-relaxed shadow-inner"><div class="code-gutter py-2 pl-3 pr-2 select-none text-slate-600 bg-slate-950/90 border-r border-slate-800/80 text-right leading-relaxed font-mono">' + gutterHtml + '</div><pre id="' + id + '" class="code-content py-2 px-3 text-slate-300 overflow-x-auto flex-1 font-mono leading-relaxed ' + (customColorClass || "") + '">' + esc(codeStr) + "</pre></div>";
+    return '<div class="code-editor-block relative bg-slate-950 rounded-lg border border-slate-800 overflow-hidden flex font-mono text-[11px] leading-relaxed shadow-inner"><div class="code-gutter py-2 pl-3 pr-2 select-none text-slate-600 bg-slate-950/90 border-r border-slate-800/80 text-right leading-relaxed font-mono">' + gutterHtml + '</div><pre id="' + id + '" class="code-content py-2 px-3 text-slate-300 overflow-x-auto flex-1 font-mono leading-relaxed ' + (customColorClass || "") + '">' + esc2(codeStr) + "</pre></div>";
   }
   function fmtVarValue(value) {
     var text;
@@ -5793,7 +5929,7 @@ var workbenchView = function() {
       return entry.isChanged;
     }).length;
     var rows = entries.map(function(entry) {
-      return '<tr class="' + (entry.isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc(entry.name) + (entry.isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(entry.value)) + "</td></tr>";
+      return '<tr class="' + (entry.isChanged ? "bg-emerald-50/60" : "") + '"><td class="px-3 py-1.5 font-mono text-[11px] text-slate-700 whitespace-nowrap align-top">' + esc2(entry.name) + (entry.isChanged ? '<span class="ml-1.5 px-1 py-px rounded bg-emerald-100 text-emerald-700 text-[9.5px] font-bold">\u672C\u6B65\u53D8\u66F4</span>' : "") + '</td><td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc2(fmtVarValue(entry.value)) + "</td></tr>";
     }).join("");
     return '<details class="report-step__response mt-4 pt-3.5 border-t border-slate-200/80"><summary>\u8FD0\u884C\u65F6\u53D8\u91CF \xB7 ' + entries.length + " \u9879" + (changedCount ? "\uFF08\u672C\u6B65\u53D8\u66F4 " + changedCount + "\uFF09" : "") + '</summary><div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider"><tr><th class="px-3 py-1.5">\u53D8\u91CF\u540D</th><th class="px-3 py-1.5">\u503C\uFF08\u672C\u6B65\u9AA4\u6267\u884C\u540E\uFF09</th></tr></thead><tbody class="divide-y divide-slate-100">' + rows + "</tbody></table></div></details>";
   }
@@ -5978,7 +6114,7 @@ var workbenchView = function() {
     var pinned = Boolean(options.pinned);
     var fileName = item.name === item.fileName ? "" : item.fileName;
     var pinLabel = pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876";
-    return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + "</span>" : "") + '</span></button><button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
+    return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc2(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc2(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc2(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc2(fileName) + "</span>" : "") + '</span></button><button type="button" data-pin-file="' + esc2(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
   }
   function scenarioDirNodeHtml(node, options) {
     var key = "dir:" + node.path;
@@ -5986,7 +6122,7 @@ var workbenchView = function() {
     var children = node.children.map(function(child) {
       return child.type === "dir" ? scenarioDirNodeHtml(child, options) : scenarioFileNodeHtml(child, { activeFile: options.activeFile, pinned: false });
     }).join("");
-    return '<div class="scenario-tree-dir"><button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc(key) + '" aria-expanded="' + (collapsed ? "false" : "true") + '" title="' + esc(node.path) + '" style="padding-left:' + (8 + node.depth * 12) + 'px"><svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="scenario-tree-dir__name">' + esc(node.name) + '</span><span class="scenario-tree-dir__count">' + node.count + '</span></button><div class="scenario-tree-children" style="--tree-guide:' + (14 + node.depth * 12) + 'px"' + (collapsed ? " hidden" : "") + ">" + children + "</div></div>";
+    return '<div class="scenario-tree-dir"><button type="button" class="scenario-tree-dir__toggle" data-scenario-dir-toggle="' + esc2(key) + '" aria-expanded="' + (collapsed ? "false" : "true") + '" title="' + esc2(node.path) + '" style="padding-left:' + (8 + node.depth * 12) + 'px"><svg class="scenario-tree-dir__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg><svg class="scenario-tree-dir__folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="scenario-tree-dir__name">' + esc2(node.name) + '</span><span class="scenario-tree-dir__count">' + node.count + '</span></button><div class="scenario-tree-children" style="--tree-guide:' + (14 + node.depth * 12) + 'px"' + (collapsed ? " hidden" : "") + ">" + children + "</div></div>";
   }
   function pinnedScenarioGroupHtml(pinned, options) {
     var key = "pinned";
@@ -6023,7 +6159,7 @@ var workbenchView = function() {
     var tree = buildScenarioTree2(discoveredFiles || [], items, pinOrder);
     if (!tree.pinned.length && !tree.nodes.length) {
       var emptyText = normalizedKeyword || tagFilter ? "\u672A\u627E\u5230\u5339\u914D\u573A\u666F" : "\u6682\u65E0\u53EF\u7528\u573A\u666F";
-      list.innerHTML = '<div class="scenario-search-empty" role="status"><span>' + esc(emptyText) + "</span>" + (normalizedKeyword ? '<button type="button" data-clear-scenario-search>\u6E05\u9664\u641C\u7D22</button>' : "") + "</div>";
+      list.innerHTML = '<div class="scenario-search-empty" role="status"><span>' + esc2(emptyText) + "</span>" + (normalizedKeyword ? '<button type="button" data-clear-scenario-search>\u6E05\u9664\u641C\u7D22</button>' : "") + "</div>";
       return;
     }
     var options = { activeFile: scenarioFile, expandAll: Boolean(normalizedKeyword || tagFilter) };
@@ -6157,7 +6293,7 @@ var workbenchView = function() {
             </div>
             <div class="step-filter-tools">
                 <span id="stepFilterSummary" class="step-filter-summary" aria-live="off"></span>
-                <input id="stepSearchInput" type="search" value="${esc(curKw)}" aria-label="\u641C\u7D22\u6B65\u9AA4\u540D\u79F0\u3001\u8BF7\u6C42\u65B9\u6CD5\u6216\u8DEF\u5F84" placeholder="\u641C\u7D22\u6B65\u9AA4/\u8DEF\u5F84..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded-md border border-slate-200 text-xs bg-white focus:outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all w-40">
+                <input id="stepSearchInput" type="search" value="${esc2(curKw)}" aria-label="\u641C\u7D22\u6B65\u9AA4\u540D\u79F0\u3001\u8BF7\u6C42\u65B9\u6CD5\u6216\u8DEF\u5F84" placeholder="\u641C\u7D22\u6B65\u9AA4/\u8DEF\u5F84..." oninput="window.__R.search(this.value)" class="px-2.5 py-1 rounded-md border border-slate-200 text-xs bg-white focus:outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all w-40">
                 <button id="resetStepFiltersBtn" type="button" class="step-filter-reset" onclick="window.__R.resetFilters()" ${curType === "all" && !curKw ? "hidden" : ""}>\u6E05\u9664\u7B5B\u9009</button>
             </div>
         `;
@@ -6181,7 +6317,7 @@ var workbenchView = function() {
       var reqHeaders = step.headers ? truncateForDisplay(typeof step.headers === "string" ? step.headers : JSON.stringify(step.headers, null, 2)) : "";
       var reqBody = step.request && step.request.body ? truncateForDisplay(typeof step.request.body === "string" ? step.request.body : JSON.stringify(step.request.body, null, 2)) : step.body ? truncateForDisplay(typeof step.body === "string" ? step.body : JSON.stringify(step.body, null, 2)) : "";
       var queryParams = extractQueryParams(stepPath, step.query);
-      return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || "") + " " + method + " " + stepPath).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div><span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || "") + '">' + esc(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc(stepPath) + '">' + esc(stepPath) + '</span></div><div class="flex items-center space-x-1.5 flex-shrink-0">' + tags + '<button type="button" data-copy-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button><span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">\u5F85\u6267\u884C</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="details-panel px-4 py-3 bg-slate-50/70 border-t border-slate-200/60 text-[13px]"><div class="space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u5934 (Headers)</div>' + renderCodeBlockWithLines("pending-req-headers-" + stepIndex, reqHeaders) + "</div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u4F53 (Body)</div>' + renderCodeBlockWithLines("pending-req-body-" + stepIndex, reqBody) + "</div>" : '<div class="text-xs text-slate-400 py-1">\u65E0\u8BF7\u6C42\u4F53\u53C2\u6570</div>') + "</div></div></li>";
+      return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc2(((step.name || "") + " " + method + " " + stepPath).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div><span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc2(step.name || "") + '">' + esc2(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc2(stepPath) + '">' + esc2(stepPath) + '</span></div><div class="flex items-center space-x-1.5 flex-shrink-0">' + tags + '<button type="button" data-copy-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button><span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">\u5F85\u6267\u884C</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="details-panel px-4 py-3 bg-slate-50/70 border-t border-slate-200/60 text-[13px]"><div class="space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u5934 (Headers)</div>' + renderCodeBlockWithLines("pending-req-headers-" + stepIndex, reqHeaders) + "</div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u4F53 (Body)</div>' + renderCodeBlockWithLines("pending-req-body-" + stepIndex, reqBody) + "</div>" : '<div class="text-xs text-slate-400 py-1">\u65E0\u8BF7\u6C42\u4F53\u53C2\u6570</div>') + "</div></div></li>";
     }).join("");
   }
   function renderStepItem(s, i, executionMode, varsView) {
@@ -6202,9 +6338,9 @@ var workbenchView = function() {
     if (!ok && s.error) {
       var isNetworkErr = /Failed to fetch|NetworkError|ECONNREFUSED|ENOTFOUND/i.test(s.error);
       if (isNetworkErr) {
-        errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-start space-x-2.5"><svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><div class="text-xs text-rose-800"><div class="font-bold">\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25 (Failed to fetch)</div><div class="text-rose-600 mt-0.5">\u76EE\u6807\u670D\u52A1\u672A\u54CD\u5E94\u3002\u8BF7\u68C0\u67E5\u672C\u5730\u63A5\u53E3\u670D\u52A1\uFF08\u5982 ' + esc(s.path) + "\uFF09\u662F\u5426\u5DF2\u542F\u52A8\uFF0C\u6216\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u8C03\u6574\u5730\u5740\u3002</div></div></div>";
+        errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-start space-x-2.5"><svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><div class="text-xs text-rose-800"><div class="font-bold">\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25 (Failed to fetch)</div><div class="text-rose-600 mt-0.5">\u76EE\u6807\u670D\u52A1\u672A\u54CD\u5E94\u3002\u8BF7\u68C0\u67E5\u672C\u5730\u63A5\u53E3\u670D\u52A1\uFF08\u5982 ' + esc2(s.path) + "\uFF09\u662F\u5426\u5DF2\u542F\u52A8\uFF0C\u6216\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u8C03\u6574\u5730\u5740\u3002</div></div></div>";
       } else {
-        errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-center space-x-2"><svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-rose-800 font-bold text-xs">\u6267\u884C\u9519\u8BEF:</span><span class="text-rose-600 text-xs font-mono break-all">' + esc(s.error) + "</span></div>";
+        errorHtml = '<div class="mb-3 p-2.5 bg-rose-50 rounded-lg border border-rose-200 flex items-center space-x-2"><svg class="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span class="text-rose-800 font-bold text-xs">\u6267\u884C\u9519\u8BEF:</span><span class="text-rose-600 text-xs font-mono break-all">' + esc2(s.error) + "</span></div>";
       }
     }
     var assertHtml = "";
@@ -6218,24 +6354,24 @@ var workbenchView = function() {
         var rowCls = rowOk ? "hover:bg-slate-50/60" : "bg-rose-50/80 border-rose-100 text-rose-900";
         var resLabel = rowOk ? '<span class="text-emerald-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg> \u901A\u8FC7</span>' : '<span class="text-rose-600 font-bold flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg> \u5931\u8D25</span>';
         var detailRows = !rowOk && Array.isArray(a.detail) ? eachDetailRows2(a.detail, "") : "";
-        var reasonRow = !rowOk && a.reason ? '<tr class="bg-rose-50/60"><td class="px-3.5 py-1.5"></td><td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">\u539F\u56E0: ' + esc(a.reason) + "</td></tr>" : "";
-        return '<tr class="' + rowCls + ' transition-colors"><td class="px-3.5 py-2 font-medium ' + (rowOk ? "text-slate-700" : "text-rose-800 font-bold") + '">' + esc(a.name) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-700") + '">' + esc(stringify(a.expected)) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-900 font-bold") + '">' + esc(stringify(a.actual)) + '</td><td class="px-3.5 py-2 text-xs">' + resLabel + "</td></tr>" + reasonRow + detailRows;
+        var reasonRow = !rowOk && a.reason ? '<tr class="bg-rose-50/60"><td class="px-3.5 py-1.5"></td><td colspan="3" class="px-3.5 py-1.5 text-[11px] text-rose-700 break-all">\u539F\u56E0: ' + esc2(a.reason) + "</td></tr>" : "";
+        return '<tr class="' + rowCls + ' transition-colors"><td class="px-3.5 py-2 font-medium ' + (rowOk ? "text-slate-700" : "text-rose-800 font-bold") + '">' + esc2(a.name) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-700") + '">' + esc2(stringify(a.expected)) + '</td><td class="px-3.5 py-2 font-mono text-[11px] ' + (rowOk ? "text-slate-600" : "text-rose-900 font-bold") + '">' + esc2(stringify(a.actual)) + '</td><td class="px-3.5 py-2 text-xs">' + resLabel + "</td></tr>" + reasonRow + detailRows + (!rowOk && a.diff ? '<tr><td colspan="4">' + renderStructuralDiff(a.diff) + "</td></tr>" : "");
       }).join("");
       assertHtml = '<div class="mt-4 pt-3.5 border-t border-slate-200/80"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-bold text-slate-800">\u65AD\u8A00 (Assertions)</span><span class="text-xs font-mono font-bold ' + (failedCount ? "text-rose-600" : "text-emerald-600") + '">' + passedCount + " / " + s.assertions.length + '</span></div><div class="border border-slate-200/80 rounded-lg overflow-hidden bg-white shadow-2xs"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10.5px] text-slate-500 font-semibold border-b border-slate-200/70 uppercase tracking-wider"><tr><th class="px-3.5 py-2">\u65AD\u8A00\u9879</th><th class="px-3.5 py-2">\u9884\u671F\u503C (EXPECTED)</th><th class="px-3.5 py-2">\u5B9E\u9645\u503C (ACTUAL)</th><th class="px-3.5 py-2 w-24">\u7ED3\u679C</th></tr></thead><tbody class="divide-y divide-slate-100">' + assertRows + "</tbody></table></div></div>";
     }
     var queryHtml = "";
     if (queryParams && queryParams.length) {
       var qRows = queryParams.map(function(p) {
-        return '<tr><td class="px-3 py-1.5 text-slate-600 font-mono">' + esc(p.name) + '</td><td class="px-3 py-1.5 text-slate-900 font-mono font-medium">' + esc(p.value) + "</td></tr>";
+        return '<tr><td class="px-3 py-1.5 text-slate-600 font-mono">' + esc2(p.name) + '</td><td class="px-3 py-1.5 text-slate-900 font-mono font-medium">' + esc2(p.value) + "</td></tr>";
       }).join("");
       queryHtml = '<div class="mt-3"><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1.5">\u67E5\u8BE2\u53C2\u6570 (Query)</div><div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs"><table class="w-full text-left text-xs"><thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider"><tr><th class="px-3 py-1.5">\u53C2\u6570\u540D</th><th class="px-3 py-1.5">\u53C2\u6570\u503C</th></tr></thead><tbody class="divide-y divide-slate-100 font-mono text-[11px]">' + qRows + "</tbody></table></div></div>";
     }
-    var leftColumn = '<div class="space-y-3"><div class="flex items-center justify-between"><div class="text-xs font-bold text-slate-800">\u8BF7\u6C42 (Request)</div><button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-req-all" title="\u590D\u5236\u5B8C\u6574\u8BF7\u6C42\u53C2\u6570"><svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg><span>\u590D\u5236</span></button></div><div class="font-mono text-xs text-slate-800 break-all bg-white p-2.5 rounded-lg border border-slate-200/80 flex items-center gap-2"><span class="font-bold ' + methodColor + ' px-1.5 py-0.5 rounded text-[10px] uppercase">' + method + '</span><span class="text-slate-700 font-medium">' + esc(s.path) + "</span></div>" + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u8BF7\u6C42\u5934 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-headers">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-req-headers", reqHeaders) + "</div>" : "") + queryHtml + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u8BF7\u6C42\u4F53 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-body">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-req-body", reqBody) + "</div>" : "") + '<pre id="step-' + i + '-req-all" class="sr-only">' + esc(method + " " + s.path + (reqHeaders ? "\n\nHeaders:\n" + reqHeaders : "") + (reqBody ? "\n\nBody:\n" + reqBody : "")) + "</pre></div>";
-    var rightColumn = '<div class="space-y-3"><div class="flex items-center justify-between"><div class="text-xs font-bold text-slate-800">\u54CD\u5E94 (Response)</div><button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-res-all" title="\u590D\u5236\u5B8C\u6574\u54CD\u5E94\u53C2\u6570"><svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg><span>\u590D\u5236</span></button></div><div class="font-mono text-xs flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200/80"><div class="flex items-center gap-2"><span class="font-bold text-emerald-600">' + esc(String(s.status || 200)) + ' OK</span><span class="text-slate-400 text-[11px]">' + fmt(s.duration) + "</span></div></div>" + (resHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u54CD\u5E94\u5934 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-headers">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-res-headers", resHeaders) + "</div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u54CD\u5E94\u4F53 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-body">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-res-body", resBody) + "</div>" : "") + '<pre id="step-' + i + '-res-all" class="sr-only">' + esc("Status: " + (s.status || 200) + " (" + fmt(s.duration) + ")" + (resHeaders ? "\n\nHeaders:\n" + resHeaders : "") + (resBody ? "\n\nBody:\n" + resBody : "")) + "</pre></div>";
+    var leftColumn = '<div class="space-y-3"><div class="flex items-center justify-between"><div class="text-xs font-bold text-slate-800">\u8BF7\u6C42 (Request)</div><button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-req-all" title="\u590D\u5236\u5B8C\u6574\u8BF7\u6C42\u53C2\u6570"><svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg><span>\u590D\u5236</span></button></div><div class="font-mono text-xs text-slate-800 break-all bg-white p-2.5 rounded-lg border border-slate-200/80 flex items-center gap-2"><span class="font-bold ' + methodColor + ' px-1.5 py-0.5 rounded text-[10px] uppercase">' + method + '</span><span class="text-slate-700 font-medium">' + esc2(s.path) + "</span></div>" + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u8BF7\u6C42\u5934 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-headers">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-req-headers", reqHeaders) + "</div>" : "") + queryHtml + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u8BF7\u6C42\u4F53 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-req-body">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-req-body", reqBody) + "</div>" : "") + '<pre id="step-' + i + '-req-all" class="sr-only">' + esc2(method + " " + s.path + (reqHeaders ? "\n\nHeaders:\n" + reqHeaders : "") + (reqBody ? "\n\nBody:\n" + reqBody : "")) + "</pre></div>";
+    var rightColumn = '<div class="space-y-3"><div class="flex items-center justify-between"><div class="text-xs font-bold text-slate-800">\u54CD\u5E94 (Response)</div><button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-white text-[10.5px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all" data-code-copy="step-' + i + '-res-all" title="\u590D\u5236\u5B8C\u6574\u54CD\u5E94\u53C2\u6570"><svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg><span>\u590D\u5236</span></button></div><div class="font-mono text-xs flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200/80"><div class="flex items-center gap-2"><span class="font-bold text-emerald-600">' + esc2(String(s.status || 200)) + ' OK</span><span class="text-slate-400 text-[11px]">' + fmt(s.duration) + "</span></div></div>" + (resHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u54CD\u5E94\u5934 (Headers)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-headers">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-res-headers", resHeaders) + "</div>" : "") + (resBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1 flex items-center justify-between"><span>\u54CD\u5E94\u4F53 (Body)</span><button type="button" class="code-copy-btn text-[10px] text-slate-400 hover:text-slate-600" data-code-copy="step-' + i + '-res-body">\u590D\u5236</button></div>' + renderCodeBlockWithLines("step-" + i + "-res-body", resBody) + "</div>" : "") + '<pre id="step-' + i + '-res-all" class="sr-only">' + esc2("Status: " + (s.status || 200) + " (" + fmt(s.duration) + ")" + (resHeaders ? "\n\nHeaders:\n" + resHeaders : "") + (resBody ? "\n\nBody:\n" + resBody : "")) + "</pre></div>";
     var detailPanelCls = ok ? "details-panel px-4 py-3 bg-slate-50/50 border-t border-slate-100 text-[13px]" : "details-panel open px-4 py-3 bg-slate-50/50 border-t border-rose-100 text-[13px]";
     var chevronCls = ok ? "" : " rotate-180";
     var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\u4EC5\u56DE\u9000\u6D4B\u8BD5\u8FD0\u884C\u65F6\u4E0E\u62A5\u544A\uFF0C\u4E0D\u64A4\u9500\u5DF2\u53D1\u51FA\u7684\u4E1A\u52A1\u8BF7\u6C42">\u56DE\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\u4ECE\u672C\u6B65\u9AA4\u6267\u884C\u524D\u7684\u53D8\u91CF\u5FEB\u7167\u91CD\u65B0\u6267\u884C">\u91CD\u8DD1</button></span>' : "";
-    return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/80 transition-colors" role="button" tabindex="0" aria-expanded="' + (!ok ? "true" : "false") + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' + seqIcon + '<span class="text-xs font-bold ' + nameCls + ' truncate" title="' + esc(s.name) + '">' + esc(s.name) + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc(s.path) + '">' + esc(s.path) + '</span></div><div class="flex items-center space-x-2 flex-shrink-0"><button type="button" data-copy-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-md ' + statusBadgeCls + '">' + esc(String(s.status || "-")) + '</span><span class="text-slate-400 text-xs font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '">' + errorHtml + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' + leftColumn + rightColumn + "</div>" + assertHtml + renderVarsSection(varsView) + "</div></li>";
+    return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc2((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/80 transition-colors" role="button" tabindex="0" aria-expanded="' + (!ok ? "true" : "false") + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' + seqIcon + '<span class="text-xs font-bold ' + nameCls + ' truncate" title="' + esc2(s.name) + '">' + esc2(s.name) + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc2(s.path) + '">' + esc2(s.path) + '</span></div><div class="flex items-center space-x-2 flex-shrink-0"><button type="button" data-copy-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-md ' + statusBadgeCls + '">' + esc2(String(s.status || "-")) + '</span><span class="text-slate-400 text-xs font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '">' + errorHtml + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' + leftColumn + rightColumn + "</div>" + assertHtml + renderVarsSection(varsView) + "</div></li>";
   }
   function renderStepsAll(steps, scenarioSteps, executionMode, varsViews) {
     var ul = document.getElementById("stepsList");
@@ -6425,12 +6561,14 @@ var workbenchView = function() {
       var issue = step.error || failedAssertions[0] && failedAssertions[0].name || "";
       var response = step.response || {};
       var responseBody = response.bodyText !== void 0 ? response.bodyText : response.body;
-      var responseHtml = '<details class="report-step__response"><summary>\u5B8C\u6574\u54CD\u5E94</summary><div class="report-step__response-section">\u54CD\u5E94\u5934</div><pre>' + esc(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\u54CD\u5E94\u4F53</div><pre>' + esc(formatReportPayload(responseBody)) + "</pre></details>";
-      return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\u6B65\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc(step.name || "") + '">' + esc(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc(method) + '</span><span class="report-step__path" title="' + esc(step.path || "") + '">' + esc(step.path || "-") + "</span></div>" + (canLocateStep ? '<button type="button" class="report-step__locate" data-locate-step-index="' + stepIndex + '" aria-label="' + esc("\u5B9A\u4F4D\u5230\u6B65\u9AA4 " + step.stepNo + "\uFF1A" + (step.name || "\u672A\u547D\u540D\u6B65\u9AA4")) + '">\u5B9A\u4F4D\u6B65\u9AA4</button>' : "") + (issue ? '<div class="report-step__issue">' + esc(issue) + "</div>" : "") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc(step.durationFmt || "-") + "</span></div></div>";
+      var responseHtml = '<details class="report-step__response"><summary>\u5B8C\u6574\u54CD\u5E94</summary><div class="report-step__response-section">\u54CD\u5E94\u5934</div><pre>' + esc2(formatReportPayload(response.headers || {})) + '</pre><div class="report-step__response-section">\u54CD\u5E94\u4F53</div><pre>' + esc2(formatReportPayload(responseBody)) + "</pre></details>";
+      return '<div class="report-step ' + (step.passed ? "report-step--passed" : "report-step--failed") + '"><div class="report-step__marker" aria-hidden="true">' + (step.passed ? "\u2713" : "!") + '</div><div class="report-step__content"><div class="report-step__heading"><span class="report-step__number">\u6B65\u9AA4 ' + step.stepNo + '</span><span class="report-step__name" title="' + esc2(step.name || "") + '">' + esc2(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span></div><div class="report-step__request"><span class="report-method ' + methodClass + '">' + esc2(method) + '</span><span class="report-step__path" title="' + esc2(step.path || "") + '">' + esc2(step.path || "-") + "</span></div>" + (canLocateStep ? '<button type="button" class="report-step__locate" data-locate-step-index="' + stepIndex + '" aria-label="' + esc2("\u5B9A\u4F4D\u5230\u6B65\u9AA4 " + step.stepNo + "\uFF1A" + (step.name || "\u672A\u547D\u540D\u6B65\u9AA4")) + '">\u5B9A\u4F4D\u6B65\u9AA4</button>' : "") + (issue ? '<div class="report-step__issue">' + esc2(issue) + "</div>" : "") + failedAssertions.map(function(a) {
+        return renderStructuralDiff(a.diff);
+      }).join("") + responseHtml + '</div><div class="report-step__result"><span class="report-step__code">' + esc2(String(step.status || "-")) + '</span><span class="report-step__duration">' + esc2(step.durationFmt || "-") + "</span></div></div>";
     }).join("");
     var diagnosisHtml = hasRealFailure ? '<div class="report-steps"><div class="report-steps__title">\u5931\u8D25\u6B65\u9AA4</div>' + stepHtml + "</div>" : cancelled ? '<div class="report-healthy"><div class="report-healthy__title">\u6267\u884C\u5DF2\u53D6\u6D88</div><div class="report-healthy__hint">\u53D6\u6D88\u7684\u6B65\u9AA4\u4E0D\u8BA1\u5165\u5931\u8D25\uFF1B\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : allSkipped ? '<div class="report-healthy"><div class="report-healthy__title">\u6240\u6709\u6B65\u9AA4\u5747\u56E0\u6761\u4EF6\u4E0D\u6EE1\u8DB3\u800C\u8DF3\u8FC7</div><div class="report-healthy__hint">\u672C\u6B21\u6267\u884C\u672A\u53D1\u8D77\u4EFB\u4F55\u8BF7\u6C42\uFF0C\u8BE6\u7EC6\u8DF3\u8FC7\u539F\u56E0\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\u3002</div></div>' : '<div class="report-healthy"><div class="report-healthy__title">' + (completed ? "\u6240\u6709\u6B65\u9AA4\u5747\u5DF2\u901A\u8FC7" : "\u5F53\u524D\u5DF2\u6267\u884C\u6B65\u9AA4\u5747\u901A\u8FC7") + '</div><div class="report-healthy__hint">\u8BE6\u7EC6\u8BF7\u6C42\u4E0E\u54CD\u5E94\u8BF7\u5728\u5DE6\u4FA7\u6B65\u9AA4\u5217\u8868\u67E5\u770B\uFF1B\u53EF\u901A\u8FC7\u4E0B\u65B9\u64CD\u4F5C\u590D\u5236\u5B8C\u6574\u62A5\u544A\u3002</div></div>';
     var diagnosisTitle = hasRealFailure ? "\u5931\u8D25\u8BCA\u65AD \xB7 " + reportSteps.length : "\u6267\u884C\u7ED3\u8BBA";
-    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div class="report-overview__title">' + esc(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u901A\u8FC7 " + summary.passedSteps + "</span><span>\u5931\u8D25 " + summary.failedSteps + "</span>" + (summary.skippedSteps > 0 ? "<span>\u8DF3\u8FC7 " + summary.skippedSteps + "</span>" : "") + "<span>" + esc(summary.totalDurationFmt) + '</span></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6 ' + progressText + "</span><strong>" + progressPercent.toFixed(1) + '%</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '" role="progressbar" aria-label="\u6B65\u9AA4\u6267\u884C\u8FDB\u5EA6" aria-valuemin="0" aria-valuemax="' + (summary.totalSteps || 1) + '" aria-valuenow="' + summary.executedSteps + '" aria-valuetext="\u5DF2\u6267\u884C ' + summary.executedSteps + " / " + summary.totalSteps + ' \u4E2A\u6B65\u9AA4"><span style="width:' + progressPercent + '%"></span></div><div class="report-progress__labels report-progress__outcome"><span>\u901A\u8FC7\u7387</span><strong>' + esc(summary.passRate) + '</strong></div></div></div><details class="report-diagnosis"' + (hasRealFailure ? " open" : "") + "><summary>" + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details><div class="report-actions flex flex-col gap-2 pt-1"><button id="copyDiagnosisMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" title="\u590D\u5236\u683C\u5F0F\u5316 Markdown \u62A5\u544A (\u53EF\u76F4\u63A5\u6295\u5582\u7ED9 AI \u63D0\u95EE/\u6392\u67E5)"><svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg><span>\u590D\u5236\u8BCA\u65AD\u62A5\u544A (AI \u6392\u67E5)</span></button><button id="copyDiagnosisJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" title="\u5BFC\u51FA\u6267\u884C\u7ED3\u679C JSON"><svg class="w-3.5 h-3.5 mr-1.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>\u5BFC\u51FA\u7ED3\u679C JSON</span></button></div></div>';
+    node.innerHTML = '<div class="report-content"><div class="report-overview"><div class="report-overview__top"><div class="report-overview__title">' + esc2(report.title || "\u6D4B\u8BD5\u62A5\u544A") + '</div><span class="report-status ' + statusClass + '">' + statusText + '</span></div><div class="report-overview__meta"><span>' + esc2(report.environment || "\u9ED8\u8BA4\u73AF\u5883") + "</span><span>" + modeText + "</span><span>\u901A\u8FC7 " + summary.passedSteps + "</span><span>\u5931\u8D25 " + summary.failedSteps + "</span>" + (summary.skippedSteps > 0 ? "<span>\u8DF3\u8FC7 " + summary.skippedSteps + "</span>" : "") + "<span>" + esc2(summary.totalDurationFmt) + '</span></div><div class="report-progress"><div class="report-progress__labels"><span>\u6267\u884C\u8FDB\u5EA6 ' + progressText + "</span><strong>" + progressPercent.toFixed(1) + '%</strong></div><div class="report-progress__track' + (hasFailure ? " report-progress__track--failed" : "") + '" role="progressbar" aria-label="\u6B65\u9AA4\u6267\u884C\u8FDB\u5EA6" aria-valuemin="0" aria-valuemax="' + (summary.totalSteps || 1) + '" aria-valuenow="' + summary.executedSteps + '" aria-valuetext="\u5DF2\u6267\u884C ' + summary.executedSteps + " / " + summary.totalSteps + ' \u4E2A\u6B65\u9AA4"><span style="width:' + progressPercent + '%"></span></div><div class="report-progress__labels report-progress__outcome"><span>\u901A\u8FC7\u7387</span><strong>' + esc2(summary.passRate) + '</strong></div></div></div><details class="report-diagnosis"' + (hasRealFailure ? " open" : "") + "><summary>" + diagnosisTitle + '</summary><div class="report-diagnosis__body">' + diagnosisHtml + '</div></details><div class="report-actions flex flex-col gap-2 pt-1"><button id="copyDiagnosisMarkdownBtn" type="button" class="w-full stats-action-btn stats-action-btn--primary justify-center py-2 text-xs" title="\u590D\u5236\u683C\u5F0F\u5316 Markdown \u62A5\u544A (\u53EF\u76F4\u63A5\u6295\u5582\u7ED9 AI \u63D0\u95EE/\u6392\u67E5)"><svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg><span>\u590D\u5236\u8BCA\u65AD\u62A5\u544A (AI \u6392\u67E5)</span></button><button id="copyDiagnosisJsonBtn" type="button" class="w-full stats-action-btn justify-center py-2 text-xs" title="\u5BFC\u51FA\u6267\u884C\u7ED3\u679C JSON"><svg class="w-3.5 h-3.5 mr-1.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>\u5BFC\u51FA\u7ED3\u679C JSON</span></button></div></div>';
     return report;
   }
   return {
@@ -6680,10 +6818,11 @@ var workbenchAdhoc = function() {
       node.innerHTML = "";
       return;
     }
+    result = redactKnownOutput(result, collectRequestSecretValues(result.request));
     var statusClass = result.passed ? "text-emerald-700" : "text-rose-700";
     var response = result.response || { headers: {}, body: null };
     node.classList.remove("hidden");
-    node.innerHTML = '<div class="flex items-center justify-between"><div class="text-sm font-bold ' + statusClass + '">' + (result.passed ? "\u8BF7\u6C42\u5B8C\u6210" : "\u8BF7\u6C42\u5931\u8D25") + '</div><div class="text-xs text-slate-500">\u72B6\u6001\uFF1A' + esc(result.status) + " \uFF5C \u8017\u65F6\uFF1A" + esc(fmt(result.duration)) + "</div></div>" + (result.error ? '<div class="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">' + esc(result.error) + "</div>" : "") + '<div class="mt-3 grid gap-3 md:grid-cols-2"><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">\u54CD\u5E94\u5934</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive2(response.headers, ""))) + '</pre></div><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">\u54CD\u5E94\u4F53</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc(safeJson(sanitizeSensitive2(response.body, ""))) + "</pre></div></div>";
+    node.innerHTML = '<div class="flex items-center justify-between"><div class="text-sm font-bold ' + statusClass + '">' + (result.passed ? "\u8BF7\u6C42\u5B8C\u6210" : "\u8BF7\u6C42\u5931\u8D25") + '</div><div class="text-xs text-slate-500">\u72B6\u6001\uFF1A' + esc2(result.status) + " \uFF5C \u8017\u65F6\uFF1A" + esc2(fmt(result.duration)) + "</div></div>" + (result.error ? '<div class="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-700">' + esc2(result.error) + "</div>" : "") + '<div class="mt-3 grid gap-3 md:grid-cols-2"><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">\u54CD\u5E94\u5934</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc2(safeJson(sanitizeSensitive2(response.headers, ""))) + '</pre></div><div><div class="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">\u54CD\u5E94\u4F53</div><pre class="overflow-x-auto rounded bg-slate-900 p-3 text-xs leading-tight text-slate-300">' + esc2(safeJson(sanitizeSensitive2(response.body, ""))) + "</pre></div></div>";
   }
   function syncAdhocFormDisabled(disabled) {
     ["adhocNameInput", "adhocMethodInput", "adhocPathInput", "adhocAddParamBtn", "adhocHeadersInput", "adhocBodyInput", "adhocExecuteBtn"].forEach(function(id) {
@@ -6724,7 +6863,7 @@ var workbenchAdhoc = function() {
     if (!container) return;
     var row = document.createElement("div");
     row.className = "flex items-center gap-2 adhoc-param-row";
-    row.innerHTML = '<input type="checkbox" checked class="param-enable rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" title="\u662F\u5426\u542F\u7528"><input type="text" class="param-key w-1/3 rounded border border-slate-200 px-2 py-1 font-mono text-xs placeholder:text-slate-300" placeholder="\u53C2\u6570\u540D (Key)" value="' + esc(key || "") + '"><input type="text" class="param-value flex-1 rounded border border-slate-200 px-2 py-1 font-mono text-xs placeholder:text-slate-300" placeholder="\u53C2\u6570\u503C (Value)" value="' + esc(value !== void 0 && value !== null ? String(value) : "") + '"><button type="button" class="param-remove text-slate-400 hover:text-rose-600 px-1 text-xs" title="\u5220\u9664\u884C">\u2715</button>';
+    row.innerHTML = '<input type="checkbox" checked class="param-enable rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" title="\u662F\u5426\u542F\u7528"><input type="text" class="param-key w-1/3 rounded border border-slate-200 px-2 py-1 font-mono text-xs placeholder:text-slate-300" placeholder="\u53C2\u6570\u540D (Key)" value="' + esc2(key || "") + '"><input type="text" class="param-value flex-1 rounded border border-slate-200 px-2 py-1 font-mono text-xs placeholder:text-slate-300" placeholder="\u53C2\u6570\u503C (Value)" value="' + esc2(value !== void 0 && value !== null ? String(value) : "") + '"><button type="button" class="param-remove text-slate-400 hover:text-rose-600 px-1 text-xs" title="\u5220\u9664\u884C">\u2715</button>';
     row.querySelector(".param-remove").addEventListener("click", function() {
       row.remove();
       if (container.querySelectorAll(".adhoc-param-row").length === 0) {
@@ -7437,7 +7576,7 @@ function createWorkbenchRuntime(options) {
     tags.sort();
     if (state.scenarioTag && tags.indexOf(state.scenarioTag) < 0) state.scenarioTag = "";
     select.innerHTML = '<option value="">\u5168\u90E8\u6807\u7B7E</option>' + tags.map(function(tag) {
-      return '<option value="' + esc(tag) + '"' + (tag === state.scenarioTag ? " selected" : "") + ">" + esc(tag) + "</option>";
+      return '<option value="' + esc2(tag) + '"' + (tag === state.scenarioTag ? " selected" : "") + ">" + esc2(tag) + "</option>";
     }).join("");
     select.hidden = tags.length === 0;
   }
@@ -7474,11 +7613,29 @@ function createWorkbenchRuntime(options) {
       durEl.classList.toggle("text-slate-500", executed === 0);
     }
   }
+  function outputSecrets() {
+    var values = [];
+    (state.steps || []).forEach(function(step) {
+      values.push(...collectRequestSecretValues(step.request));
+    });
+    var runtime = state.activeRuntime || state.stepRuntime || { vars: buildScenarioRuntimeVars(), suite: {} };
+    (state.scenario && state.scenario.steps || []).forEach(function(step) {
+      values.push(...collectRequestSecretValues(step.request || {}));
+      try {
+        values.push(...collectRequestSecretValues(resolveClone(step.request || {}, runtime)));
+      } catch (_) {
+      }
+    });
+    return values;
+  }
+  function safeOutput(value, additionalSecrets) {
+    return redactKnownOutput(value, outputSecrets().concat(additionalSecrets || []));
+  }
   function renderStepsAll() {
     var varsViews = (state.steps || []).map(function(_, idx) {
       return buildVarsView(idx);
     });
-    uiView.renderStepsAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : [], state.executionMode, varsViews);
+    uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews));
     updateExecutionFooter();
   }
   function renderStatsAll() {
@@ -7489,7 +7646,7 @@ function createWorkbenchRuntime(options) {
     uiView.renderFilterAll(state.steps, state.scenario && state.scenario.steps ? state.scenario.steps : []);
   }
   function renderReportPanel() {
-    state.lastReport = uiView.renderReportPanel(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+    state.lastReport = uiView.renderReportPanel(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
   }
   function setSidePanelTab(tabName, options2) {
     var showReport = tabName === "report";
@@ -7530,14 +7687,15 @@ function createWorkbenchRuntime(options) {
       authorization: runtime.authorization,
       globals: runtime.globals,
       requestTimeoutMs: Number(step.timeoutMs || request.timeoutMs || cfg.requestTimeoutMs || 3e4),
+      _includeAttemptContext: true,
       // 轮询进度反馈：重试间隔内更新运行状态位（aria-live），避免长时间看似卡死
-      onAttempt: function(info) {
+      onAttempt: function(info, context) {
         var label = info.errorType === "timeout" ? "\u8D85\u65F6" : info.errorType ? "\u8FDE\u63A5\u5931\u8D25" : "\u672A\u901A\u8FC7";
         var detail = info.errorType ? info.errorMessage || "" : "status " + info.status + (info.failedAssertion ? "\uFF0C" + info.failedAssertion : "");
-        uiView.setRunState(
-          "running",
-          "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21" + label + (detail ? "\uFF08" + detail + "\uFF09" : "") + "\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5"
-        );
+        uiView.setRunState("running", safeOutput(
+          "\u8F6E\u8BE2 " + (info.step && info.step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + " \u7B2C " + info.attempt + "/" + info.totalAttempts + " \u6B21" + label + (detail ? "\uFF08" + detail + "\uFF09" : "") + "\uFF0C" + info.intervalMs + "ms \u540E\u91CD\u8BD5",
+          collectRequestSecretValues(context && context.request)
+        ));
       }
     });
   }
@@ -7746,7 +7904,7 @@ function createWorkbenchRuntime(options) {
     }
     var reportPanel = document.getElementById("reportPanel");
     if (reportPanel) {
-      reportPanel.innerHTML = '<div class="report-content"><div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-800 space-y-2"><div class="font-bold text-xs flex items-center gap-1.5 text-rose-700"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span>' + esc(runState) + '</span></div><div class="text-xs text-rose-700 leading-relaxed font-mono whitespace-pre-wrap break-all">' + esc(message) + '</div><div class="text-[11px] text-rose-600/80 pt-1 border-t border-rose-200/60">\u53EF\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u6309\u94AE\u68C0\u67E5\u73AF\u5883\u53C2\u6570\uFF0C\u6216\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002</div></div></div>';
+      reportPanel.innerHTML = '<div class="report-content"><div class="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-800 space-y-2"><div class="font-bold text-xs flex items-center gap-1.5 text-rose-700"><svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span>' + esc2(runState) + '</span></div><div class="text-xs text-rose-700 leading-relaxed font-mono whitespace-pre-wrap break-all">' + esc2(message) + '</div><div class="text-[11px] text-rose-600/80 pt-1 border-t border-rose-200/60">\u53EF\u70B9\u51FB\u53F3\u4E0A\u89D2\u300C\u914D\u7F6E\u300D\u6309\u94AE\u68C0\u67E5\u73AF\u5883\u53C2\u6570\uFF0C\u6216\u67E5\u770B\u63A7\u5236\u53F0\u65E5\u5FD7\u3002</div></div></div>';
     }
     setSidePanelTab("report", { preservePanel: true });
   }
@@ -7886,7 +8044,7 @@ function createWorkbenchRuntime(options) {
           state.suiteTrail[i] = { ...runtime.suite };
           renderStatsAll();
           renderFilterAll();
-          uiView.appendStepResult(skippedResult, i, list, state.executionMode, buildVarsView(i));
+          uiView.appendStepResult(safeOutput(skippedResult), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
           renderReportPanel();
           continue;
         }
@@ -7899,7 +8057,7 @@ function createWorkbenchRuntime(options) {
         state.suiteTrail[i] = { ...runtime.suite };
         renderStatsAll();
         renderFilterAll();
-        uiView.appendStepResult(result, i, list, state.executionMode, buildVarsView(i));
+        uiView.appendStepResult(safeOutput(result), i, safeOutput(list), state.executionMode, safeOutput(buildVarsView(i)));
         renderReportPanel();
         if (!result.passed && failurePolicy !== "continue") halted = true;
         if (runtime.abortController.signal.aborted) break;
@@ -7960,7 +8118,7 @@ function createWorkbenchRuntime(options) {
       state.stepCheckpoints[state.nextStepIndex] = snapshotStepRuntime(runtime);
       renderStatsAll();
       renderFilterAll();
-      uiView.appendStepResult(result, stepIndex, list, state.executionMode, buildVarsView(stepIndex));
+      uiView.appendStepResult(safeOutput(result), stepIndex, safeOutput(list), state.executionMode, safeOutput(buildVarsView(stepIndex)));
       expandStepDetails(stepIndex);
       renderReportPanel();
       if (runtime.cancelled || result.cancelled || result.timedOut) {
@@ -7991,7 +8149,7 @@ function createWorkbenchRuntime(options) {
       if (!select) return;
       select.innerHTML = environments.map(function(env) {
         var selectedAttr = env.key === selectedKey ? " selected" : "";
-        return '<option value="' + esc(env.key) + '"' + selectedAttr + ">" + esc(env.name || env.key) + "</option>";
+        return '<option value="' + esc2(env.key) + '"' + selectedAttr + ">" + esc2(env.name || env.key) + "</option>";
       }).join("");
     });
   }
@@ -8007,7 +8165,7 @@ function createWorkbenchRuntime(options) {
     container.innerHTML = defs.map(function(def) {
       var value = stored[def.name] || "";
       var isSecret = isSecretName(def.name);
-      return '<label class="flex flex-col gap-1.5"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc(def.label) + " (" + esc(def.name) + ")" + (isSecret ? ' <button type="button" data-toggle-var="' + esc(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">\u663E\u793A</button>' : "") + '</span><input id="scenarioVar_' + esc(def.name) + '" type="' + (isSecret ? "password" : "text") + '" value="' + esc(value) + '" placeholder="\u8BF7\u8F93\u5165 ' + esc(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></label>';
+      return '<label class="flex flex-col gap-1.5"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">' + esc2(def.label) + " (" + esc2(def.name) + ")" + (isSecret ? ' <button type="button" data-toggle-var="' + esc2(def.name) + '" class="font-normal normal-case tracking-normal text-emerald-500 hover:text-emerald-400">\u663E\u793A</button>' : "") + '</span><input id="scenarioVar_' + esc2(def.name) + '" type="' + (isSecret ? "password" : "text") + '" value="' + esc2(value) + '" placeholder="\u8BF7\u8F93\u5165 ' + esc2(def.label) + '" autocomplete="off" class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"></label>';
     }).join("");
   }
   function buildGlobalInputAttrs(g, index) {
@@ -8017,7 +8175,7 @@ function createWorkbenchRuntime(options) {
     if (!valueOptions || !valueOptions.length) return { nameList, valueList: "", valueDatalist: "" };
     var listId = "globalValueList_" + ++globalValueListSeq;
     var valueDatalist = '<datalist id="' + listId + '">' + valueOptions.map(function(value) {
-      return '<option value="' + esc(value) + '"></option>';
+      return '<option value="' + esc2(value) + '"></option>';
     }).join("") + "</datalist>";
     return { nameList, valueList: ' list="' + listId + '"', valueDatalist };
   }
@@ -8038,7 +8196,7 @@ function createWorkbenchRuntime(options) {
     }
     existing.id = listId;
     existing.innerHTML = options2.map(function(value) {
-      return '<option value="' + esc(value) + '"></option>';
+      return '<option value="' + esc2(value) + '"></option>';
     }).join("");
     if (valueInput) valueInput.setAttribute("list", listId);
   }
@@ -8051,7 +8209,7 @@ function createWorkbenchRuntime(options) {
         return '<option value="' + type + '"' + (g.type === type ? " selected" : "") + ">" + type + "</option>";
       }).join("");
       var attrs = buildGlobalInputAttrs(g, index);
-      return '<div class="global-param-row flex items-center gap-2" data-index="' + index + '"><select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' + typeOptions + '</select><input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.nameList + ' placeholder="\u53C2\u6570\u540D" value="' + esc(g.name) + '" /><input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.valueList + ' placeholder="\u53C2\u6570\u503C\uFF0C\u652F\u6301 {{vars.xxx}}" value="' + esc(g.value) + '" /><button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="\u5220\u9664\u8BE5\u53C2\u6570">\u2715</button>' + attrs.valueDatalist + "</div>";
+      return '<div class="global-param-row flex items-center gap-2" data-index="' + index + '"><select class="global-type flex-shrink-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">' + typeOptions + '</select><input class="global-name flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.nameList + ' placeholder="\u53C2\u6570\u540D" value="' + esc2(g.name) + '" /><input class="global-value flex-1 min-w-0 px-2 py-2 bg-slate-900 border border-slate-600 rounded-md text-sm text-white placeholder-slate-500 outline-hidden focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"' + attrs.valueList + ' placeholder="\u53C2\u6570\u503C\uFF0C\u652F\u6301 {{vars.xxx}}" value="' + esc2(g.value) + '" /><button type="button" class="global-remove flex-shrink-0 px-2.5 py-2 rounded-md bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition-colors" title="\u5220\u9664\u8BE5\u53C2\u6570">\u2715</button>' + attrs.valueDatalist + "</div>";
     }).join("");
   }
   function collectGlobalsFromInput() {
@@ -8287,7 +8445,7 @@ function createWorkbenchRuntime(options) {
       }, 1500);
     }
     function handleCopy(btn, getText) {
-      var report = state.lastReport || uiView.buildOverallReport(state.steps, state.scenario, state.scenarioFile, state.executionMode, getSelectedEnvironment());
+      var report = state.lastReport || uiView.buildOverallReport(safeOutput(state.steps), safeOutput(state.scenario), state.scenarioFile, state.executionMode, getSelectedEnvironment());
       if (!report) return;
       Promise.resolve().then(function() {
         return getText(report);
@@ -8660,7 +8818,7 @@ function createWorkbenchRuntime(options) {
       if (!file || state.running || file === state.scenarioFile) return;
       loadScenario(file).catch(function(error) {
         uiView.setRunState("failed", "\u52A0\u8F7D\u5931\u8D25");
-        document.getElementById("statsPanel").innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(error.message) + "</div>";
+        document.getElementById("statsPanel").innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc2(error.message) + "</div>";
       });
     });
     var scenarioSearchInput = document.getElementById("scenarioSearchInput");
@@ -8710,7 +8868,7 @@ function createWorkbenchRuntime(options) {
       }
       loadScenario(initial).catch(function(error) {
         uiView.setRunState("failed", "\u52A0\u8F7D\u5931\u8D25");
-        document.getElementById("statsPanel").innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(error.message) + "</div>";
+        document.getElementById("statsPanel").innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc2(error.message) + "</div>";
       });
     }
     fetchDiscoveredScenarios().then(tryLoadInitial).catch(function(e) {

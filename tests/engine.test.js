@@ -1952,7 +1952,7 @@ test("extract 定义期校验：形状/name/保留名/required+default 互斥/fr
     assert.throws(() => define([{ name: "runId", path: "a" }]), /保留变量/);
     assert.throws(() => define([{ name: "__proto__", path: "a" }]), /保留变量/);
     assert.throws(() => define([{ name: "x", required: true, default: 1 }]), /required: true 与 default 互斥/);
-    assert.throws(() => define([{ name: "x", target: "duration" }]), /target 只支持 status/);
+    assert.throws(() => define([{ name: "x", target: "latencyMs" }]), /target 只支持 status\/duration/);
     assert.throws(() => define([{ name: "x", from: "statu" }]), /from 只支持 body[/]headers[/]bodyText[/]response/);
     assert.throws(() => define([{ name: "x", path: "a..b" }]), /path 不是合法路径写法/);
     // 未知键即拒：heder/fromm 拼错此前静默落到 body 来源（与断言 metaKeys 同口径）

@@ -45,7 +45,7 @@ test("when 来源含 vars/suite/lastResponse/status；extract 来源、作用域
     assert.deepEqual(contract.assertions.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.from, ["body", "headers", "bodyText", "response"]);
     assert.deepEqual(contract.extract.scopes, ["step", "suite"]);
-    assert.deepEqual(contract.extract.targets, ["status"]);
+    assert.deepEqual(contract.extract.targets, ["status", "duration"]);
     assert.deepEqual(contract.extract.metaKeys, ["name", "path", "from", "target", "header", "required", "default", "scope"]);
     assert.equal(contract.extract.scope, "step");
     assert.equal(contract.extract.required, "boolean");

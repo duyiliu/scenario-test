@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+- #131：失败 equals 断言附带有界字段路径差异证据，工作台、JSON 和 HTML 报告同源；不改变断言判定。
+- #133：run --report <file.html> 生成自包含、脱敏的离线报告，可与 --json/--junit 共存。
+- #134：extract target 新增 duration，复用 response.durationMs 单次请求计时，契约版本升为 21。已有 duration 断言保持原样。
+- #132：核对当前工作台及模板，没有 Issue 所述采集视图/跳转入口；按无效问题处置，未添加虚构入口。
 
 ## [0.15.0] - 2026-11-05
 

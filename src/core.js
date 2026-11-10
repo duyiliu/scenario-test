@@ -1,3 +1,4 @@
+import { assertionDiff } from "./utils/structural-diff.js";
 import md5Impl from "blueimp-md5";
 import { contract } from "./contract.js";
 import { safeDecodeComponent } from "./utils/safe-decode.js";
@@ -904,6 +905,8 @@ export function evaluateAssertion(definition, response, runtime, context) {
 
 function evaluateValidatedAssertion(definition, response, runtime, context) {
     let actual = assertionActual(definition, response, runtime);
+    // length 会回写结果 actual；比较差异始终使用操作符原始输入。
+    const comparisonActual = actual;
     let expected;
     let passed = true;
     // 失败原因（语义化引导）：目前仅 includes 命中 plain object 实际值时产生，
@@ -1072,11 +1075,26 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         else if (op === "lt") passed = passed && actual < expected;
         else passed = passed && actual <= expected;
     }
+    let diff;
+    if (!passed) {
+        for (const op of ["equals", "notEquals", "oneOf"]) {
+            if (!Object.hasOwn(definition, op)) continue;
+            const comparison = resolve(definition[op], runtime);
+            const equal = op === "oneOf"
+                ? Array.isArray(comparison) && comparison.some(item => stableStringify(item) === stableStringify(comparisonActual))
+                : stableStringify(comparison) === stableStringify(comparisonActual);
+            if (op === "notEquals" ? equal : !equal) {
+                diff = assertionDiff({ [op]: comparison }, comparison, comparisonActual);
+                break;
+            }
+        }
+    }
     return {
         name: definition.name || definition.path || "断言",
         passed,
         actual,
         expected,
+        ...(diff ? { diff } : {}),
         // reason 仅在 includes 命中对象实际值时出现；通过时保持既有四字段形状
         ...(reason ? { reason } : {}),
         // detail 仅在 each/shape 存在失败明细时出现；通过时保持既有四字段形状（旧消费方不受影响）。
@@ -1194,6 +1212,7 @@ export function applyExtract(step, response, runtime) {
         //   from: 'headers' | 'bodyText' | 'response'（默认 body）
         let source = response.body;
         if (definition.target === "status") source = response.status;
+        else if (definition.target === "duration") source = response.durationMs;
         else if (definition.header) source = headerValue(response.headers, definition.header);
         else if (definition.from === "headers") source = response.headers;
         else if (definition.from === "bodyText") source = response.bodyText;

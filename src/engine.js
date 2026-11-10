@@ -1055,7 +1055,12 @@ export function createEngine(engineOptions = {}) {
                     };
                     // 异步 onAttempt 同样受总时限约束：回调挂起/耗时超限时不能拖过 maxElapsedMs。
                     // 包一层 Promise 把同步抛错也纳入竞速；竞速后重新检查是否已到期。
-                    const callbackPromise = Promise.resolve().then(() => attemptCallback(callbackInfo));
+                    const callbackPromise = Promise.resolve().then(() => runOptions._includeAttemptContext
+                        ? attemptCallback(callbackInfo, {
+                            runtime,
+                            request: attemptError ? (attemptError.scenarioContext?.request || null) : (lastExecution?.request || null)
+                        })
+                        : attemptCallback(callbackInfo));
                     if (enforceAttemptDeadline) {
                         const callbackRemainingMs = maxElapsedMs - (now() - retryStartTime);
                         if (callbackRemainingMs <= 0) throw retryTimeoutError(attempt);

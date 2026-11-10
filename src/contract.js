@@ -13,7 +13,7 @@ import { VERSION } from "./version.generated.js";
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
 // v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）；
 // v20：用户级项目登记（projects 命令、serve 固定端口、--open/--reassign）
-export const CONTRACT_VERSION = 20;
+export const CONTRACT_VERSION = 21;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -130,7 +130,7 @@ export const contract = Object.freeze({
         // 首段之后的子路径在头值上取，from:"response" 仍按精确键匹配
         from: Object.freeze(["body", "headers", "bodyText", "response"]),
         // extract 支持的目标（与断言 targets 的子集：status=HTTP 状态码）
-        targets: Object.freeze(["status"]),
+        targets: Object.freeze(["status", "duration"]),
         // required 语义：路径不存在时 required: true 使当前步骤失败，默认缺失产生 warning
         required: "boolean",
         // default 语义：路径不存在时取声明的兜底值（支持模板），与 required 互斥
@@ -140,7 +140,7 @@ export const contract = Object.freeze({
         // 合并进 vars，{{vars.<name>}} 仍可读取）；CLI 每个场景启动时取 suite 快照、
         // 结束时合并，默认串行写序即清单顺序，并发写序为完成顺序
         scope: "step",
-        note: "required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
+        note: "target: \"duration\" 提取单次请求耗时（毫秒，response.durationMs），不含重试等待；也可用 from: \"response\", path: \"durationMs\"。required: true 且路径不存在时当前步骤失败；声明 default 时缺失取兜底值（支持模板、不产生 warning）；否则缺失产生 warning（不含响应内容），变量为 undefined；required 与 default 互斥，只能声明其一；from: \"headers\" 配 path 时首段头名大小写不敏感匹配（与断言 from: \"headers\"、header 简写同口径），首段后的子路径在头值上取，from: \"response\" 仍按精确键匹配。scope: \"suite\" 时提取结果写入本次 run 共享的 suite 命名空间（模板用 {{suite.<name>}} 引用；为兼容 v16，后续场景也可用 {{vars.<name>}} 读取，配置/场景 vars 同名时优先；CLI 每个场景启动时取快照、结束时合并，默认串行按清单顺序，并发时按完成顺序、同名键后完成者覆盖；默认 scope: \"step\" 仍写入当前场景 vars）。path 支持通配段 [*]：items[*].id 逐元素提取 id 产出数组，空数组产出 []；元素缺失子路径时跳过该元素；通配段只在数组上展开，非数组按路径缺失处理（required/default/warning 照常生效）；连续通配展平为一级数组。"
 
     }),
 
@@ -241,6 +241,7 @@ export const contract = Object.freeze({
             "proxy-timeout": { kind: "value", prop: "proxyTimeout", parse: "number", description: "serve 代理上游空闲超时（毫秒，默认 30000，上限 600000）" },
             insecure: { kind: "flag", prop: "insecure", description: "serve 代理跳过上游 https 证书校验（默认校验；仅内网自签联调环境使用）" },
             data: { kind: "value", prop: "dataFile", description: "数据驱动执行：JSON/JSONL/CSV 数据集文件，每行变量集执行一次场景" },
+            report: { kind: "value", prop: "report", description: "输出自包含离线 HTML 报告到指定文件" },
             junit: { kind: "value", prop: "junit", description: "输出 JUnit XML 报告到指定文件" },
             tag: {
                 kind: "value",
