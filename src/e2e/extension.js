@@ -4,6 +4,7 @@ import { spawn, execFile } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
 import { isRealPathWithinRoot } from '../utils/path-validator.js';
 import { E2E_PAGE } from './page.js';
+import { E2E_APP_JS } from './ui/app.generated.js';
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.zip': 'application/zip', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webm': 'video/webm' };
 const indexKey = value => createHash('sha256').update(value).digest('hex');
@@ -91,6 +92,7 @@ export function createE2eExtension({ workspace }) {
         if (pathname === '/e2e') { res.writeHead(302, { Location: '/e2e/' }); res.end(); return true; }
         if (!pathname.startsWith('/e2e/')) return false;
         if (req.method === 'GET' && pathname === '/e2e/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(E2E_PAGE); return true; }
+        if (req.method === 'GET' && pathname === '/e2e/panel.js') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(E2E_APP_JS); return true; }
         if (req.method === 'GET' && pathname === '/e2e/api/state') {
             let live = null;
             if (run?.runId && run?.spec) {
@@ -99,7 +101,7 @@ export function createE2eExtension({ workspace }) {
                     if (manifest?.runId === run.runId) live = { steps: manifest.steps?.[run.spec] || [], results: manifest.results?.[run.spec] || [], screenshots: (manifest.screenshots || []).filter(x => x.spec === run.spec), startedAt: manifest.startedAt || run.startedAt };
                 } catch { /* reporter 尚未写出清单 */ }
             }
-            json(res, 200, { specs: listSpecs(root), running: !!child, spec: run?.spec || null, runId: run?.runId || null, log: liveLog.join(''), live, configSummary: '环境由项目 E2E 配置与环境变量决定' }); return true;
+            json(res, 200, { specs: listSpecs(root), running: !!child, spec: run?.spec || null, runId: run?.runId || null, log: liveLog.join(''), live, configSummary: '本地 E2E 环境' }); return true;
         }
         if (req.method === 'POST' && pathname === '/e2e/api/run') {
             let body;
@@ -143,6 +145,19 @@ export function createE2eExtension({ workspace }) {
                 if (!(await stop())) { json(res, 409, { error: '没有活动运行' }); return true; }
                 json(res, 202, { ok: true });
             } catch { stopping = false; stopRequested = false; json(res, 500, { error: '停止进程失败' }); }
+            return true;
+        }
+        if (req.method === 'GET' && pathname === '/e2e/api/source') {
+            const spec = new URL(req.url, 'http://localhost').searchParams.get('spec');
+            if (!listSpecs(root).includes(spec)) { json(res, 400, { error: '无效测试文件' }); return true; }
+            try {
+                const file = path.resolve(root, spec);
+                if (!isRealPathWithinRoot(root, file)) throw new Error('路径无效');
+                const stat = fs.statSync(file);
+                if (!stat.isFile()) throw new Error('文件无效');
+                if (stat.size > 524288) { json(res, 413, { error: '文件过大' }); return true; }
+                json(res, 200, { spec, content: fs.readFileSync(file, 'utf8') });
+            } catch { json(res, 500, { error: '读取测试文件失败' }); }
             return true;
         }
         if (req.method === 'GET' && pathname === '/e2e/api/result') {

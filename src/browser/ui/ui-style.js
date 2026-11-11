@@ -1035,7 +1035,7 @@ const workbenchStyle = (function () {
             }
             #stepsList .details-panel { background: var(--workspace-hover) !important; border-color: var(--workspace-line) !important; }
 
-            pre {
+            #scenario-test-root pre {
                 background: var(--workspace-code) !important;
                 border: 1px solid #1e293b !important;
                 border-radius: 6px !important;
