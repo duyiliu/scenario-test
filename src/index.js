@@ -1,3 +1,4 @@
+// semi-auto smoke risky
 export * from "./core.js";
 export * from "./registry.js";
 export * from "./engine.js";
