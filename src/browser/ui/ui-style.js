@@ -135,16 +135,17 @@ const workbenchStyle = (function () {
                 --workspace-selected-line: #353a45;
                 --workspace-primary: #5e6ad2;
                 --workspace-primary-hover: #7178e0;
-                --workspace-danger: #eb5757;
-                --workspace-success: #4cb782;
+                /* 语义红绿降饱和（降噪）：近黑底上高饱和红绿刺眼，低饱和仍可辨 */
+                --workspace-danger: #d56d6d;
+                --workspace-success: #59a67d;
                 --workspace-warning: #f2c94c;
                 --workspace-focus: rgba(94, 106, 210, 0.35);
                 --workspace-overlay: rgba(4, 5, 6, 0.65);
                 --workspace-code: #0b0d10;
                 --workspace-radius: 10px;
                 --workspace-info: #7c87e8;
-                --workspace-success-text: #6fce9e;
-                --workspace-danger-text: #f27f7f;
+                --workspace-success-text: #78ba97;
+                --workspace-danger-text: #df9090;
                 --workspace-code-bg: #0b0d10;
                 --workspace-code-text: #d5dae3;
             }
@@ -168,16 +169,17 @@ const workbenchStyle = (function () {
                 --workspace-selected-line: #35446b;
                 --workspace-primary: #4f7cff;
                 --workspace-primary-hover: #648cff;
-                --workspace-danger: #f2555a;
-                --workspace-success: #2fbf8f;
+                /* 语义红绿降饱和（降噪）：与电蓝主色协调，近黑底上不再刺眼 */
+                --workspace-danger: #d56d6f;
+                --workspace-success: #4d9d83;
                 --workspace-warning: #e8b339;
                 --workspace-focus: rgba(79, 124, 255, 0.32);
                 --workspace-overlay: rgba(4, 6, 11, 0.62);
                 --workspace-code: #090d16;
                 --workspace-radius: 8px;
                 --workspace-info: #7aa2ff;
-                --workspace-success-text: #34d399;
-                --workspace-danger-text: #fb7185;
+                --workspace-success-text: #63b697;
+                --workspace-danger-text: #dc8f9a;
                 --workspace-code-bg: #090d16;
                 --workspace-code-text: #dbe2f0;
             }
@@ -231,19 +233,20 @@ const workbenchStyle = (function () {
             :is(.theme-zcode, .theme-linear) .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
             :is(.theme-zcode, .theme-linear) .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
 
+            /* 语义红绿（深色）：令牌本身已降饱和，洗底/描边用低透明克制呈现，仍一眼可辨 */
             :is(.theme-zcode, .theme-linear) .bg-emerald-50,
             :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/60,
-            :is(.theme-zcode, .theme-linear) .bg-emerald-100 { background-color: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-emerald-100 { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .text-emerald-600,
             :is(.theme-zcode, .theme-linear) .text-emerald-600\\/70,
             :is(.theme-zcode, .theme-linear) .text-emerald-700,
             :is(.theme-zcode, .theme-linear) .text-emerald-800 { color: var(--workspace-success-text) !important; }
             :is(.theme-zcode, .theme-linear) .border-emerald-200,
-            :is(.theme-zcode, .theme-linear) .border-emerald-200\\/80 { border-color: color-mix(in srgb, var(--workspace-success) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-emerald-200\\/80 { border-color: color-mix(in srgb, var(--workspace-success) 28%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .bg-rose-50,
             :is(.theme-zcode, .theme-linear) .bg-rose-50\\/40,
             :is(.theme-zcode, .theme-linear) .bg-rose-50\\/60,
-            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/80 { background-color: color-mix(in srgb, var(--workspace-danger) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/80 { background-color: color-mix(in srgb, var(--workspace-danger) 10%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .text-rose-500,
             :is(.theme-zcode, .theme-linear) .text-rose-600,
             :is(.theme-zcode, .theme-linear) .text-rose-600\\/70,
@@ -252,7 +255,7 @@ const workbenchStyle = (function () {
             :is(.theme-zcode, .theme-linear) .text-rose-900 { color: var(--workspace-danger-text) !important; }
             :is(.theme-zcode, .theme-linear) .border-rose-100,
             :is(.theme-zcode, .theme-linear) .border-rose-200,
-            :is(.theme-zcode, .theme-linear) .border-rose-200\\/80 { border-color: color-mix(in srgb, var(--workspace-danger) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-rose-200\\/80 { border-color: color-mix(in srgb, var(--workspace-danger) 28%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .bg-amber-50,
             :is(.theme-zcode, .theme-linear) .bg-yellow-50 { background-color: color-mix(in srgb, var(--workspace-warning) 10%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .text-amber-600,
@@ -300,7 +303,7 @@ const workbenchStyle = (function () {
             :is(.theme-zcode, .theme-linear) .bg-amber-400 { background-color: var(--workspace-warning) !important; }
             :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/40,
             :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-50:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-100:hover { background-color: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-100:hover { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .text-emerald-400,
             :is(.theme-zcode, .theme-linear) .text-emerald-500,
             :is(.theme-zcode, .theme-linear) .hover\\:text-emerald-400:hover,
@@ -313,8 +316,65 @@ const workbenchStyle = (function () {
             :is(.theme-zcode, .theme-linear) .focus\\:ring-emerald-500:focus { --tw-ring-color: var(--workspace-focus) !important; }
             :is(.theme-zcode, .theme-linear) .border-amber-200 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
             :is(.theme-zcode, .theme-linear) .border-blue-200 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .border-emerald-300 { border-color: color-mix(in srgb, var(--workspace-success) 45%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .border-rose-200\\/60 { border-color: color-mix(in srgb, var(--workspace-danger) 30%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-emerald-300 { border-color: color-mix(in srgb, var(--workspace-success) 32%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-rose-200\\/60 { border-color: color-mix(in srgb, var(--workspace-danger) 24%, transparent) !important; }
+
+            /* 深色下硬编码浅红/浅绿的语义徽章、标记、健康卡改用低透明底 + 语义文本，
+               避免近黑底上出现大面积亮色块 */
+            :is(.theme-zcode, .theme-linear) .report-status--passed {
+                background: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important;
+                border-color: color-mix(in srgb, var(--workspace-success) 28%, transparent) !important;
+                color: var(--workspace-success-text) !important;
+                box-shadow: none !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-status--failed {
+                background: color-mix(in srgb, var(--workspace-danger) 12%, transparent) !important;
+                border-color: color-mix(in srgb, var(--workspace-danger) 28%, transparent) !important;
+                color: var(--workspace-danger-text) !important;
+                box-shadow: none !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-status--cancelled {
+                background: color-mix(in srgb, var(--workspace-warning) 12%, transparent) !important;
+                border-color: color-mix(in srgb, var(--workspace-warning) 28%, transparent) !important;
+                color: var(--workspace-warning) !important;
+                box-shadow: none !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-step--passed .report-step__marker {
+                background: color-mix(in srgb, var(--workspace-success) 16%, transparent) !important;
+                color: var(--workspace-success-text) !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-step--failed .report-step__marker {
+                background: color-mix(in srgb, var(--workspace-danger) 16%, transparent) !important;
+                color: var(--workspace-danger-text) !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-healthy {
+                background: color-mix(in srgb, var(--workspace-success) 8%, transparent) !important;
+                border-color: color-mix(in srgb, var(--workspace-success) 24%, transparent) !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-healthy__title { color: var(--workspace-success-text) !important; }
+            :is(.theme-zcode, .theme-linear) .report-healthy__hint { color: var(--workspace-muted) !important; }
+            :is(.theme-zcode, .theme-linear) .scenario-side-tab__badge.is-alert {
+                background: color-mix(in srgb, var(--workspace-danger) 14%, transparent) !important;
+                color: var(--workspace-danger-text) !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-progress__track span {
+                background: var(--workspace-success) !important;
+                box-shadow: none !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-progress__track--failed span {
+                background: var(--workspace-danger) !important;
+                box-shadow: none !important;
+            }
+            :is(.theme-zcode, .theme-linear) .report-method--get { color: var(--workspace-success-text) !important; }
+            :is(.theme-zcode, .theme-linear) .report-method--delete { color: var(--workspace-danger-text) !important; }
+            :is(.theme-zcode, .theme-linear) .code-copy-btn--success {
+                color: var(--workspace-success-text) !important;
+                border-color: color-mix(in srgb, var(--workspace-success) 40%, transparent) !important;
+            }
+            :is(.theme-zcode, .theme-linear) #configModal input:focus,
+            :is(.theme-zcode, .theme-linear) #configModal select:focus {
+                box-shadow: 0 0 0 3px var(--workspace-focus) !important;
+            }
 
             .scenario-workspace { height: calc(100vh - 48px); padding: 8px !important; }
             .scenario-grid { height: 100%; gap: 8px !important; margin: 0 !important; }
