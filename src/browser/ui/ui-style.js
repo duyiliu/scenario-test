@@ -21,6 +21,11 @@ const workbenchStyle = (function () {
                 --workspace-overlay: rgba(15, 23, 42, 0.38);
                 --workspace-code: #0f172a;
                 --workspace-radius: 8px;
+                --workspace-info: #2563eb;
+                --workspace-success-text: #047857;
+                --workspace-danger-text: #be123c;
+                --workspace-code-bg: #0f172a;
+                --workspace-code-text: #cbd5e1;
             }
 
             #scenario-test-root { height: 100%; }
@@ -50,7 +55,8 @@ const workbenchStyle = (function () {
             #scenario-test-root > header #envNameLabel { color: var(--workspace-muted) !important; font-size: 11px !important; font-weight: 600; }
             #scenario-test-root > header #scenarioTitle { color: var(--workspace-text) !important; font-size: 13px !important; font-weight: 700; }
 
-            #scenario-test-root.theme-claude-code {
+            /* 主题令牌同时挂在 body 与工作台根节点：统一页面中与根节点平级的区域（如 E2E 面板、外壳顶栏）也能继承 */
+            body.theme-claude-code, #scenario-test-root.theme-claude-code {
                 --workspace-bg: #f5f0ea;
                 --workspace-surface: #fbf8f4;
                 --workspace-text: #2c2520;
@@ -68,6 +74,11 @@ const workbenchStyle = (function () {
                 --workspace-overlay: rgba(44, 37, 32, 0.34);
                 --workspace-code: #2c2520;
                 --workspace-radius: 8px;
+                --workspace-info: #2563eb;
+                --workspace-success-text: #245244;
+                --workspace-danger-text: #b94c4a;
+                --workspace-code-bg: #1c1815;
+                --workspace-code-text: #e6dfd8;
             }
 
             #scenario-test-root.theme-claude-code > header {
@@ -77,7 +88,7 @@ const workbenchStyle = (function () {
             }
 
             /* ZCode 皓白：浅色版，冷调白底 + 同款电蓝紫强调 */
-            #scenario-test-root.theme-zcode-light {
+            body.theme-zcode-light, #scenario-test-root.theme-zcode-light {
                 color-scheme: light;
                 --workspace-bg: #f5f6fa;
                 --workspace-surface: #ffffff;
@@ -97,6 +108,11 @@ const workbenchStyle = (function () {
                 --workspace-overlay: rgba(26, 34, 51, 0.4);
                 --workspace-code: #1a2233;
                 --workspace-radius: 8px;
+                --workspace-info: #2563eb;
+                --workspace-success-text: #047857;
+                --workspace-danger-text: #be123c;
+                --workspace-code-bg: #1a2233;
+                --workspace-code-text: #cbd5e1;
             }
 
             #scenario-test-root.theme-zcode-light > header {
@@ -105,8 +121,41 @@ const workbenchStyle = (function () {
                 border-bottom-color: var(--workspace-line) !important;
             }
 
+            /* Linear 暗夜：近黑灰底 + blurple 主色 + 发丝边框，与 ZCode 共用浅色工具类重映射 */
+            body.theme-linear, #scenario-test-root.theme-linear {
+                color-scheme: dark;
+                --workspace-bg: #0a0b0d;
+                --workspace-surface: #131417;
+                --workspace-text: #f7f8f8;
+                --workspace-text-soft: #bfc3cb;
+                --workspace-muted: #8a8f98;
+                --workspace-line: #23252b;
+                --workspace-hover: #191b20;
+                --workspace-selected: #1f2229;
+                --workspace-selected-line: #353a45;
+                --workspace-primary: #5e6ad2;
+                --workspace-primary-hover: #7178e0;
+                --workspace-danger: #eb5757;
+                --workspace-success: #4cb782;
+                --workspace-warning: #f2c94c;
+                --workspace-focus: rgba(94, 106, 210, 0.35);
+                --workspace-overlay: rgba(4, 5, 6, 0.65);
+                --workspace-code: #0b0d10;
+                --workspace-radius: 10px;
+                --workspace-info: #7c87e8;
+                --workspace-success-text: #6fce9e;
+                --workspace-danger-text: #f27f7f;
+                --workspace-code-bg: #0b0d10;
+                --workspace-code-text: #d5dae3;
+            }
+
+            #scenario-test-root.theme-linear > header {
+                background: var(--workspace-surface) !important;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+            }
+
             /* ZCode 暗夜：深色编辑器风（电蓝紫强调），浅色工具类按语义重映射 */
-            #scenario-test-root.theme-zcode {
+            body.theme-zcode, #scenario-test-root.theme-zcode {
                 color-scheme: dark;
                 --workspace-bg: #0a0d13;
                 --workspace-surface: #131722;
@@ -124,96 +173,148 @@ const workbenchStyle = (function () {
                 --workspace-warning: #e8b339;
                 --workspace-focus: rgba(79, 124, 255, 0.32);
                 --workspace-overlay: rgba(4, 6, 11, 0.62);
-                --workspace-code: #dbe2f0;
+                --workspace-code: #090d16;
                 --workspace-radius: 8px;
+                --workspace-info: #7aa2ff;
+                --workspace-success-text: #34d399;
+                --workspace-danger-text: #fb7185;
+                --workspace-code-bg: #090d16;
+                --workspace-code-text: #dbe2f0;
             }
 
-            #scenario-test-root.theme-zcode > header {
+            #scenario-test-root:is(.theme-zcode, .theme-linear) > header {
                 background: var(--workspace-surface) !important;
                 box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
             }
 
-            .theme-zcode .bg-white,
-            .theme-zcode .bg-slate-50,
-            .theme-zcode .bg-slate-50\\/50,
-            .theme-zcode .bg-slate-50\\/60,
-            .theme-zcode .bg-slate-50\\/70 { background-color: var(--workspace-surface) !important; }
-            .theme-zcode .bg-slate-100,
-            .theme-zcode .bg-slate-100\\/80 { background-color: var(--workspace-hover) !important; }
-            .theme-zcode .bg-slate-200\\/80,
-            .theme-zcode .bg-slate-300 { background-color: var(--workspace-selected) !important; }
-            .theme-zcode .bg-slate-400 { background-color: var(--workspace-selected-line) !important; }
-            .theme-zcode .bg-slate-950\\/30,
-            .theme-zcode .bg-slate-950\\/40 { background-color: var(--workspace-overlay) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-white,
+            :is(.theme-zcode, .theme-linear) .bg-slate-50,
+            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/50,
+            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/60,
+            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/70 { background-color: var(--workspace-surface) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-100,
+            :is(.theme-zcode, .theme-linear) .bg-slate-100\\/80 { background-color: var(--workspace-hover) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-200\\/80,
+            :is(.theme-zcode, .theme-linear) .bg-slate-300 { background-color: var(--workspace-selected) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-400 { background-color: var(--workspace-selected-line) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/30,
+            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/40 { background-color: var(--workspace-overlay) !important; }
 
-            .theme-zcode .text-slate-700,
-            .theme-zcode .text-slate-800,
-            .theme-zcode .text-slate-900 { color: var(--workspace-text) !important; }
-            .theme-zcode .text-slate-600 { color: var(--workspace-text-soft) !important; }
-            .theme-zcode .text-slate-400,
-            .theme-zcode .text-slate-500 { color: var(--workspace-muted) !important; }
-            .theme-zcode .placeholder-slate-400::placeholder,
-            .theme-zcode .placeholder-slate-500::placeholder { color: var(--workspace-muted) !important; }
-            .theme-zcode .hover\\:text-slate-600:hover { color: var(--workspace-text-soft) !important; }
-            .theme-zcode .hover\\:text-slate-700:hover,
-            .theme-zcode .hover\\:text-slate-900:hover { color: var(--workspace-text) !important; }
-            .theme-zcode .group:hover .group-hover\\:text-slate-600 { color: var(--workspace-text-soft) !important; }
+            :is(.theme-zcode, .theme-linear) .text-slate-700,
+            :is(.theme-zcode, .theme-linear) .text-slate-800,
+            :is(.theme-zcode, .theme-linear) .text-slate-900 { color: var(--workspace-text) !important; }
+            :is(.theme-zcode, .theme-linear) .text-slate-600 { color: var(--workspace-text-soft) !important; }
+            :is(.theme-zcode, .theme-linear) .text-slate-400,
+            :is(.theme-zcode, .theme-linear) .text-slate-500 { color: var(--workspace-muted) !important; }
+            :is(.theme-zcode, .theme-linear) .placeholder-slate-400::placeholder,
+            :is(.theme-zcode, .theme-linear) .placeholder-slate-500::placeholder { color: var(--workspace-muted) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-600:hover { color: var(--workspace-text-soft) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-700:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-900:hover { color: var(--workspace-text) !important; }
+            :is(.theme-zcode, .theme-linear) .group:hover .group-hover\\:text-slate-600 { color: var(--workspace-text-soft) !important; }
 
-            .theme-zcode .border-slate-100,
-            .theme-zcode .border-slate-200,
-            .theme-zcode .border-slate-200\\/60,
-            .theme-zcode .border-slate-200\\/70,
-            .theme-zcode .border-slate-200\\/80,
-            .theme-zcode .border-slate-300 { border-color: var(--workspace-line) !important; }
-            .theme-zcode .border-slate-700,
-            .theme-zcode .border-slate-800 { border-color: var(--workspace-selected-line) !important; }
-            .theme-zcode .hover\\:border-slate-300:hover { border-color: var(--workspace-selected-line) !important; }
-            .theme-zcode .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--workspace-line) !important; }
+            :is(.theme-zcode, .theme-linear) .border-slate-100,
+            :is(.theme-zcode, .theme-linear) .border-slate-200,
+            :is(.theme-zcode, .theme-linear) .border-slate-200\\/60,
+            :is(.theme-zcode, .theme-linear) .border-slate-200\\/70,
+            :is(.theme-zcode, .theme-linear) .border-slate-200\\/80,
+            :is(.theme-zcode, .theme-linear) .border-slate-300 { border-color: var(--workspace-line) !important; }
+            :is(.theme-zcode, .theme-linear) .border-slate-700,
+            :is(.theme-zcode, .theme-linear) .border-slate-800 { border-color: var(--workspace-selected-line) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:border-slate-300:hover { border-color: var(--workspace-selected-line) !important; }
+            :is(.theme-zcode, .theme-linear) .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--workspace-line) !important; }
 
-            .theme-zcode .hover\\:bg-slate-50:hover,
-            .theme-zcode .hover\\:bg-slate-100:hover,
-            .theme-zcode .hover\\:bg-slate-700:hover,
-            .theme-zcode .hover\\:bg-slate-800:hover { background-color: var(--workspace-hover) !important; }
-            .theme-zcode .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
-            .theme-zcode .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-100:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-700:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-800:hover { background-color: var(--workspace-hover) !important; }
+            :is(.theme-zcode, .theme-linear) .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
+            :is(.theme-zcode, .theme-linear) .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
 
-            .theme-zcode .bg-emerald-50,
-            .theme-zcode .bg-emerald-50\\/60,
-            .theme-zcode .bg-emerald-100 { background-color: rgba(47, 191, 143, 0.12) !important; }
-            .theme-zcode .text-emerald-600,
-            .theme-zcode .text-emerald-600\\/70,
-            .theme-zcode .text-emerald-700,
-            .theme-zcode .text-emerald-800 { color: #34d399 !important; }
-            .theme-zcode .border-emerald-200,
-            .theme-zcode .border-emerald-200\\/80 { border-color: rgba(47, 191, 143, 0.35) !important; }
-            .theme-zcode .bg-rose-50,
-            .theme-zcode .bg-rose-50\\/40,
-            .theme-zcode .bg-rose-50\\/60,
-            .theme-zcode .bg-rose-50\\/80 { background-color: rgba(242, 85, 90, 0.12) !important; }
-            .theme-zcode .text-rose-500,
-            .theme-zcode .text-rose-600,
-            .theme-zcode .text-rose-600\\/70,
-            .theme-zcode .text-rose-700,
-            .theme-zcode .text-rose-800,
-            .theme-zcode .text-rose-900 { color: #fb7185 !important; }
-            .theme-zcode .border-rose-100,
-            .theme-zcode .border-rose-200,
-            .theme-zcode .border-rose-200\\/80 { border-color: rgba(242, 85, 90, 0.35) !important; }
-            .theme-zcode .bg-amber-50,
-            .theme-zcode .bg-yellow-50 { background-color: rgba(232, 179, 57, 0.10) !important; }
-            .theme-zcode .text-amber-600,
-            .theme-zcode .text-yellow-600 { color: #e8b339 !important; }
-            .theme-zcode .border-amber-200\\/80,
-            .theme-zcode .border-yellow-200\\/80 { border-color: rgba(232, 179, 57, 0.35) !important; }
-            .theme-zcode .bg-blue-50,
-            .theme-zcode .bg-blue-50\\/80 { background-color: rgba(79, 124, 255, 0.10) !important; }
-            .theme-zcode .text-blue-500,
-            .theme-zcode .text-blue-500\\/80,
-            .theme-zcode .text-blue-600,
-            .theme-zcode .text-blue-900 { color: #7aa2ff !important; }
-            .theme-zcode .bg-indigo-50 { background-color: rgba(129, 140, 248, 0.10) !important; }
-            .theme-zcode .text-indigo-600 { color: #818cf8 !important; }
-            .theme-zcode .border-indigo-200\\/80 { border-color: rgba(129, 140, 248, 0.35) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-emerald-50,
+            :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/60,
+            :is(.theme-zcode, .theme-linear) .bg-emerald-100 { background-color: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-emerald-600,
+            :is(.theme-zcode, .theme-linear) .text-emerald-600\\/70,
+            :is(.theme-zcode, .theme-linear) .text-emerald-700,
+            :is(.theme-zcode, .theme-linear) .text-emerald-800 { color: var(--workspace-success-text) !important; }
+            :is(.theme-zcode, .theme-linear) .border-emerald-200,
+            :is(.theme-zcode, .theme-linear) .border-emerald-200\\/80 { border-color: color-mix(in srgb, var(--workspace-success) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-rose-50,
+            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/40,
+            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/60,
+            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/80 { background-color: color-mix(in srgb, var(--workspace-danger) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-rose-500,
+            :is(.theme-zcode, .theme-linear) .text-rose-600,
+            :is(.theme-zcode, .theme-linear) .text-rose-600\\/70,
+            :is(.theme-zcode, .theme-linear) .text-rose-700,
+            :is(.theme-zcode, .theme-linear) .text-rose-800,
+            :is(.theme-zcode, .theme-linear) .text-rose-900 { color: var(--workspace-danger-text) !important; }
+            :is(.theme-zcode, .theme-linear) .border-rose-100,
+            :is(.theme-zcode, .theme-linear) .border-rose-200,
+            :is(.theme-zcode, .theme-linear) .border-rose-200\\/80 { border-color: color-mix(in srgb, var(--workspace-danger) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-amber-50,
+            :is(.theme-zcode, .theme-linear) .bg-yellow-50 { background-color: color-mix(in srgb, var(--workspace-warning) 10%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-amber-600,
+            :is(.theme-zcode, .theme-linear) .text-yellow-600 { color: var(--workspace-warning) !important; }
+            :is(.theme-zcode, .theme-linear) .border-amber-200\\/80,
+            :is(.theme-zcode, .theme-linear) .border-yellow-200\\/80 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-blue-50,
+            :is(.theme-zcode, .theme-linear) .bg-blue-50\\/80 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-blue-500,
+            :is(.theme-zcode, .theme-linear) .text-blue-500\\/80,
+            :is(.theme-zcode, .theme-linear) .text-blue-600,
+            :is(.theme-zcode, .theme-linear) .text-blue-900 { color: var(--workspace-info) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-indigo-50 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-indigo-500,
+            :is(.theme-zcode, .theme-linear) .text-indigo-600 { color: var(--workspace-info) !important; }
+            :is(.theme-zcode, .theme-linear) .border-indigo-200\\/80 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
+
+            /* 深色弹窗/代码系表面：收敛到夜色阶，避免与面板色脱节 */
+            :is(.theme-zcode, .theme-linear) .bg-slate-700 { background-color: var(--workspace-selected) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-800 { background-color: var(--workspace-hover) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-900 { background-color: color-mix(in srgb, var(--workspace-bg) 60%, var(--workspace-surface)) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-slate-950,
+            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/90 { background-color: var(--workspace-code-bg) !important; }
+            :is(.theme-zcode, .theme-linear) .text-slate-200 { color: var(--workspace-text) !important; }
+            :is(.theme-zcode, .theme-linear) .text-slate-300 { color: var(--workspace-text-soft) !important; }
+            :is(.theme-zcode, .theme-linear) .border-slate-200\\/50,
+            :is(.theme-zcode, .theme-linear) .border-slate-300\\/60,
+            :is(.theme-zcode, .theme-linear) .border-slate-300\\/80 { border-color: var(--workspace-line) !important; }
+            :is(.theme-zcode, .theme-linear) .border-slate-600 { border-color: var(--workspace-selected-line) !important; }
+            :is(.theme-zcode, .theme-linear) .border-slate-700\\/80,
+            :is(.theme-zcode, .theme-linear) .border-slate-800\\/80 { border-color: var(--workspace-line) !important; }
+            :is(.theme-zcode, .theme-linear) .group:hover .group-hover\\:text-slate-900 { color: var(--workspace-text) !important; }
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/60:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/70:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/80:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-600:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-white\\/60:hover { background-color: var(--workspace-hover) !important; }
+
+            /* 语义填充/描边/hover：跟随主题语义色 */
+            :is(.theme-zcode, .theme-linear) .bg-emerald-500 { background-color: var(--workspace-success) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-emerald-600,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-600:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-700:hover { background-color: color-mix(in srgb, var(--workspace-success) 82%, black) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-rose-500 { background-color: var(--workspace-danger) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-amber-400 { background-color: var(--workspace-warning) !important; }
+            :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/40,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-50:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-100:hover { background-color: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .text-emerald-400,
+            :is(.theme-zcode, .theme-linear) .text-emerald-500,
+            :is(.theme-zcode, .theme-linear) .hover\\:text-emerald-400:hover,
+            :is(.theme-zcode, .theme-linear) .hover\\:text-emerald-700:hover { color: var(--workspace-success-text) !important; }
+            :is(.theme-zcode, .theme-linear) .text-amber-400 { color: var(--workspace-warning) !important; }
+            :is(.theme-zcode, .theme-linear) .text-rose-600\\/80,
+            :is(.theme-zcode, .theme-linear) .hover\\:text-rose-600:hover { color: var(--workspace-danger-text) !important; }
+            :is(.theme-zcode, .theme-linear) .ring-emerald-500\\/20 { --tw-ring-color: color-mix(in srgb, var(--workspace-success) 20%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .focus\\:border-emerald-500:focus { border-color: var(--workspace-primary) !important; }
+            :is(.theme-zcode, .theme-linear) .focus\\:ring-emerald-500:focus { --tw-ring-color: var(--workspace-focus) !important; }
+            :is(.theme-zcode, .theme-linear) .border-amber-200 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-blue-200 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-emerald-300 { border-color: color-mix(in srgb, var(--workspace-success) 45%, transparent) !important; }
+            :is(.theme-zcode, .theme-linear) .border-rose-200\\/60 { border-color: color-mix(in srgb, var(--workspace-danger) 30%, transparent) !important; }
 
             .scenario-workspace { height: calc(100vh - 48px); padding: 8px !important; }
             .scenario-grid { height: 100%; gap: 8px !important; margin: 0 !important; }
@@ -862,15 +963,15 @@ const workbenchStyle = (function () {
                 cursor: not-allowed;
             }
             .stats-action-btn--primary {
-                border-color: rgba(99, 102, 241, 0.25);
-                background: rgba(99, 102, 241, 0.06);
-                color: #4f46e5;
+                border-color: color-mix(in srgb, var(--workspace-primary) 25%, transparent);
+                background: color-mix(in srgb, var(--workspace-primary) 6%, transparent);
+                color: var(--workspace-primary);
             }
             .stats-action-btn--primary:hover:not(:disabled) {
-                background: rgba(99, 102, 241, 0.14);
-                border-color: rgba(99, 102, 241, 0.4);
-                color: #4338ca;
-                box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+                background: color-mix(in srgb, var(--workspace-primary) 14%, transparent);
+                border-color: color-mix(in srgb, var(--workspace-primary) 40%, transparent);
+                color: var(--workspace-primary-hover, var(--workspace-primary));
+                box-shadow: 0 2px 6px color-mix(in srgb, var(--workspace-primary) 15%, transparent);
             }
             #scenario-test-root.theme-claude-code .stats-action-btn {
                 background: #fdfaf6;
@@ -1020,7 +1121,7 @@ const workbenchStyle = (function () {
                 cursor: pointer;
                 transition: color 0.15s ease, background-color 0.15s ease;
             }
-            .step-run-actions button:last-child { border-right: 0; color: #0d9488; }
+            .step-run-actions button:last-child { border-right: 0; color: var(--workspace-primary); }
             .step-run-actions button:hover { background: var(--workspace-hover); color: var(--workspace-text); }
             
             .details-panel {
@@ -1035,13 +1136,48 @@ const workbenchStyle = (function () {
             }
             #stepsList .details-panel { background: var(--workspace-hover) !important; border-color: var(--workspace-line) !important; }
 
-            #scenario-test-root pre {
-                background: var(--workspace-code) !important;
-                border: 1px solid #1e293b !important;
+            #scenario-test-root pre:not(.code-content) {
+                background: var(--workspace-code-bg, var(--workspace-code)) !important;
+                border: 1px solid color-mix(in srgb, var(--workspace-code-text, #cbd5e1) 14%, transparent) !important;
                 border-radius: 6px !important;
-                color: #e2e8f0 !important;
+                color: var(--workspace-code-text, #e2e8f0) !important;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             }
+
+            /* 字段差异证据：跟随面板的浅色证据卡，而非深色代码块 */
+            .structural-diff { padding: 2px 14px 6px; }
+            .structural-diff > summary {
+                cursor: pointer;
+                padding: 3px 0;
+                color: var(--workspace-danger-text, #9f1239);
+                font-size: 10.5px;
+                font-weight: 600;
+            }
+            .structural-diff > details {
+                margin: 4px 0 2px 16px;
+                padding-left: 10px;
+                border-left: 2px solid color-mix(in srgb, var(--workspace-danger, #e11d48) 28%, transparent);
+            }
+            .structural-diff > details > summary {
+                cursor: pointer;
+                padding: 2px 0;
+                color: var(--workspace-text-soft, #475569);
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 10.5px;
+            }
+            #scenario-test-root .structural-diff pre {
+                margin: 4px 0 6px;
+                padding: 6px 10px;
+                background: var(--workspace-hover, #f1f5f9) !important;
+                border: 1px solid var(--workspace-line, #e2e8f0) !important;
+                border-radius: 6px !important;
+                color: var(--workspace-text, #0f172a) !important;
+                font-size: 10.5px;
+                line-height: 1.6;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+            .structural-diff > p { margin: 4px 0 0; color: var(--workspace-muted, #94a3b8); font-size: 10px; }
             .font-mono {
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
                 font-variant-numeric: tabular-nums;
@@ -1088,13 +1224,13 @@ const workbenchStyle = (function () {
             }
 
             .scenario-header-button--report {
-                border-color: rgba(99, 102, 241, 0.22) !important;
-                background: rgba(99, 102, 241, 0.06) !important;
-                color: #4f46e5 !important;
+                border-color: color-mix(in srgb, var(--workspace-primary) 22%, transparent) !important;
+                background: color-mix(in srgb, var(--workspace-primary) 6%, transparent) !important;
+                color: var(--workspace-primary) !important;
             }
             .scenario-header-button--report:hover:not(:disabled) {
-                background: rgba(99, 102, 241, 0.12) !important;
-                border-color: rgba(99, 102, 241, 0.35) !important;
+                background: color-mix(in srgb, var(--workspace-primary) 12%, transparent) !important;
+                border-color: color-mix(in srgb, var(--workspace-primary) 35%, transparent) !important;
             }
             #scenario-test-root.theme-claude-code .scenario-header-button--report {
                 background: #fdfaf6 !important;
@@ -1201,7 +1337,7 @@ const workbenchStyle = (function () {
             .report-method--delete { color: #e11d48; }
             .report-method--patch { color: #7c3aed; }
             .report-step__path { overflow: hidden; color: var(--workspace-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-            .report-step__issue { margin-top: 4px; color: #e11d48; font-size: 10.5px; line-height: 1.4; }
+            .report-step__issue { margin-top: 4px; color: var(--workspace-danger-text, #e11d48); font-size: 10.5px; line-height: 1.4; }
             .report-step__locate {
                 display: inline-flex;
                 align-items: center;
@@ -1217,9 +1353,9 @@ const workbenchStyle = (function () {
             .report-step__locate:hover { text-decoration: underline; }
             .report-step__locate:focus-visible { outline: 2px solid var(--workspace-primary); outline-offset: 2px; }
             .report-step__response { margin-top: 6px; }
-            .report-step__response summary { cursor: pointer; color: #0d9488; font-size: 10px; font-weight: 700; }
+            .report-step__response summary { cursor: pointer; color: var(--workspace-primary); font-size: 10px; font-weight: 700; }
             .report-step__response-section { margin-top: 6px; color: var(--workspace-muted); font-size: 10px; font-weight: 600; }
-            .report-step__response pre { max-height: 260px; margin-top: 4px; overflow: auto; padding: 8px; background: #0f172a; border: 0; border-radius: 6px; color: #e2e8f0; font-size: 10px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+            .report-step__response pre { max-height: 260px; margin-top: 4px; overflow: auto; padding: 8px; background: var(--workspace-code-bg, #0f172a); border: 0; border-radius: 6px; color: var(--workspace-code-text, #e2e8f0); font-size: 10px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
             .report-step__result { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 3px; padding-top: 1px; }
             .report-step__code { color: var(--workspace-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 700; }
             .report-step__duration { color: var(--workspace-muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
@@ -1531,11 +1667,11 @@ const workbenchStyle = (function () {
                 background: color-mix(in srgb, #d9af8d 85%, transparent);
                 background-clip: padding-box;
             }
-            #scenario-test-root.theme-zcode ::-webkit-scrollbar-thumb {
+            #scenario-test-root:is(.theme-zcode, .theme-linear) ::-webkit-scrollbar-thumb {
                 background: color-mix(in srgb, #35446b 70%, transparent);
                 background-clip: padding-box;
             }
-            #scenario-test-root.theme-zcode ::-webkit-scrollbar-thumb:hover {
+            #scenario-test-root:is(.theme-zcode, .theme-linear) ::-webkit-scrollbar-thumb:hover {
                 background: color-mix(in srgb, #4f7cff 70%, transparent);
                 background-clip: padding-box;
             }
@@ -1544,7 +1680,7 @@ const workbenchStyle = (function () {
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-workspace { height: calc(100vh - 52px); padding: 12px !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-grid { gap: 12px !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { box-shadow: 0 4px 18px rgba(25, 40, 75, 0.05) !important; }
-            #scenario-test-root.theme-zcode .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
+            #scenario-test-root:is(.theme-zcode, .theme-linear) .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList { padding: 8px !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item:hover { transform: none; box-shadow: none !important; }
             #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item.is-active { box-shadow: inset 3px 0 0 var(--workspace-primary) !important; }
@@ -1573,17 +1709,19 @@ const workbenchStyle = (function () {
     }
 
     function applyTheme(theme) {
-        var selectedTheme = (theme === 'claude-code' || theme === 'zcode' || theme === 'zcode-light') ? theme : 'default';
+        var selectedTheme = (theme === 'claude-code' || theme === 'zcode' || theme === 'zcode-light' || theme === 'linear') ? theme : 'default';
         var root = document.getElementById('scenario-test-root');
         if (root) {
             root.classList.add('is-theme-switching');
             root.classList.toggle('theme-claude-code', selectedTheme === 'claude-code');
             root.classList.toggle('theme-zcode', selectedTheme === 'zcode');
             root.classList.toggle('theme-zcode-light', selectedTheme === 'zcode-light');
+            root.classList.toggle('theme-linear', selectedTheme === 'linear');
         }
         document.body.classList.toggle('theme-claude-code', selectedTheme === 'claude-code');
         document.body.classList.toggle('theme-zcode', selectedTheme === 'zcode');
         document.body.classList.toggle('theme-zcode-light', selectedTheme === 'zcode-light');
+        document.body.classList.toggle('theme-linear', selectedTheme === 'linear');
         var select = document.getElementById('themeSelect');
         if (select) {
             select.value = selectedTheme;

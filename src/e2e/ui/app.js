@@ -16,17 +16,38 @@ export function mountE2E(root, options = {}) {
     root.prepend(style);
   }
   let panelActive = options.active !== false, timer = null;
+  const THEME_VARS = ['bg', 'surface', 'text', 'text-soft', 'muted', 'line', 'hover', 'selected', 'selected-line', 'primary', 'primary-hover', 'danger', 'danger-text', 'success', 'success-text', 'warning', 'info', 'focus', 'overlay', 'code', 'code-bg', 'code-text', 'radius'];
+  const THEME_CLASSES = ['theme-claude-code', 'theme-zcode', 'theme-zcode-light', 'theme-linear'];
+  const themeClassesOf = el => (el ? THEME_CLASSES.filter(name => el.classList.contains(name)).join(' ') : '');
   function syncTheme() {
     const source = document.getElementById('scenario-test-root');
     if (!source) return;
     const style = getComputedStyle(source);
-    for (const name of ['bg', 'surface', 'text', 'muted', 'line', 'hover', 'selected', 'selected-line', 'primary', 'primary-hover', 'danger', 'success', 'warning', 'code']) {
+    root.classList.add('is-theme-switching');
+    for (const name of THEME_VARS) {
       const value = style.getPropertyValue('--workspace-' + name).trim();
       if (value) root.style.setProperty('--workspace-' + name, value);
     }
+    // 禁用过渡时一次性提交新配色，避免控件底色向旧主题插值
+    void root.offsetWidth;
+    root.classList.remove('is-theme-switching');
   }
   syncTheme();
+  // 主题切换只改 #scenario-test-root 与 body 的主题类；面板可见期间也要实时跟随。
+  // 只比对主题类：本函数自身也会改动 root 的 is-theme-switching，不能按任意 class 变化重入
+  let lastThemeClasses = '';
+  const themeObserver = new MutationObserver(() => {
+    const next = themeClassesOf(document.body) + '|' + themeClassesOf(document.getElementById('scenario-test-root'));
+    if (next === lastThemeClasses) return;
+    lastThemeClasses = next;
+    syncTheme();
+  });
+  lastThemeClasses = themeClassesOf(document.body) + '|' + themeClassesOf(document.getElementById('scenario-test-root'));
+  themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  const themeSource = document.getElementById('scenario-test-root');
+  if (themeSource && themeSource !== root) themeObserver.observe(themeSource, { attributes: true, attributeFilter: ['class'] });
   function destroy() {
+    themeObserver.disconnect();
     if (timer) { clearInterval(timer); timer = null; }
     if (mode !== 'embedded') { window.removeEventListener('popstate', syncFromUrl); window.removeEventListener('hashchange', syncFromUrl); }
     root.replaceChildren();

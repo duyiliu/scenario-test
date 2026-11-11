@@ -61,6 +61,36 @@ try {
     }));
     assert.equal(lightInput.background, "rgb(255, 255, 255)", "皓白输入框不应残留暗色过渡");
     assert.equal(lightInput.scheme, "light", "皓白原生控件应使用浅色配色");
+    // 主题令牌提升到 body：与工作台根节点平级的区域（E2E 面板、外壳顶栏）靠继承取色
+    const bodyTokens = await page.evaluate(() => {
+        const style = getComputedStyle(document.body);
+        return {
+            bg: style.getPropertyValue("--workspace-bg").trim(),
+            info: style.getPropertyValue("--workspace-info").trim()
+        };
+    });
+    assert.equal(bodyTokens.bg, "#f5f6fa", "body 应携带 zcode-light 主题令牌供平级面板继承");
+    assert.equal(bodyTokens.info, "#2563eb", "body 应携带语义令牌 info");
+    await page.locator("#themeSelect").selectOption("zcode");
+    const darkTokens = await page.evaluate(() => {
+        const style = getComputedStyle(document.body);
+        return {
+            bg: style.getPropertyValue("--workspace-bg").trim(),
+            dangerText: style.getPropertyValue("--workspace-danger-text").trim()
+        };
+    });
+    assert.equal(darkTokens.bg, "#0a0d13", "body 应携带 zcode 暗夜主题令牌");
+    assert.equal(darkTokens.dangerText, "#fb7185", "暗夜下错误文本色应变亮");
+    await page.locator("#themeSelect").selectOption("linear");
+    const linearTokens = await page.evaluate(() => {
+        const style = getComputedStyle(document.body);
+        return {
+            bg: style.getPropertyValue("--workspace-bg").trim(),
+            primary: style.getPropertyValue("--workspace-primary").trim()
+        };
+    });
+    assert.equal(linearTokens.bg, "#0a0b0d", "body 应携带 linear 暗夜主题令牌");
+    assert.equal(linearTokens.primary, "#5e6ad2", "linear 主题主色应为 blurple");
     await page.screenshot({ path: path.join(root, "test-results/light-theme-fixed.png") });
     await page.locator("#themeSelect").selectOption("default");
 
