@@ -76,21 +76,27 @@ try {
         const style = getComputedStyle(document.body);
         return {
             bg: style.getPropertyValue("--workspace-bg").trim(),
-            dangerText: style.getPropertyValue("--workspace-danger-text").trim()
+            dangerText: style.getPropertyValue("--workspace-danger-text").trim(),
+            successText: style.getPropertyValue("--workspace-success-text").trim()
         };
     });
     assert.equal(darkTokens.bg, "#0a0d13", "body 应携带 zcode 暗夜主题令牌");
-    assert.equal(darkTokens.dangerText, "#fb7185", "暗夜下错误文本色应变亮");
+    assert.equal(darkTokens.dangerText, "#dc8f9a", "暗夜错误文本色应降饱和且保持可辨");
+    assert.equal(darkTokens.successText, "#63b697", "暗夜成功文本色应降饱和且保持可辨");
     await page.locator("#themeSelect").selectOption("linear");
     const linearTokens = await page.evaluate(() => {
         const style = getComputedStyle(document.body);
         return {
             bg: style.getPropertyValue("--workspace-bg").trim(),
-            primary: style.getPropertyValue("--workspace-primary").trim()
+            primary: style.getPropertyValue("--workspace-primary").trim(),
+            danger: style.getPropertyValue("--workspace-danger").trim(),
+            success: style.getPropertyValue("--workspace-success").trim()
         };
     });
     assert.equal(linearTokens.bg, "#0a0b0d", "body 应携带 linear 暗夜主题令牌");
     assert.equal(linearTokens.primary, "#5e6ad2", "linear 主题主色应为 blurple");
+    assert.equal(linearTokens.danger, "#d56d6d", "linear 语义红应降饱和");
+    assert.equal(linearTokens.success, "#59a67d", "linear 语义绿应降饱和");
     await page.screenshot({ path: path.join(root, "test-results/light-theme-fixed.png") });
     await page.locator("#themeSelect").selectOption("default");
 
