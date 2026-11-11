@@ -76,6 +76,8 @@ jobs:
   mutation:
     name: bounded mutation tests
     runs-on: ubuntu-24.04
+    # 30 分钟量级，只在 master 推送跑；PR 靠 unit/types/browser 把关
+    if: github.event_name == 'push'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
