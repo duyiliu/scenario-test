@@ -571,9 +571,9 @@ const workbenchView = (function () {
                 '<td class="px-3 py-1.5 font-mono text-[11px] text-slate-600 break-all">' + esc(fmtVarValue(entry.value)) + '</td>' +
             '</tr>';
         }).join('');
-        return '<details class="report-step__response mt-4 pt-3.5 pb-2 border-t border-slate-200/80">' +
+        return '<details class="report-step__response mt-4 pt-3.5 pb-4 border-t border-slate-200/80">' +
             '<summary>运行时变量 · ' + entries.length + ' 项' + (changedCount ? '（本步变更 ' + changedCount + '）' : '') + '</summary>' +
-            '<div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2 pb-1">' +
+            '<div class="border border-slate-200/80 rounded-md overflow-hidden bg-white shadow-2xs mt-2 pb-2">' +
                 '<table class="w-full text-left text-xs">' +
                     '<thead class="bg-slate-50 text-[10px] text-slate-500 font-semibold border-b border-slate-200/60 uppercase tracking-wider">' +
                         '<tr><th class="px-3 py-1.5">变量名</th><th class="px-3 py-1.5">值（本步骤执行后）</th></tr>' +
