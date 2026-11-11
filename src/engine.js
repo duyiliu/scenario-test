@@ -1,3 +1,4 @@
+// approve-button e2e
 import {
     applyExtract,
     applyGeneratedVar,
