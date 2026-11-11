@@ -4,6 +4,11 @@ on:
   push:
     branches: [master]
   pull_request:
+    # 纯文档改动跳过完整矩阵（unit/browser/mutation），避免无意义的全量跑；
+    # 注意 docs 改动同时会跳过行尾审计，需要覆盖时把路径移出本列表。
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
 
 jobs:
   unit:
@@ -12,7 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # ubuntu 固定 24.04：ubuntu-latest 滚动到 26.04 后 Playwright 1.55 无法装依赖
+        os: [ubuntu-24.04, windows-latest]
         node: [22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +42,7 @@ jobs:
 
   types:
     name: d.ts 类型自检
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,7 +57,7 @@ jobs:
 
   browser:
     name: browser (playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,7 +75,7 @@ jobs:
 
   mutation:
     name: bounded mutation tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
