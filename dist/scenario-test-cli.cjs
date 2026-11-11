@@ -421,7 +421,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "f515dd85449e7b2bca1d9a6edeb0fd8aa14fe4a3e3567f6ed276ac468b1c115d";
+var BUILD_ID = "be96b8bfd89144c876933da22dd22ccbea5f9afe861720713c1ba08c3095b41f";
 
 // src/contract.js
 var CONTRACT_VERSION = 22;

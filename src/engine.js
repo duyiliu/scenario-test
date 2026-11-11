@@ -1,3 +1,5 @@
+// Symphony approval smoke test
+// approve-button e2e
 import {
     applyExtract,
     applyGeneratedVar,
