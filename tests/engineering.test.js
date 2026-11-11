@@ -29,7 +29,8 @@ test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、类型自检与浏
     const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
     assert.match(workflow, /on:\s*\n\s*push:/);
     assert.match(workflow, /pull_request/);
-    assert.match(workflow, /os: \[ubuntu-latest, windows-latest\]/);
+    // ubuntu 固定 24.04（df12d36）：ubuntu-latest 滚动到 26.04 后 Playwright 1.55 无法装依赖
+    assert.match(workflow, /os: \[ubuntu-24\.04, windows-latest\]/);
     // engines 下限 Node 22；22/24 均跑全量（含 Tailwind 4 构建），无版本跳过条件
     assert.match(workflow, /node: \[22, 24\]/);
     assert.doesNotMatch(workflow, /matrix\.node != 18/, "22/24 全量构建，不应有 Node 18 跳过条件");
