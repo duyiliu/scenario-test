@@ -17,7 +17,7 @@ export function mountE2E(root, options = {}) {
   }
   let panelActive = options.active !== false, timer = null;
   const THEME_VARS = ['bg', 'surface', 'text', 'text-soft', 'muted', 'line', 'hover', 'selected', 'selected-line', 'primary', 'primary-hover', 'danger', 'danger-text', 'success', 'success-text', 'warning', 'info', 'focus', 'overlay', 'code', 'code-bg', 'code-text', 'radius'];
-  const THEME_CLASSES = ['theme-claude-code', 'theme-zcode', 'theme-zcode-light', 'theme-linear'];
+  const THEME_CLASSES = ['theme-linear'];
   const themeClassesOf = el => (el ? THEME_CLASSES.filter(name => el.classList.contains(name)).join(' ') : '');
   function syncTheme() {
     const source = document.getElementById('scenario-test-root');

@@ -421,7 +421,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "473e31c0415d50f32d323dee5b27f75f55591b854f9f12032f2a72c3e18272f6";
+var BUILD_ID = "1c53a33ee686a2536ea7164e9becdcab4f73d57cb2132fe4c17f7a7805484627";
 
 // src/contract.js
 var CONTRACT_VERSION = 22;
@@ -4829,7 +4829,7 @@ var E2E_APP_JS = `var ScenarioTestE2E = (() => {
     }
     let panelActive = options.active !== false, timer = null;
     const THEME_VARS = ["bg", "surface", "text", "text-soft", "muted", "line", "hover", "selected", "selected-line", "primary", "primary-hover", "danger", "danger-text", "success", "success-text", "warning", "info", "focus", "overlay", "code", "code-bg", "code-text", "radius"];
-    const THEME_CLASSES = ["theme-claude-code", "theme-zcode", "theme-zcode-light", "theme-linear"];
+    const THEME_CLASSES = ["theme-linear"];
     const themeClassesOf = (el) => el ? THEME_CLASSES.filter((name) => el.classList.contains(name)).join(" ") : "";
     function syncTheme() {
       const source = document.getElementById("scenario-test-root");

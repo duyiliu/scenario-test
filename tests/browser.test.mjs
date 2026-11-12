@@ -88,17 +88,21 @@ try {
         assert.equal(await page.locator("#scenarioVar_exampleToken").getAttribute("type"), "password", "token 命名的凭据变量应掩码显示");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").getAttribute("type"), "text", "非凭据变量保持明文输入");
         assert.equal(await page.locator("#scenarioVar_expectedStatus").inputValue(), "UP");
-        await page.locator("#themeSelect").selectOption("claude-code");
-        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")), true);
-        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f5f0ea");
+        // 主题只保留两个：浅色 default（现代简约）/ 深色 linear（Linear 暗夜）
+        assert.deepEqual(
+            await page.locator("#themeSelect option").evaluateAll((nodes) => nodes.map((node) => node.value)),
+            ["default", "linear"],
+            "主题下拉应只有浅色与深色两项"
+        );
+        await page.locator("#themeSelect").selectOption("linear");
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-linear")), true);
+        assert.equal(await page.locator("body").evaluate((node) => node.classList.contains("theme-linear")), true);
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#0a0b0d");
+        assert.equal(await page.locator(".scenario-pane").first().evaluate((node) => getComputedStyle(node).borderRadius), "10px");
         assert.match(await page.locator(".scenario-header-actions").textContent(), /风格/);
-        for (const theme of ["zcode", "zcode-light", "linear"]) {
-            await page.locator("#themeSelect").selectOption(theme);
-            assert.equal(await page.locator("#scenario-test-root").evaluate((node, name) => node.classList.contains(`theme-${name}`), theme), true);
-            assert.equal(await page.locator("body").evaluate((node, name) => node.classList.contains(`theme-${name}`), theme), true);
-            assert.equal(await page.locator(".scenario-pane").first().evaluate((node) => getComputedStyle(node).borderRadius), "10px");
-        }
-        await page.locator("#themeSelect").selectOption("claude-code");
+        await page.locator("#themeSelect").selectOption("default");
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-linear")), false, "切回浅色应移除深色主题类");
+        assert.equal(await page.locator("#scenario-test-root").evaluate((node) => getComputedStyle(node).getPropertyValue("--workspace-bg").trim()), "#f8fafc");
 
         if (!await page.locator("#scenarioVar_expectedStatus").isVisible()) {
             await page.locator("#configToggleBtn").click();
@@ -461,7 +465,7 @@ try {
     <div id="scenario-test" style="height:100vh"></div>
     <script src="../../dist/scenario-test.umd.js"></script>
     <script>
-        localStorage.setItem("custom.storage.theme", "claude-code");
+        localStorage.setItem("custom.storage.theme", "linear");
         ScenarioTest.createApp({
             mount: "#scenario-test",
             config: ScenarioTest.defineConfig({
@@ -478,12 +482,21 @@ try {
         await page.goto(`http://127.0.0.1:${port}/storage-keys-regression.html`, { waitUntil: "networkidle" });
         await page.waitForFunction(() => document.querySelector("#scenario-test-root"));
         assert.equal(
-            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-claude-code")),
+            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-linear")),
             true,
             "storageKeys.theme 应作为自定义 LocalStorage 键被读取"
         );
         await page.locator("#themeSelect").selectOption("default");
         assert.equal(await page.evaluate(() => localStorage.getItem("custom.storage.theme")), "default", "主题切换应写入自定义 storageKeys.theme");
+        // 旧主题值迁移：历史 localStorage 里的 zcode 应落到 linear，而不是未定义样式
+        await page.evaluate(() => localStorage.setItem("custom.storage.theme", "zcode"));
+        await page.reload({ waitUntil: "networkidle" });
+        await page.waitForFunction(() => document.querySelector("#scenario-test-root"));
+        assert.equal(
+            await page.locator("#scenario-test-root").evaluate((node) => node.classList.contains("theme-linear")),
+            true,
+            "旧 zcode 主题值应迁移为 linear"
+        );
         await page.close();
     } finally {
         fs.rmSync(storageKeysPagePath, { force: true });

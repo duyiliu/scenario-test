@@ -51,52 +51,44 @@ try {
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
     await page.waitForFunction(() => document.querySelectorAll("[data-scenario-file]").length === 6);
 
-    // 暗转亮后应立即完成配色，不能让白底上的控件继续插值为灰色。
-    await page.locator("#themeSelect").selectOption("zcode");
+    // 只保留两个主题（浅色 default / 深色 linear）；暗转亮后应立即完成配色，不能让白底上的控件继续插值为灰色。
+    await page.locator("#themeSelect").selectOption("linear");
     await page.waitForTimeout(250);
-    await page.locator("#themeSelect").selectOption("zcode-light");
+    await page.locator("#themeSelect").selectOption("default");
     const lightInput = await page.locator("#scenarioSearchInput").evaluate((el) => ({
         background: getComputedStyle(el).backgroundColor,
         scheme: getComputedStyle(el).colorScheme
     }));
-    assert.equal(lightInput.background, "rgb(255, 255, 255)", "皓白输入框不应残留暗色过渡");
-    assert.equal(lightInput.scheme, "light", "皓白原生控件应使用浅色配色");
+    assert.equal(lightInput.background, "rgb(255, 255, 255)", "浅色主题输入框不应残留暗色过渡");
+    assert.equal(lightInput.scheme, "light", "浅色原生控件应使用浅色配色");
     // 主题令牌提升到 body：与工作台根节点平级的区域（E2E 面板、外壳顶栏）靠继承取色
-    const bodyTokens = await page.evaluate(() => {
+    const lightTokens = await page.evaluate(() => {
         const style = getComputedStyle(document.body);
         return {
             bg: style.getPropertyValue("--workspace-bg").trim(),
             info: style.getPropertyValue("--workspace-info").trim()
         };
     });
-    assert.equal(bodyTokens.bg, "#f5f6fa", "body 应携带 zcode-light 主题令牌供平级面板继承");
-    assert.equal(bodyTokens.info, "#2563eb", "body 应携带语义令牌 info");
-    await page.locator("#themeSelect").selectOption("zcode");
-    const darkTokens = await page.evaluate(() => {
-        const style = getComputedStyle(document.body);
-        return {
-            bg: style.getPropertyValue("--workspace-bg").trim(),
-            dangerText: style.getPropertyValue("--workspace-danger-text").trim(),
-            successText: style.getPropertyValue("--workspace-success-text").trim()
-        };
-    });
-    assert.equal(darkTokens.bg, "#0a0d13", "body 应携带 zcode 暗夜主题令牌");
-    assert.equal(darkTokens.dangerText, "#dc8f9a", "暗夜错误文本色应降饱和且保持可辨");
-    assert.equal(darkTokens.successText, "#63b697", "暗夜成功文本色应降饱和且保持可辨");
+    assert.equal(lightTokens.bg, "#f8fafc", "body 应携带浅色主题令牌供平级面板继承");
+    assert.equal(lightTokens.info, "#2563eb", "body 应携带语义令牌 info");
     await page.locator("#themeSelect").selectOption("linear");
-    const linearTokens = await page.evaluate(() => {
+    const darkTokens = await page.evaluate(() => {
         const style = getComputedStyle(document.body);
         return {
             bg: style.getPropertyValue("--workspace-bg").trim(),
             primary: style.getPropertyValue("--workspace-primary").trim(),
             danger: style.getPropertyValue("--workspace-danger").trim(),
-            success: style.getPropertyValue("--workspace-success").trim()
+            success: style.getPropertyValue("--workspace-success").trim(),
+            dangerText: style.getPropertyValue("--workspace-danger-text").trim(),
+            successText: style.getPropertyValue("--workspace-success-text").trim()
         };
     });
-    assert.equal(linearTokens.bg, "#0a0b0d", "body 应携带 linear 暗夜主题令牌");
-    assert.equal(linearTokens.primary, "#5e6ad2", "linear 主题主色应为 blurple");
-    assert.equal(linearTokens.danger, "#d56d6d", "linear 语义红应降饱和");
-    assert.equal(linearTokens.success, "#59a67d", "linear 语义绿应降饱和");
+    assert.equal(darkTokens.bg, "#0a0b0d", "body 应携带 linear 暗夜主题令牌");
+    assert.equal(darkTokens.primary, "#5e6ad2", "linear 主题主色应为 blurple");
+    assert.equal(darkTokens.danger, "#d56d6d", "linear 语义红应降饱和");
+    assert.equal(darkTokens.success, "#59a67d", "linear 语义绿应降饱和");
+    assert.equal(darkTokens.dangerText, "#df9090", "暗夜错误文本色应降饱和且保持可辨");
+    assert.equal(darkTokens.successText, "#78ba97", "暗夜成功文本色应降饱和且保持可辨");
     await page.screenshot({ path: path.join(root, "test-results/light-theme-fixed.png") });
     await page.locator("#themeSelect").selectOption("default");
 

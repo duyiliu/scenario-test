@@ -69,10 +69,10 @@ try {
     await page.screenshot({ path: path.join(shots, "05-config-modal.png") });
     await page.locator("#configCloseBtn").click();
 
-    // 6. claude-code 温暖主题
-    await page.locator("#themeSelect").selectOption("claude-code");
+    // 6. linear 深色主题
+    await page.locator("#themeSelect").selectOption("linear");
     await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(shots, "06-theme-claude.png") });
+    await page.screenshot({ path: path.join(shots, "06-theme-linear.png") });
 
     await browser.close();
     console.log("截图完成:", shots);

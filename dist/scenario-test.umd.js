@@ -3937,6 +3937,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     function getWorkspaceStyleBlock() {
       return `
             :root {
+                color-scheme: light;
                 --workspace-bg: #f8fafc;
                 --workspace-surface: #ffffff;
                 --workspace-text: #0f172a;
@@ -3989,72 +3990,8 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             #scenario-test-root > header #scenarioTitle { color: var(--workspace-text) !important; font-size: 13px !important; font-weight: 700; }
 
             /* \u4E3B\u9898\u4EE4\u724C\u540C\u65F6\u6302\u5728 body \u4E0E\u5DE5\u4F5C\u53F0\u6839\u8282\u70B9\uFF1A\u7EDF\u4E00\u9875\u9762\u4E2D\u4E0E\u6839\u8282\u70B9\u5E73\u7EA7\u7684\u533A\u57DF\uFF08\u5982 E2E \u9762\u677F\u3001\u5916\u58F3\u9876\u680F\uFF09\u4E5F\u80FD\u7EE7\u627F */
-            body.theme-claude-code, #scenario-test-root.theme-claude-code {
-                --workspace-bg: #f5f0ea;
-                --workspace-surface: #fbf8f4;
-                --workspace-text: #2c2520;
-                --workspace-muted: #7c7066;
-                --workspace-line: #e8dacf;
-                --workspace-hover: #efe5dc;
-                --workspace-selected: #e5d5c6;
-                --workspace-selected-line: #d4bfad;
-                --workspace-primary: #245244;
-                --workspace-primary-hover: #1b3e33;
-                --workspace-danger: #b94c4a;
-                --workspace-success: #245244;
-                --workspace-warning: #a65f2d;
-                --workspace-focus: rgba(36, 82, 68, 0.2);
-                --workspace-overlay: rgba(44, 37, 32, 0.34);
-                --workspace-code: #2c2520;
-                --workspace-radius: 8px;
-                --workspace-info: #2563eb;
-                --workspace-success-text: #245244;
-                --workspace-danger-text: #b94c4a;
-                --workspace-code-bg: #1c1815;
-                --workspace-code-text: #e6dfd8;
-            }
 
-            #scenario-test-root.theme-claude-code > header {
-                background: #fdfaf6 !important;
-                box-shadow: 0 1px 3px rgba(91, 67, 49, .06) !important;
-                border-bottom-color: var(--workspace-line) !important;
-            }
-
-            /* ZCode \u7693\u767D\uFF1A\u6D45\u8272\u7248\uFF0C\u51B7\u8C03\u767D\u5E95 + \u540C\u6B3E\u7535\u84DD\u7D2B\u5F3A\u8C03 */
-            body.theme-zcode-light, #scenario-test-root.theme-zcode-light {
-                color-scheme: light;
-                --workspace-bg: #f5f6fa;
-                --workspace-surface: #ffffff;
-                --workspace-text: #1a2233;
-                --workspace-text-soft: #4a5568;
-                --workspace-muted: #6b7280;
-                --workspace-line: #e3e6f0;
-                --workspace-hover: #eef1f8;
-                --workspace-selected: #e4e9fb;
-                --workspace-selected-line: #c7d3f5;
-                --workspace-primary: #4f7cff;
-                --workspace-primary-hover: #3d6bef;
-                --workspace-danger: #e11d48;
-                --workspace-success: #10b981;
-                --workspace-warning: #d97706;
-                --workspace-focus: rgba(79, 124, 255, 0.25);
-                --workspace-overlay: rgba(26, 34, 51, 0.4);
-                --workspace-code: #1a2233;
-                --workspace-radius: 8px;
-                --workspace-info: #2563eb;
-                --workspace-success-text: #047857;
-                --workspace-danger-text: #be123c;
-                --workspace-code-bg: #1a2233;
-                --workspace-code-text: #cbd5e1;
-            }
-
-            #scenario-test-root.theme-zcode-light > header {
-                background: #ffffff !important;
-                box-shadow: 0 1px 3px rgba(79, 124, 255, 0.08) !important;
-                border-bottom-color: var(--workspace-line) !important;
-            }
-
-            /* Linear \u6697\u591C\uFF1A\u8FD1\u9ED1\u7070\u5E95 + blurple \u4E3B\u8272 + \u53D1\u4E1D\u8FB9\u6846\uFF0C\u4E0E ZCode \u5171\u7528\u6D45\u8272\u5DE5\u5177\u7C7B\u91CD\u6620\u5C04 */
+            /* Linear \u6697\u591C\uFF1A\u552F\u4E00\u6DF1\u8272\u4E3B\u9898\uFF0C\u8FD1\u9ED1\u7070\u5E95 + blurple \u4E3B\u8272 + \u53D1\u4E1D\u8FB9\u6846\uFF1B\u6D45\u8272\u5DE5\u5177\u7C7B\u6309\u8BED\u4E49\u91CD\u6620\u5C04 */
             body.theme-linear, #scenario-test-root.theme-linear {
                 color-scheme: dark;
                 --workspace-bg: #0a0b0d;
@@ -4088,224 +4025,190 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
             }
 
-            /* ZCode \u6697\u591C\uFF1A\u6DF1\u8272\u7F16\u8F91\u5668\u98CE\uFF08\u7535\u84DD\u7D2B\u5F3A\u8C03\uFF09\uFF0C\u6D45\u8272\u5DE5\u5177\u7C7B\u6309\u8BED\u4E49\u91CD\u6620\u5C04 */
-            body.theme-zcode, #scenario-test-root.theme-zcode {
-                color-scheme: dark;
-                --workspace-bg: #0a0d13;
-                --workspace-surface: #131722;
-                --workspace-text: #e6e9f2;
-                --workspace-text-soft: #b7bfd0;
-                --workspace-muted: #8a92a6;
-                --workspace-line: #252c3d;
-                --workspace-hover: #1b2130;
-                --workspace-selected: #222b42;
-                --workspace-selected-line: #35446b;
-                --workspace-primary: #4f7cff;
-                --workspace-primary-hover: #648cff;
-                /* \u8BED\u4E49\u7EA2\u7EFF\u964D\u9971\u548C\uFF08\u964D\u566A\uFF09\uFF1A\u4E0E\u7535\u84DD\u4E3B\u8272\u534F\u8C03\uFF0C\u8FD1\u9ED1\u5E95\u4E0A\u4E0D\u518D\u523A\u773C */
-                --workspace-danger: #d56d6f;
-                --workspace-success: #4d9d83;
-                --workspace-warning: #e8b339;
-                --workspace-focus: rgba(79, 124, 255, 0.32);
-                --workspace-overlay: rgba(4, 6, 11, 0.62);
-                --workspace-code: #090d16;
-                --workspace-radius: 8px;
-                --workspace-info: #7aa2ff;
-                --workspace-success-text: #63b697;
-                --workspace-danger-text: #dc8f9a;
-                --workspace-code-bg: #090d16;
-                --workspace-code-text: #dbe2f0;
-            }
+            .theme-linear .bg-white,
+            .theme-linear .bg-slate-50,
+            .theme-linear .bg-slate-50\\/50,
+            .theme-linear .bg-slate-50\\/60,
+            .theme-linear .bg-slate-50\\/70 { background-color: var(--workspace-surface) !important; }
+            .theme-linear .bg-slate-100,
+            .theme-linear .bg-slate-100\\/80 { background-color: var(--workspace-hover) !important; }
+            .theme-linear .bg-slate-200\\/80,
+            .theme-linear .bg-slate-300 { background-color: var(--workspace-selected) !important; }
+            .theme-linear .bg-slate-400 { background-color: var(--workspace-selected-line) !important; }
+            .theme-linear .bg-slate-950\\/30,
+            .theme-linear .bg-slate-950\\/40 { background-color: var(--workspace-overlay) !important; }
 
-            #scenario-test-root:is(.theme-zcode, .theme-linear) > header {
-                background: var(--workspace-surface) !important;
-                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
-            }
+            .theme-linear .text-slate-700,
+            .theme-linear .text-slate-800,
+            .theme-linear .text-slate-900 { color: var(--workspace-text) !important; }
+            .theme-linear .text-slate-600 { color: var(--workspace-text-soft) !important; }
+            .theme-linear .text-slate-400,
+            .theme-linear .text-slate-500 { color: var(--workspace-muted) !important; }
+            .theme-linear .placeholder-slate-400::placeholder,
+            .theme-linear .placeholder-slate-500::placeholder { color: var(--workspace-muted) !important; }
+            .theme-linear .hover\\:text-slate-600:hover { color: var(--workspace-text-soft) !important; }
+            .theme-linear .hover\\:text-slate-700:hover,
+            .theme-linear .hover\\:text-slate-900:hover { color: var(--workspace-text) !important; }
+            .theme-linear .group:hover .group-hover\\:text-slate-600 { color: var(--workspace-text-soft) !important; }
 
-            :is(.theme-zcode, .theme-linear) .bg-white,
-            :is(.theme-zcode, .theme-linear) .bg-slate-50,
-            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/50,
-            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/60,
-            :is(.theme-zcode, .theme-linear) .bg-slate-50\\/70 { background-color: var(--workspace-surface) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-100,
-            :is(.theme-zcode, .theme-linear) .bg-slate-100\\/80 { background-color: var(--workspace-hover) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-200\\/80,
-            :is(.theme-zcode, .theme-linear) .bg-slate-300 { background-color: var(--workspace-selected) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-400 { background-color: var(--workspace-selected-line) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/30,
-            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/40 { background-color: var(--workspace-overlay) !important; }
+            .theme-linear .border-slate-100,
+            .theme-linear .border-slate-200,
+            .theme-linear .border-slate-200\\/60,
+            .theme-linear .border-slate-200\\/70,
+            .theme-linear .border-slate-200\\/80,
+            .theme-linear .border-slate-300 { border-color: var(--workspace-line) !important; }
+            .theme-linear .border-slate-700,
+            .theme-linear .border-slate-800 { border-color: var(--workspace-selected-line) !important; }
+            .theme-linear .hover\\:border-slate-300:hover { border-color: var(--workspace-selected-line) !important; }
+            .theme-linear .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--workspace-line) !important; }
 
-            :is(.theme-zcode, .theme-linear) .text-slate-700,
-            :is(.theme-zcode, .theme-linear) .text-slate-800,
-            :is(.theme-zcode, .theme-linear) .text-slate-900 { color: var(--workspace-text) !important; }
-            :is(.theme-zcode, .theme-linear) .text-slate-600 { color: var(--workspace-text-soft) !important; }
-            :is(.theme-zcode, .theme-linear) .text-slate-400,
-            :is(.theme-zcode, .theme-linear) .text-slate-500 { color: var(--workspace-muted) !important; }
-            :is(.theme-zcode, .theme-linear) .placeholder-slate-400::placeholder,
-            :is(.theme-zcode, .theme-linear) .placeholder-slate-500::placeholder { color: var(--workspace-muted) !important; }
-            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-600:hover { color: var(--workspace-text-soft) !important; }
-            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-700:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:text-slate-900:hover { color: var(--workspace-text) !important; }
-            :is(.theme-zcode, .theme-linear) .group:hover .group-hover\\:text-slate-600 { color: var(--workspace-text-soft) !important; }
-
-            :is(.theme-zcode, .theme-linear) .border-slate-100,
-            :is(.theme-zcode, .theme-linear) .border-slate-200,
-            :is(.theme-zcode, .theme-linear) .border-slate-200\\/60,
-            :is(.theme-zcode, .theme-linear) .border-slate-200\\/70,
-            :is(.theme-zcode, .theme-linear) .border-slate-200\\/80,
-            :is(.theme-zcode, .theme-linear) .border-slate-300 { border-color: var(--workspace-line) !important; }
-            :is(.theme-zcode, .theme-linear) .border-slate-700,
-            :is(.theme-zcode, .theme-linear) .border-slate-800 { border-color: var(--workspace-selected-line) !important; }
-            :is(.theme-zcode, .theme-linear) .hover\\:border-slate-300:hover { border-color: var(--workspace-selected-line) !important; }
-            :is(.theme-zcode, .theme-linear) .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--workspace-line) !important; }
-
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-100:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-700:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-800:hover { background-color: var(--workspace-hover) !important; }
-            :is(.theme-zcode, .theme-linear) .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
-            :is(.theme-zcode, .theme-linear) .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
+            .theme-linear .hover\\:bg-slate-50:hover,
+            .theme-linear .hover\\:bg-slate-100:hover,
+            .theme-linear .hover\\:bg-slate-700:hover,
+            .theme-linear .hover\\:bg-slate-800:hover { background-color: var(--workspace-hover) !important; }
+            .theme-linear .focus\\:ring-slate-800:focus { --tw-ring-color: var(--workspace-primary) !important; }
+            .theme-linear .focus\\:border-slate-800:focus { border-color: var(--workspace-primary) !important; }
 
             /* \u8BED\u4E49\u7EA2\u7EFF\uFF08\u6DF1\u8272\uFF09\uFF1A\u4EE4\u724C\u672C\u8EAB\u5DF2\u964D\u9971\u548C\uFF0C\u6D17\u5E95/\u63CF\u8FB9\u7528\u4F4E\u900F\u660E\u514B\u5236\u5448\u73B0\uFF0C\u4ECD\u4E00\u773C\u53EF\u8FA8 */
-            :is(.theme-zcode, .theme-linear) .bg-emerald-50,
-            :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/60,
-            :is(.theme-zcode, .theme-linear) .bg-emerald-100 { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-emerald-600,
-            :is(.theme-zcode, .theme-linear) .text-emerald-600\\/70,
-            :is(.theme-zcode, .theme-linear) .text-emerald-700,
-            :is(.theme-zcode, .theme-linear) .text-emerald-800 { color: var(--workspace-success-text) !important; }
-            :is(.theme-zcode, .theme-linear) .border-emerald-200,
-            :is(.theme-zcode, .theme-linear) .border-emerald-200\\/80 { border-color: color-mix(in srgb, var(--workspace-success) 28%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-rose-50,
-            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/40,
-            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/60,
-            :is(.theme-zcode, .theme-linear) .bg-rose-50\\/80 { background-color: color-mix(in srgb, var(--workspace-danger) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-rose-500,
-            :is(.theme-zcode, .theme-linear) .text-rose-600,
-            :is(.theme-zcode, .theme-linear) .text-rose-600\\/70,
-            :is(.theme-zcode, .theme-linear) .text-rose-700,
-            :is(.theme-zcode, .theme-linear) .text-rose-800,
-            :is(.theme-zcode, .theme-linear) .text-rose-900 { color: var(--workspace-danger-text) !important; }
-            :is(.theme-zcode, .theme-linear) .border-rose-100,
-            :is(.theme-zcode, .theme-linear) .border-rose-200,
-            :is(.theme-zcode, .theme-linear) .border-rose-200\\/80 { border-color: color-mix(in srgb, var(--workspace-danger) 28%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-amber-50,
-            :is(.theme-zcode, .theme-linear) .bg-yellow-50 { background-color: color-mix(in srgb, var(--workspace-warning) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-amber-600,
-            :is(.theme-zcode, .theme-linear) .text-yellow-600 { color: var(--workspace-warning) !important; }
-            :is(.theme-zcode, .theme-linear) .border-amber-200\\/80,
-            :is(.theme-zcode, .theme-linear) .border-yellow-200\\/80 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-blue-50,
-            :is(.theme-zcode, .theme-linear) .bg-blue-50\\/80 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-blue-500,
-            :is(.theme-zcode, .theme-linear) .text-blue-500\\/80,
-            :is(.theme-zcode, .theme-linear) .text-blue-600,
-            :is(.theme-zcode, .theme-linear) .text-blue-900 { color: var(--workspace-info) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-indigo-50 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-indigo-500,
-            :is(.theme-zcode, .theme-linear) .text-indigo-600 { color: var(--workspace-info) !important; }
-            :is(.theme-zcode, .theme-linear) .border-indigo-200\\/80 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
+            .theme-linear .bg-emerald-50,
+            .theme-linear .bg-emerald-50\\/60,
+            .theme-linear .bg-emerald-100 { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
+            .theme-linear .text-emerald-600,
+            .theme-linear .text-emerald-600\\/70,
+            .theme-linear .text-emerald-700,
+            .theme-linear .text-emerald-800 { color: var(--workspace-success-text) !important; }
+            .theme-linear .border-emerald-200,
+            .theme-linear .border-emerald-200\\/80 { border-color: color-mix(in srgb, var(--workspace-success) 28%, transparent) !important; }
+            .theme-linear .bg-rose-50,
+            .theme-linear .bg-rose-50\\/40,
+            .theme-linear .bg-rose-50\\/60,
+            .theme-linear .bg-rose-50\\/80 { background-color: color-mix(in srgb, var(--workspace-danger) 10%, transparent) !important; }
+            .theme-linear .text-rose-500,
+            .theme-linear .text-rose-600,
+            .theme-linear .text-rose-600\\/70,
+            .theme-linear .text-rose-700,
+            .theme-linear .text-rose-800,
+            .theme-linear .text-rose-900 { color: var(--workspace-danger-text) !important; }
+            .theme-linear .border-rose-100,
+            .theme-linear .border-rose-200,
+            .theme-linear .border-rose-200\\/80 { border-color: color-mix(in srgb, var(--workspace-danger) 28%, transparent) !important; }
+            .theme-linear .bg-amber-50,
+            .theme-linear .bg-yellow-50 { background-color: color-mix(in srgb, var(--workspace-warning) 10%, transparent) !important; }
+            .theme-linear .text-amber-600,
+            .theme-linear .text-yellow-600 { color: var(--workspace-warning) !important; }
+            .theme-linear .border-amber-200\\/80,
+            .theme-linear .border-yellow-200\\/80 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
+            .theme-linear .bg-blue-50,
+            .theme-linear .bg-blue-50\\/80 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
+            .theme-linear .text-blue-500,
+            .theme-linear .text-blue-500\\/80,
+            .theme-linear .text-blue-600,
+            .theme-linear .text-blue-900 { color: var(--workspace-info) !important; }
+            .theme-linear .bg-indigo-50 { background-color: color-mix(in srgb, var(--workspace-info) 10%, transparent) !important; }
+            .theme-linear .text-indigo-500,
+            .theme-linear .text-indigo-600 { color: var(--workspace-info) !important; }
+            .theme-linear .border-indigo-200\\/80 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
 
             /* \u6DF1\u8272\u5F39\u7A97/\u4EE3\u7801\u7CFB\u8868\u9762\uFF1A\u6536\u655B\u5230\u591C\u8272\u9636\uFF0C\u907F\u514D\u4E0E\u9762\u677F\u8272\u8131\u8282 */
-            :is(.theme-zcode, .theme-linear) .bg-slate-700 { background-color: var(--workspace-selected) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-800 { background-color: var(--workspace-hover) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-900 { background-color: color-mix(in srgb, var(--workspace-bg) 60%, var(--workspace-surface)) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-slate-950,
-            :is(.theme-zcode, .theme-linear) .bg-slate-950\\/90 { background-color: var(--workspace-code-bg) !important; }
-            :is(.theme-zcode, .theme-linear) .text-slate-200 { color: var(--workspace-text) !important; }
-            :is(.theme-zcode, .theme-linear) .text-slate-300 { color: var(--workspace-text-soft) !important; }
-            :is(.theme-zcode, .theme-linear) .border-slate-200\\/50,
-            :is(.theme-zcode, .theme-linear) .border-slate-300\\/60,
-            :is(.theme-zcode, .theme-linear) .border-slate-300\\/80 { border-color: var(--workspace-line) !important; }
-            :is(.theme-zcode, .theme-linear) .border-slate-600 { border-color: var(--workspace-selected-line) !important; }
-            :is(.theme-zcode, .theme-linear) .border-slate-700\\/80,
-            :is(.theme-zcode, .theme-linear) .border-slate-800\\/80 { border-color: var(--workspace-line) !important; }
-            :is(.theme-zcode, .theme-linear) .group:hover .group-hover\\:text-slate-900 { color: var(--workspace-text) !important; }
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/60:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/70:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-50\\/80:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-slate-600:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-white\\/60:hover { background-color: var(--workspace-hover) !important; }
+            .theme-linear .bg-slate-700 { background-color: var(--workspace-selected) !important; }
+            .theme-linear .bg-slate-800 { background-color: var(--workspace-hover) !important; }
+            .theme-linear .bg-slate-900 { background-color: color-mix(in srgb, var(--workspace-bg) 60%, var(--workspace-surface)) !important; }
+            .theme-linear .bg-slate-950,
+            .theme-linear .bg-slate-950\\/90 { background-color: var(--workspace-code-bg) !important; }
+            .theme-linear .text-slate-200 { color: var(--workspace-text) !important; }
+            .theme-linear .text-slate-300 { color: var(--workspace-text-soft) !important; }
+            .theme-linear .border-slate-200\\/50,
+            .theme-linear .border-slate-300\\/60,
+            .theme-linear .border-slate-300\\/80 { border-color: var(--workspace-line) !important; }
+            .theme-linear .border-slate-600 { border-color: var(--workspace-selected-line) !important; }
+            .theme-linear .border-slate-700\\/80,
+            .theme-linear .border-slate-800\\/80 { border-color: var(--workspace-line) !important; }
+            .theme-linear .group:hover .group-hover\\:text-slate-900 { color: var(--workspace-text) !important; }
+            .theme-linear .hover\\:bg-slate-50\\/60:hover,
+            .theme-linear .hover\\:bg-slate-50\\/70:hover,
+            .theme-linear .hover\\:bg-slate-50\\/80:hover,
+            .theme-linear .hover\\:bg-slate-600:hover,
+            .theme-linear .hover\\:bg-white\\/60:hover { background-color: var(--workspace-hover) !important; }
 
             /* \u8BED\u4E49\u586B\u5145/\u63CF\u8FB9/hover\uFF1A\u8DDF\u968F\u4E3B\u9898\u8BED\u4E49\u8272 */
-            :is(.theme-zcode, .theme-linear) .bg-emerald-500 { background-color: var(--workspace-success) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-emerald-600,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-600:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-700:hover { background-color: color-mix(in srgb, var(--workspace-success) 82%, black) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-rose-500 { background-color: var(--workspace-danger) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-amber-400 { background-color: var(--workspace-warning) !important; }
-            :is(.theme-zcode, .theme-linear) .bg-emerald-50\\/40,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-50:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:bg-emerald-100:hover { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .text-emerald-400,
-            :is(.theme-zcode, .theme-linear) .text-emerald-500,
-            :is(.theme-zcode, .theme-linear) .hover\\:text-emerald-400:hover,
-            :is(.theme-zcode, .theme-linear) .hover\\:text-emerald-700:hover { color: var(--workspace-success-text) !important; }
-            :is(.theme-zcode, .theme-linear) .text-amber-400 { color: var(--workspace-warning) !important; }
-            :is(.theme-zcode, .theme-linear) .text-rose-600\\/80,
-            :is(.theme-zcode, .theme-linear) .hover\\:text-rose-600:hover { color: var(--workspace-danger-text) !important; }
-            :is(.theme-zcode, .theme-linear) .ring-emerald-500\\/20 { --tw-ring-color: color-mix(in srgb, var(--workspace-success) 20%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .focus\\:border-emerald-500:focus { border-color: var(--workspace-primary) !important; }
-            :is(.theme-zcode, .theme-linear) .focus\\:ring-emerald-500:focus { --tw-ring-color: var(--workspace-focus) !important; }
-            :is(.theme-zcode, .theme-linear) .border-amber-200 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .border-blue-200 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .border-emerald-300 { border-color: color-mix(in srgb, var(--workspace-success) 32%, transparent) !important; }
-            :is(.theme-zcode, .theme-linear) .border-rose-200\\/60 { border-color: color-mix(in srgb, var(--workspace-danger) 24%, transparent) !important; }
+            .theme-linear .bg-emerald-500 { background-color: var(--workspace-success) !important; }
+            .theme-linear .bg-emerald-600,
+            .theme-linear .hover\\:bg-emerald-600:hover,
+            .theme-linear .hover\\:bg-emerald-700:hover { background-color: color-mix(in srgb, var(--workspace-success) 82%, black) !important; }
+            .theme-linear .bg-rose-500 { background-color: var(--workspace-danger) !important; }
+            .theme-linear .bg-amber-400 { background-color: var(--workspace-warning) !important; }
+            .theme-linear .bg-emerald-50\\/40,
+            .theme-linear .hover\\:bg-emerald-50:hover,
+            .theme-linear .hover\\:bg-emerald-100:hover { background-color: color-mix(in srgb, var(--workspace-success) 10%, transparent) !important; }
+            .theme-linear .text-emerald-400,
+            .theme-linear .text-emerald-500,
+            .theme-linear .hover\\:text-emerald-400:hover,
+            .theme-linear .hover\\:text-emerald-700:hover { color: var(--workspace-success-text) !important; }
+            .theme-linear .text-amber-400 { color: var(--workspace-warning) !important; }
+            .theme-linear .text-rose-600\\/80,
+            .theme-linear .hover\\:text-rose-600:hover { color: var(--workspace-danger-text) !important; }
+            .theme-linear .ring-emerald-500\\/20 { --tw-ring-color: color-mix(in srgb, var(--workspace-success) 20%, transparent) !important; }
+            .theme-linear .focus\\:border-emerald-500:focus { border-color: var(--workspace-primary) !important; }
+            .theme-linear .focus\\:ring-emerald-500:focus { --tw-ring-color: var(--workspace-focus) !important; }
+            .theme-linear .border-amber-200 { border-color: color-mix(in srgb, var(--workspace-warning) 35%, transparent) !important; }
+            .theme-linear .border-blue-200 { border-color: color-mix(in srgb, var(--workspace-info) 35%, transparent) !important; }
+            .theme-linear .border-emerald-300 { border-color: color-mix(in srgb, var(--workspace-success) 32%, transparent) !important; }
+            .theme-linear .border-rose-200\\/60 { border-color: color-mix(in srgb, var(--workspace-danger) 24%, transparent) !important; }
 
             /* \u6DF1\u8272\u4E0B\u786C\u7F16\u7801\u6D45\u7EA2/\u6D45\u7EFF\u7684\u8BED\u4E49\u5FBD\u7AE0\u3001\u6807\u8BB0\u3001\u5065\u5EB7\u5361\u6539\u7528\u4F4E\u900F\u660E\u5E95 + \u8BED\u4E49\u6587\u672C\uFF0C
                \u907F\u514D\u8FD1\u9ED1\u5E95\u4E0A\u51FA\u73B0\u5927\u9762\u79EF\u4EAE\u8272\u5757 */
-            :is(.theme-zcode, .theme-linear) .report-status--passed {
+            .theme-linear .report-status--passed {
                 background: color-mix(in srgb, var(--workspace-success) 12%, transparent) !important;
                 border-color: color-mix(in srgb, var(--workspace-success) 28%, transparent) !important;
                 color: var(--workspace-success-text) !important;
                 box-shadow: none !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-status--failed {
+            .theme-linear .report-status--failed {
                 background: color-mix(in srgb, var(--workspace-danger) 12%, transparent) !important;
                 border-color: color-mix(in srgb, var(--workspace-danger) 28%, transparent) !important;
                 color: var(--workspace-danger-text) !important;
                 box-shadow: none !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-status--cancelled {
+            .theme-linear .report-status--cancelled {
                 background: color-mix(in srgb, var(--workspace-warning) 12%, transparent) !important;
                 border-color: color-mix(in srgb, var(--workspace-warning) 28%, transparent) !important;
                 color: var(--workspace-warning) !important;
                 box-shadow: none !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-step--passed .report-step__marker {
+            .theme-linear .report-step--passed .report-step__marker {
                 background: color-mix(in srgb, var(--workspace-success) 16%, transparent) !important;
                 color: var(--workspace-success-text) !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-step--failed .report-step__marker {
+            .theme-linear .report-step--failed .report-step__marker {
                 background: color-mix(in srgb, var(--workspace-danger) 16%, transparent) !important;
                 color: var(--workspace-danger-text) !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-healthy {
+            .theme-linear .report-healthy {
                 background: color-mix(in srgb, var(--workspace-success) 8%, transparent) !important;
                 border-color: color-mix(in srgb, var(--workspace-success) 24%, transparent) !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-healthy__title { color: var(--workspace-success-text) !important; }
-            :is(.theme-zcode, .theme-linear) .report-healthy__hint { color: var(--workspace-muted) !important; }
-            :is(.theme-zcode, .theme-linear) .scenario-side-tab__badge.is-alert {
+            .theme-linear .report-healthy__title { color: var(--workspace-success-text) !important; }
+            .theme-linear .report-healthy__hint { color: var(--workspace-muted) !important; }
+            .theme-linear .scenario-side-tab__badge.is-alert {
                 background: color-mix(in srgb, var(--workspace-danger) 14%, transparent) !important;
                 color: var(--workspace-danger-text) !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-progress__track span {
+            .theme-linear .report-progress__track span {
                 background: var(--workspace-success) !important;
                 box-shadow: none !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-progress__track--failed span {
+            .theme-linear .report-progress__track--failed span {
                 background: var(--workspace-danger) !important;
                 box-shadow: none !important;
             }
-            :is(.theme-zcode, .theme-linear) .report-method--get { color: var(--workspace-success-text) !important; }
-            :is(.theme-zcode, .theme-linear) .report-method--delete { color: var(--workspace-danger-text) !important; }
-            :is(.theme-zcode, .theme-linear) .code-copy-btn--success {
+            .theme-linear .report-method--get { color: var(--workspace-success-text) !important; }
+            .theme-linear .report-method--delete { color: var(--workspace-danger-text) !important; }
+            .theme-linear .code-copy-btn--success {
                 color: var(--workspace-success-text) !important;
                 border-color: color-mix(in srgb, var(--workspace-success) 40%, transparent) !important;
             }
-            :is(.theme-zcode, .theme-linear) #configModal input:focus,
-            :is(.theme-zcode, .theme-linear) #configModal select:focus {
+            .theme-linear #configModal input:focus,
+            .theme-linear #configModal select:focus {
                 box-shadow: 0 0 0 3px var(--workspace-focus) !important;
             }
 
@@ -4526,18 +4429,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 to { opacity: 1; transform: translateY(0) scale(1); }
             }
             
-            #scenario-test-root.theme-claude-code .custom-dropdown__trigger {
-                background: #f1e4d8 !important;
-                border-color: #dfcebf !important;
-            }
-            #scenario-test-root.theme-claude-code .custom-dropdown__trigger:hover {
-                background: #ebdbce !important;
-            }
-            #scenario-test-root.theme-claude-code .custom-dropdown.open .custom-dropdown__trigger {
-                background: #fcf8f3 !important;
-                border-color: var(--workspace-primary) !important;
-                box-shadow: 0 0 0 2px rgba(36, 82, 68, 0.15) !important;
-            }
             
             .scenario-header-step { display: flex; align-items: stretch; overflow: hidden; }
             .scenario-header-button {
@@ -4598,9 +4489,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             .scenario-header-actions button:hover:not(:disabled), .scenario-header-select:hover { background: var(--workspace-hover); }
             .scenario-header-button--primary:hover:not(:disabled) { background: var(--workspace-primary-hover) !important; border-color: var(--workspace-primary-hover) !important; }
             
-            #scenario-test-root.theme-claude-code .scenario-header-select { background: #fdfaf6; }
-            #scenario-test-root.theme-claude-code .scenario-header-button--config,
-            #scenario-test-root.theme-claude-code .scenario-header-button--report { background: #fdfaf6; border-color: var(--workspace-line); }
 
             .scenario-pane--scenarios > div:first-child { padding: 12px 14px !important; border-bottom: 1px solid var(--workspace-line) !important; }
             .scenario-pane--scenarios > div:first-child > div:first-child { font-size: 14px !important; font-weight: 700; }
@@ -4966,16 +4854,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 color: var(--workspace-primary-hover, var(--workspace-primary));
                 box-shadow: 0 2px 6px color-mix(in srgb, var(--workspace-primary) 15%, transparent);
             }
-            #scenario-test-root.theme-claude-code .stats-action-btn {
-                background: #fdfaf6;
-                border-color: var(--workspace-line);
-                color: var(--workspace-text);
-            }
-            #scenario-test-root.theme-claude-code .stats-action-btn--primary {
-                background: #f3eae0;
-                border-color: #dfcebf;
-                color: #245244;
-            }
 
             .scenario-side-tabs {
                 display: flex;
@@ -5042,10 +4920,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             }
             .scenario-side-panel.hidden,
             .scenario-side-panel[hidden] { display: none !important; }
-            #scenario-test-root.theme-claude-code .scenario-side-tab__badge.is-alert {
-                background: #f8e2df;
-                color: #a9403d;
-            }
             .scenario-pane--steps #filterBar {
                 min-height: 36px;
                 padding: 5px 12px !important;
@@ -5203,18 +5077,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 font-size: 11px;
                 line-height: 1.45;
             }
-            #scenario-test-root.theme-claude-code .code-editor-block {
-                background: #1c1815 !important;
-                border-color: #3b312b !important;
-            }
-            #scenario-test-root.theme-claude-code .code-gutter {
-                color: #78695d !important;
-                background: #151210 !important;
-                border-color: #3b312b !important;
-            }
-            #scenario-test-root.theme-claude-code .code-content {
-                color: #e6dfd8 !important;
-            }
 
             .scenario-header-button--report {
                 border-color: color-mix(in srgb, var(--workspace-primary) 22%, transparent) !important;
@@ -5224,11 +5086,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             .scenario-header-button--report:hover:not(:disabled) {
                 background: color-mix(in srgb, var(--workspace-primary) 12%, transparent) !important;
                 border-color: color-mix(in srgb, var(--workspace-primary) 35%, transparent) !important;
-            }
-            #scenario-test-root.theme-claude-code .scenario-header-button--report {
-                background: #fdfaf6 !important;
-                border-color: var(--workspace-line) !important;
-                color: var(--workspace-text) !important;
             }
             
             .report-content { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
@@ -5652,37 +5509,16 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 background: #94a3b8;
                 background-clip: padding-box;
             }
-            #scenario-test-root.theme-claude-code ::-webkit-scrollbar-thumb {
-                background: color-mix(in srgb, #d9af8d 70%, transparent);
-                background-clip: padding-box;
-            }
-            #scenario-test-root.theme-claude-code ::-webkit-scrollbar-thumb:hover {
-                background: color-mix(in srgb, #d9af8d 85%, transparent);
-                background-clip: padding-box;
-            }
-            #scenario-test-root:is(.theme-zcode, .theme-linear) ::-webkit-scrollbar-thumb {
+            #scenario-test-root.theme-linear ::-webkit-scrollbar-thumb {
                 background: color-mix(in srgb, #35446b 70%, transparent);
                 background-clip: padding-box;
             }
-            #scenario-test-root:is(.theme-zcode, .theme-linear) ::-webkit-scrollbar-thumb:hover {
+            #scenario-test-root.theme-linear ::-webkit-scrollbar-thumb:hover {
                 background: color-mix(in srgb, #4f7cff 70%, transparent);
                 background-clip: padding-box;
             }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) { --workspace-radius: 10px; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) > header { min-height: 52px; padding-inline: 20px !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-workspace { height: calc(100vh - 52px); padding: 12px !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-grid { gap: 12px !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { box-shadow: 0 4px 18px rgba(25, 40, 75, 0.05) !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-linear) .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList { padding: 8px !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item:hover { transform: none; box-shadow: none !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item.is-active { box-shadow: inset 3px 0 0 var(--workspace-primary) !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #stepsList > li > div:first-child { min-height: 48px; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-header-select:focus-within { box-shadow: 0 0 0 3px var(--workspace-focus) !important; }
-            #scenario-test-root:is(.theme-zcode, .theme-zcode-light) :is(button, input, select, textarea, [role="button"]):focus-visible { outline: 2px solid var(--workspace-primary) !important; outline-offset: 2px; }
+            #scenario-test-root.theme-linear .scenario-pane { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18) !important; }
             @media (prefers-reduced-motion: reduce) {
-                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) #scenarioList .scenario-tree-item,
-                #scenario-test-root:is(.theme-zcode, .theme-zcode-light) .scenario-pane { transition: none !important; }
             }
         `;
     }
@@ -5697,19 +5533,15 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       style.textContent = getWorkspaceStyleBlock();
       document.head.appendChild(style);
     }
+    var THEME_ALIASES = { "claude-code": "default", "zcode-light": "default", "zcode": "linear" };
     function applyTheme(theme) {
-      var selectedTheme = theme === "claude-code" || theme === "zcode" || theme === "zcode-light" || theme === "linear" ? theme : "default";
+      var requested = THEME_ALIASES[theme] || theme;
+      var selectedTheme = requested === "linear" ? "linear" : "default";
       var root = document.getElementById("scenario-test-root");
       if (root) {
         root.classList.add("is-theme-switching");
-        root.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
-        root.classList.toggle("theme-zcode", selectedTheme === "zcode");
-        root.classList.toggle("theme-zcode-light", selectedTheme === "zcode-light");
         root.classList.toggle("theme-linear", selectedTheme === "linear");
       }
-      document.body.classList.toggle("theme-claude-code", selectedTheme === "claude-code");
-      document.body.classList.toggle("theme-zcode", selectedTheme === "zcode");
-      document.body.classList.toggle("theme-zcode-light", selectedTheme === "zcode-light");
       document.body.classList.toggle("theme-linear", selectedTheme === "linear");
       var select = document.getElementById("themeSelect");
       if (select) {
@@ -5848,9 +5680,6 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                     <div class="custom-dropdown__menu" id="themeDropdownMenu" role="listbox" aria-label="\u754C\u9762\u98CE\u683C"></div>
                     <select id="themeSelect" class="sr-only" aria-label="\u5207\u6362\u754C\u9762\u98CE\u683C" tabindex="-1">
                         <option value="default" selected>\u73B0\u4EE3\u7B80\u7EA6</option>
-                        <option value="claude-code">\u6E29\u6696\u7EB8\u97F5</option>
-                        <option value="zcode">ZCode \u6697\u591C</option>
-                        <option value="zcode-light">ZCode \u7693\u767D</option>
                         <option value="linear">Linear \u6697\u591C</option>
                     </select>
                 </div>
