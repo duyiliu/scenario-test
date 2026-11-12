@@ -344,8 +344,18 @@ export function buildDoctorReport(options) {
     // E2E 为显式可选能力：不触发安装，也不访问被测服务。
     const e2eDir = path.join(configDir, "e2e");
     if (isE2eProject(configDir)) {
-        const required = ["package.json", "playwright.config.js", "auth-adapter.js"];
-        for (const fileName of required) checks.push(checkReadableFile(path.join(e2eDir, fileName), `e2e-${fileName}`, fileName));
+        checks.push(checkReadableFile(path.join(e2eDir, "package.json"), "e2e-package.json", "package.json"));
+        // playwright 配置允许 js/ts/mjs/cjs 任意一种；auth 适配非必需（可放 helpers/ 或不写登录态用例），缺失仅提示。
+        const pwConfig = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs", "playwright.config.cjs"]
+            .map((n) => path.join(e2eDir, n)).find((p) => fs.existsSync(p));
+        checks.push(pwConfig
+            ? { name: "e2e-playwright.config", status: "PASS", message: `已找到 ${path.basename(pwConfig)}`, fix: "" }
+            : { name: "e2e-playwright.config", status: "FAIL", message: `缺少 playwright.config.{js,ts,mjs,cjs}（${e2eDir}）`, fix: "补齐该文件后重新运行 doctor" });
+        const authAdapter = ["auth-adapter.js", "auth-adapter.ts", "auth-adapter.mjs", path.join("helpers", "auth.ts"), path.join("helpers", "auth.js")]
+            .map((n) => path.join(e2eDir, n)).find((p) => fs.existsSync(p));
+        checks.push(authAdapter
+            ? { name: "e2e-auth-adapter", status: "PASS", message: `已找到 ${path.relative(e2eDir, authAdapter)}`, fix: "" }
+            : { name: "e2e-auth-adapter", status: "WARN", message: "未找到登录态适配（auth-adapter.* 或 helpers/auth.*）", fix: "若有用例需要登录态，请在 e2e/ 下提供适配文件；纯访客用例可忽略" });
         const cli = path.join(e2eDir, "node_modules", "@playwright", "test", "cli.js");
         checks.push(fs.existsSync(cli)
             ? { name: "e2e-dependencies", status: "PASS", message: "已安装本地 Playwright", fix: "" }

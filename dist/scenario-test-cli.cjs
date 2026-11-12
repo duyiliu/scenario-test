@@ -420,7 +420,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "46678834617e63a40756e056be210c91d5b6ae3830b0eb09df86051877815353";
+var BUILD_ID = "40a5b2dd52d2dc0ef451e26cf3e8fc928274fff30c18a27aad15ca3a328ab8ba";
 
 // src/contract.js
 var CONTRACT_VERSION = 23;
@@ -6249,8 +6249,11 @@ function buildDoctorReport(options) {
   }
   const e2eDir = import_node_path6.default.join(configDir, "e2e");
   if (isE2eProject(configDir)) {
-    const required = ["package.json", "playwright.config.js", "auth-adapter.js"];
-    for (const fileName of required) checks.push(checkReadableFile(import_node_path6.default.join(e2eDir, fileName), `e2e-${fileName}`, fileName));
+    checks.push(checkReadableFile(import_node_path6.default.join(e2eDir, "package.json"), "e2e-package.json", "package.json"));
+    const pwConfig = ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs", "playwright.config.cjs"].map((n) => import_node_path6.default.join(e2eDir, n)).find((p) => import_node_fs6.default.existsSync(p));
+    checks.push(pwConfig ? { name: "e2e-playwright.config", status: "PASS", message: `\u5DF2\u627E\u5230 ${import_node_path6.default.basename(pwConfig)}`, fix: "" } : { name: "e2e-playwright.config", status: "FAIL", message: `\u7F3A\u5C11 playwright.config.{js,ts,mjs,cjs}\uFF08${e2eDir}\uFF09`, fix: "\u8865\u9F50\u8BE5\u6587\u4EF6\u540E\u91CD\u65B0\u8FD0\u884C doctor" });
+    const authAdapter = ["auth-adapter.js", "auth-adapter.ts", "auth-adapter.mjs", import_node_path6.default.join("helpers", "auth.ts"), import_node_path6.default.join("helpers", "auth.js")].map((n) => import_node_path6.default.join(e2eDir, n)).find((p) => import_node_fs6.default.existsSync(p));
+    checks.push(authAdapter ? { name: "e2e-auth-adapter", status: "PASS", message: `\u5DF2\u627E\u5230 ${import_node_path6.default.relative(e2eDir, authAdapter)}`, fix: "" } : { name: "e2e-auth-adapter", status: "WARN", message: "\u672A\u627E\u5230\u767B\u5F55\u6001\u9002\u914D\uFF08auth-adapter.* \u6216 helpers/auth.*\uFF09", fix: "\u82E5\u6709\u7528\u4F8B\u9700\u8981\u767B\u5F55\u6001\uFF0C\u8BF7\u5728 e2e/ \u4E0B\u63D0\u4F9B\u9002\u914D\u6587\u4EF6\uFF1B\u7EAF\u8BBF\u5BA2\u7528\u4F8B\u53EF\u5FFD\u7565" });
     const cli = import_node_path6.default.join(e2eDir, "node_modules", "@playwright", "test", "cli.js");
     checks.push(import_node_fs6.default.existsSync(cli) ? { name: "e2e-dependencies", status: "PASS", message: "\u5DF2\u5B89\u88C5\u672C\u5730 Playwright", fix: "" } : { name: "e2e-dependencies", status: "WARN", message: "\u5C1A\u672A\u5B89\u88C5\u672C\u5730 Playwright", fix: `\u8FDB\u5165 ${e2eDir} \u6267\u884C npm install\uFF0C\u518D\u6267\u884C npx playwright install chromium` });
     info.push({ name: "e2e-browser", message: "\u6D4F\u89C8\u5668\u53EF\u7528\u6027\u4E0E E2E_BASE_URL \u9700\u5728\u9879\u76EE\u73AF\u5883\u786E\u8BA4\uFF1Bdoctor \u4E0D\u542F\u52A8\u6D4F\u89C8\u5668" });
