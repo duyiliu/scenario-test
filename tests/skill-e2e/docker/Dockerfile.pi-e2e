@@ -1,0 +1,13 @@
+FROM node:22-bookworm
+
+# 基础 pi 镜像 + Playwright 浏览器依赖，用于前端 E2E 类 skill 验证。
+# 纯 HTTP 验证继续用 pi-agent:1.4.0（无浏览器，更小）。
+RUN npm i -g @earendil-works/pi-coding-agent@1.4.0
+
+# Playwright 1.55.1（与框架 devDependencies 对齐）+ 系统依赖 + Chromium
+RUN npm i -g playwright@1.55.1 \
+    && npx --yes playwright@1.55.1 install-deps chromium \
+    && npx --yes playwright@1.55.1 install chromium
+
+# 系统交互用 bash；浏览器 channel 固定 chromium（容器内无 Chrome）
+ENV E2E_BROWSER_CHANNEL=chromium

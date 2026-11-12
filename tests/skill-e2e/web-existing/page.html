@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>演示订单系统</title></head>
+<body>
+  <main id="app">
+    <h1>演示订单系统</h1>
+    <form id="login-form">
+      <label>账号 <input name="username" /></label>
+      <label>密码 <input name="password" type="password" /></label>
+      <button type="submit">登录</button>
+    </form>
+    <p id="identity">访客</p>
+    <p id="error" hidden></p>
+    <section id="orders" hidden>
+      <h2>订单列表</h2>
+      <table id="order-table">
+        <thead><tr><th>订单号</th><th>商品</th><th>金额</th><th>状态</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button id="logout">退出登录</button>
+    </section>
+  </main>
+  <script>
+    const me = () => fetch('/api/me').then(r => r.ok ? r.json() : null);
+    const login = async (form) => {
+      const res = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        username: form.username.value, password: form.password.value})});
+      const body = await res.json();
+      if (!res.ok) { document.getElementById('error').textContent = body.message || '登录失败'; document.getElementById('error').hidden = false; return; }
+      document.getElementById('error').hidden = true;
+      document.getElementById('identity').textContent = '账号 ' + body.data.username;
+      const orders = await (await fetch('/api/orders')).json();
+      const tbody = document.querySelector('#order-table tbody');
+      tbody.innerHTML = '';
+      for (const o of orders.data) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>'+o.id+'</td><td>'+o.item+'</td><td>'+o.amount+'</td><td>'+o.state+'</td>';
+        tbody.appendChild(tr);
+      }
+      document.getElementById('orders').hidden = false;
+    };
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault(); await login(e.target);
+    });
+    document.getElementById('logout').addEventListener('click', async () => {
+      await fetch('/api/logout', {method:'POST'}); location.reload();
+    });
+    me().then(user => { if (user) document.getElementById('identity').textContent = '账号 ' + user.data.username; });
+  </script>
+</body>
+</html>

@@ -16,7 +16,11 @@ metadata:
 3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录使用 Skill 自带的发布版 CLI 初始化（见 [init.md](references/init.md)，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。
 5. 按本次意图选择：**接入/修复/升级** → [init.md](references/init.md)；**生成/修改/补充场景** → [author.md](references/author.md)；**执行/调试/启动工作台** → [execute.md](references/execute.md)。用户只要求**评估测试设计/还有哪些值得补测**时，只读分析：不改文件、不初始化、不执行，也不按此流程产出场景。一次请求可以按先后顺序使用多个工作流；初始化按第 3 条自动执行，编写阶段不调用接口，执行阶段仍需用户明确提出。
-6. 用户明确要求 scenario-test 浏览器 E2E 时，阅读 [E2E 工作流](references/e2e.md)；该能力需显式初始化与独立依赖，优先检查项目 CLI 能力，保留已有项目运行时。
+6. **按测试对象路由，不按用户措辞路由**：用户说“E2E / 端到端 / 浏览器测试 / 场景测试”时，先判断断言落在哪一层——
+   - 验证目标是**浏览器行为**（页面跳转与路由守卫、DOM 文本、表单交互、多页联动、localStorage/会话对界面的影响、截图证据）→ 必须阅读 [E2E 工作流](references/e2e.md)并走 `init --e2e` 托管链路；**不得**把这类需求降级成 HTTP 场景，也不得绕开项目 `scenario-test/e2e/` 另起炉灶写散装 Playwright。
+   - 验证目标是**接口契约**（状态码、响应字段、错误码、业务规则、数据流转）→ 走 [author.md](references/author.md) 生成 HTTP 场景。
+   - 同一功能两层都要时，先出一份场景矩阵再按上述判据分配，两层场景不重复。
+7. 该能力需显式初始化与独立依赖，优先检查项目 CLI 能力，保留已有项目运行时。
 
 ## 不变约束
 
