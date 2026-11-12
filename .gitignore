@@ -23,6 +23,9 @@ tests/fixtures/browser-comprehensive/artifacts/
 # 临时测试标记文件
 SYMPHONY-E2E*.txt
 
+# 本机研发资料（work-convention，跨任务的设计与执行资料不入库）
+work/
+
 # 场景设计评估运行产物（含模型输出与评分，不入库）
 tests/fixtures/scenario-design/artifacts/
 # 夹具的 Maven 构建产物

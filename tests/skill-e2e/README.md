@@ -45,7 +45,7 @@ bash tests/skill-e2e/docker/run-web-existing-test.sh
 - **web-static（纯前端画像·冒烟）**：走 `init --e2e` 托管链路；不生成 HTTP 场景模板；4 条浏览器 E2E 全部通过（访客态/错误凭据/登录见列表/退出登录），`E2E_BROWSER_CHANNEL=chromium`（容器内无 Chrome）
 - **web-vue3（工程化前端）**：除 web-static 的 4 条外，额外验证路由守卫重定向、异步渲染轮询断言（禁 `waitForTimeout`）、认证适配器经 API 注入 localStorage 而非表单点登录
 - **web-existing（挂载语义）**：前端自管 `e2e/` 文件指纹前后一致（脚本守卫 FAIL 即失败）；HTTP 场景在 `scenarios/` 正常生成并通过；agent 明确说明未改动前端 e2e/
-- 版本锁应为当前发布版（runtime 0.9.1 / contract 17 起）
+- 版本锁应与仓库当前状态一致：`skills/scenario-test/SKILL.md` 的 `metadata.version`、`runtime/release.json` 的 `version` 与 `contractVersion`（当前 22）对齐
 - 场景应使用项目 `capabilities` 中支持的能力（如 `shape`/`each`/`tags`），不发明字段
 
 > 挂载语义（web-existing）对应当前 master 尚未发布的 P0 改造（`docs/e2e-strategy.md` 第 10 节）：

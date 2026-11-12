@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 工作台主题收敛为两个：浅色「现代简约」（`default`）与深色「Linear 暗夜」（`linear`）。移除「温暖纸韵」「ZCode 暗夜」「ZCode 皓白」三套配色；旧 `storageKeys.theme` 值自动迁移（`zcode` → `linear`，`claude-code` / `zcode-light` → `default`），不会落到未定义样式。
 - 新增可选 `init --e2e`（契约版本 22）：生成独立 Playwright 项目与业务登录适配器，共用 Node 工作台服务；HTTP 默认接入保持免 npm。
 - 新增通用 E2E 执行、精确测试文件选择、有头模式、停止进程树，以及按 runId 留存的步骤、截图、日志和报告；失败或中断不会沿用旧的通过结果。
 - 新增服务身份端点与页面详情，区分运行进程和磁盘构建；扩展支持异步清理，静态服务限制环境文件、认证状态及原始结果目录的读取。

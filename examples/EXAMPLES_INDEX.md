@@ -68,6 +68,32 @@
 
 详细步骤见 [多层目录示例说明](tree-demo/README.md)。
 
+### E2E：浏览器端到端与统一工作台
+
+路径：[`examples/e2e/`](e2e/)
+
+覆盖：
+
+- 统一工作台内 HTTP 场景与浏览器 E2E 同文档切换（`#http` / `#e2e&spec=...`）；
+- 7 个 Playwright 用例：登录守卫、候诊筛选、状态过滤、空结果、页面结构、失败证据；
+- 9 个接口场景与本地模拟 API（`/demo-api/*`），共用一份 `scenario.config.js`；
+- 有头模式运行、按 runId 留存截图与报告。
+
+它与前四个示例不同：需要 E2E 扩展端点、独立 Playwright 依赖与系统 Chrome，**必须单独启动**，`npm run dev` 只做静态预览、不提供该能力。详见 [E2E 示例说明](e2e/README.md)。
+
+## 示例项目与测试夹具的分工
+
+仓库里同时存在「可读示例」「自测工作台」与「容器夹具」三类项目，用途不同，不要混用：
+
+| 位置 | 用途 | 启动 / 运行 |
+| --- | --- | --- |
+| `examples/basic`、`complete`、`security-best-practices`、`tree-demo` | 纯 HTTP 场景示例，静态页面 + 本地 Mock，dev 可直接预览 | `npm run dev` |
+| `examples/e2e` | 框架自测工作台：HTTP + 浏览器 E2E 同文档，自带模拟页面与 API | `npm run demo:e2e`（端口 4303） |
+| `tests/skill-e2e/` | Skill 接入链路的干净 Docker 夹具（Python / Java / web-static / web-vue3 / web-existing），需 Docker 与 pi | `bash tests/skill-e2e/docker/run-*-test.sh` |
+| `tests/fixtures/` | 单元与回归用的确定性夹具（场景设计评估、浏览器综合用例等） | `node --test tests/*.test.js` |
+
+`examples/` 面向读者，可以照着写；`tests/` 面向框架回归，目录形态不保证适合业务项目参考。
+
 ## 运行仓库内示例
 
 仓库示例使用本地构建产物，适合公共库维护者。先按 [发布与构建说明](../docs/RELEASING.md) 完成依赖安装和构建。
@@ -95,6 +121,16 @@ node .\dist\scenario-test-cli.cjs `
   --config .\examples\security-best-practices\scenario.config.js --all
 ```
 
+浏览器 E2E 示例独立启动（首次需安装示例自己的 Playwright 依赖）：
+
+```powershell
+npm install --prefix .\examples\e2e\e2e
+npm run demo:e2e
+```
+
+- 统一工作台：`http://127.0.0.1:4303/`
+- E2E 页签：`http://127.0.0.1:4303/e2e/`
+
 ## 如何选择
 
 | 目标 | 示例 |
@@ -103,6 +139,7 @@ node .\dist\scenario-test-cli.cjs `
 | 查看认证、多步骤编排和重试 | Complete |
 | 检查凭据、路径与错误处理 | Security Best Practices |
 | 验证场景目录树与多级目录 | Tree Demo |
+| 验证浏览器行为（路由、DOM、截图） | E2E |
 
 示例仅用于学习，不能直接作为生产测试配置。复制到业务项目后，需要重新确认环境地址、认证方式、请求字段、响应结构、测试数据和清理条件。
 
@@ -124,5 +161,3 @@ node .\dist\scenario-test-cli.cjs `
 - [安全指南](../SECURITY.md)
 - [变更日志](../CHANGELOG.md)
 - [发布流程](../docs/RELEASING.md)
-
-当前版本：v0.5.19
