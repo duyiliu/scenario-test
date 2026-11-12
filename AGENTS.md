@@ -83,7 +83,7 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 - 场景/配置文件是**可执行代码**，运行在 `node:vm` 沙箱（`node/loader.js`）中，全局暴露 `ScenarioTest`。场景文件必须调用 `ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))`；配置文件调用 `ScenarioTest.registerConfig(ScenarioTest.defineConfig({...}))`。配置中场景列表的 `id` **必须等于**该文件注册的 `id`。
 - `node/io.js` 实现 `fileUpload`（FormData）与 `saveResponseAs`，二者均受 `utils/path-validator.js`（路径穿越防护）约束，保证写入不超出配置工作区。
-- `init`（`cli.js` 的 `initCommand` + `init-templates.js`）写出一个自包含项目：模板在 `scenario-test/` 下，运行时副本在 `scenario-test/.scenario-test/` 下（`project-layout.js` 定义 `FRAMEWORK_FILES`）。`init` 记录一个含 SHA256 哈希的 `.scenario-test-version.json` 锁文件；`doctor` 用它检测被篡改或过期的运行时副本。
+- `init`（`cli.js` 的 `initCommand` + `init-templates.js`）写出一个只含场景数据的项目：`scenario-test/scenario.config.js`、`README.md`、`start-scenario-test.cmd`（v23 起运行时去项目化，不再落 `.scenario-test/` 副本、版本锁或 `index.html`）。运行时统一由安装方提供——Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`；`serve` 动态生成工作台页并经虚拟路由 `/__scenario-test__/scenario-test.umd.js` 提供 UMD；`doctor` 用 `legacy-runtime` 检查提示旧副本、`config-load`/`scenario-register` 的 FAIL 附带升级提示，升级以能力错（contract 不匹配）驱动而非版本锁。
 - `serve` 是静态服务器 + 同源代理：向 HTML 注入 `window.__SCENARIO_TEST_SERVE_PROXY__`，按浏览器当前环境逐请求选择 `baseUrl`（内部头 `X-Scenario-Test-Env` 转发前剔除），将未匹配的请求转发到目标并剥离逐跳（hop-by-hop）头，使工作台无需 CORS。实现位于 `src/cli/serve-server.js`（`createServeServer`），`src/cli.js` 只负责参数与启动。项目可在 `serve-extensions/*.mjs` 放置扩展（default 导出 `{ name, handle(request, response, pathname) => boolean }`，返回 true 表示接管），在静态文件与代理之前挂入同服务同端口的本地能力（如浏览器 e2e 触发器）；加载器见 `src/cli/serve-extensions.js`，写方法统一强制本机来源校验。
 
 ## 生成文件——请勿手改

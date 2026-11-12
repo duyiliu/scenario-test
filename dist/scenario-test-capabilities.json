@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.15.0",
-  "contractVersion": 22,
+  "contractVersion": 23,
   "assertions": {
     "operators": {
       "exists": {
@@ -410,9 +410,9 @@
         "kind": "value",
         "description": "init 场景测试目录名"
       },
-      "library-url": {
-        "kind": "value",
-        "description": "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）"
+      "clean": {
+        "kind": "flag",
+        "description": "init 清理旧版项目内运行时副本（.scenario-test/ 与 index.html），不触碰配置与场景"
       },
       "all": {
         "kind": "flag",
@@ -424,7 +424,7 @@
       },
       "no-input": {
         "kind": "flag",
-        "description": "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）"
+        "description": "init 非交互：目录已存在时按 keep（保留配置与场景）"
       },
       "fail-on-skip": {
         "kind": "flag",

@@ -37,8 +37,11 @@
 
 1. **产物永远归 workspace 所有**：`e2e-results/` 固定在 `<scenario-test>/e2e-results/`，
    无论 e2e 代码在哪。证据不散落，`.gitignore` 只维护一处。
-2. **公共设施位置固定**：reporter 永远在 `<scenario-test>/.scenario-test/e2e-reporter.cjs`，
-   与 e2e root 解耦。
+2. **reporter 由运行时注入，不落项目**：serve 启动 playwright 时经
+   `SCENARIO_TEST_E2E_REPORTER` 注入物化路径（v23 起物化到
+   `e2e-results/.scenario-test-e2e-reporter.cjs`，该目录随产物一起 gitignore），
+   托管模板的 playwright.config 仅在环境变量存在时追加 reporter；
+   项目内不再维护 `.scenario-test/` 副本。
 3. **挂载目录严格只读**：mounted 模式不对 e2e root 写任何文件——不改对方
    `playwright.config.js`、不塞 marker、不动 `.gitignore`。
 
@@ -68,8 +71,8 @@ baseUrl 回落规则是单一来源的关键：混合仓里 HTTP env 和 E2E 共
 **init 语义**：
 
 - 目标不存在 → 写托管模板；
-- 目标存在且有 `playwright.config.*` → 自动转挂载，只在 `.scenario-test/` 写 reporter、
-  在 config 里声明 root，不向前端目录写任何文件；
+- 目标存在且有 `playwright.config.*` → 自动转挂载，只在 config 里声明 root，
+  不向前端目录写任何文件（reporter 由 env 注入，无需落盘）；
 - `init --e2e --e2e-dir <路径>` 支持就近前端新建。
 
 **安全边界**（复用现有机制）：
@@ -86,7 +89,7 @@ baseUrl 回落规则是单一来源的关键：混合仓里 HTTP env 和 E2E 共
 | 就近前端（托管新建） | `web/e2e/` | 仍叫 e2e，marker + 目录内 README 标明归 scenario-test 管 |
 | 挂载已有 | 前端自己定 | 我们只读，无权命名 |
 | 结果 | `scenario-test/e2e-results/` | 永远归 workspace，不跟 e2e root 走 |
-| 公共 reporter | `scenario-test/.scenario-test/e2e-reporter.cjs` | 位置固定 |
+| 公共 reporter | `SCENARIO_TEST_E2E_REPORTER` env → `e2e-results/.scenario-test-e2e-reporter.cjs` | 运行时物化，不落项目 |
 
 不改名为 `scenario-e2e` 的理由：`e2e` 是前端生态通用词（Playwright 官方与社区惯例），
 `scenario-test/e2e/` 已带命名空间；场景语义由内层结构表达；所有权混淆用

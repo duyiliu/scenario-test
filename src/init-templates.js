@@ -1,9 +1,7 @@
 import { contract } from "./contract.js";
-import { VERSION } from "./version.generated.js";
 
-// init 下载运行时副本的兜底源：GitHub Tag 中的 dist 目录稳定提供全部文件；
-// 内网可用 --library-url 指向 GitLab Raw 或制品目录
-export const DEFAULT_LIBRARY_URL = `https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${VERSION}/dist/`;
+// v23 起：运行时去项目化。init 不再向项目复制 CLI/UMD/d.ts/capabilities，
+// 执行与工作台统一使用安装方（Skill 或用户级安装）的运行时。
 
 // 能力名单从 contract 投影：AI Prompt / Patterns / README 禁止手抄操作符名单
 const OPERATOR_NAMES = Object.keys(contract.assertions.operators);
@@ -13,9 +11,9 @@ const GLOBALS_TYPES_BACKTICK = contract.globals.types.map((type) => `\`${type}\`
 const SHAPE_TYPES_TEXT = contract.assertions.shape.types.join("/");
 const SHAPE_KEYS_TEXT = contract.assertions.shape.keys.join("/");
 
-const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
+export const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 
-本文件由安装会话中的 AI 自动读取；新会话中的 AI 应按用户要求从项目目录直接读取。用户不需要复制或粘贴本文件。开始前必须已完成安装和 doctor。
+本文件由安装方（Skill 或用户级安装）提供；新会话中的 AI 按用户要求从安装方目录直接读取，不落项目盘。开始前必须已完成安装和 doctor。
 
 本阶段只根据当前项目中与目标业务功能直接相关的真实证据生成或维护 HTTP 场景，不负责安装、升级或构建 scenario-test，不启动服务，也不实际调用业务接口。
 
@@ -23,7 +21,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 
 本文件只管 **HTTP 接口层场景**。若本次验证目标是浏览器行为（页面跳转与路由守卫、DOM 文本、表单交互、多页联动、登录态对界面的影响、截图证据），本文件不适用：改用浏览器 E2E 工作流（Skill 侧读 references/e2e.md，项目内执行 init --e2e 托管链路，场景落在 e2e/tests/），不要把这类需求降级成 HTTP 场景。纯前端项目（无后端源码）通常不需要本文件的 HTTP 场景，除非用户明确要求接口契约测试。两层都要时先出一份场景矩阵再按上述判据分配，规则类场景不重复建。
 
-请针对用户本次指定的一个业务功能生成 scenario-test 场景用例。本文件位于项目场景测试根目录的 \`.scenario-test/\`，根目录是上一级。随后读取根目录的 \`README.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，并读取本文件同目录的 \`SCENARIO_PATTERNS.md\`，再分析与目标功能直接相关的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。若用户尚未明确指定业务功能，先询问功能名称及可定位的代码、页面或接口入口；得到答复前不扫描整个项目、不创建场景文件。
+请针对用户本次指定的一个业务功能生成 scenario-test 场景用例。本文件由安装方（Skill / 用户级安装）提供，不落项目盘；项目场景测试根目录为 \`scenario-test/\`（或 init --dir 指定目录）。随后读取项目内的 \`README.md\`、\`scenario.config.js\` 和已有 \`scenarios/\`，并读取同来源的 \`SCENARIO_PATTERNS.md\`，再分析与目标功能直接相关的 Controller、OpenAPI/Swagger、前端 API 调用、接口文档和已有自动化测试。若用户尚未明确指定业务功能，先询问功能名称及可定位的代码、页面或接口入口；得到答复前不扫描整个项目、不创建场景文件。
 
 不要猜测接口路径、字段、认证方式、响应结构、状态枚举、请求枚举或错误响应字段；没有代码或文档依据时列为待确认项。示例中的 SUCCESS、PDF、pdf、错误码等都只是占位结构，不是可直接采用的默认值，也不能改成另一种大小写后使用。
 
@@ -32,7 +30,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 1. 只处理本次指定的一个业务功能。先给出功能卡片：功能目标、参与角色、触发入口、前置条件、关键业务规则、状态变化、直接相关接口、测试数据与清理条件；再给出该功能的场景矩阵，列明每个场景的验证目标、前置条件、步骤、预期结果和是否写数据。无法确认的内容列为待确认项，不得把范围扩展到相邻功能。
 2. 业务功能是设计边界，场景是该功能下的一条独立验证路径。按证据覆盖成功路径、业务规则/参数校验、权限、边界值、重复操作或幂等、合法与非法状态流转；没有证据的类别不生成。一个场景可以包含准备、执行、查询验证和精确清理等多个 HTTP 步骤，但这些步骤只服务于目标功能，不把多个业务功能串成一个大场景。认证等公共前置只作为准备步骤，不改变场景归属。
 3. 在 \`scenario.config.js\` 维护 \`envs\`、\`vars\`、\`variables\` 和 \`scenarios\`。私有项目可在 \`vars\` 保存联调凭据；\`variables\` 只声明标签、\`required\` 与可选 \`env\` 映射。源码能确认请求字段但不能确认必填取值时，在配置 \`vars\` 中留空，并在 \`variables\` 中声明为 \`required: true\`；场景只引用该变量，禁止填入猜测值或测试标记。临时联调可用 \`--vars key=value\`（可重复，优先级最高，值支持 \`{{ }}\` 模板）覆盖配置变量，用 \`--timeout <ms>\` 覆盖配置 \`requestTimeoutMs\`，不必复制或修改配置。
-4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式，再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
+4. 先参照 \`SCENARIO_PATTERNS.md\` 的步骤组合模式（与本文件同为安装方提供），再按本项目证据替换路径、字段和响应断言；模式中的尖括号占位内容不得直接写入场景。场景必须使用 \`ScenarioTest.registerScenario(id, ScenarioTest.defineScenario({...}))\`，配置中的场景 id、文件注册 id 必须一致。
 5. 每一步写 \`name\`、\`method\`、\`path\`、\`status\`，并为关键业务结果写 \`assertions\`。Query 参数写在步骤顶层 \`params\`（也可用 \`request.params\`，但同一步骤不能两处同时声明，定义期即报错）；GET/HEAD 不能携带请求体（\`request.body\`、\`request.fileUpload\` 定义期即被拒），请求参数一律放 \`params\`。用 \`extract\` 保存响应 ID、Token 或状态，再用 \`{{vars.name}}\` 串联后续步骤；\`scope: "suite"\` 的提取值写入本次 run 跨场景共享命名空间，后续场景模板用 \`{{suite.<name>}}\` 引用（典型如登录 token；默认仍写入当前场景 vars，后续场景也兼容用 \`{{vars.<name>}}\` 读取）。\`from: "headers"\` 的 path 首段按头名大小写不敏感匹配（任意大小写命中同一响应头，无需为大小写变体重复配置），首段之后的子路径在头值上取。断言操作符：${OPERATORS_BACKTICK}；结构校验用 \`shape: { type: "object", required: [...], properties: {...} }\`（jsonSchema-lite：type 支持 ${SHAPE_TYPES_TEXT}，键支持 ${SHAPE_KEYS_TEXT}，失败定位到字段路径；additionalProperties 默认 true，声明 false 时未知键失败），数值比较（如总数字段不少于 5）用 \`gte: 5\`（仅数字不做字符串转换），列表条数/字符串长度/对象键数用 \`length: N\`（数组元素数、字符串字符数、对象键数，非容器类型直接失败），"非负整数"这类格式校验用 \`matches: "^\\\\d+$"\`，接口耗时上限用 \`{ target: "duration", lte: 800 }\`（毫秒，单次请求耗时）。\`extract\` 项可加 \`required: true\`，路径不存在时该步骤失败；可加 \`default\` 给可选字段声明兜底值（支持模板，与 required 互斥，声明后缺失不产生 warning）。路径中的数组下标支持负数取倒数项（如 \`records[-1]\` 为末项，\`records[-2]\` 为倒数第二项）。路径还支持通配段 \`[*]\`：\`items[*].id\` 逐元素提取并产出数组（元素缺失该子路径时跳过，空数组产 \`[]\`，非数组按路径缺失处理），连续通配（如 \`groups[*].members[*].id\`）展平为一级数组。\`when\` 对象形式来源为 \`from: "vars"\`（已提取变量）、\`from: "suite"\`（本次 run 跨场景共享变量）、\`from: "lastResponse"\`（上一步响应 body，path 子路径取值同 extract from:"body"）或 \`from: "status"\`（上一步 HTTP 状态码，数值），也可用 \`target: "status"\` 读上一步状态码；第一步无上一步响应时按来源缺失处理、条件不成立，不中断场景。模板 \`{{ }}\` 只做路径取值，不支持比较、三元、逻辑运算或函数调用（如 \`{{vars.a > 0}}\` 定义期即被拒），条件判断用 \`assertions\` 或 \`when\` 对象形式。
 6. 认证是普通项目步骤：确认登录接口时先登录并提取 Token；无法确认时仅声明变量并在具体 Header、Query 或 Body 中引用，不虚构框架级认证。浏览器 Cookie 会话必须有项目证据并显式设置 request.credentials 为 include；CLI 需要自动维持会话时可加 \`run --cookie-jar\`（单场景内存 Jar，不落盘）。
 7. \`runId\` 和 \`runNo\` 是每次执行自动生成的内置变量，禁止在配置 vars、场景 vars、envVars、generatedVars 或 extract 中重新定义或覆盖。写入场景使用 \`scenario-{{vars.runNo}}\` 等测试标记。清理只能按刚提取的 ID 或测试标记精确定位，并用 \`when\` 防止空值删除；无法确认安全清理条件时不生成删除步骤。 需要唯一证件/卡号/号码的测试数据（身份证号、银行卡号、手机号、统一社会信用代码等带格式或校验位约束的字段）用 \`generatedVars\` 按轮次生成：\`idcard\`（声明 birthDate 与 gender）、\`luhn\`（可选 length/prefix）、\`phone\`（可选 prefix）、\`uscc\`（可选 regionCode），禁止写死固定或真实号码导致重跑撞唯一性。 时间窗/过期类参数（startTime、expiredAt 等）用 \`timestamp\` 类型相对当前时间生成：\`offset\`（如 "-7d"、"+8d"，数字+单位 ms/s/m/h/d/w）、\`unit: 's'\` 秒级数值、\`format: 'YYYY-MM-DD HH:mm:ss'\` 本地时间字符串（format 与 unit 互斥），禁止外部脚本拼值或写死过期时间。业务主键为 UUID 的字段用 \`uuid\` 类型（带连字符标准形态），无连字符 32 位用 \`uuidHex\`。渠道、状态等枚举类参数需要随机但可复现的取值时用 \`enum\` 类型：\`values\` 候选数组 + 可选 \`weights\` 非负权重（缺省等权，权重为 0 的候选永不被选中），按轮次确定性抽取（轮内稳定、跨轮变化）；枚举取值必须有项目证据，不得凭空编造候选。
@@ -43,7 +41,7 @@ const AUTHORING_PROMPT = `# AI 业务功能场景生成规则
 12. 最后说明本次目标业务功能、新增/修改文件、场景矩阵、待确认项和每个场景的本地运行命令；不要实际执行场景。
 `;
 
-const SCENARIO_PATTERNS = [
+export const SCENARIO_PATTERNS = [
     "# 业务功能场景模式库",
     "",
     "本文件提供为单个业务功能编排场景时可复用的步骤组合，不是跨功能端到端流程或接口文档。每次先选定一个明确业务功能，再按真实业务规则组合该功能下的场景。所有 <占位内容> 必须从当前项目中与该功能直接相关的 Controller、OpenAPI、前端 API 调用、接口文档或既有测试确认后再替换，不能原样执行。",
@@ -155,43 +153,25 @@ const SCENARIO_PATTERNS = [
 
 export function createProjectFiles(directory = "scenario-test", options = {}) {
     const storagePrefix = options.storagePrefix || "scenario-test.project";
-    // 项目 .scenario-test/ 保存 AI 规则、模式库与运行时副本（由 init/安装脚本落盘）
-    const frameworkPrefix = `${directory}/.scenario-test`;
-    const frameworkDisplay = `.scenario-test/`;
-    const authoringPromptPath = `${frameworkPrefix}/AI_SCENARIO_PROMPT.md`;
+    // cliPath：start-scenario-test.cmd 指向的运行时 CLI 绝对路径（调用方 CLI 自身），机器本地不提交
+    const cliPath = options.cliPath || "scenario-test-cli.cjs";
     return {
-        [`${directory}/index.html`]: `<!doctype html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>场景测试</title>
-</head>
-<body style="margin:0">
-    <div id="scenario-test" style="height:100vh"></div>
-    <!-- 运行时为项目内副本 .scenario-test/scenario-test.umd.js（init 落盘，离线可用）；接口通过 serve 代理访问 -->
-    <script src="./.scenario-test/scenario-test.umd.js"></script>
-    <script src="./scenario.config.js"></script>
-    <script>
-        ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
-    </script>
-</body>
-</html>
-`,
         [`${directory}/start-scenario-test.cmd`]: `@echo off
 setlocal
 cd /d "%~dp0"
 
+rem 运行时由安装方（Skill / 用户级安装）统一提供，项目内不保留副本；
+rem 以下路径为安装时写入的本机绝对路径，机器迁移或运行时移位后需重跑 init 刷新。
 rem 端口由用户级项目登记固定：首次运行自动分配，之后复用；--open 在监听成功后打开浏览器。
-call node "%~dp0.scenario-test\\scenario-test-cli.cjs" serve --config "%~dp0scenario.config.js" --open
+call node "${cliPath}" serve --config "%~dp0scenario.config.js" --open
 
 if errorlevel 1 (
     echo.
-    echo Scenario Test failed to start. Run init first to generate runtime files.
+    echo Scenario Test failed to start. Please re-run init to refresh the launcher path.
     pause
 )
 `,
-        [`${directory}/scenario.config.js`]: `/// <reference path="./.scenario-test/scenario-test.d.ts" />
+        [`${directory}/scenario.config.js`]: `// 运行时由安装方（Skill / 用户级安装）提供；类型提示可指向运行时 scenario-test.d.ts
 ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     envs: [
         {
@@ -210,22 +190,20 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
     scenarios: []
 }));
 `,
-        [`${frameworkPrefix}/AI_SCENARIO_PROMPT.md`]: AUTHORING_PROMPT,
-        [`${frameworkPrefix}/SCENARIO_PATTERNS.md`]: SCENARIO_PATTERNS,
         [`${directory}/README.md`]: `# 场景测试
 
-本目录是当前项目的场景测试入口。它与业务代码同仓维护：环境地址、测试变量、场景文件和项目专属插件放在这里；浏览器工作台与 CLI 由 @yc_yzkj/scenario-test 提供（运行时副本在 \`${frameworkDisplay}\`，由 init 或安装脚本落盘）。
+本目录是当前项目的场景测试入口，与业务代码同仓维护：这里只有场景数据——环境地址、测试变量、场景文件和项目专属插件；**运行时（CLI、工作台页面、AI 规则）统一由安装方提供**（全局 Skill 或用户级安装），项目内不保留任何运行时副本。
 
-默认免 npm 接入：不安装 npm 包、不改 package.json，直接使用 \`${frameworkDisplay}\` 内的运行时副本（仍需 Node.js 22+）。项目内 \`${frameworkDisplay}\` 保存 AI 规则、模式库与运行时副本（CLI、UMD、d.ts、能力清单），业务人员通常不需要打开或修改。
+默认免 npm 接入：不安装 npm 包、不改 package.json，执行时直接调用安装方的 \`scenario-test-cli.cjs\`（仍需 Node.js 22+）。AI 编写规则在安装方 Skill 的 \`references/AI_SCENARIO_PROMPT.md\` 与 \`SCENARIO_PATTERNS.md\`，随 Skill 升级自动更新，不落项目盘。
 
 ## 开始使用
 
-如果安装会话还在继续，直接回答 AI 提出的业务功能问题即可；AI 已读取本目录的规则，不需要再次复制任何 Prompt。
+如果安装会话还在继续，直接回答 AI 提出的业务功能问题即可；AI 已读取规则，不需要再次复制任何 Prompt。
 
 如果新开了 AI 会话，只需输入：
 
 \`\`\`text
-请读取 ${authoringPromptPath}，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
+请读取安装方 AI 规则（Skill 的 references/AI_SCENARIO_PROMPT.md），为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
 \`\`\`
 
 接下来：
@@ -238,12 +216,11 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 | 路径 | 作用 | 是否应修改 |
 | --- | --- | --- |
-| \`index.html\` | 浏览器工作台入口 | 通常不需要 |
-| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后按用户级项目登记启动工作台并打开浏览器，首次自动分配固定端口、之后复用。macOS / Linux 用 \`node .scenario-test/scenario-test-cli.cjs serve --open\`；端口用 \`projects list\` 查看、\`projects set-port <端口>\` 修改 | 通常不需要 |
+| \`start-scenario-test.cmd\` | Windows 人工测试入口；双击后按用户级项目登记启动工作台并打开浏览器，首次自动分配固定端口、之后复用。内容为安装时写入的本机绝对路径，**机器本地勿提交**；macOS / Linux 用 \`node <运行时>/scenario-test-cli.cjs serve --open\`；端口用 \`projects list\` 查看、\`projects set-port <端口>\` 修改 | 移位后重跑 init 刷新 |
 | \`scenario.config.js\` | 环境、测试变量和场景清单；通常由 AI 按用户提供的信息维护 | 按需 |
 | \`scenarios/\` | 按业务功能建子目录；目录内一个文件对应该功能的一条独立验证路径 | 由 AI 维护 |
 | \`plugins/\` | 仅当前项目需要的文件、Excel 或业务扩展 | 按需新建 |
-| \`${frameworkDisplay}\` | AI 规则、模式库与运行时副本（CLI/UMD/d.ts/能力清单） | 不需要用户修改 |
+| \`e2e/\`、\`e2e-results/\` | 浏览器 E2E（可选，init --e2e 生成）；结果目录不入库 | 由 AI 维护 |
 
 ## 配置环境和变量
 
@@ -341,41 +318,39 @@ ScenarioTest.registerScenario("order-create-success", ScenarioTest.defineScenari
 - 默认失败即停止；只有同一验证路径确实需要继续收集后续步骤结果时，才在场景上设 \`failurePolicy: "continue"\`。
 - SKIP 步骤不计入通过/执行统计，全跳过时场景状态为 SKIPPED；写数据类场景在配置清单中加 \`manual: true\`，\`--all\` 会默认排除，需用 \`--scenario <id>\` 显式执行。
 
-完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取 \`${frameworkDisplay}AI_SCENARIO_PROMPT.md\` 和同目录的模式库后生成。
+完整 DSL 与示例见公共库 README；项目内新增用例由 AI 读取安装方的 \`AI_SCENARIO_PROMPT.md\` 与同目录模式库后生成。
 
 ## 浏览器工作台
 
-双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本使用项目内运行时副本启动本地 HTTP Server，自动打开 \`index.html\`。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS，也无需手工清空或覆盖页面地址。人工测试结束后按 \`Ctrl+C\` 停止服务。
+双击本目录中的 \`start-scenario-test.cmd\` 启动工作台：脚本调用安装方运行时启动本地 HTTP Server，工作台页面由运行时内置提供（项目内不再有 index.html）。\`serve\` 会在页面中启用同源代理模式，浏览器请求先发送到当前工作台地址，再转发到所选环境的 \`baseUrl\`，无需后端放行 CORS。人工测试结束后按 \`Ctrl+C\` 停止服务。
 
-macOS / Linux（或不使用双击的 Windows 场景）在项目根目录执行 \`node .scenario-test/scenario-test-cli.cjs serve\`，行为与双击一致；端口默认 4300，被占用时追加 \`--port 4301\` 显式指定。
+macOS / Linux（或不使用双击的 Windows 场景）在项目根目录执行 \`node <运行时路径>/scenario-test-cli.cjs serve\`，行为与双击一致；端口默认 4300，被占用时追加 \`--port 4301\` 显式指定。
 
 也可以在项目根目录执行：
 
 \`\`\`powershell
-.\\scenario-test\\start-scenario-test.cmd
+.\scenario-test\start-scenario-test.cmd
 \`\`\`
-
-不要直接双击 \`index.html\`：页面虽可加载，但接口请求会被浏览器 CORS 拦截，必须通过 \`serve\` 的同源代理执行。
 
 ## CLI 执行
 
-默认使用项目内运行时副本（免 npm 模式），无需安装 npm 包。执行配置中全部场景：
+运行时统一使用安装方 CLI（下文中 \`<cli>\` 指安装方的 \`scenario-test-cli.cjs\`，无需安装 npm 包）。执行配置中全部场景：
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
+node <cli> run --config ${directory}/scenario.config.js --env local --all
 \`\`\`
 
 执行单个场景时，使用配置中的场景 id（命令 \`run\` 紧跟脚本名）：
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --scenario order-create-success
+node <cli> run --config ${directory}/scenario.config.js --env local --scenario order-create-success
 \`\`\`
 
 在 PowerShell 中为一次执行临时覆盖凭据：
 
 \`\`\`powershell
 $env:SCENARIO_CLIENT_SECRET = "temporary-value"
-node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local --all
+node <cli> run --config ${directory}/scenario.config.js --env local --all
 Remove-Item Env:SCENARIO_CLIENT_SECRET
 \`\`\`
 
@@ -384,7 +359,7 @@ Remove-Item Env:SCENARIO_CLIENT_SECRET
 临时覆盖配置变量或请求超时，无需修改配置文件：
 
 \`\`\`powershell
-node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario.config.js --env local \`
+node <cli> run --config ${directory}/scenario.config.js --env local \`
   --vars clientId=temporary-client \`
   --vars "clientSecret={{vars.defaultSecret}}" \`
   --timeout 5000 --all
@@ -398,7 +373,7 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 
 ### 页面提示 ScenarioTest 未定义或脚本加载失败
 
-确认项目 \`${frameworkDisplay}\` 中存在 \`scenario-test.umd.js\`（运行时副本，由 init/安装脚本落盘）；\`index.html\` 加载的是 \`./.scenario-test/scenario-test.umd.js\`。文件缺失时重跑安装脚本（或带 \`--library-url\` 的 init）补齐，再通过 \`start-scenario-test.cmd\` 启动工作台。
+工作台页面与 UMD 均由 serve 从运行时目录直接提供；出现该提示通常是 serve 未启动、页面不是通过 serve 地址打开，或运行时版本过旧。确认用 \`start-scenario-test.cmd\` / \`serve\` 打开的地址；仍异常时重跑安装方安装流程更新运行时。
 
 ### 页面能打开但场景没有加载
 
@@ -410,11 +385,11 @@ node ${frameworkDisplay}scenario-test-cli.cjs run --config ${directory}/scenario
 
 ### 新业务功能不知道如何设计场景
 
-不要先扫描整个项目或按接口批量建文件。先选定一个业务功能，并把功能名称及可定位的页面、Controller、OpenAPI 节点、前端 API 模块或已有测试入口交给 AI；AI 会读取 \`${frameworkDisplay}\` 中的项目规则，先输出功能卡片和场景矩阵。没有依据的业务规则、接口和字段列为待确认项。
+不要先扫描整个项目或按接口批量建文件。先选定一个业务功能，并把功能名称及可定位的页面、Controller、OpenAPI 节点、前端 API 模块或已有测试入口交给 AI；AI 会读取安装方规则，先输出功能卡片和场景矩阵。没有依据的业务规则、接口和字段列为待确认项。
 
 ## 升级运行时
 
-场景、配置和项目插件属于本项目，升级时不要覆盖它们。使用新版 CLI 对当前目录执行 \`init\`（把下载源切换到新的固定版本后重跑安装脚本）；CLI 会刷新 \`${frameworkDisplay}\` 中的 AI 规则与运行时副本，不覆盖项目配置与场景。升级后先运行 doctor 和一个代表性业务场景，再提交本项目改动。
+场景、配置和项目插件属于本项目，运行时不在项目内。升级 = 升级安装方（更新全局 Skill 或重跑用户级安装脚本）；doctor 会在场景用到运行时不支持的能力时提示需要更高 contract 版本。升级后运行 doctor 和一个代表性业务场景确认。
 
 公共运行时不保存业务地址、账号、Token、Secret 或测试数据；这些仅能放在当前私有项目的配置和受控环境变量中。
 `

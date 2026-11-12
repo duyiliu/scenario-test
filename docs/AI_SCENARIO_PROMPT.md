@@ -2,22 +2,23 @@
 
 本文件仅供维护者了解规则结构。**业务用户不要直接复制本文件**，也不要把它作为实际生成输入。
 
-实际执行时，以 `init` 写入业务项目的以下文件为准：
+实际执行时，以安装方运行时目录内的以下文件为准（Skill 位于 `skills/scenario-test/runtime/`，
+用户级安装位于 `~/.scenario-test/runtime/`；v23 起项目内不再保留副本）：
 
-- `scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md`
-- `scenario-test/.scenario-test/SCENARIO_PATTERNS.md`
-- `scenario-test/.scenario-test/scenario-test-capabilities.json`
+- `AI_SCENARIO_PROMPT.md`
+- `SCENARIO_PATTERNS.md`
+- `scenario-test-capabilities.json`
 
-这些文件与安装版本绑定。规则模板由 `src/init-templates.js` 维护，DSL 能力由 `src/contract.js` 投影；本预览不复制完整模板和操作符名单，避免形成第二份真相。
+这些文件与安装版本绑定。规则模板由 `src/init-templates.js` 维护（`AUTHORING_PROMPT` / `SCENARIO_PATTERNS` 导出），DSL 能力由 `src/contract.js` 投影；本预览不复制完整模板和操作符名单，避免形成第二份真相。
 
 ## 使用入口
 
-首次接入按根目录 [README](../README.md) “快速接入”安装并使用全局 Skill。初始化和 doctor 完成后，AI 会读取项目内规则，无需复制接入 Prompt。
+首次接入按根目录 [README](../README.md) “快速接入”安装并使用全局 Skill。初始化和 doctor 完成后，AI 会读取运行时规则，无需复制接入 Prompt。
 
-新会话只需输入：
+新会话只需输入（路径以探测脚本返回的 `authoringPrompt` 为准）：
 
 ```text
-请读取 scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
+请读取 <运行时目录>/AI_SCENARIO_PROMPT.md，为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
 ```
 
 ## 核心原则
@@ -33,15 +34,15 @@
 7. 不修改业务代码、构建配置和公共运行时，不写入生产地址、真实个人数据或固定凭据。
 8. 完成后只给出场景矩阵、改动文件、待确认项和运行命令，不实际调用业务接口。
 
-当前契约的 `when` 对象形式支持基于已提取变量（`vars`）、本次 run 跨场景共享变量（`suite`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤；完整来源与操作符名单以项目内能力清单和 `AI_SCENARIO_PROMPT.md` 为准，本预览不复制完整名单。
+当前契约的 `when` 对象形式支持基于已提取变量（`vars`）、本次 run 跨场景共享变量（`suite`）、上一步响应体（`lastResponse`）或上一步状态码（`status` / `target: "status"`）跳过步骤；完整来源与操作符名单以运行时能力清单和 `AI_SCENARIO_PROMPT.md` 为准，本预览不复制完整名单。
 
 ## 能力核对
 
-需要确认当前版本的操作符、变量、`when`、`extract` 或 CLI 参数时，读取项目内能力清单，或执行：
+需要确认当前版本的操作符、变量、`when`、`extract` 或 CLI 参数时，读取运行时能力清单，或执行（CLI 路径以探测脚本返回的 `cli` 为准）：
 
 ```powershell
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs capabilities
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs capabilities --json
+node <运行时目录>\scenario-test-cli.cjs capabilities
+node <运行时目录>\scenario-test-cli.cjs capabilities --json
 ```
 
 不要依据本预览、旧版本文档或模型记忆手抄能力名单。

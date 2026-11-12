@@ -1,8 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { createServeServer } from '../../src/cli/serve-server.js';
 import { createE2eExtension } from '../../src/e2e/extension.js';
-import { E2E_REPORTER } from '../../src/e2e/reporter-template.js';
 import demo from './serve-extensions/demo.mjs';
 
 const workspace = import.meta.dirname;
@@ -10,9 +8,7 @@ const port = Number(process.env.SCENARIO_TEST_DEMO_PORT || 4303);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('演示端口无效');
 process.env.E2E_BASE_URL = `http://127.0.0.1:${port}/demo-app/`;
 process.env.E2E_BROWSER_CHANNEL ||= 'chrome';
-const managed = path.join(workspace, '.scenario-test');
-fs.mkdirSync(managed, { recursive: true });
-fs.writeFileSync(path.join(managed, 'e2e-reporter.cjs'), E2E_REPORTER);
+// reporter 由 serve 启动 playwright 时经 SCENARIO_TEST_E2E_REPORTER 物化注入，无需手写进项目
 const server = createServeServer({
   workspace, port, libraryDist: path.resolve(workspace, '../../dist'),
   extensions: [createE2eExtension({ workspace }), demo]

@@ -94,14 +94,8 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
         assert.match(result.stdout, /\[PASS\] config-load/);
         assert.match(result.stdout, /\[PASS\] scenario-register/);
         assert.match(result.stdout, /\[PASS\] cli/);
-        assert.match(result.stdout, /\[PASS\] authoringPrompt/);
-        assert.match(result.stdout, /\[PASS\] patterns/);
-        assert.match(result.stdout, /\[PASS\] umd/);
-        assert.match(result.stdout, /\[PASS\] dts/);
-        assert.match(result.stdout, /\[PASS\] capabilities/);
-        assert.match(result.stdout, /\[PASS\] version-lock/);
-        // src 环境运行 init 时 CLI 副本从本机 dist 兜底拷贝，完整副本就绪
-        assert.match(result.stdout, /\[PASS\] runtime-cli/);
+        assert.match(result.stdout, /\[PASS\] legacy-runtime/);
+        assert.match(result.stdout, /项目使用安装方运行时/);
         assert.match(result.stdout, /\[INFO\] manual-scenario/);
         assert.match(result.stdout, /seed/);
         assert.doesNotMatch(result.stdout, /\[FAIL\]/);
@@ -111,15 +105,32 @@ test("doctor：健康项目全 PASS + manual INFO，退出码 0", () => {
     }
 });
 
-test("doctor：平铺旧文件不被识别，运行时检查只走 .scenario-test/ 副本", () => {
+test("doctor：检测到旧版项目内运行时副本 WARN 并提示 init --clean", () => {
     const { project, dir } = initProject();
     try {
+        // 模拟旧版 init 落盘的运行时副本
+        const frameworkDir = path.join(dir, ".scenario-test");
+        fs.mkdirSync(frameworkDir, { recursive: true });
+        fs.writeFileSync(path.join(frameworkDir, "scenario-test-cli.cjs"), "legacy", "utf8");
+        fs.writeFileSync(path.join(dir, "index.html"), "<html>legacy</html>", "utf8");
+        const result = runDoctor(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.match(result.stdout, /\[WARN\] legacy-runtime/);
+        assert.match(result.stdout, /旧版项目内运行时副本/);
+        assert.match(result.stdout, /init --clean/);
+    } finally {
+        cleanup(project);
+    }
+});
+
+test("doctor：平铺旧文件不影响判定，legacy 只看 .scenario-test/ 与 index.html", () => {
+    const { project, dir } = initProject();
+    try {
+        // 更早期平铺遗留（不在 LEGACY_FRAMEWORK_FILES 清单）不应误报
         fs.writeFileSync(path.join(dir, "scenario-test.umd.js"), "legacy", "utf8");
         const result = runDoctor(dir);
         assert.equal(result.status, 0, result.stdout + result.stderr);
-        // 平铺旧文件不影响 .scenario-test/ 内副本的版本握手
-        assert.match(result.stdout, /\[PASS\] umd/);
-        assert.match(result.stdout, /运行时副本就绪/);
+        assert.match(result.stdout, /\[PASS\] legacy-runtime/);
     } finally {
         cleanup(project);
     }
@@ -182,61 +193,6 @@ test("doctor：多文件错误汇总（文件缺失 + 未知操作符同时报�
         cleanup(project);
     }
 });
-
-test("doctor：版本锁由 init 生成且版本一致 PASS", () => {
-    const { project, dir } = initProject();
-    try {
-        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
-        assert.equal(fs.existsSync(lockPath), true);
-        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-        assert.equal(lock.runtimeVersion, VERSION);
-        assert.equal(lock.contractVersion, CONTRACT_VERSION);
-        assert.ok(lock.files.cli && lock.files.umd && lock.files.dts && lock.files.capabilities);
-        const result = runDoctor(dir);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.match(result.stdout, /\[PASS\] version-lock/);
-        assert.match(result.stdout, /版本一致/);
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor：UMD 版本不一致 FAIL；SHA256 被替换 WARN", () => {
-    const { project, dir } = initProject();
-    try {
-        const umdPath = path.join(dir, ".scenario-test", "scenario-test.umd.js");
-        fs.writeFileSync(umdPath, "/*! scenario-test v0.0.1 */", "utf8");
-        let result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] umd/);
-        assert.match(result.stdout, /版本不一致/);
-
-        // 恢复版本头但改内容：版本一致、SHA256 不一致 → FAIL（内容被替换意味着来源不明，健康闸门必须拦下）
-        fs.writeFileSync(umdPath, `/*! scenario-test v${VERSION} */ tampered`, "utf8");
-        result = runDoctor(dir);
-        assert.equal(result.status, 1, result.stdout + result.stderr);
-        assert.match(result.stdout, /SHA256 与版本锁记录不一致/);
-        assert.match(result.stdout, /\[FAIL\] version-lock/);
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor：版本锁缺少 sha256 指纹时 WARN 提示刷新，不再静默跳过", () => {
-    const { project, dir } = initProject();
-    try {
-        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
-        const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-        delete lock.sha256;
-        fs.writeFileSync(lockPath, JSON.stringify(lock), "utf8");
-        const result = runDoctor(dir);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁缺少 sha256 指纹记录/);
-    } finally {
-        cleanup(project);
-    }
-});
-
 
 test("doctor --json：配置文件缺失时输出结构化 JSON 且退出码 1，其余检查继续执行", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-missing-"));
@@ -314,90 +270,6 @@ test("doctor --json：stdout 纯净可解析，含 checks/exitCode 与 manual in
         cleanup(project);
     }
 });
-test("doctor：capabilities.json 解析失败 / schema 不匹配 / 版本不一致分别 FAIL", () => {
-    const { project, dir } = initProject();
-    try {
-        const capPath = path.join(dir, ".scenario-test", "scenario-test-capabilities.json");
-        const original = fs.readFileSync(capPath, "utf8");
-
-        fs.writeFileSync(capPath, "{ not-json", "utf8");
-        let result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] capabilities/);
-        assert.match(result.stdout, /解析失败/);
-
-        fs.writeFileSync(capPath, JSON.stringify({ schema: "other-manifest", version: VERSION, contractVersion: CONTRACT_VERSION }), "utf8");
-        result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] capabilities/);
-        assert.match(result.stdout, /schema 不匹配/);
-
-        fs.writeFileSync(capPath, JSON.stringify({ schema: "scenario-test-capabilities", version: "0.0.1", contractVersion: CONTRACT_VERSION }), "utf8");
-        result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] capabilities/);
-        assert.match(result.stdout, /版本不一致/);
-        assert.match(result.stdout, /用当前版本 CLI 重新 init/);
-
-        // 恢复原文件后 capabilities 检查回到 PASS（同一项目内验证状态随文件内容复位）
-        fs.writeFileSync(capPath, original, "utf8");
-        result = runDoctor(dir);
-        assert.match(result.stdout, /\[PASS\] capabilities/);
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor：capabilities.json 缺失时 WARN 提示 init 补齐（不判 FAIL）", () => {
-    const { project, dir } = initProject();
-    try {
-        fs.rmSync(path.join(dir, ".scenario-test", "scenario-test-capabilities.json"));
-        // 缺文件是 WARN（init 补齐即可），内容损坏/版本漂移才是 FAIL
-        const result = runDoctor(dir);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
-        assert.match(result.stdout, /\[WARN\] capabilities/);
-        assert.match(result.stdout, /缺少运行时副本 scenario-test-capabilities.json/);
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor：版本锁解析失败 / 版本不一致 FAIL，files 缺失或声明文件丢失 WARN", () => {
-    const { project, dir } = initProject();
-    try {
-        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
-        const original = fs.readFileSync(lockPath, "utf8");
-
-        fs.writeFileSync(lockPath, "{ broken", "utf8");
-        let result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] version-lock/);
-        assert.match(result.stdout, /\.scenario-test-version\.json 解析失败/);
-
-        const lock = JSON.parse(original);
-        lock.runtimeVersion = "0.0.1";
-        fs.writeFileSync(lockPath, JSON.stringify(lock), "utf8");
-        result = runDoctor(dir);
-        assert.equal(result.status, 1);
-        assert.match(result.stdout, /\[FAIL\] version-lock/);
-        assert.match(result.stdout, /版本锁记录 v0\.0\.1/);
-
-        const noFiles = JSON.parse(original);
-        delete noFiles.files;
-        fs.writeFileSync(lockPath, JSON.stringify(noFiles), "utf8");
-        result = runDoctor(dir);
-        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁缺少 files 字段/);
-
-        const missingFile = JSON.parse(original);
-        missingFile.files.capabilities = "scenario-test-capabilities-gone.json";
-        fs.writeFileSync(lockPath, JSON.stringify(missingFile), "utf8");
-        result = runDoctor(dir);
-        assert.match(result.stdout, /\[WARN\] version-lock: 版本锁声明 capabilities 文件 scenario-test-capabilities-gone\.json 不存在/);
-    } finally {
-        cleanup(project);
-    }
-});
-
 test("doctor：配置文件语法错误时 config-load FAIL 且其余检查继续", () => {
     const { project, dir } = initProject();
     try {
@@ -432,95 +304,6 @@ test("doctor：场景 url 越界时 scenario-list FAIL（缺 id/url 在 defineCo
         cleanup(project);
     }
 });
-
-test("doctor --json：运行时副本被同名目录占位时汇总不丢失，逐项 FAIL 不崩溃", () => {
-    const { project, dir } = initProject();
-    try {
-        const frameworkDir = path.join(dir, ".scenario-test");
-        for (const fileName of ["scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-cli.cjs"]) {
-            fs.rmSync(path.join(frameworkDir, fileName));
-            fs.mkdirSync(path.join(frameworkDir, fileName));
-        }
-        const result = runDoctor(dir, ["--json"]);
-        assert.equal(result.status, 1);
-        assert.equal(result.stderr, "");
-        const parsed = JSON.parse(result.stdout);
-        const umd = parsed.checks.find((check) => check.name === "umd");
-        assert.equal(umd.status, "FAIL");
-        assert.match(umd.message, /运行时副本不可读取/);
-        assert.match(umd.message, /路径不是普通文件/);
-        const dts = parsed.checks.find((check) => check.name === "dts");
-        assert.equal(dts.status, "FAIL");
-        assert.match(dts.message, /运行时副本不可读取/);
-        const runtimeCli = parsed.checks.find((check) => check.name === "runtime-cli");
-        assert.equal(runtimeCli.status, "FAIL");
-        assert.match(runtimeCli.message, /运行时副本不可读取/);
-        const lockFailures = parsed.checks.filter((check) => check.name === "version-lock" && check.status === "FAIL");
-        assert.ok(lockFailures.some((check) => check.message.includes("无法校验 SHA256")), "被目录占位的文件应报无法校验 SHA256");
-        assert.ok(parsed.checks.some((check) => check.name === "capabilities" && check.status === "PASS"));
-        assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
-        assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
-        assert.ok(parsed.checks.some((check) => check.name === "scenario-register" && check.status === "PASS"));
-        const text = runDoctor(dir);
-        assert.equal(text.status, 1);
-        assert.equal(text.stderr, "");
-        assert.match(text.stdout, /\[FAIL\] umd/);
-        assert.match(text.stdout, /如何修: 移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init/);
-        assert.match(text.stdout, /结果: FAILED（退出码 1）/);
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor --json：版本锁内容非 JSON 对象时 version-lock FAIL，其余检查继续", () => {
-    const { project, dir } = initProject();
-    try {
-        const lockPath = path.join(dir, ".scenario-test", ".scenario-test-version.json");
-        for (const content of ["null", "[]", "\"bad\"", "17"]) {
-            fs.writeFileSync(lockPath, content, "utf8");
-            const result = runDoctor(dir, ["--json"]);
-            assert.equal(result.status, 1, `锁内容 ${content} 应退出 1`);
-            assert.equal(result.stderr, "");
-            const parsed = JSON.parse(result.stdout);
-            const lock = parsed.checks.find((check) => check.name === "version-lock");
-            assert.equal(lock.status, "FAIL", `锁内容 ${content}`);
-            assert.match(lock.message, /JSON 对象/);
-            assert.match(lock.fix, /重新 init/);
-            assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
-            assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
-        }
-    } finally {
-        cleanup(project);
-    }
-});
-
-test("doctor --json：.scenario-test 被同名文件占位时 framework-directory FAIL，其余检查继续", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-doctor-fwfile-"));
-    try {
-        fs.writeFileSync(path.join(dir, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
-            envs: [{ key: "local", name: "本地", baseUrl: "http://127.0.0.1:1" }],
-            defaultEnvKey: "local",
-            scenarios: []
-        }));`, "utf8");
-        const blocker = path.join(dir, ".scenario-test");
-        fs.writeFileSync(blocker, "not-a-directory", "utf8");
-        const result = runDoctor(dir, ["--json"]);
-        assert.equal(result.status, 1);
-        assert.equal(result.stderr, "");
-        const parsed = JSON.parse(result.stdout);
-        const framework = parsed.checks.find((check) => check.name === "framework-directory");
-        assert.ok(framework, "应输出 framework-directory 检查项");
-        assert.equal(framework.status, "FAIL");
-        assert.match(framework.message, /必须是目录/);
-        assert.match(framework.fix, /移走无效路径/);
-        assert.ok(parsed.checks.some((check) => check.name === "node-version" && check.status === "PASS"));
-        assert.ok(parsed.checks.some((check) => check.name === "config-load" && check.status === "PASS"));
-        assert.equal(fs.readFileSync(blocker, "utf8"), "not-a-directory");
-    } finally {
-        fs.rmSync(dir, { recursive: true, force: true });
-    }
-});
-
 
 test("doctor：配置顶层拼写错误在 config-load/config-keys FAIL，并指出正确字段名", () => {
     const { project, dir } = initProject();

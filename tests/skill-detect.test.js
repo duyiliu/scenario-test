@@ -7,13 +7,6 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const detector = fileURLToPath(new URL('../skills/scenario-test/scripts/detect-project.mjs', import.meta.url));
-const required = [
-  'scenario.config.js', 'index.html',
-  '.scenario-test/AI_SCENARIO_PROMPT.md', '.scenario-test/SCENARIO_PATTERNS.md',
-  '.scenario-test/scenario-test-cli.cjs', '.scenario-test/scenario-test.umd.js',
-  '.scenario-test/scenario-test.d.ts', '.scenario-test/scenario-test-capabilities.json',
-  '.scenario-test/.scenario-test-version.json',
-];
 
 function run(cwd, ...args) {
   return spawnSync(process.execPath, [detector, '--cwd', cwd, ...args], { encoding: 'utf8' });
@@ -22,13 +15,11 @@ function fixture(callback) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scenario-skill-detect-'));
   try { callback(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
+// v23 起项目只保留场景数据；installed 判据收敛为 scenario.config.js 存在
 function createInstall(root, dir = 'scenario-test') {
   const base = path.join(root, dir);
-  for (const file of required) {
-    const name = path.join(base, file);
-    fs.mkdirSync(path.dirname(name), { recursive: true });
-    fs.writeFileSync(name, '', 'utf8');
-  }
+  fs.mkdirSync(base, { recursive: true });
+  fs.writeFileSync(path.join(base, 'scenario.config.js'), '', 'utf8');
   return base;
 }
 
@@ -44,7 +35,7 @@ test('未接入：识别工作树 .git 文件标记，不扫描其它目录', ()
   assert.equal(data.detectedBy, 'project-marker');
 }));
 
-test('已接入：从嵌套目录发现项目，给出本地规则路径', () => fixture((root) => {
+test('已接入：从嵌套目录发现项目，cli/规则统一指向 Skill 运行时', () => fixture((root) => {
   createInstall(root);
   const nested = path.join(root, 'src', 'controllers');
   fs.mkdirSync(nested, { recursive: true });
@@ -53,20 +44,38 @@ test('已接入：从嵌套目录发现项目，给出本地规则路径', () =>
   assert.equal(result.status, 0);
   assert.equal(data.status, 'installed');
   assert.equal(data.projectRoot, root);
-  assert.equal(data.authoringPrompt, path.join(root, 'scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md'));
+  const skillRuntime = data.skillRuntime.replace(/[/\\]$/, '');
+  assert.equal(data.cli, path.join(skillRuntime, 'scenario-test-cli.cjs'));
+  assert.equal(data.skillCli, data.cli);
+  assert.equal(data.authoringPrompt, path.join(skillRuntime, 'AI_SCENARIO_PROMPT.md'));
+  assert.equal(data.patterns, path.join(skillRuntime, 'SCENARIO_PATTERNS.md'));
+  assert.equal(data.capabilities, path.join(skillRuntime, 'scenario-test-capabilities.json'));
   assert.equal(data.missing.length, 0);
-  assert.match(data.note, /doctor/);
+  assert.deepEqual(data.legacy, []);
+  assert.match(data.note, /安装方|doctor/);
 }));
 
-test('不完整：列出缺失文件，不误判安装完成', () => fixture((root) => {
+test('旧版运行时副本按 legacy 报告，不影响 installed 判定', () => fixture((root) => {
   const dir = createInstall(root);
-  fs.rmSync(path.join(dir, '.scenario-test/scenario-test-capabilities.json'));
+  fs.mkdirSync(path.join(dir, '.scenario-test'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.scenario-test/scenario-test-cli.cjs'), 'legacy');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<html></html>');
+  const data = JSON.parse(run(root).stdout);
+  assert.equal(data.status, 'installed');
+  assert.ok(data.legacy.includes('.scenario-test/scenario-test-cli.cjs'));
+  assert.ok(data.legacy.includes('index.html'));
+}));
+
+test('不完整：scenario.config.js 缺失时列出缺失文件', () => fixture((root) => {
+  const dir = path.join(root, 'scenario-test');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'README.md'), '# x');
   const data = JSON.parse(run(root).stdout);
   assert.equal(data.status, 'incomplete');
-  assert.deepEqual(data.missing, ['.scenario-test/scenario-test-capabilities.json']);
+  assert.deepEqual(data.missing, ['scenario.config.js']);
 }));
 
-test('子项目优先：子项目未初始化时不误用父项目运行时', () => fixture((root) => {
+test('子项目优先：子项目未初始化时不误用父项目', () => fixture((root) => {
   createInstall(root);
   const child = path.join(root, 'packages', 'service-a');
   fs.mkdirSync(child, { recursive: true });

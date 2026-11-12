@@ -8,9 +8,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.dirname(fileURLToPath(import.meta.url));
 process.env.E2E_RUN_ID ||= randomUUID();
+// 结构化 reporter 由 serve 在启动 playwright 时经 SCENARIO_TEST_E2E_REPORTER 注入；
+// 直接 npm test（不经工作台）时不启用，结果仍走 list + html reporter
+const reporters = [['list'], ['html', { open: 'never', outputFolder: path.resolve(root, '../e2e-results', process.env.E2E_RUN_ID, 'report') }]];
+if (process.env.SCENARIO_TEST_E2E_REPORTER) reporters.push([process.env.SCENARIO_TEST_E2E_REPORTER]);
 export default defineConfig({
   testDir: './tests', timeout: 60000, workers: 1,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: path.resolve(root, '../e2e-results', process.env.E2E_RUN_ID, 'report') }], ['../.scenario-test/e2e-reporter.cjs']],
+  reporter: reporters,
   use: { baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3000', ...(process.env.E2E_BROWSER_CHANNEL ? { channel: process.env.E2E_BROWSER_CHANNEL } : {}), screenshot: 'only-on-failure', trace: 'retain-on-failure' }
 });
 `,

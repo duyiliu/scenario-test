@@ -7,16 +7,17 @@
 
 ### 1. 初始化到项目
 
-在项目根目录运行：
+在项目根目录运行（CLI 路径以探测脚本返回的 `cli` 为准，v23 起由安装方运行时提供）：
 
 ```bash
 # 推荐：用 Skill 或发布版安装脚本完成初始化（固定 GitHub Tag，免 npm）
 # 仓库内脚本：bash scripts/install.sh . "scenario-test"
-node scenario-test/.scenario-test/scenario-test-cli.cjs init --project . --dir "scenario-test"
+node <运行时目录>/scenario-test-cli.cjs init --project . --dir "scenario-test"
 ```
 
-> npm Registry 不再是分发渠道（0.10.1 起 `package.json` 为 private）。存量项目内的
-> `.scenario-test/scenario-test-cli.cjs` 才是执行入口；升级按 README「快速接入」重装固定 Tag。
+> npm Registry 不再是分发渠道（0.10.1 起 `package.json` 为 private）。v23 起执行入口
+> 是安装方运行时（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`）内的
+> `scenario-test-cli.cjs`，项目内不再有运行时副本；升级按 README「快速接入」重装固定 Tag。
 
 ### 2. 编写场景
 
@@ -44,13 +45,13 @@ ScenarioTest.registerScenario("user-query", ScenarioTest.defineScenario({
 
 ```bash
 # 命令行运行
-node scenario-test/.scenario-test/scenario-test-cli.cjs run --config scenario-test/scenario.config.js --env local --all
+node <运行时目录>/scenario-test-cli.cjs run --config scenario-test/scenario.config.js --env local --all
 
 # 多场景并发（默认 1 串行；场景内步骤仍串行）
-node scenario-test/.scenario-test/scenario-test-cli.cjs run --config scenario-test/scenario.config.js --env local --all --concurrency 4
+node <运行时目录>/scenario-test-cli.cjs run --config scenario-test/scenario.config.js --env local --all --concurrency 4
 
 # 浏览器运行
-node scenario-test/.scenario-test/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js
+node <运行时目录>/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js
 ```
 
 ---
@@ -245,7 +246,7 @@ variables: [
 
 // 运行时
 export SCENARIO_API_KEY=your-key
-node scenario-test/.scenario-test/scenario-test-cli.cjs run --all
+node <运行时目录>/scenario-test-cli.cjs run --all
 ```
 
 ---

@@ -4,10 +4,10 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    免 npm 安装：按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/ 运行时文件，
-    放入临时目录后由 CLI 初始化；不安装 npm 包、不改 package.json。
+    免 npm 安装：按固定 GitHub Tag 从 jsDelivr 下载发布版运行时文件到
+    用户级目录 %USERPROFILE%.scenario-test\runtime；业务项目只落场景数据
+    （config/README/cmd），不安装 npm 包、不改 package.json、不留运行时副本。
     指定 -Source 时改用内网运行时目录（GitLab Raw 或制品目录）。
-    运行时副本落到项目 .scenario-test/ 并执行健康检查。
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -19,7 +19,7 @@
     跳过健康检查
 
 .PARAMETER Source
-    可选的内网运行时目录（GitLab Raw 或制品目录，需包含全部 4 个运行时文件）。
+    可选的内网运行时目录（GitLab Raw 或制品目录，需包含全部运行时文件）。
     不指定时按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/。
     指定后若该目录没有 release.json，安装脚本会跳过 SHA-256 校验并给出警告；
     需要强制校验时用 SCENARIO_TEST_RELEASE_JSON 指向可信清单。
@@ -45,7 +45,9 @@ $RuntimeFiles = @(
     "scenario-test-cli.cjs",
     "scenario-test.umd.js",
     "scenario-test.d.ts",
-    "scenario-test-capabilities.json"
+    "scenario-test-capabilities.json",
+    "AI_SCENARIO_PROMPT.md",
+    "SCENARIO_PATTERNS.md"
 )
 
 # 颜色输出函数
@@ -109,22 +111,24 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 Push-Location $ProjectDir
 try {
-    $runtimeDir = Join-Path $tempRoot "runtime"
-    New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+    # v23 起运行时去项目化：下载到暂存区校验后原子落用户级目录，项目内不留副本
+    $stageDir = Join-Path $tempRoot "runtime"
+    New-Item -ItemType Directory -Path $stageDir | Out-Null
+    $runtimeDir = Join-Path $env:USERPROFILE ".scenario-test\runtime"
 
     $downloadSource = if ($Source) { $Source.TrimEnd('/') } else { $DefaultSource }
     Write-Info "免 npm 安装模式，下载源：$downloadSource ..."
     foreach ($fileName in $RuntimeFiles) {
         $fileUrl = "$downloadSource/$fileName"
         try {
-            Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $runtimeDir $fileName) -UseBasicParsing
+            Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $stageDir $fileName) -UseBasicParsing
         } catch {
             throw "运行时文件下载失败: $fileUrl`n$_"
         }
     }
 
     foreach ($fileName in $RuntimeFiles) {
-        if (-not (Test-Path (Join-Path $runtimeDir $fileName) -PathType Leaf)) {
+        if (-not (Test-Path (Join-Path $stageDir $fileName) -PathType Leaf)) {
             throw "下载内容不完整，缺少运行时文件：$fileName"
         }
     }
@@ -158,7 +162,7 @@ try {
             if (-not $want) {
                 throw "release.json 缺少 $fileName 的 SHA256（$manifestUsed）"
             }
-            $actual = (Get-FileHash -Path (Join-Path $runtimeDir $fileName) -Algorithm SHA256).Hash
+            $actual = (Get-FileHash -Path (Join-Path $stageDir $fileName) -Algorithm SHA256).Hash
             if ($actual.ToLower() -ne $want.ToLower()) {
                 throw "运行时文件校验失败: $fileName`n期望 $want`n实际 $actual"
             }
@@ -171,10 +175,17 @@ try {
     }
     Write-Success "固定版本运行时下载成功"
 
+    # 校验通过后才替换用户级运行时目录，失败不影响在用安装
+    New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+    foreach ($fileName in $RuntimeFiles) {
+        Copy-Item (Join-Path $stageDir $fileName) (Join-Path $runtimeDir $fileName) -Force
+    }
+    Write-Success "运行时就绪：$runtimeDir"
+
     Write-Info "初始化场景测试目录：$fullTargetPath ..."
     $tempCli = Join-Path $runtimeDir "scenario-test-cli.cjs"
 
-    # --no-input：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时），
+    # --no-input：目录已存在时按 keep（保留配置与场景），
     # 避免 install 脚本在"已存在"时进入被捕获输出吞掉的交互确认而静默卡死。
     # 实时回显 init 输出，避免长时间黑屏；stdin 喂 $null 让非交互判定稳定。
     $initOutput = Invoke-NativeCapture { node "$tempCli" init --project "$ProjectDir" --dir "$TargetDir" --no-input 2>&1 |
@@ -184,23 +195,12 @@ try {
     }
     Write-Success "初始化完成"
 
-    # 5. 检查生成的文件
+    # 5. 检查生成的文件（v23：项目只落场景数据，不验证 .scenario-test 副本）
     Write-Info "验证生成的文件..."
     $expectedFiles = @(
         "README.md",
-        "index.html",
-        "scenario.config.js"
-    )
-
-    $internalDir = Join-Path $fullTargetPath ".scenario-test"
-    $expectedInternalFiles = @(
-        "AI_SCENARIO_PROMPT.md",
-        "SCENARIO_PATTERNS.md",
-        "scenario-test-cli.cjs",
-        "scenario-test.umd.js",
-        "scenario-test.d.ts",
-        "scenario-test-capabilities.json",
-        ".scenario-test-version.json"
+        "scenario.config.js",
+        "start-scenario-test.cmd"
     )
 
     $allFilesExist = $true
@@ -214,22 +214,6 @@ try {
         }
     }
 
-    if (Test-Path $internalDir) {
-        Write-Success "  .scenario-test/ (AI 规则与运行时副本)"
-        foreach ($file in $expectedInternalFiles) {
-            $filePath = Join-Path $internalDir $file
-            if (Test-Path $filePath) {
-                Write-Success "    $file"
-            } else {
-                Write-Warning-Custom "    $file (缺失)"
-                $allFilesExist = $false
-            }
-        }
-    } else {
-        Write-Error-Custom "  .scenario-test/ 目录不存在，请检查 init 输出"
-        $allFilesExist = $false
-    }
-
     if (-not $allFilesExist) {
         throw "初始化结果验证失败"
     }
@@ -239,7 +223,7 @@ try {
         Write-Info "`n执行健康检查..."
 
         $configPath = Join-Path $fullTargetPath "scenario.config.js"
-        $doctorOutput = Invoke-NativeCapture { node (Join-Path $internalDir "scenario-test-cli.cjs") doctor --config "$configPath" 2>&1 }
+        $doctorOutput = Invoke-NativeCapture { node (Join-Path $runtimeDir "scenario-test-cli.cjs") doctor --config "$configPath" 2>&1 }
         $doctorExitCode = $LASTEXITCODE
 
         Write-Host $doctorOutput -ForegroundColor Gray
@@ -269,13 +253,14 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 
 $relativeTargetDir = $TargetDir -replace '\\', '/'
 $configRelative = "$relativeTargetDir/scenario.config.js"
-$cliRelative = "$relativeTargetDir/.scenario-test/scenario-test-cli.cjs"
+$cliRelative = Join-Path $runtimeDir "scenario-test-cli.cjs"
+$rulesPath = Join-Path $runtimeDir "AI_SCENARIO_PROMPT.md"
 
 Write-Host "`n📖 接下来的步骤：`n"
 
 Write-Host "1. 使用 AI 生成场景测试（推荐）：" -ForegroundColor Yellow
 Write-Host "   复制以下内容到 AI 助手（Claude/ChatGPT）：`n" -ForegroundColor Gray
-Write-Host "   请读取 $relativeTargetDir/.scenario-test/AI_SCENARIO_PROMPT.md，" -ForegroundColor Cyan
+Write-Host "   请读取 $rulesPath，" -ForegroundColor Cyan
 Write-Host "   为 `"<业务功能名称>`" 设计场景测试。" -ForegroundColor Cyan
 Write-Host "   入口：<页面、Controller、接口或已有测试路径>`n" -ForegroundColor Cyan
 
@@ -289,8 +274,8 @@ Write-Host "   # 执行指定场景" -ForegroundColor Gray
 Write-Host "   node $cliRelative run --config $configRelative --env local --scenario <场景ID>`n" -ForegroundColor Cyan
 
 Write-Host "4. 文档位置：" -ForegroundColor Yellow
-Write-Host "   README:  $relativeTargetDir/README.md" -ForegroundColor Cyan
-Write-Host "   Browser: $relativeTargetDir/index.html" -ForegroundColor Cyan
-Write-Host "   AI规则:  $relativeTargetDir/.scenario-test/AI_SCENARIO_PROMPT.md`n" -ForegroundColor Cyan
+Write-Host "   README:   $relativeTargetDir/README.md" -ForegroundColor Cyan
+Write-Host "   Browser:  start-scenario-test.cmd 双击启动" -ForegroundColor Cyan
+Write-Host "   AI规则:   $rulesPath`n" -ForegroundColor Cyan
 
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -ForegroundColor Green

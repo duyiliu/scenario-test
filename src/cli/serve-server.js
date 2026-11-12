@@ -45,6 +45,21 @@ export function safeFile(root, relativePath) {
     return isRealPathWithinRoot(root, candidate) ? candidate : null;
 }
 
+function injectServeMarkers(html, { e2eNavigation = false } = {}) {
+    const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
+    const headPattern = /<head(?:\s[^>]*)?>/i;
+    let content = headPattern.test(html)
+        ? html.replace(headPattern, function (head) { return head + marker; })
+        : marker + html;
+    if (e2eNavigation && !html.includes("data-scenario-test-e2e")) {
+        const navigation = '<nav data-scenario-test-e2e aria-label="测试类型" style="display:flex;gap:20px;padding:12px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:14px system-ui"><a href="/" style="color:#334155">HTTP 场景</a><a href="/e2e/" style="color:#2563eb">浏览器 E2E</a></nav>';
+        content = /<body(?:\s[^>]*)?>/i.test(content)
+            ? content.replace(/<body(?:\s[^>]*)?>/i, (body) => body + navigation)
+            : navigation + content;
+    }
+    return content;
+}
+
 export function serveStaticFile(response, filePath, { e2eNavigation = false } = {}) {
     const headers = { "Cache-Control": "no-store", "Content-Type": contentType(filePath) };
     if (path.extname(filePath).toLowerCase() !== ".html") {
@@ -70,17 +85,7 @@ export function serveStaticFile(response, filePath, { e2eNavigation = false } = 
             response.end("Internal Server Error");
             return;
         }
-        const marker = "<script>window.__SCENARIO_TEST_SERVE_PROXY__ = true;</script>";
-        const headPattern = /<head(?:\s[^>]*)?>/i;
-        let content = headPattern.test(html)
-            ? html.replace(headPattern, function (head) { return head + marker; })
-            : marker + html;
-        if (e2eNavigation && !html.includes("data-scenario-test-e2e")) {
-            const navigation = '<nav data-scenario-test-e2e aria-label="测试类型" style="display:flex;gap:20px;padding:12px 24px;background:#fff;border-bottom:1px solid #e2e8f0;font:14px system-ui"><a href="/" style="color:#334155">HTTP 场景</a><a href="/e2e/" style="color:#2563eb">浏览器 E2E</a></nav>';
-            content = /<body(?:\s[^>]*)?>/i.test(content)
-                ? content.replace(/<body(?:\s[^>]*)?>/i, (body) => body + navigation)
-                : navigation + content;
-        }
+        const content = injectServeMarkers(html, { e2eNavigation });
         response.writeHead(200, headers);
         response.end(content);
     });
@@ -326,6 +331,28 @@ export function isPrivateServePath(pathname) {
     });
 }
 
+// v23 起项目不再落 index.html：工作台页由运行时内置提供，UMD 走 /__scenario-test__/ 虚拟路由。
+// 项目（或仓库示例）根目录存在 index.html 时仍优先用磁盘文件，兼容旧项目与自研页面。
+function renderWorkbenchPage(configFileName) {
+    const configFile = configFileName || "scenario.config.js";
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>场景测试</title>
+</head>
+<body style="margin:0">
+    <div id="scenario-test" style="height:100vh"></div>
+    <script src="/__scenario-test__/scenario-test.umd.js"></script>
+    <script src="/${configFile}"></script>
+    <script>
+        ScenarioTest.createApp({ mount: "#scenario-test", config: ScenarioTest.getConfig() });
+    </script>
+</body>
+</html>`;
+}
+
 // 依次询问各扩展是否接管；返回 true 表示已有人处理（返回 true 或响应已结束均算接管）
 async function dispatchToExtensions(extensions, request, response, pathname, hostHeader, port) {
     const method = String(request.method || "GET").toUpperCase();
@@ -359,6 +386,7 @@ export function createServeServer(options) {
         libraryDist,
         port,
         config,
+        configFile = "scenario.config.js",
         defaultTarget,
         overrideBaseUrl = "",
         proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS,
@@ -396,6 +424,14 @@ export function createServeServer(options) {
             }
             if (extensions.length &&
                 await dispatchToExtensions(extensions, request, response, pathname, request.headers.host, port)) {
+                return;
+            }
+            // 工作台兜底页：项目无 index.html 时由运行时内置提供（v23 运行时去项目化）；
+            // 磁盘存在 index.html（旧项目/仓库示例/自定义页面）仍优先，行为不变。
+            if ((pathname === "/" || pathname === "/index.html") && !fs.existsSync(path.join(workspace, "index.html"))) {
+                const html = injectServeMarkers(renderWorkbenchPage(configFile), { e2eNavigation: extensions.some((extension) => extension.name === "e2e") });
+                response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+                response.end(html);
                 return;
             }
             let filePath;

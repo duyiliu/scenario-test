@@ -26,24 +26,26 @@
 HTTP 场景和前端 E2E 共用本地 Node 服务与工作台入口，分别使用 HTTP 引擎和 Playwright 执行。默认 HTTP 接入仍免 npm；仅启用 E2E 后，在独立的 `scenario-test/e2e/` 内安装浏览器测试依赖。
 
 以下命令要求使用包含本功能的本地构建或后续发布版；上方固定的 `v0.15.0` Tag 尚不包含这些新增能力。
+CLI 路径以安装方运行时为准（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`，
+v23 起项目内不再有运行时副本）。
 
 ```powershell
 # 在业务项目根目录，使用支持 --e2e 的 CLI 显式初始化
-node scenario-test/.scenario-test/scenario-test-cli.cjs init --project . --dir scenario-test --e2e --no-input
+node <运行时目录>/scenario-test-cli.cjs init --project . --dir scenario-test --e2e --no-input
 cd scenario-test/e2e
 npm install
 # 使用系统 Chrome 时设定 channel；使用 Playwright Chromium 时先显式安装
 $env:E2E_BROWSER_CHANNEL = "chrome"
 $env:E2E_BASE_URL = "http://127.0.0.1:3000"
 cd ../..
-node scenario-test/.scenario-test/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js --open
+node <运行时目录>/scenario-test-cli.cjs serve --config scenario-test/scenario.config.js --open
 ```
 
 工作台主页提供“浏览器 E2E”入口，也可在同一服务地址下打开 `/e2e/`。页面可选择测试文件、勾选有头模式、停止活动运行，并按文件查看各次执行的截图、日志和 HTML 报告。首版的运行选择粒度是测试文件，文件内各测试的结果分别留档。
 
 - `e2e/playwright.config.js`、`auth-adapter.js` 和 `tests/` 由业务项目维护。每个场景在 `test.step` 中显式调用登录适配器，并使用独立 context；账号属于场景，密码等凭据通过环境变量或项目凭据提供器取得。
 - 默认示例验证公共首页。设置了账号而没有实现登录适配器时会报错，不能把空操作视为登录成功。示例通过也不代表业务流程已经验收。
-- 公共 reporter 位于 `.scenario-test/`，随运行时更新。执行结果位于 `e2e-results/`，不入库；每次运行具有独立 runId，切换测试文件不会混用截图和结果。枚举测试不产生通过记录。
+- 公共 reporter 由运行时经 `SCENARIO_TEST_E2E_REPORTER` 注入，不落项目。执行结果位于 `e2e-results/`，不入库；每次运行具有独立 runId，切换测试文件不会混用截图和结果。枚举测试不产生通过记录。
 - 已有自管 `e2e/` 时，初始化会明确拒绝混入模板，需要先人工迁移；重复初始化已启用的项目会保留配置、登录适配器和测试文件。
 - 页面“服务身份”显示运行中的版本、构建摘要、PID 和工作区。磁盘文件更新后需重启服务才会加载新构建；此功能不自动终止已有服务。
 
@@ -125,7 +127,7 @@ scenario-test/start-scenario-test.cmd
 也可以手动执行：
 
 ```powershell
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs serve `
+node .\<运行时目录>\scenario-test-cli.cjs serve `
   --config .\scenario-test\scenario.config.js
 ```
 
@@ -155,19 +157,19 @@ AI 辅助生成场景后，也可以通过 CLI 执行并汇总结果。
 
 ```powershell
 # 全部非 manual 场景（命令 run 紧跟脚本名）
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+node "<运行时目录>\scenario-test-cli.cjs" run `
   --config .\scenario-test\scenario.config.js --env local --all
 
 # 指定场景
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+node "<运行时目录>\scenario-test-cli.cjs" run `
   --config .\scenario-test\scenario.config.js --env local --scenario health-check
 
 # 多场景并发（默认 1 串行；并发只发生在场景之间，场景内步骤仍串行）
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+node "<运行时目录>\scenario-test-cli.cjs" run `
   --config .\scenario-test\scenario.config.js --env local --all --concurrency 4
 
 # 临时覆盖变量 / 请求超时（无需修改配置）
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
+node "<运行时目录>\scenario-test-cli.cjs" run `
   --config .\scenario-test\scenario.config.js --env local --all `
   --vars clientId=temporary-client `
   --vars "clientSecret={{vars.defaultSecret}}" `
@@ -182,15 +184,15 @@ node .\scenario-test\.scenario-test\scenario-test-cli.cjs run `
 
 ```bash
 # 启动工作台（端口复用用户级项目登记）
-node ./scenario-test/.scenario-test/scenario-test-cli.cjs serve \
+node "<运行时目录>/scenario-test-cli.cjs" serve \
   --config ./scenario-test/scenario.config.js
 
 # 执行指定场景
-node ./scenario-test/.scenario-test/scenario-test-cli.cjs run \
+node "<运行时目录>/scenario-test-cli.cjs" run \
   --config ./scenario-test/scenario.config.js --env local --scenario health-check
 
 # 体检
-node ./scenario-test/.scenario-test/scenario-test-cli.cjs doctor \
+node "<运行时目录>/scenario-test-cli.cjs" doctor \
   --config ./scenario-test/scenario.config.js
 ```
 
@@ -200,13 +202,13 @@ node ./scenario-test/.scenario-test/scenario-test-cli.cjs doctor \
 
 ```powershell
 # HAR：过滤静态资源/OPTIONS，每个 API 请求生成一个 step
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har --output scenario-test/scenarios/imported-har.js
+node "<运行时目录>\scenario-test-cli.cjs" import --har session.har --output scenario-test/scenarios/imported-har.js
 
 # 单条 curl：生成单步骤草稿，并在终端打印可直接粘贴的 step 片段
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --curl 'curl -X GET https://api.example.com/orders' --output scenario-test/scenarios/imported-orders.js
+node "<运行时目录>\scenario-test-cli.cjs" import --curl 'curl -X GET https://api.example.com/orders' --output scenario-test/scenarios/imported-orders.js
 
 # 只要指定主机、最多导入 10 条，或自定义输出文件
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs import --har session.har --host api.example.com --max-entries 10 --output scenario-test/scenarios/imported-filtered.js
+node "<运行时目录>\scenario-test-cli.cjs" import --har session.har --host api.example.com --max-entries 10 --output scenario-test/scenarios/imported-filtered.js
 ```
 
 `import` 的默认输出目录及 `--output` 均相对于执行命令时的当前工作目录，而不是配置文件目录。未指定输出时会生成 `scenarios/imported-<时间戳>.js`；显式指定已存在的输出文件会覆盖它。场景 ID 由输出文件名生成。
@@ -226,7 +228,7 @@ scenarios: [
 ### 体检
 
 ```powershell
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor `
+node "<运行时目录>\scenario-test-cli.cjs" doctor `
   --config .\scenario-test\scenario.config.js
 ```
 
@@ -261,34 +263,37 @@ ScenarioTest.registerScenario("health-check", ScenarioTest.defineScenario({
 
 ## 自定义下载源
 
-安装脚本的 `-Source` / `SCENARIO_TEST_SOURCE` 使用可通过 HTTP(S) 访问的 URL 前缀，需提供以下 4 个运行时文件：
+安装脚本的 `-Source` / `SCENARIO_TEST_SOURCE` 使用可通过 HTTP(S) 访问的 URL 前缀，需提供以下 6 个运行时文件：
 
 - `scenario-test-cli.cjs`
 - `scenario-test.umd.js`
 - `scenario-test.d.ts`
 - `scenario-test-capabilities.json`
+- `AI_SCENARIO_PROMPT.md`
+- `SCENARIO_PATTERNS.md`
 
-直接调用 `init` 时，`--library-url` 也是这些文件的下载 URL 前缀；CLI 优先使用本地运行时文件，缺少时才从该地址下载。`AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 由 `init` 生成在 `.scenario-test/`，无需放在下载源。
+运行时由安装脚本下载到用户级目录（`~/.scenario-test/runtime/`），业务项目不再持有副本。
 
 ## 项目目录
 
 ```text
 scenario-test/
-├─ .scenario-test/                 # AI 规则与固定版本运行时副本（init 生成）
 ├─ scenarios/                      # 按业务功能组织的场景（由 AI 维护，非 init 生成）
 ├─ plugins/                        # 可选：项目专属 Node 插件（按需创建）
+├─ e2e/                            # 可选：浏览器 E2E（init --e2e 生成）
+├─ e2e-results/                    # E2E 产物（gitignore，不入库）
 ├─ scenario.config.js              # 环境、变量和场景清单（init 生成骨架）
-├─ index.html                      # 浏览器工作台入口（init 生成）
-└─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成）
+├─ README.md                       # 目录说明（init 生成）
+└─ start-scenario-test.cmd         # Windows 双击启动入口（init 生成，记录运行时 CLI 路径）
 ```
 
-初始化配置使用项目内类型声明，接入后即可获得提示：
+类型声明可引用安装方运行时目录内的 `scenario-test.d.ts`：
 
 ```js
-/// <reference path="./.scenario-test/scenario-test.d.ts" />
+/// <reference path="<运行时目录>/scenario-test.d.ts" />
 ```
 
-`scenario.config.js` 和 `scenarios/` 应随业务项目提交；`.scenario-test/` 是固定版本运行时副本，团队可选择一并提交以便 CI 直接运行，或在 CI 中先执行安装脚本。无论哪种方式，都不要把真实凭据写入这些文件。
+`scenario.config.js` 和 `scenarios/` 应随业务项目提交；`start-scenario-test.cmd` 记录本机运行时 CLI 的绝对路径，跨机器不一致时可加入 gitignore。无论哪种方式，都不要把真实凭据写入这些文件。
 
 ## 核心能力
 
@@ -312,7 +317,7 @@ scenario-test/
 - `import --har` / `import --curl` 把真实流量或 curl 示例转成场景草稿；静态资源与预检会被过滤，敏感头和查询参数替换为 `{{vars.*}}` 占位，二进制/multipart 请求体会省略并注明。
 - 还支持 `shape` 结构断言、`always` 清理步骤、文件上传、响应保存和自定义 Node 插件。
 
-完整示例见 [`examples/complete`](examples/complete)；DSL 能力以项目内 `.scenario-test/scenario-test-capabilities.json` 为准（本仓库由 `src/contract.js` 生成）。更多文档：[适配器指南](docs/ADAPTER_GUIDE.md)、[示例索引](examples/EXAMPLES_INDEX.md)。
+完整示例见 [`examples/complete`](examples/complete)；DSL 能力以运行时 `scenario-test-capabilities.json` 为准（本仓库由 `src/contract.js` 生成，安装方运行时内提供）。更多文档：[适配器指南](docs/ADAPTER_GUIDE.md)、[示例索引](examples/EXAMPLES_INDEX.md)。
 
 ## 安全
 
@@ -363,7 +368,7 @@ Skill 会先确认当前项目、现有版本锁、目标发布版本和安装�
 升级完成后执行：
 
 ```powershell
-node .\scenario-test\.scenario-test\scenario-test-cli.cjs doctor --config .\scenario-test\scenario.config.js
+node "<运行时目录>\scenario-test-cli.cjs" doctor --config .\scenario-test\scenario.config.js
 ```
 
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。

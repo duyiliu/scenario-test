@@ -28,9 +28,14 @@ $serveArgs = @("serve", "--config", $configPath)
 if ($Port -gt 0) { $serveArgs += @("--port", "$Port") }
 if ($OpenBrowser) { $serveArgs += "--open" }
 
-# 优先使用项目内免 npm 运行时副本（默认接入方式）；副本缺失且 npm 包可用时才回退 npx（npm 接入方式）
-$runtimeCli = Join-Path $configDir ".scenario-test/scenario-test-cli.cjs"
-$useNpmFallback = -not (Test-Path -LiteralPath $runtimeCli -PathType Leaf)
+# 优先使用用户级安装方运行时（v23 起运行时去项目化，项目内不落副本）；
+# 其次兼容旧版项目内 .scenario-test/ 副本，最后才回退 npx（冻结 npm 包）
+$userRuntimeCli = Join-Path $env:USERPROFILE ".scenario-test\runtime\scenario-test-cli.cjs"
+$legacyCli = Join-Path $configDir ".scenario-test/scenario-test-cli.cjs"
+$runtimeCli = if (Test-Path -LiteralPath $userRuntimeCli -PathType Leaf) { $userRuntimeCli }
+    elseif (Test-Path -LiteralPath $legacyCli -PathType Leaf) { $legacyCli }
+    else { $null }
+$useNpmFallback = $null -eq $runtimeCli
 
 Push-Location $projectRoot
 try {
@@ -42,7 +47,7 @@ try {
     }
 
     if ($useNpmFallback) {
-        Write-Host "未找到运行时副本 $runtimeCli，回退 npm 模式启动" -ForegroundColor Yellow
+        Write-Host "未找到安装方运行时（$userRuntimeCli）或旧版项目副本，回退 npm 模式启动" -ForegroundColor Yellow
         & npx.cmd --no-install "@yc_yzkj/scenario-test" @serveArgs
     } else {
         & node "$runtimeCli" @serveArgs

@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const runtime = fileURLToPath(new URL('../runtime/', import.meta.url));
-const names = ['scenario-test-cli.cjs', 'scenario-test.umd.js', 'scenario-test.d.ts', 'scenario-test-capabilities.json'];
+const names = ['scenario-test-cli.cjs', 'scenario-test.umd.js', 'scenario-test.d.ts', 'scenario-test-capabilities.json', 'AI_SCENARIO_PROMPT.md', 'SCENARIO_PATTERNS.md'];
 try {
   if (process.argv.length !== 2) throw new Error('用法：node check-runtime.mjs');
   const release = JSON.parse(fs.readFileSync(path.join(runtime, 'release.json'), 'utf8'));

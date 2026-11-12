@@ -49,6 +49,6 @@ npm run demo:e2e
 
 演示凭据 `doctor / demo-only`、`nurse / demo-only` 只用于本地模拟端点。账号在各场景登录步骤中声明，context 隔离。
 
-`SCENARIO_TEST_DEMO_PORT` 可更换端口；`E2E_BROWSER_CHANNEL` 可更换已安装的浏览器。产物在 `e2e-results/`，受管 reporter 在 `.scenario-test/`，均忽略入库。页面源码变更后重启此服务；HTTP 工作台还需要重新构建 `dist/`。
+`SCENARIO_TEST_DEMO_PORT` 可更换端口；`E2E_BROWSER_CHANNEL` 可更换已安装的浏览器。产物在 `e2e-results/`，结构化 reporter 由 serve 启动 playwright 时经 `SCENARIO_TEST_E2E_REPORTER` 注入并物化到 `e2e-results/.runtime/`，均忽略入库。页面源码变更后重启此服务；HTTP 工作台还需要重新构建 `dist/`。
 
 临时项目的浏览器回归执行 `npm run test:e2e-fixture`，默认使用本目录自己的 Playwright 依赖，不借用业务仓库。接入规则见 [E2E 工作流](../../skills/scenario-test/references/e2e.md)。

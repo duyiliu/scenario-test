@@ -4,224 +4,19 @@
 //   - 复用现有 loader/defineConfig/defineScenario/path validation，不另写一套 DSL 校验器
 //   - 汇总所有可继续检查的错误，不第一个错误就退出（config 无法加载等不能安全继续时除外）
 //   - 有 FAIL 时退出码 1；只有 WARN/INFO 时退出码 0
+//   - v23 起运行时去项目化：不再校验项目内副本/版本锁；场景加载失败附「升级安装方」提示
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath } from "./utils/path-validator.js";
 import { loadConfigFile, loadScenarioFile } from "./node/loader.js";
-import { FRAMEWORK_FILES, createProjectLayout, resolveLayoutFromConfigDir } from "./project-layout.js";
+import { INTERNAL_DIRECTORY, listLegacyRuntimeFiles } from "./project-layout.js";
 import { isE2eProject } from "./e2e/extension.js";
 
-const UMD_VERSION_PATTERN = /\/\*! scenario-test v(\d+\.\d+\.\d+) \*\//;
-const DTS_VERSION_PATTERN = /scenario-test v(\d+\.\d+\.\d+)/;
-
-function extractArtifactVersion(filePath, pattern) {
-    const head = fs.readFileSync(filePath, "utf8").slice(0, 4096);
-    const match = pattern.exec(head);
-    return match ? match[1] : null;
-}
-
-function sha256Of(filePath) {
-    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
-function checkRuntimeArtifact(filePath, fileName, key, pattern) {
-    if (!fs.existsSync(filePath)) {
-        return {
-            name: key,
-            status: "WARN",
-            message: `缺少运行时副本 ${fileName}（${filePath}）`,
-            fix: "运行 init 补齐（不传 --force 不会覆盖项目文件）"
-        };
-    }
-    try {
-        const stat = fs.statSync(filePath);
-        if (!stat.isFile()) throw new Error("路径不是普通文件");
-        const version = pattern ? extractArtifactVersion(filePath, pattern) : null;
-        if (pattern === null) fs.accessSync(filePath, fs.constants.R_OK);
-        if (version !== null && version !== VERSION) {
-            return {
-                name: key,
-                status: "FAIL",
-                message: `版本不一致：${fileName} 是 v${version}，当前 CLI 是 v${VERSION}`,
-                fix: `用 v${VERSION} 的 CLI 重新 init 刷新运行时副本`
-            };
-        }
-        return {
-            name: key,
-            status: "PASS",
-            message: `运行时副本就绪: ${fileName}${version ? `（v${version}）` : ""}`,
-            fix: ""
-        };
-    } catch (error) {
-        return {
-            name: key,
-            status: "FAIL",
-            message: `运行时副本不可读取: ${fileName}（${filePath}，原因: ${error.message}）`,
-            fix: "移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init"
-        };
-    }
-}
-
-function checkCapabilitiesFile(filePath) {
-    if (!fs.existsSync(filePath)) {
-        return {
-            name: "capabilities",
-            status: "WARN",
-            message: "缺少运行时副本 scenario-test-capabilities.json",
-            fix: "运行 init 补齐（不传 --force 不会覆盖项目文件）"
-        };
-    }
-    try {
-        const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-        if (parsed.schema !== "scenario-test-capabilities") {
-            return {
-                name: "capabilities",
-                status: "FAIL",
-                message: "scenario-test-capabilities.json 不是合法的能力清单（schema 不匹配）",
-                fix: "用当前版本 CLI 重新 init 生成"
-            };
-        }
-        if (parsed.version !== VERSION || parsed.contractVersion !== CONTRACT_VERSION) {
-            return {
-                name: "capabilities",
-                status: "FAIL",
-                message: `版本不一致：capabilities.json 是 v${parsed.version}（contract v${parsed.contractVersion}），当前 CLI 是 v${VERSION}（contract v${CONTRACT_VERSION}）`,
-                fix: `用 v${VERSION} 的 CLI 重新 init 生成 scenario-test-capabilities.json`
-            };
-        }
-        return { name: "capabilities", status: "PASS", message: `版本一致（v${parsed.version}，contract v${parsed.contractVersion}）`, fix: "" };
-    } catch (error) {
-        return {
-            name: "capabilities",
-            status: "FAIL",
-            message: `scenario-test-capabilities.json 解析失败: ${error.message}`,
-            fix: "用当前版本 CLI 重新 init 生成"
-        };
-    }
-}
-
-function checkVersionLock(filePath) {
-    if (!fs.existsSync(filePath)) {
-        return {
-            name: "version-lock",
-            status: "WARN",
-            message: "缺少项目版本锁 .scenario-test-version.json",
-            fix: "运行 init 写入版本锁（不传 --force 不会覆盖项目文件）"
-        };
-    }
-    let lock;
-    try {
-        lock = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    } catch (error) {
-        return {
-            name: "version-lock",
-            status: "FAIL",
-            message: `.scenario-test-version.json 解析失败: ${error.message}`,
-            fix: "修复或删除版本锁后用当前版本 CLI 重新 init 生成"
-        };
-    }
-    if (!lock || typeof lock !== "object" || Array.isArray(lock)) {
-        return {
-            name: "version-lock",
-            status: "FAIL",
-            message: "版本锁必须是 JSON 对象",
-            fix: "修复版本锁后用当前版本 CLI 重新 init 生成"
-        };
-    }
-    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) {
-        return {
-            name: "version-lock",
-            status: "FAIL",
-            message: `版本不一致：版本锁记录 v${lock.runtimeVersion}（contract v${lock.contractVersion}），当前 CLI 是 v${VERSION}（contract v${CONTRACT_VERSION}）`,
-            fix: `使用 v${VERSION} 的 CLI 重新 init（自动刷新运行时副本与版本锁，不覆盖项目配置/场景）`
-        };
-    }
-    const extras = [];
-    const files = lock.files && typeof lock.files === "object" ? lock.files : null;
-    if (!files) {
-        extras.push({
-            name: "version-lock",
-            status: "WARN",
-            message: "版本锁缺少 files 字段（预期文件名清单）",
-            fix: "用当前版本 CLI 重新 init 刷新版本锁"
-        });
-    } else {
-        for (const [kind, fileName] of Object.entries(files)) {
-            const target = path.join(path.dirname(filePath), String(fileName));
-            if (!fs.existsSync(target)) {
-                extras.push({
-                    name: "version-lock",
-                    status: "WARN",
-                    message: `版本锁声明 ${kind} 文件 ${fileName} 不存在`,
-                    fix: `运行 init 补齐 ${fileName}（不传 --force 不会覆盖项目文件）`
-                });
-            }
-        }
-    }
-    const sha256 = lock.sha256 && typeof lock.sha256 === "object" ? lock.sha256 : null;
-    if (!sha256) {
-        // 与 files 缺失同样显式告警：旧格式/被截断的锁不应静默跳过内容校验仍判 PASS
-        extras.push({
-            name: "version-lock",
-            status: "WARN",
-            message: "版本锁缺少 sha256 指纹记录，无法校验运行时文件完整性",
-            fix: "用当前版本 CLI 重新 init 刷新版本锁"
-        });
-    } else {
-        // 判失配的范围与 init 的 shouldRefreshFramework 对齐（锁声明 files 之内的框架文件）：
-        // 锁内出现框架之外的 sha256 条目时失配可自愈（重新 init 不刷新），不应 FAIL 卡死
-        const declaredFiles = files ? new Set(Object.values(files)) : null;
-        for (const [fileName, expected] of Object.entries(sha256)) {
-            if (declaredFiles && !declaredFiles.has(fileName)) continue;
-            const target = path.join(path.dirname(filePath), fileName);
-            if (!fs.existsSync(target)) continue;
-            let actual;
-            try {
-                if (!fs.statSync(target).isFile()) throw new Error("路径不是普通文件");
-                actual = sha256Of(target);
-            } catch (error) {
-                extras.push({
-                    name: "version-lock",
-                    status: "FAIL",
-                    message: `${fileName} 无法校验 SHA256（原因: ${error.message}）`,
-                    fix: "移走无效路径或修复文件读取权限后，用当前版本 CLI 重新 init"
-                });
-                continue;
-            }
-            if (actual !== expected) {
-                // 内容被替换是最强可疑信号：文件缺失可由 init 修复，内容被替换意味着来源不明，
-                // 必须 FAIL（退出码 1）拦下，避免 CI/安装脚本把被篡改的运行时当健康放行
-                extras.push({
-                    name: "version-lock",
-                    status: "FAIL",
-                    message: `${fileName} 的 SHA256 与版本锁记录不一致（文件可能被替换）`,
-                    fix: "若是有意替换运行时文件，用当前版本 CLI 重新 init 刷新版本锁；否则检查文件来源"
-                });
-            }
-        }
-        if (files) {
-            const uncovered = [...new Set(Object.values(files))].filter((fileName) => !(fileName in sha256));
-            if (uncovered.length) {
-                extras.push({
-                    name: "version-lock",
-                    status: "WARN",
-                    message: `版本锁 sha256 未覆盖文件: ${uncovered.join(", ")}`,
-                    fix: "用当前版本 CLI 重新 init 刷新版本锁"
-                });
-            }
-        }
-    }
-    return {
-        name: "version-lock",
-        status: "PASS",
-        message: `版本一致（v${lock.runtimeVersion}，contract v${lock.contractVersion}）`,
-        fix: "",
-        extra: extras
-    };
-}
+// 场景/配置加载失败统一附带的升级提示：v23 后项目不再锁版本，错误多半来自
+// 场景为更高 contract 版本所写，需升级安装方（Skill / 用户级运行时）
+const UPGRADE_HINT = `若场景/配置为更高版本所写，请升级安装方运行时（更新 Skill 或重跑安装脚本）；当前运行时 v${VERSION}（contract v${CONTRACT_VERSION}）`;
 
 // baseUrl 缺失本身不阻断 defineConfig（浏览器工作台可回退当前页面地址），但 CLI run
 // 没有 baseUrl 会在执行期才报错；doctor 提前用 WARN 暴露，并说明顶层 baseUrl 回退规则。
@@ -336,20 +131,20 @@ function checkReadableFile(filePath, key, fileName) {
         return {
             name: key,
             status: "FAIL",
-            message: `缺少 AI 规则文件 ${fileName}（${filePath}）`,
-            fix: "运行 init 补齐（不会覆盖项目配置/场景）"
+            message: `缺少文件 ${fileName}（${filePath}）`,
+            fix: "补齐该文件后重新运行 doctor"
         };
     }
     try {
         const stat = fs.statSync(filePath);
         if (!stat.isFile()) throw new Error("路径不是普通文件");
         fs.readFileSync(filePath, "utf8");
-        return { name: key, status: "PASS", message: `AI 规则就绪: ${fileName}`, fix: "" };
+        return { name: key, status: "PASS", message: `文件就绪: ${fileName}`, fix: "" };
     } catch (error) {
         return {
             name: key,
             status: "FAIL",
-            message: `AI 规则文件不可读取: ${fileName}（原因: ${error.message}）`,
+            message: `文件不可读取: ${fileName}（原因: ${error.message}）`,
             fix: "移走无效路径后重新运行 init"
         };
     }
@@ -392,7 +187,7 @@ export function buildDoctorReport(options) {
                 name: "config-load",
                 status: "FAIL",
                 message: `配置文件加载失败: ${configPath}（原因: ${reason}）`,
-                fix: "检查配置语法与 defineConfig 调用；修复后重新运行 doctor"
+                fix: `检查配置语法与 defineConfig 调用；${UPGRADE_HINT}`
             });
             // 只依据 defineConfig 写入的结构化 code 追加专项结论：配置脚本自身抛出的
             // 任意错误即使消息里含「未知键」或 baseUrl，也不能被误报成字段校验失败。
@@ -512,7 +307,7 @@ export function buildDoctorReport(options) {
                         name: "scenario-register",
                         status: "FAIL",
                         message: `场景 ${entry.id} 加载/注册失败: ${scenarioPath}（原因: ${error.message}）`,
-                        fix: "检查场景文件：registerScenario(id, ...) 的 id 必须与 scenario.config.js 清单 id 一致；断言/when/保留变量须通过 defineScenario 校验"
+                        fix: `检查场景文件：registerScenario(id, ...) 的 id 必须与 scenario.config.js 清单 id 一致；断言/when/保留变量须通过 defineScenario 校验。${UPGRADE_HINT}`
                     });
                 }
             }
@@ -522,44 +317,35 @@ export function buildDoctorReport(options) {
         }
     }
 
-    // 6. AI 规则就绪检查（不依赖 config，可继续检查）
-    let layout;
-    try {
-        layout = resolveLayoutFromConfigDir(configDir);
-    } catch (error) {
-        layout = createProjectLayout(path.dirname(configDir), path.basename(configDir));
-        checks.push({
-            name: "framework-directory",
-            status: "FAIL",
-            message: error.message,
-            fix: "移走无效路径或修复读取权限后重新运行 init"
-        });
-    }
+    // 6. 运行时与旧版副本检查（v23 起项目不再保留运行时副本，AI 规则由安装方提供）
     checks.push({
         name: "cli",
         status: "PASS",
-        message: `CLI 版本 v${VERSION}（contract v${CONTRACT_VERSION}）`,
+        message: `运行时版本 v${VERSION}（contract v${CONTRACT_VERSION}），项目使用安装方运行时`,
         fix: ""
     });
-    for (const [key, fileName] of Object.entries({ authoringPrompt: FRAMEWORK_FILES.authoringPrompt, patterns: FRAMEWORK_FILES.patterns })) {
-        checks.push(checkReadableFile(layout.frameworkPath(fileName), key, fileName));
+    const legacy = listLegacyRuntimeFiles(configDir);
+    if (legacy.length) {
+        checks.push({
+            name: "legacy-runtime",
+            status: "WARN",
+            message: `检测到旧版项目内运行时副本 ${legacy.length} 项（如 ${INTERNAL_DIRECTORY}/scenario-test-cli.cjs）`,
+            fix: `执行 init --clean 移除旧副本（不会动 scenario.config.js / scenarios/），或确认后手动删除 ${INTERNAL_DIRECTORY}/ 与 index.html`
+        });
+    } else {
+        checks.push({
+            name: "legacy-runtime",
+            status: "PASS",
+            message: "无旧版项目内运行时副本",
+            fix: ""
+        });
     }
-
-    // 7. 运行时副本握手：UMD/d.ts 版本、能力清单、版本锁（含文件存在性与 SHA256）
-    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.cli), FRAMEWORK_FILES.cli, "runtime-cli", null));
-    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.umd), FRAMEWORK_FILES.umd, "umd", UMD_VERSION_PATTERN));
-    checks.push(checkRuntimeArtifact(layout.frameworkPath(FRAMEWORK_FILES.dts), FRAMEWORK_FILES.dts, "dts", DTS_VERSION_PATTERN));
-    checks.push(checkCapabilitiesFile(layout.frameworkPath(FRAMEWORK_FILES.capabilities)));
-    const lockResult = checkVersionLock(layout.frameworkPath(FRAMEWORK_FILES.versionLock));
-    checks.push({ name: lockResult.name, status: lockResult.status, message: lockResult.message, fix: lockResult.fix });
-    if (lockResult.extra) checks.push(...lockResult.extra);
 
     // E2E 为显式可选能力：不触发安装，也不访问被测服务。
     const e2eDir = path.join(configDir, "e2e");
     if (isE2eProject(configDir)) {
         const required = ["package.json", "playwright.config.js", "auth-adapter.js"];
         for (const fileName of required) checks.push(checkReadableFile(path.join(e2eDir, fileName), `e2e-${fileName}`, fileName));
-        checks.push(checkReadableFile(layout.frameworkPath(FRAMEWORK_FILES.e2eReporter), "e2e-reporter", FRAMEWORK_FILES.e2eReporter));
         const cli = path.join(e2eDir, "node_modules", "@playwright", "test", "cli.js");
         checks.push(fs.existsSync(cli)
             ? { name: "e2e-dependencies", status: "PASS", message: "已安装本地 Playwright", fix: "" }

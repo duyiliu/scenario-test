@@ -8,7 +8,7 @@ import {
     defineScenario,
     renderCapabilitiesText
 } from "../src/index.js";
-import { createProjectFiles } from "../src/init-templates.js";
+import { AUTHORING_PROMPT, SCENARIO_PATTERNS, createProjectFiles } from "../src/init-templates.js";
 
 function jsonResponse(body, status = 200) {
     return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -51,8 +51,8 @@ test("contract v17 声明 retryUntil 退避键并投射到 capabilities/AI Promp
     assert.match(text, /maxIntervalMs/);
 
     const files = createProjectFiles("scenario-test");
-    const prompt = files["scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md"];
-    const patterns = files["scenario-test/.scenario-test/SCENARIO_PATTERNS.md"];
+    const prompt = AUTHORING_PROMPT;
+    const patterns = Array.isArray(SCENARIO_PATTERNS) ? SCENARIO_PATTERNS.join("\n") : SCENARIO_PATTERNS;
     const readme = files["scenario-test/README.md"];
     for (const content of [prompt, patterns, readme]) {
         assert.match(content, /intervalFactor/);

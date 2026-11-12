@@ -13,7 +13,9 @@ import { VERSION } from "./version.generated.js";
 // v14：[*] 通配提取；v15：retryUntil 指数退避；v16：shape/always/suite/tags/envs.vars 与本地 CLI 增强；
 // v17：suite 命名空间（跨场景共享，when/断言 from:"suite"）；v18：request 键白名单（requestKeys）；
 // v20：用户级项目登记（projects 命令、serve 固定端口、--open/--reassign）
-export const CONTRACT_VERSION = 22;
+// v23：运行时去项目化——项目不再落 .scenario-test 运行时副本，执行/工作台统一使用安装方运行时；
+//       init 移除 --library-url、新增 --clean 清理旧副本
+export const CONTRACT_VERSION = 23;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -258,10 +260,10 @@ export const contract = Object.freeze({
             e2e: { kind: "flag", prop: "e2e", description: "init 可选初始化浏览器 E2E 项目" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
-            "library-url": { kind: "value", prop: "libraryUrl", description: "init 运行时副本下载目录（CLI/UMD/d.ts/capabilities，默认 GitHub Tag dist）" },
+            "clean": { kind: "flag", prop: "clean", description: "init 清理旧版项目内运行时副本（.scenario-test/ 与 index.html），不触碰配置与场景" },
             all: { kind: "flag", prop: "all", description: "执行配置中的全部自动场景（默认排除 manual:true）" },
             force: { kind: "flag", prop: "force", description: "init 覆盖已有文件（目标目录已存在时可交互选择）" },
-            "no-input": { kind: "flag", prop: "noInput", description: "init 非交互：目录已存在时按 keep（保留配置与场景，仅刷新 AI 规则和运行时副本）" },
+            "no-input": { kind: "flag", prop: "noInput", description: "init 非交互：目录已存在时按 keep（保留配置与场景）" },
             "fail-on-skip": { kind: "flag", prop: "failOnSkip", description: "存在任何 SKIP 步骤时最终退出码为 1" },
             "allow-external-plugins": { kind: "flag", prop: "allowExternalPlugins", description: "允许加载外部插件（有安全风险）" },
             json: { kind: "flag", prop: "json", description: "run/capabilities/doctor 输出机器可读 JSON（stdout 纯净，人类可读进度与结论走 stderr）" },

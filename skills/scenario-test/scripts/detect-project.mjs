@@ -5,16 +5,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT_MARKERS = ['.git', 'pom.xml', 'settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts', 'package.json', 'go.mod', 'Cargo.toml', 'pyproject.toml'];
-const REQUIRED_FILES = [
-  'scenario.config.js',
-  'index.html',
-  '.scenario-test/AI_SCENARIO_PROMPT.md',
-  '.scenario-test/SCENARIO_PATTERNS.md',
+// v23 起运行时去项目化：项目只保留场景数据，执行/工作台统一用 Skill 运行时。
+// 旧版 init 落盘的 .scenario-test 运行时副本按 legacy 报告，由 Skill 提示 --clean 清理。
+const REQUIRED_FILES = ['scenario.config.js'];
+const LEGACY_FILES = [
   '.scenario-test/scenario-test-cli.cjs',
   '.scenario-test/scenario-test.umd.js',
-  '.scenario-test/scenario-test.d.ts',
   '.scenario-test/scenario-test-capabilities.json',
   '.scenario-test/.scenario-test-version.json',
+  'index.html',
 ];
 
 function exists(file) {
@@ -77,12 +76,16 @@ function inspect({ cwd, directory, explicitProject }) {
   return {
     status, projectRoot: root, scenarioDir: target,
     config: path.join(target, 'scenario.config.js'),
-    cli: path.join(target, '.scenario-test', 'scenario-test-cli.cjs'),
+    // 项目不再保留运行时副本：cli 统一指向 Skill 运行时
+    cli: fileURLToPath(new URL('../runtime/scenario-test-cli.cjs', import.meta.url)),
     skillCli: fileURLToPath(new URL('../runtime/scenario-test-cli.cjs', import.meta.url)),
-    authoringPrompt: path.join(target, '.scenario-test', 'AI_SCENARIO_PROMPT.md'),
-    capabilities: path.join(target, '.scenario-test', 'scenario-test-capabilities.json'),
+    skillRuntime: fileURLToPath(new URL('../runtime/', import.meta.url)),
+    authoringPrompt: fileURLToPath(new URL('../runtime/AI_SCENARIO_PROMPT.md', import.meta.url)),
+    patterns: fileURLToPath(new URL('../runtime/SCENARIO_PATTERNS.md', import.meta.url)),
+    capabilities: fileURLToPath(new URL('../runtime/scenario-test-capabilities.json', import.meta.url)),
+    legacy: LEGACY_FILES.filter((relative) => exists(path.join(target, relative))),
     detectedBy, missing,
-    note: status === 'installed' ? '仅验证文件存在；运行 doctor 后才能确认完整性和版本锁。' : undefined,
+    note: status === 'installed' ? '运行时由安装方统一提供；doctor 核对 DSL 兼容性，旧副本按 legacy 提示清理。' : undefined,
   };
 }
 

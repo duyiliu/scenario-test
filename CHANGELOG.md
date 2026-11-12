@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **破坏性变更：运行时去项目化（contract v23）**。`init` 不再向项目落 `.scenario-test/` 运行时副本、`index.html`、`.scenario-test-version.json` 与 AI 规则文件；项目只保留 `scenario.config.js`、`scenarios/`（可选 `e2e/`）、`README.md` 与本机启动脚本 `start-scenario-test.cmd`（记录安装方 CLI 绝对路径，不再复制运行时）。工作台页由 `serve` 动态生成，UMD 经虚拟路由 `/__scenario-test__/scenario-test.umd.js` 从运行时 `dist/` 提供。CLI/doctor/探测统一指向安装方运行时（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`），能力不匹配只在场景声明的 contract 高于当前运行时时报错并提示升级；新增 `init --clean` 删除旧版副本，`doctor` 新增 `legacy-runtime` WARN 检查。
+- E2E reporter 不再复制进项目：serve 启动 playwright 时经 `SCENARIO_TEST_E2E_REPORTER` 注入物化路径（`e2e-results/.scenario-test-e2e-reporter.cjs`），托管 `playwright.config.js` 仅在环境变量存在时追加 reporter；`e2e/` 不再落 `.scenario-test/`。
 - 工作台主题收敛为两个：浅色「现代简约」（`default`）与深色「Linear 暗夜」（`linear`）。移除「温暖纸韵」「ZCode 暗夜」「ZCode 皓白」三套配色；旧 `storageKeys.theme` 值自动迁移（`zcode` → `linear`，`claude-code` / `zcode-light` → `default`），不会落到未定义样式。
 - 新增可选 `init --e2e`（契约版本 22）：生成独立 Playwright 项目与业务登录适配器，共用 Node 工作台服务；HTTP 默认接入保持免 npm。
 - 新增通用 E2E 执行、精确测试文件选择、有头模式、停止进程树，以及按 runId 留存的步骤、截图、日志和报告；失败或中断不会沿用旧的通过结果。

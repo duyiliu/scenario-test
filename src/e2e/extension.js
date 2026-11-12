@@ -5,6 +5,18 @@ import { randomUUID, createHash } from 'node:crypto';
 import { isRealPathWithinRoot } from '../utils/path-validator.js';
 import { E2E_PAGE } from './page.js';
 import { E2E_APP_JS } from './ui/app.generated.js';
+import { E2E_REPORTER } from './reporter-template.js';
+
+// v23 起运行时去项目化：结构化 reporter 不再落在项目 .scenario-test/，
+// 由 serve 在启动 playwright 时物化到 e2e-results/ 并经 env 注入路径
+// reporter 模板按「位于 e2e/ 同级目录」解析 __dirname/../e2e，因此物化到 e2e-results/ 下
+// （该目录已 gitignore，天然不污染项目树）
+function materializeReporter(resultsDir) {
+    const target = path.join(resultsDir, '.scenario-test-e2e-reporter.cjs');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, E2E_REPORTER);
+    return target;
+}
 
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.zip': 'application/zip', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webm': 'video/webm' };
 const indexKey = value => createHash('sha256').update(value).digest('hex');
@@ -116,7 +128,8 @@ export function createE2eExtension({ workspace }) {
             liveLog = [];
             const args = [cli, 'test', exactSpecPattern(root, body.spec)];
             if (body.headed === true) args.push('--headed');
-            child = spawn(process.execPath, args, { cwd: root, shell: false, detached: process.platform !== 'win32', env: { ...process.env, E2E_RUN_ID: id } });
+            const reporterPath = materializeReporter(results);
+            child = spawn(process.execPath, args, { cwd: root, shell: false, detached: process.platform !== 'win32', env: { ...process.env, E2E_RUN_ID: id, SCENARIO_TEST_E2E_REPORTER: reporterPath } });
             const target = child;
             target.stdout.on('data', append); target.stderr.on('data', append);
             target.once('error', error => append(`启动失败：${error.message}\n`));

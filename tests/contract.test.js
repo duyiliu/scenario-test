@@ -78,8 +78,8 @@ test("config/scenario 关键字段含 manual；CLI 命令与参数含 capabiliti
     assert.equal(contract.cli.options.json.kind, "flag");
     assert.deepEqual(contract.cli.options.token.aliases, ["authorization"]);
     assert.equal(contract.cli.options.config.kind, "value");
-    assert.equal(contract.cli.options["library-url"].kind, "value");
-    assert.equal(contract.cli.options["library-url"].prop, "libraryUrl");
+    assert.equal(contract.cli.options.clean?.kind, "flag", "init 应提供 --clean 清理旧副本");
+    assert.equal(contract.cli.options["library-url"], undefined, "--library-url 已随运行时去项目化移除");
 });
 
 test("contract.engines 与 package.json engines 一致", () => {
@@ -88,11 +88,12 @@ test("contract.engines 与 package.json engines 一致", () => {
 });
 
 test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影，无手抄名单", async () => {
-    const { createProjectFiles } = await import("../src/init-templates.js");
-    const files = createProjectFiles("scenario-test");
-    const prompt = files["scenario-test/.scenario-test/AI_SCENARIO_PROMPT.md"];
-    const patterns = files["scenario-test/.scenario-test/SCENARIO_PATTERNS.md"];
-    const readme = files["scenario-test/README.md"];
+    // v23 起规则文件统一由安装方提供（runtime/AI_SCENARIO_PROMPT.md、SCENARIO_PATTERNS.md），
+    // 源码侧仍在 init-templates.js 维护单一事实来源，经 test/build 同步到 Skill 运行时
+    const { AUTHORING_PROMPT, SCENARIO_PATTERNS, createProjectFiles } = await import("../src/init-templates.js");
+    const prompt = AUTHORING_PROMPT;
+    const patterns = Array.isArray(SCENARIO_PATTERNS) ? SCENARIO_PATTERNS.join("\n") : SCENARIO_PATTERNS;
+    const readme = createProjectFiles("scenario-test")["scenario-test/README.md"];
     const operators = Object.keys(contract.assertions.operators);
     for (const op of operators) {
         assert.ok(prompt.includes(op), `AI Prompt 缺少操作符 ${op}`);
@@ -108,6 +109,12 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
         assert.ok(prompt.includes(`from: "${source}"`), `AI Prompt 缺少 when 来源 ${source}`);
         assert.ok(patterns.includes(`from: '${source}'`), `SCENARIO_PATTERNS 缺少 when 来源 ${source}`);
     }
+    // Skill 运行时副本必须与源码投影一致（不落项目盘）
+    const runtimeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills/scenario-test/runtime");
+    const promptMd = fs.readFileSync(path.join(runtimeDir, "AI_SCENARIO_PROMPT.md"), "utf8");
+    const patternsMd = fs.readFileSync(path.join(runtimeDir, "SCENARIO_PATTERNS.md"), "utf8");
+    assert.equal(promptMd, `${prompt.trimEnd()}\n`, "runtime/AI_SCENARIO_PROMPT.md 与源码投影不一致");
+    assert.equal(patternsMd, `${patterns.trimEnd()}\n`, "runtime/SCENARIO_PATTERNS.md 与源码投影不一致");
 });
 
 test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
@@ -115,7 +122,7 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     const examplesIndex = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../examples/EXAMPLES_INDEX.md"), "utf8");
     assert.match(scenarioPrompt, /仓库预览/);
     assert.match(scenarioPrompt, /业务用户不要直接复制本文件/);
-    assert.match(scenarioPrompt, /实际执行时，以.*项目.*文件为准/);
+    assert.match(scenarioPrompt, /实际执行时，以.*运行时.*文件为准/);
     assert.match(scenarioPrompt, /不复制完整模板和操作符名单/);
     // README 是 Skill 查找固定版本安装脚本的入口，版本须与当前运行时一致。
     const readme = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../README.md"), "utf8");
@@ -129,12 +136,10 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     assert.match(quickInstall, /doctor/);
     assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
     assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
-    assert.match(skill, /已接入项目的诊断、执行与工作台使用项目内 CLI/);
+    assert.match(skill, /诊断、执行与工作台统一使用 Skill 运行时 CLI/);
     assert.match(readme, /默认.*免 npm|免 npm.*默认/);
     assert.match(readme, /scenario-test-cli\.cjs/);
-    assert.match(readme, /--library-url/);
     assert.match(readme, /SCENARIO_TEST_SOURCE/);
-    assert.match(readme, /reference path="\.\/\.scenario-test\/scenario-test\.d\.ts"/);
 
     const quickStart = examplesIndex.match(/^##\s+[^\n]*快速开始[^\n]*\n[\s\S]*?(?=^##\s|$(?![\s\S]))/mi)?.[0] ?? "";
     assert.ok(quickStart, "示例索引缺少业务接入快速开始章节");

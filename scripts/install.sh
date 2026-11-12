@@ -8,9 +8,10 @@
 #   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.15.0/dist"
 #   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
-# 原理：免 npm 安装 —— 按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/ 运行时文件，
-#       业务项目不安装 npm 包、不改 package.json，也不访问 GitHub API。
-#       SCENARIO_TEST_SOURCE 或第三个参数可改用内网运行时目录（需包含全部 4 个运行时文件）。
+# 原理：免 npm 安装 —— 按固定 GitHub Tag 从 jsDelivr 下载发布版运行时文件到
+#       用户级目录 ~/.scenario-test/runtime/，业务项目只落场景数据（config/README/cmd），
+#       不安装 npm 包、不改 package.json，也不访问 GitHub API，项目内不留运行时副本。
+#       SCENARIO_TEST_SOURCE 或第三个参数可改用内网运行时目录（需包含全部运行时文件）。
 #
 
 set -eo pipefail
@@ -30,6 +31,8 @@ RUNTIME_FILES=(
     "scenario-test.umd.js"
     "scenario-test.d.ts"
     "scenario-test-capabilities.json"
+    "AI_SCENARIO_PROMPT.md"
+    "SCENARIO_PATTERNS.md"
 )
 
 # 颜色输出
@@ -83,24 +86,26 @@ cd "$PROJECT_DIR"
 print_success "项目目录：$PROJECT_DIR"
 
 FULL_TARGET_PATH="$PROJECT_DIR/$TARGET_DIR"
-INTERNAL_DIR="$FULL_TARGET_PATH/.scenario-test"
 
-RUNTIME_DIR="$LOG_DIR/runtime"
+# v23 起运行时去项目化：CLI/UMD/AI 规则统一落用户级运行时目录，项目内只留场景数据
+RUNTIME_DIR="$HOME/.scenario-test/runtime"
 mkdir -p "$RUNTIME_DIR"
+STAGE_DIR="$LOG_DIR/runtime"
+mkdir -p "$STAGE_DIR"
 
 DOWNLOAD_SOURCE="${SOURCE:-$DEFAULT_SOURCE}"
 DOWNLOAD_SOURCE="$(echo "$DOWNLOAD_SOURCE" | sed 's:/*$::')"
 print_info "免 npm 安装模式，下载源：$DOWNLOAD_SOURCE ..."
 for file in "${RUNTIME_FILES[@]}"; do
     FILE_URL="$DOWNLOAD_SOURCE/$file"
-    if ! curl -fsSL "$FILE_URL" -o "$RUNTIME_DIR/$file"; then
+    if ! curl -fsSL "$FILE_URL" -o "$STAGE_DIR/$file"; then
         print_error "运行时文件下载失败：$FILE_URL"
         exit 1
     fi
 done
 
 for file in "${RUNTIME_FILES[@]}"; do
-    if [ ! -f "$RUNTIME_DIR/$file" ]; then
+    if [ ! -f "$STAGE_DIR/$file" ]; then
         print_error "下载内容不完整，缺少运行时文件：$file"
         exit 1
     fi
@@ -131,7 +136,7 @@ for (const file of args.slice(2)) {
         process.exit(1);
     }
 }
-' "$MANIFEST_FILE" "$RUNTIME_DIR" "${RUNTIME_FILES[@]}"; then
+' "$MANIFEST_FILE" "$STAGE_DIR" "${RUNTIME_FILES[@]}"; then
         print_success "运行时文件 SHA-256 校验通过"
     else
         print_error "运行时文件校验失败：下载内容与发布版 release.json 不一致，已中止安装"
@@ -148,6 +153,12 @@ else
 fi
 print_success "固定版本运行时下载成功"
 
+# 校验通过后才替换用户级运行时目录，失败不影响在用安装
+for file in "${RUNTIME_FILES[@]}"; do
+    cp "$STAGE_DIR/$file" "$RUNTIME_DIR/$file"
+done
+print_success "运行时就绪：$RUNTIME_DIR"
+
 print_info "初始化场景测试目录：$FULL_TARGET_PATH ..."
 TEMP_CLI="$RUNTIME_DIR/scenario-test-cli.cjs"
 if node "$TEMP_CLI" init --project "$PROJECT_DIR" --dir "$TARGET_DIR" 2>&1 | tee "$LOG_DIR/init.log"; then
@@ -158,23 +169,12 @@ else
     exit 1
 fi
 
-# 5. 检查生成的文件
+# 5. 检查生成的文件（v23：项目只落场景数据，不验证 .scenario-test 副本）
 print_info "验证生成的文件..."
 EXPECTED_FILES=(
     "README.md"
-    "index.html"
     "scenario.config.js"
-)
-
-INTERNAL_DIR="$FULL_TARGET_PATH/.scenario-test"
-EXPECTED_INTERNAL_FILES=(
-    "AI_SCENARIO_PROMPT.md"
-    "SCENARIO_PATTERNS.md"
-    "scenario-test-cli.cjs"
-    "scenario-test.umd.js"
-    "scenario-test.d.ts"
-    "scenario-test-capabilities.json"
-    ".scenario-test-version.json"
+    "start-scenario-test.cmd"
 )
 
 ALL_FILES_EXIST=true
@@ -186,21 +186,6 @@ for file in "${EXPECTED_FILES[@]}"; do
         ALL_FILES_EXIST=false
     fi
 done
-
-if [ -d "$INTERNAL_DIR" ]; then
-    print_success "  .scenario-test/ (AI 规则与运行时副本)"
-    for file in "${EXPECTED_INTERNAL_FILES[@]}"; do
-        if [ -f "$INTERNAL_DIR/$file" ]; then
-            print_success "    $file"
-        else
-            print_warning "    $file (缺失)"
-            ALL_FILES_EXIST=false
-        fi
-    done
-else
-    print_error "生成文件不完整，请查看 init 输出"
-    exit 1
-fi
 
 if [ "$ALL_FILES_EXIST" != "true" ]; then
     print_error "初始化结果验证失败"
@@ -214,7 +199,7 @@ if [ "$SKIP_DOCTOR" != "true" ]; then
 
     CONFIG_PATH="$FULL_TARGET_PATH/scenario.config.js"
 
-    if node "$INTERNAL_DIR/scenario-test-cli.cjs" doctor --config "$CONFIG_PATH" 2>&1 | tee "$LOG_DIR/doctor.log"; then
+    if node "$RUNTIME_DIR/scenario-test-cli.cjs" doctor --config "$CONFIG_PATH" 2>&1 | tee "$LOG_DIR/doctor.log"; then
         echo ""
         print_success "健康检查通过"
     else
@@ -234,7 +219,7 @@ print_success "安装成功！"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 CONFIG_RELATIVE="$TARGET_DIR/scenario.config.js"
-CLI_RELATIVE="$TARGET_DIR/.scenario-test/scenario-test-cli.cjs"
+CLI_RELATIVE="$RUNTIME_DIR/scenario-test-cli.cjs"
 
 echo ""
 echo -e "${YELLOW}📖 接下来的步骤：${NC}"
@@ -243,7 +228,7 @@ echo ""
 echo -e "${YELLOW}1. 使用 AI 生成场景测试（推荐）：${NC}"
 echo -e "${GRAY}   复制以下内容到 AI 助手（Claude/ChatGPT）：${NC}"
 echo ""
-echo -e "${CYAN}   请读取 $TARGET_DIR/.scenario-test/AI_SCENARIO_PROMPT.md，${NC}"
+echo -e "${CYAN}   请读取 $RUNTIME_DIR/AI_SCENARIO_PROMPT.md，${NC}"
 echo -e "${CYAN}   为 \"<业务功能名称>\" 设计场景测试。${NC}"
 echo -e "${CYAN}   入口：<页面、Controller、接口或已有测试路径>${NC}"
 echo ""
@@ -261,9 +246,9 @@ echo -e "${CYAN}   node $CLI_RELATIVE run --config $CONFIG_RELATIVE --env local 
 echo ""
 
 echo -e "${YELLOW}4. 文档位置：${NC}"
-echo -e "${CYAN}   README:  $TARGET_DIR/README.md${NC}"
-echo -e "${CYAN}   Browser: $TARGET_DIR/index.html${NC}"
-echo -e "${CYAN}   AI规则:  $TARGET_DIR/.scenario-test/AI_SCENARIO_PROMPT.md${NC}"
+echo -e "${CYAN}   README:   $TARGET_DIR/README.md${NC}"
+echo -e "${CYAN}   Browser:  start-scenario-test.cmd 双击启动${NC}"
+echo -e "${CYAN}   AI规则:   $RUNTIME_DIR/AI_SCENARIO_PROMPT.md${NC}"
 echo ""
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

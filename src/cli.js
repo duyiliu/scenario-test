@@ -1,13 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import * as ScenarioTest from "./node.js";
-import { createProjectFiles, DEFAULT_LIBRARY_URL } from "./init-templates.js";
+import { createProjectFiles } from "./init-templates.js";
 import { createE2eProjectFiles } from "./e2e/templates.js";
-import { E2E_REPORTER } from "./e2e/reporter-template.js";
 import { createE2eExtension, isE2eProject } from "./e2e/extension.js";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
@@ -19,7 +17,7 @@ import { collectRequestSecretValues, outputSecretVariants } from "./utils/output
 import { loadDataset } from "./utils/data-file.js";
 import { writeHtmlReport } from "./utils/html-report.js";
 import { writeJUnitReport } from "./utils/junit.js";
-import { FRAMEWORK_FILES, resolveProjectLayout } from "./project-layout.js";
+import { listLegacyRuntimeFiles, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
 import {
     DEFAULT_PROXY_TIMEOUT_MS,
@@ -361,107 +359,27 @@ async function askInitMode(directory) {
     }
 }
 
-function sha256File(filePath) {
-    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
-function runtimeSourceCandidates(fileName) {
-    return [
-        path.resolve(path.dirname(process.argv[1]), fileName),
-        path.resolve(path.dirname(process.argv[1]), "../dist", fileName)
-    ];
-}
-
-// 把当前 CLI 自身复制为项目运行时副本（npx 与本地 CLI 均可用，source 以 .cjs 结尾为准）
-function copyRuntimeCli(layout, force) {
-    const target = layout.frameworkPath(FRAMEWORK_FILES.cli);
-    if (fs.existsSync(target) && !force) return false;
-    const source = path.resolve(process.argv[1]);
-    if (!source.endsWith(".cjs")) return null;
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(source, target);
-    return true;
-}
-
-// 运行时副本统一入口：本机 dist 拷贝优先，--library-url 远程下载兜底（CLI/UMD/d.ts/capabilities 通用）
-async function ensureRuntimeFile(layout, fileName, libraryUrl, force) {
-    const target = layout.frameworkPath(fileName);
-    if (fs.existsSync(target) && !force) return false;
-    const source = runtimeSourceCandidates(fileName).find((candidate) => fs.existsSync(candidate));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (source) {
-        fs.copyFileSync(source, target);
-        return true;
+// init --clean：只删除 init/安装脚本历史上落盘的旧版项目内运行时副本，
+// 不触碰 scenario.config.js、scenarios/、e2e/、plugins/ 等项目自有内容
+function cleanLegacyRuntime(projectRoot, directory) {
+    const publicDir = path.join(projectRoot, directory);
+    const legacy = listLegacyRuntimeFiles(publicDir);
+    const removed = [];
+    for (const relative of legacy) {
+        const target = path.join(publicDir, relative);
+        // 真实路径校验：拒绝经链接/联接点指向项目外
+        if (!isRealPathWithinRoot(projectRoot, target)) {
+            throw new Error(`旧副本路径越界，拒绝删除: ${relative}`);
+        }
+        fs.rmSync(target, { recursive: false, force: true });
+        removed.push(relative);
     }
-    if (!libraryUrl) return null;
-    const base = libraryUrl.replace(/\/+$/, "") + "/";
-    const downloadSignal = AbortSignal.timeout(30000);
-    try {
-        const response = await fetch(`${base}${fileName}`, { signal: downloadSignal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        fs.writeFileSync(target, Buffer.from(await response.arrayBuffer()));
-        return true;
-    } catch (error) {
-        console.warn(`警告: ${fileName} 下载失败（${downloadSignal.aborted ? "下载超时（30 秒）" : escapeInlineText(error.message)}）`);
-        return null;
+    // .scenario-test 清空后删除目录本体
+    const frameworkDir = path.join(publicDir, ".scenario-test");
+    if (fs.existsSync(frameworkDir) && fs.statSync(frameworkDir).isDirectory() && fs.readdirSync(frameworkDir).length === 0) {
+        fs.rmdirSync(frameworkDir);
     }
-}
-
-// 版本锁：记录 runtimeVersion/contractVersion 与各运行时文件 SHA256，doctor 据此握手
-function writeVersionLock(layout) {
-    const target = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    const fileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-    const hasE2e = isE2eProject(layout.publicDir);
-    if (hasE2e) fileNames.push(FRAMEWORK_FILES.e2eReporter);
-    const sha256 = {};
-    for (const fileName of fileNames) {
-        const filePath = layout.frameworkPath(fileName);
-        if (fs.existsSync(filePath)) sha256[fileName] = sha256File(filePath);
-    }
-    const lock = {
-        runtimeVersion: VERSION,
-        contractVersion: CONTRACT_VERSION,
-        files: {
-            cli: FRAMEWORK_FILES.cli,
-            umd: FRAMEWORK_FILES.umd,
-            dts: FRAMEWORK_FILES.dts,
-            capabilities: FRAMEWORK_FILES.capabilities,
-            ...(hasE2e ? { e2eReporter: FRAMEWORK_FILES.e2eReporter } : {})
-        },
-        sha256
-    };
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
-    return true;
-}
-
-// 锁缺失/损坏/版本不一致或任一运行时文件缺失时刷新副本
-function shouldRefreshFramework(layout, force) {
-    if (force) return true;
-    const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-    // 任一运行时文件缺失即刷新（覆盖"锁缺失"与"副本不完整"两种情况）
-    if (runtimeFileNames.some((fileName) => !fs.existsSync(layout.frameworkPath(fileName)))) return true;
-    const lockPath = layout.frameworkPath(FRAMEWORK_FILES.versionLock);
-    if (!fs.existsSync(lockPath)) return true;
-    let lock;
-    try {
-        lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
-    } catch {
-        return true;
-    }
-    if (lock.runtimeVersion !== VERSION || lock.contractVersion !== CONTRACT_VERSION) return true;
-    // 版本锁声明的 sha256 与磁盘实际不符（文件被篡改/损坏/手工替换）时也刷新，保证副本可信。
-    // 仅校验"锁里登记过的文件"：跳过锁未登记的文件，避免升级期间 lock 尚未更新的新版副本被误刷。
-    return runtimeFileNames.some((fileName) => {
-        const expected = lock.sha256?.[fileName];
-        return !!expected && sha256File(layout.frameworkPath(fileName)) !== expected;
-    });
-}
-
-function recordRuntimeResult(created, skipped, relativePath, status, failed) {
-    if (status === true) created.push(relativePath);
-    else if (status === false) skipped.push(relativePath);
-    else if (failed) failed.push(relativePath);
+    return removed;
 }
 
 async function initCommand(args) {
@@ -470,13 +388,13 @@ async function initCommand(args) {
     const projectName = path.basename(projectRoot).trim() || "project";
     const storagePrefix = `scenario-test.${projectName.replace(/[^\p{L}\p{N}._-]+/gu, "-")}`;
     const layout = resolveProjectLayout(projectRoot, directory);
-    const frameworkDirectory = ".scenario-test";
     if (args.e2e && fs.existsSync(path.join(layout.publicDir, "e2e")) && !isE2eProject(layout.publicDir)) {
         throw new Error("检测到已有自管 e2e 目录；请保留现有目录，手动迁移后再启用框架 E2E，init 不会覆盖或混入模板");
     }
-    // 目标目录内的 .scenario-test 也可能是预置跳转链接：运行时副本写入前先做真实路径校验
-    if (!isRealPathWithinRoot(projectRoot, path.join(projectRoot, directory, frameworkDirectory))) {
-        throw new Error(`目标目录中的 ${frameworkDirectory} 经链接/联接点越界，拒绝写入项目外`);
+    // .scenario-test 只可能是旧版遗留（init --clean 或历史运行时副本），写入前同样做真实路径校验
+    const frameworkDir = path.join(projectRoot, directory, ".scenario-test");
+    if (!isRealPathWithinRoot(projectRoot, frameworkDir)) {
+        throw new Error("目标目录中的 .scenario-test 经链接/联接点越界，拒绝写入项目外");
     }
     // 目标目录已存在且未显式 --force 时，由用户选择覆盖方式；
     // --no-input 或非交互环境（CI、脚本、管道）自动采用默认保留行为，避免卡住
@@ -489,21 +407,10 @@ async function initCommand(args) {
         }
         force = mode === "overwrite";
     }
-    // 运行时副本在锁缺失/版本不一致/sha256 失配/文件缺失时刷新（升级旧副本的关键路径）。
-    // 仅影响运行时副本与版本锁的刷新，不改变模板文件的 keep 语义。
-    const refreshFramework = shouldRefreshFramework(layout, force);
-    // AI 规则/模式库随每次 init 刷新（keep 语义：不覆盖项目配置与场景）；
-    // 运行时副本的刷新决策已并入上方 refreshFramework
-    const frameworkTemplatePaths = new Set([
-        layout.frameworkRelativePath(FRAMEWORK_FILES.authoringPrompt),
-        layout.frameworkRelativePath(FRAMEWORK_FILES.patterns)
-    ]);
     const created = [];
     const skipped = [];
-    const failedRuntimeFiles = [];
-    for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, frameworkDirectory }))) {
-        const overwrite = force || frameworkTemplatePaths.has(relativePath);
-        (writeProjectFile(projectRoot, relativePath, content, overwrite) ? created : skipped).push(relativePath);
+    for (const [relativePath, content] of Object.entries(createProjectFiles(directory, { storagePrefix, cliPath: path.resolve(process.argv[1]) }))) {
+        (writeProjectFile(projectRoot, relativePath, content, force) ? created : skipped).push(relativePath);
     }
     if (args.e2e || isE2eProject(layout.publicDir)) {
         if (args.e2e) {
@@ -515,38 +422,26 @@ async function initCommand(args) {
             const existing = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, "utf8") : "";
             if (!existing.split(/\r?\n/).includes("/e2e-results/")) fs.writeFileSync(ignorePath, existing + (existing && !existing.endsWith("\n") ? "\n" : "") + "/e2e-results/\n");
         }
-        writeProjectFile(projectRoot, layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter), E2E_REPORTER, true);
-        created.push(layout.frameworkRelativePath(FRAMEWORK_FILES.e2eReporter));
     }
-    const libraryUrl = args.libraryUrl || DEFAULT_LIBRARY_URL;
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.cli), copyRuntimeCli(layout, refreshFramework) ?? await ensureRuntimeFile(layout, FRAMEWORK_FILES.cli, libraryUrl, refreshFramework), failedRuntimeFiles);
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.umd), await ensureRuntimeFile(layout, FRAMEWORK_FILES.umd, libraryUrl, refreshFramework), failedRuntimeFiles);
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.dts), await ensureRuntimeFile(layout, FRAMEWORK_FILES.dts, libraryUrl, refreshFramework), failedRuntimeFiles);
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.capabilities), await ensureRuntimeFile(layout, FRAMEWORK_FILES.capabilities, libraryUrl, refreshFramework), failedRuntimeFiles);
-    // 运行时副本必须齐全才能写版本锁：任一文件缺失即明确失败（退出码 1），
-    // 避免下载失败后仍落锁、init 假成功导致不完整安装
-    if (failedRuntimeFiles.length) {
-        throw new Error(
-            `运行时副本更新失败: ${failedRuntimeFiles.join(", ")}\n` +
-            "请检查下载源或网络后重跑 init；现有版本锁未更新。"
-        );
+    const cleaned = [];
+    if (args.clean) {
+        for (const relative of cleanLegacyRuntime(projectRoot, directory)) {
+            cleaned.push(relative);
+        }
+    } else {
+        // 未要求清理时仍提示旧副本存在，避免误以为项目已迁移
+        const legacy = listLegacyRuntimeFiles(layout.publicDir);
+        if (legacy.length) {
+            console.warn(`提示: 检测到旧版项目内运行时副本（${legacy.length} 项，如 ${legacy[0]}），可用 --clean 移除；项目当前已统一使用安装方运行时。`);
+        }
     }
-    const runtimeFileNames = [FRAMEWORK_FILES.cli, FRAMEWORK_FILES.umd, FRAMEWORK_FILES.dts, FRAMEWORK_FILES.capabilities];
-    const missingRuntimeFiles = runtimeFileNames.filter((fileName) => !fs.existsSync(layout.frameworkPath(fileName)));
-    if (missingRuntimeFiles.length) {
-        throw new Error(
-            `运行时副本不完整，缺少: ${missingRuntimeFiles.join(", ")}\n` +
-            `请检查 --library-url（${libraryUrl}）指向的目录是否包含全部 4 个文件，` +
-            "或确认本机 dist 可用后重跑 init"
-        );
-    }
-    recordRuntimeResult(created, skipped, layout.frameworkRelativePath(FRAMEWORK_FILES.versionLock), writeVersionLock(layout));
     console.log(`已初始化项目: ${projectRoot}`);
-    console.log(`项目布局: 内部文件位于 ${layout.frameworkRelativeDir}`);
+    console.log(`场景目录: ${directory}`);
     if (created.length) console.log(`已创建: ${created.join(", ")}`);
     if (skipped.length) console.log(`已保留现有文件: ${skipped.join(", ")}`);
-    console.log(`浏览器工作台: ${path.join(projectRoot, directory, "index.html")}`);
-    console.log("提示: 双击 start-scenario-test.cmd 启动工作台；serve 会自动启用同源接口代理，绕开浏览器 CORS。");
+    if (cleaned.length) console.log(`已清理旧版运行时副本: ${cleaned.join(", ")}`);
+    console.log(`运行时: 使用安装方 CLI（v${VERSION}，contract v${CONTRACT_VERSION}），项目内不保留副本`);
+    console.log("提示: 双击 start-scenario-test.cmd 启动工作台（serve 自动启用同源代理，绕开浏览器 CORS）。");
 }
 
 function resolveConfigPath(value) {
@@ -1173,6 +1068,7 @@ async function serveCommand(args) {
         libraryDist,
         port,
         config,
+        configFile: path.basename(configPath),
         defaultTarget: startup,
         // --base-url 固定覆盖所有请求的目标（与 run 模式一致）
         overrideBaseUrl: args.baseUrl || "",
