@@ -39,14 +39,14 @@ function scheduleRebuild() {
 }
 
 // build 每次都会写回 src 下的生成文件；watch 必须排除它们，否则构建产物写盘
-// 再次触发重建事件，形成"构建→写盘→再构建"的自触发无限循环
-const GENERATED_SOURCES = new Set(["version.generated.js", "browser/tailwind.generated.js"]);
+// 再次触发重建事件，形成“构建→写盘→再构建”的自触发无限循环。
+// 统一按 *.generated.js 后缀排除：version / tailwind / e2e ui 的生成文件均由 build 产出。
 
 function watchSources() {
     fs.watch(srcDir, { recursive: true }, (eventType, filename) => {
         // Windows 下 filename 用反斜杠分隔，统一归一化后再比对
         const normalized = String(filename || "").replace(/\\/g, "/");
-        if (GENERATED_SOURCES.has(normalized)) return;
+        if (/\.generated\.js$/.test(normalized)) return;
         if (/\.(js|mjs)$/.test(normalized)) {
             console.log(`[dev] 变更: ${normalized}，重建中...`);
             scheduleRebuild();
@@ -190,6 +190,16 @@ function renderIndexHtml(serverPort) {
                     <div class="notes">复用 Basic 的本地 Mock（dev 自动同源代理）</div>
                 </div>
                 <a class="btn" href="/examples/tree-demo/">进入目录树工作台 →</a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <span class="badge badge-amber">浏览器 E2E</span>
+                    <h2>5. E2E 端到端示例</h2>
+                    <p class="summary">HTTP 场景与浏览器 E2E 同文档工作台：7 个 Playwright 用例（登录守卫、状态筛选、失败证据）与 9 个接口场景共用一份配置。</p>
+                    <div class="notes">需独立启动：<code>npm run demo:e2e</code>（端口 4303）。本页 dev 服务只提供静态预览，不挂 E2E 扩展与 Playwright 依赖</div>
+                </div>
+                <a class="btn" href="http://127.0.0.1:4303/" target="_blank" rel="noopener">打开 E2E 工作台 →</a>
             </div>
         </div>
 
