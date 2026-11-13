@@ -2,7 +2,7 @@
   "package": "@yc_yzkj/scenario-test",
   "version": "0.15.0",
   "source": "https://github.com/duyiliu/scenario-test/tree/v0.15.0",
-  "generatedAt": "2026-11-12T06:09:21.529Z",
+  "generatedAt": "2026-11-13T03:58:02.673Z",
   "sha256": {
     "scenario-test-cli.cjs": "aee6aa4e08c8384da2e1a1ab75eea0ef2adac2af9152acdf1d5384881a265e45",
     "scenario-test.umd.js": "26b78762080f41395c5c3585956103fd7490c3488e715e5a9e07c22e7823a1c3",

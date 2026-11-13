@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-13
+
 - **破坏性变更：运行时去项目化（contract v23）**。`init` 不再向项目落 `.scenario-test/` 运行时副本、`index.html`、`.scenario-test-version.json` 与 AI 规则文件；项目只保留 `scenario.config.js`、`scenarios/`（可选 `e2e/`）、`README.md` 与本机启动脚本 `start-scenario-test.cmd`（记录安装方 CLI 绝对路径，不再复制运行时）。工作台页由 `serve` 动态生成，UMD 经虚拟路由 `/__scenario-test__/scenario-test.umd.js` 从运行时 `dist/` 提供。CLI/doctor/探测统一指向安装方运行时（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`），能力不匹配只在场景声明的 contract 高于当前运行时时报错并提示升级；新增 `init --clean` 删除旧版副本，`doctor` 新增 `legacy-runtime` WARN 检查。
 - E2E reporter 不再复制进项目：serve 启动 playwright 时经 `SCENARIO_TEST_E2E_REPORTER` 注入物化路径（`e2e-results/.scenario-test-e2e-reporter.cjs`），托管 `playwright.config.js` 仅在环境变量存在时追加 reporter；`e2e/` 不再落 `.scenario-test/`。
 - 工作台主题收敛为两个：浅色「现代简约」（`default`）与深色「Linear 暗夜」（`linear`）。移除「温暖纸韵」「ZCode 暗夜」「ZCode 皓白」三套配色；旧 `storageKeys.theme` 值自动迁移（`zcode` → `linear`，`claude-code` / `zcode-light` → `default`），不会落到未定义样式。
@@ -18,7 +20,7 @@ All notable changes to this project will be documented in this file.
 - #134：extract target 新增 duration，复用 response.durationMs 单次请求计时，契约版本升为 21。已有 duration 断言保持原样。
 - #132：核对当前工作台及模板，没有 Issue 所述采集视图/跳转入口；按无效问题处置，未添加虚构入口。
 
-## [0.15.0] - 2026-11-05
+### 此前已并入（2026-11-05 批）
 
 ### 新增
 
