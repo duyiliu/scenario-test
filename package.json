@@ -26,6 +26,7 @@
   "scripts": {
     "demo:e2e": "node examples/e2e/start.mjs",
     "test:e2e-fixture": "node tests/e2e-fixture.mjs",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
     "test": "node scripts/run-tests.mjs",
@@ -35,10 +36,10 @@
     "test:browser-comprehensive:dist": "node scripts/run-browser-comprehensive.mjs dist",
     "test:mutation": "node --test tests/mutation/run-mutations.selftest.test.js && node tests/mutation/run-mutations.mjs",
     "test:ui-style": "node tests/ui-style.test.mjs",
-    "test:all": "npm run test:unit && npm run test:browser && npm run test:browser-comprehensive && npm run test:browser-comprehensive:dist && npm run test:ui-style",
+    "test:all": "npm run test:unit && npm run test:browser && npm run test:browser-comprehensive && npm run test:browser-comprehensive:dist && npm run test:ui-style && npm run test:e2e",
     "check:eol": "node scripts/check-eol.mjs",
     "check": "npm run build && npm run test:unit && npm run test:browser && npm run test:browser-comprehensive && npm run test:browser-comprehensive:dist",
-    "check:all": "npm run check && npm run test:ui-style && npm run check:eol"
+    "check:all": "npm run check && npm run test:ui-style && npm run test:e2e && npm run check:eol"
   },
   "dependencies": {
     "blueimp-md5": "2.19.0"

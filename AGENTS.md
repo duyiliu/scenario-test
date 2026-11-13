@@ -18,9 +18,10 @@ npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.
 npm test               # 单元/集成测试（node --test tests/*.test.js，与 test:unit 等价）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
 npm run test:ui-style  # 工作台视觉回归（Playwright）
+npm run test:e2e       # 确定性发布消费链：真实执行安装脚本 + 初始化工程 run（tests/e2e/）
 npm run test:all       # unit + browser + ui-style
 npm run check          # npm run build && test:unit && test:browser
-npm run check:all      # check + ui-style + 行尾审计
+npm run check:all      # check + ui-style + e2e + 行尾审计
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 

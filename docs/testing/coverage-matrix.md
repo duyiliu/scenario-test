@@ -55,7 +55,8 @@
 | `npm run test:browser-comprehensive:dist`（dist 模式，第 3 轮新增） | 同一测试文件以 `SCENARIO_TEST_BROWSER_RUNTIME=dist` 验收 **dist 产物**（scripts/run-browser-comprehensive.mjs 包装）；browser job 内先 `npm run build` 再跑，验收新鲜 dist | 同上；src/dist 双验收完成（G1/G2 闭合于代码层） |
 | `npm run test:mutation`（第 3 轮重写） | `tests/mutation/` **50 变异体**（M01–M50）+ 隔离副本 runner（schema 3，killed 仅认断言失败 ERR_ASSERTION）+ **runner 故障自测 12 用例**（`test:mutation` = 自测 && 全量跑） | **独立 mutation job**（ubuntu node 24，30min 上限，artifacts 永远上传留 7 天；survived/infra/skipped 非零退出，excluded 平台排除不算失败）。M50 声明 `platforms=["linux"]`：Windows 本地 excluded（不进分母），ubuntu CI 上真实执行 |
 | `tests/coverage-fixes.test.js`（研发2 新增，第 3 轮扩至 8 用例） | 修复验收：G9 JUnit notRun（bail×多行数据）、G10 敏感链（首步重试/动态提取值/字面请求/vars+generatedVars 特殊字符 ×2/兼容开关）、G5 serve --reassign | 归入 test:unit；对应 src 修复已在工作树（QA 只读核实代码路径），**执行待统一结果** |
-| `tests/skill-e2e/`、`tests/fixtures/scenario-design/` | 接入-执行冒烟、场景设计 A/B | 不在 CI：仅在 192.168.1.214 执行（AGENTS.md 约定）—— G8 **未验证** |
+| `tests/e2e/`（确定性发布消费链，新增） | 真实执行安装脚本（install.sh/install.ps1）+ 初始化工程 `run` 对 fixture-api 全链 | **已接入 CI**（独立 `e2e` job：ubuntu-24.04 + windows-latest，node 22，build→test:e2e）；本地 `npm run test:e2e` 可跑——闭合 G8 的**确定性段** |
+| `tests/skill-e2e/`、`tests/fixtures/scenario-design/` | 接入-执行冒烟、场景设计 A/B | 不在 CI：仅在 192.168.1.214 执行（AGENTS.md 约定）—— G8 **LLM 段仍未验证**（确定性段已由 `tests/e2e/` 闭合） |
 | CI types job | `tsc --noEmit dist/scenario-test.d.ts` + `tests/dts.test.js` | 是 |
 
 ## 3. 覆盖矩阵
@@ -286,7 +287,7 @@
 | G10 | **P1（新，安全）** → **闭合于代码层** | 字面敏感值在失败诊断回显泄漏 | 修复入工作树：src/utils/output-secrets.js（收集字面+JSON 转义变体 4 层、最长优先替换、循环安全深拷贝）；cli.js（attempt 上下文经 `_includeAttemptContext` 显式开关传入 {runtime, request}，默认调用签名不变）、engine.js、browser runtime.js/ui-adhoc.js 三端接入；coverage-fixes 6 个敏感用例 + 工作台 4 项敏感回显检查验收；非敏感对照（visible-control）保留防过度脱敏 | 统一验证 |
 | G6 | P2 | skills references 文档与 contract 一致性无自动校验 | 未变（文档行，豁免范围） | 文档行 |
 | G7 | P2 → **闭合于代码层** | `serve --open` 无直接测试 | 已补：C13 经可注入 PATH 桩验证 --open 不真开浏览器；仅 Linux 执行（Windows 显式 SKIP，runner 单列 skipped 非零退出，不冒充通过） | 统一验证 |
-| G8 | P2 → **未验证（保持）** | skill-e2e、场景设计 A/B 仅远程 214，不在 CI | 保持未验证：本轮无远程证据、无负责人书面豁免；**不得以豁免改通过，也不据此宣称全功能 100%** | 后续按需 |
+| G8 | P2 → **确定性段闭合 / LLM 段未验证（保持）** | skill-e2e、场景设计 A/B 仅远程 214，不在 CI | **新增 `tests/e2e/`**：真实执行 install.sh（ubuntu）/install.ps1（windows）+ 初始化工程 run 全链，CI `e2e` job 双平台门禁，闭合 G8 的确定性发布消费链段；LLM 段（skill-e2e 冒烟、A/B）仍仅 214 手动，保持未验证，不得以确定性段闭合冒充 LLM 段通过 | 后续按需 |
 | G11 | **P2（新）** → **闭合** | comprehensive-README §1 用例计数笔误 | 已修正并核实：README 现写 **74**（A 25 + B 26 + C 23），与机器枚举 25+26+23=74 一致 | — |
 | 观察1 | — | runner SCENARIO_TEST_HOME 为固定目录名（非 mkdtemp） | **部分改善**：已移至 os.tmpdir()（不再污染仓库/用户目录）并剥离 NODE_TEST_CONTEXT；runner 内部串行执行，同一进程内无冲突。残留：同用户并发启动两个 runner 仍共享同一 HOME——低风险，建议后续改 mkdtemp | 研发1 顺带 |
 | 观察2 | — | 修复与新测试是否落地 | **已核实落地**（~13:00 快照）：G9/G10/G5 修复 + coverage-fixes 8 用例 + A5/B8/C11–C13 + runner 重写 + 50 变异体 + browser 17 检查（src+dist）均在分支 `test/comprehensive-coverage` 工作树（未提交）；开发已停止改动。有效性执行待统一结果 | 统一验证 |
