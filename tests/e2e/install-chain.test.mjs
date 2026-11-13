@@ -36,7 +36,7 @@ test("install 正例：自定义源 + 清单校验 → init → doctor PASS → 
     fs.mkdirSync(project, { recursive: true });
 
     const args = installArgs(installer, { projectDir: project, targetDir, source: source.baseUrl });
-    const env = installEnv({ home, manifestUrl: source.manifestUrl });
+    const env = installEnv(installer, { home, manifestUrl: source.manifestUrl });
     const result = await run(installer.command, args, { env, cwd: project });
     const combined = result.stdout + result.stderr;
 
@@ -71,7 +71,7 @@ test("install 反例：下载内容被篡改 → SHA-256 校验失败、exit 非
         fs.mkdirSync(project, { recursive: true });
 
         const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: badSource.baseUrl });
-        const env = installEnv({ home, manifestUrl: badSource.manifestUrl });
+        const env = installEnv(installer, { home, manifestUrl: badSource.manifestUrl });
         const result = await run(installer.command, args, { env, cwd: project });
 
         assert.notEqual(result.code, 0, `篡改应使安装失败。\nstdout:\n${result.stdout}`);
@@ -91,7 +91,7 @@ test("install 反例：源不可达 → exit 非零且错误可定位", { skip: 
     const deadSource = "http://127.0.0.1:1"; // 保留端口，连接被拒
 
     const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: deadSource });
-    const env = installEnv({ home, manifestUrl: `${deadSource}/release.json` });
+    const env = installEnv(installer, { home, manifestUrl: `${deadSource}/release.json` });
     const result = await run(installer.command, args, { env, cwd: project, timeoutMs: 60000 });
 
     assert.notEqual(result.code, 0, "源不可达应失败");

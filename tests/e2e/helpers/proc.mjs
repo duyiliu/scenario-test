@@ -52,7 +52,7 @@ export function run(command, args, options = {}) {
     });
 }
 
-// 当前平台的安装脚本执行器：unix → bash install.sh；windows → pwsh/powershell install.ps1。
+// 当前平台的安装脚本执行器：linux/darwin → bash install.sh；windows → pwsh/powershell install.ps1。
 // 非本平台返回 null，由用例显式 test.skip（不冒充通过）。
 export function installerForPlatform() {
     if (process.platform === "win32") {
@@ -62,32 +62,33 @@ export function installerForPlatform() {
             kind: "ps1",
             script,
             command: shellCmd,
-            args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
             // ps1 以 USERPROFILE 定用户级运行时目录
             homeEnvKey: "USERPROFILE"
         };
+    }
+    if (process.platform !== "linux" && process.platform !== "darwin") {
+        return null;
     }
     const script = path.join(repoRoot, "scripts/install.sh");
     return {
         kind: "sh",
         script,
         command: "bash",
-        args: [script],
         homeEnvKey: "HOME"
     };
 }
 
 // 组装一次安装调用的 env：隔离 HOME/USERPROFILE 到临时 home，
 // 注入自定义源与清单 URL；SCENARIO_TEST_VERSION 仅在 sh 上可覆盖。
-export function installEnv({ home, sourceBaseUrl, manifestUrl, version }) {
-    const env = { [installerForPlatform().homeEnvKey]: home };
+export function installEnv(installer, { home, manifestUrl, version }) {
+    const env = { [installer.homeEnvKey]: home };
     if (manifestUrl) env.SCENARIO_TEST_RELEASE_JSON = manifestUrl;
     if (version) env.SCENARIO_TEST_VERSION = version;
     return env;
 }
 
-// install.sh 用法：install.sh <projectDir> <targetDir> <source>
-// install.ps1 用法：install.ps1 -Project <dir> -TargetDir <dir> -Source <url>
+// install.sh 用法：bash install.sh <projectDir> <targetDir> <source>
+// install.ps1 用法：pwsh -File install.ps1 -Project <dir> -TargetDir <dir> -Source <url>
 export function installArgs(installer, { projectDir, targetDir, source }) {
     if (installer.kind === "ps1") {
         const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer.script,

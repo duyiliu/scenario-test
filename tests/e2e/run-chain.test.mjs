@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startStaticSource } from "./helpers/static-source.mjs";
 import { startFixtureApi } from "./helpers/fixture-api.mjs";
-import { installerForPlatform, installArgs, installEnv, run, makeTempDir, removeDir, repoRoot } from "./helpers/proc.mjs";
+import { installerForPlatform, installArgs, installEnv, run, makeTempDir, removeDir } from "./helpers/proc.mjs";
 
 const fixtureScenariosDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "project/scenarios");
 const installer = installerForPlatform();
@@ -54,7 +54,7 @@ after(async () => {
 async function installProject(home, project) {
     fs.mkdirSync(project, { recursive: true });
     const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: source.baseUrl });
-    const env = installEnv({ home, manifestUrl: source.manifestUrl });
+    const env = installEnv(installer, { home, manifestUrl: source.manifestUrl });
     const res = await run(installer.command, args, { env, cwd: project });
     assert.equal(res.code, 0, `安装应成功。\n${res.stdout}\n${res.stderr}`);
     const cli = path.join(home, ".scenario-test", "runtime", "scenario-test-cli.cjs");
