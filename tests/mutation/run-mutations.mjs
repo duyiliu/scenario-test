@@ -179,7 +179,10 @@ function runTest(file, options = {}) {
     // 关键：调用方若本身运行在 node --test 里（自测/CI 嵌套），NODE_TEST_CONTEXT
     // 会让被 spawn 的 node --test 进入 worker 模式、不输出 TAP 且退出码 0——
     // 那会把 baseline 变成「零用例也通过」的假绿，必须剥掉。
-    const env = { ...process.env, SCENARIO_TEST_HOME: path.join(os.tmpdir(), "scenario-test-mutation-home") };
+    // SCENARIO_TEST_HOME 放在被测副本内（cwd 即 mkdtemp 的隔离副本）：跨 runner
+    // 并发时各自独立，不写共享的固定 HOME 目录，避免 projects.json 互相干扰。
+    const homeBase = options.cwd || fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-mutation-run-"));
+    const env = { ...process.env, SCENARIO_TEST_HOME: path.join(homeBase, ".scenario-test-home") };
     delete env.NODE_TEST_CONTEXT;
     const result = spawnSync(process.execPath, ["--test", "--test-reporter=tap", file], {
         cwd: options.cwd,
