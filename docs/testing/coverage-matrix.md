@@ -291,7 +291,7 @@
 | G7 | P2 → **闭合于代码层** | `serve --open` 无直接测试 | 已补：C13 经可注入 PATH 桩验证 --open 不真开浏览器；仅 Linux 执行（Windows 显式 SKIP，runner 单列 skipped 非零退出，不冒充通过） | 统一验证 |
 | G8 | P2 → **闭合** | skill-e2e、场景设计 A/B 仅远程 214，不在 CI | **确定性段**：`tests/e2e/` 真实执行 install.sh（ubuntu）/install.ps1（windows）+ run 全链，CI `e2e` job 双平台门禁。**LLM 段（214，2026-11-14 已执行）**：CONS-07 接入-执行冒烟 python 4/4 + java 9/9 步 PASS（`new-api/deepseek-v4.1-flash`，java 用 `PORT=18090` 避开 Jenkins）；CONS-09 场景设计 A/B 6 轮 54/54 变异杀死 | 闭合 |
 | G11 | **P2（新）** → **闭合** | comprehensive-README §1 用例计数笔误 | 已修正并核实：README 现写 **74**（A 25 + B 26 + C 23），与机器枚举 25+26+23=74 一致 | — |
-| 观察1 | — | runner SCENARIO_TEST_HOME 为固定目录名（非 mkdtemp） | **部分改善**：已移至 os.tmpdir()（不再污染仓库/用户目录）并剥离 NODE_TEST_CONTEXT；runner 内部串行执行，同一进程内无冲突。残留：同用户并发启动两个 runner 仍共享同一 HOME——低风险，建议后续改 mkdtemp | 研发1 顺带 |
+| 观察1 | — | runner SCENARIO_TEST_HOME 为固定目录名（非 mkdtemp） | **已修复（2026-11-14，`8250d98`）**：HOME 改放被测隔离副本（cwd=mkdtemp）内，跨 runner 并发各自独立；剥离 NODE_TEST_CONTEXT 保留；runner 自测 12/12 + 真实 M01 注入验证通过 | 闭合 |
 | 观察2 | — | 修复与新测试是否落地 | **已核实落地**（~13:00 快照）：G9/G10/G5 修复 + coverage-fixes 8 用例 + A5/B8/C11–C13 + runner 重写 + 50 变异体 + browser 17 检查（src+dist）均在分支 `test/comprehensive-coverage` 工作树（未提交）；开发已停止改动。有效性执行待统一结果 | 统一验证 |
 
 ### 4.3 变异豁免（纯文档/展示/闸门类，不生硬要求业务变异）
@@ -322,7 +322,7 @@
   - **W1 修复**：唯一收尾点 `finally { finish(...) }`；baseline 失败分支 `return` 后由 finally 单次落盘（自测用例「唯一报告 + 副本清理」直接断言 reportFiles.length===1）。
   - **W2 修复**：`findCase` 返回判空对象，缺用例走 `infrastructure-error`（reason 含「目标用例不存在」）且 `matchedCase: null`；自测断言 stderr 无 TypeError/空指针。
   - **W3 修复（口径升级）**：**killed 仅认 TAP `code=ERR_ASSERTION`**（断言级归因）；目标用例以 TypeError/钩子异常等方式失败 → `infrastructure-error` 且保留 failureType+最小诊断（≤800 字符）+otherFailures；超时、整套无用例、文件级加载失败同样单列 infra，**任何一类都不能被泛化成「检出」**。
-  - **W4 修复**：SCENARIO_TEST_HOME 移至 `os.tmpdir()` 固定目录 + 剥离 `NODE_TEST_CONTEXT`（防嵌套 node --test 的「零用例假绿」）+ baseline ok 须 `cases.size > 0`。残留见观察1（仍非 mkdtemp）。
+  - **W4 修复**：SCENARIO_TEST_HOME 移至 `os.tmpdir()` 固定目录 + 剥离 `NODE_TEST_CONTEXT`（防嵌套 node --test 的「零用例假绿」）+ baseline ok 须 `cases.size > 0`。观察1 已于 2026-11-14 闭合：HOME 改放隔离副本内（见观察1 行）。
 - **六类判定与退出码**：killed / survived / equivalent / **skipped**（TAP `# SKIP`/`# TODO` = 未执行，不进任何结论也不静默丢弃，退出码非零）/ **excluded**（声明 platforms 且当前平台不适用：不进分母、不跑 baseline、退出码 0——「平台排除不冒充通过」；**声明无效**（空数组/未知平台名）→ infrastructure-error 不静默排除）/ infrastructure-error。score 分母只含真正注入并取到结果的 killed+survived。
 - **平台补偿闭环**：Windows 本地 M50 excluded；CI mutation job 跑在 **ubuntu**，M50 在 Linux 上真实注入执行——排除项在声明平台上有实际执行要求（自测 T80/T81/T84 三态验证：排除不冒充 survived、命中照常 killed、无效声明报错）。
 - runner 自测：`run-mutations.selftest.test.js` **12 个故障用例**（QA 审阅定义：正常 killed+等价对照、缺用例、语法错误后还原续跑、baseline 失败唯一报告、超时、加载失败、非断言崩溃不算检出、真实 survived score=0、平台排除三态、SKIP 不误判 ×2），合成仓库 + 真实注入 + 副本清理断言；研发自报 12/12（待统一结果核验）。
