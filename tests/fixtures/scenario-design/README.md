@@ -158,6 +158,8 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 `MODEL` 缺省为 `deepseek-v4.1-flash`，但同名模型在多个 provider 下存在时 pi 会报歧义，此时写成 `provider/model`（214 上已认证的 provider 是 `new-api`）。
 `summarize.mjs` 按 tag 前缀（`-` 之前）分组，输出总分分布与每条规则的有效覆盖次数。
 
+批量跑变异测试用 `run-mutation-all.sh`（对 `current-1..6` 逐个跑 M1-M9）。**在 214 上必须单变异分批**：该机无 swap，mutation-check 连续注入多个变异时 `spawnSync(mvn)` 与 java 服务内存峰值叠加会触发 OOM 杀死 Node（表现为「find 命中 0」或进程直接消失）。该脚本批间 `git checkout` 恢复夹具。
+
 ## 怎么读结果
 
 **只看分布，不看单轮。** 如果 baseline 的 min/max 跨度本身就很大，说明该任务对模型不收敛，任何小于 5 轮的对比都不可信。

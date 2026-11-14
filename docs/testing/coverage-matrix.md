@@ -228,9 +228,9 @@
 | CONS-04 | capabilities.json / init 模板 / AI Prompt 单一来源投影 | contract.test.js（8 项：版本递增/导出名单一致/操作符说明/when·extract·保留变量·generatedVars/config·scenario·cli 投影/engines 与 package.json 一致/init 模板无手抄名单/接入文档用 Skill 安装脚本） | contract「每个操作符含说明；数值操作符标注有限 number 约束」 | capabilities.test.js「--json 与 build 产物一致」 | unit | 第二份手抄名单漂移 → contract/dts 应杀 | — |
 | CONS-05 | 版本一致性 | version.test.js「生成的运行时版本与 package.json 一致」；doctor 版本锁检查（见 CLI-15） | — | — | unit | 版本漂移 → version/doctor 应杀 | — |
 | CONS-06 | 发布版 Skill：离线初始化/项目发现/版本差异 | skill-runtime.test.js「Skill 发布版离线初始化，项目与 Skill 版本不同时仍使用项目 CLI」；skill-detect.test.js（6 项：工作树 .git 识别/嵌套发现/不完整列出缺失/子项目优先/自定义目录/越界拒绝） | skill-detect「拒绝越界目标目录与未知参数」 | skill-detect「不完整：列出缺失文件，不误判安装完成」 | unit | 越界探测/误用父项目运行时 → skill-detect 应杀 | — |
-| CONS-07 | Skill e2e 接入-执行冒烟（真实发布链路） | tests/skill-e2e/（README/docker/java-springboot/python） | — | — | **否：仅 192.168.1.214**（AGENTS.md 约定，本机无 Docker） | 不适用业务变异——环境受限 | **未验证（远程环境）—— P2 缺口 G8**：仅在 192.168.1.214 可执行（AGENTS.md 约定，本机无 Docker）。变异豁免/环境受限 ≠ 验收通过：T05 需远程执行证据或负责人书面豁免记录，此前状态一律「未验证」 |
+| CONS-07 | Skill e2e 接入-执行冒烟（真实发布链路） | tests/skill-e2e/（README/docker/java-springboot/python） | — | — | **否：仅 192.168.1.214**（AGENTS.md 约定，本机无 Docker） | 不适用业务变异——环境受限 | **已执行（远程 214，2026-11-14）**：`run-python-test.sh`（python Flask fixture）4/4 PASS、`run-java-test.sh`（java-springboot fixture）9/9 步 PASS，pi 模型 `new-api/deepseek-v4.1-flash`（214 仅认证 new-api，agent 脚本需 `MODEL` env 前缀——已改为 `MODEL`/`PORT` env 可覆盖）；java 冒烟用 `PORT=18090` 避开 214 Jenkins 占用 18080。仍不在 CI——证据为手动远程执行 |
 | CONS-08 | core 断言/resolve 语义对拍（浏览器工作台 vs core） | parity.test.js（11 项：极性全锁定/深比较/each/extract 契约/headers 口径/generatedVars 双端同源/ui-utils 无 DOM） | parity「includes/oneOf/exists 假绿回归」专项 | parity「oneOf 非数组必须失败」 | unit | 双端语义分叉 → parity 应杀 | — |
-| CONS-09 | 场景设计 A/B 与评分器 | score-design-eval.test.js（4 项：理想产出高分/改 ID 扣卫生分/幂等前后 total 相等算后置验证/只断言 200 得 0 覆盖分）；tests/fixtures/scenario-design/（A/B 脚本与 summarize） | score-design-eval「弱产出显著低分」 | — | 评分器 unit；A/B **未验证：仅 214**（G8） | 评分器适用业务变异（权重偏移）→ score-design-eval 应杀；A/B 脚本不适用（实验脚本） | A/B 属远程实验：登记不要求变异，但状态=未验证，豁免≠通过（T05 需远程证据或书面豁免） |
+| CONS-09 | 场景设计 A/B 与评分器 | score-design-eval.test.js（4 项：理想产出高分/改 ID 扣卫生分/幂等前后 total 相等算后置验证/只断言 200 得 0 覆盖分）；tests/fixtures/scenario-design/（A/B 脚本与 summarize） | score-design-eval「弱产出显著低分」 | — | 评分器 unit 已接 CI；A/B **已执行（远程 214，2026-11-14）** | 评分器适用业务变异（权重偏移）→ score-design-eval 应杀；A/B 脚本不适用（实验脚本） | A/B 远程已执行：current（v0.15.0+，`5a2fb81`）6 轮结构分 min 69/中位 93/max 100（分布形态与历史 baseline 一致，波动源于模型不收敛）；**变异硬门槛 6 产物×M1-M9=54/54 杀死**；R5 为 `allowedPending` 预期缺口 |
 | CONS-10 | 工程约束：行尾/测试分层/CI 触发 | eol.test.js（4 项：.gitattributes 策略/解析/判定极性/仓库无幻影）；engineering.test.js（#48 分层显式、#47 CI 触发与矩阵）；ci.yml 行尾审计步骤 | eol「判定极性」锁定误报/漏报 | — | 是 | eol 极性翻转 → eol 应杀 | — |
 
 ### 3.13 本轮新增测试 → 矩阵行证据索引（第 3 轮快照，2026-11-06 ~13:00）
@@ -269,7 +269,7 @@
 - 矩阵行总数：**112 行**（脚本枚举本文件表格 ID 行，无重复 ID）。分区：A 15 + B 10 + C 6 + D 8 + E 3 + F 2 + G 15 + H 9 + I 18 + J 6 + K 10 + L 10 = 112。第 1 轮误写"76 行"为人工汇总错误，作废。
 - **存在 × CI 纳入**：**111 行**有既有测试且纳入 CI job（第 3 轮：原 109 + GEN-08、HTTP-08 补测试后转入）。其中带限定注记：EX-04 反例偏薄、CONS-09 仅评分器半边在 CI、WB-01/05/10 依赖 browser-comprehensive src+dist 双模式（已接线未执行）。
 - **待验证（无既有测试）**：**0 行**（第 2 轮的 GEN-08（G3）、HTTP-08（G4）已补测试，静态核实存在，执行待统一结果）。
-- **未验证（远程/环境受限）**：CONS-07 整行（G8）；CONS-09 的 A/B 半行同标未验证。**单列未验证 ≠ 可宣称所有功能/所有组合 100%**。
+- **未验证（远程/环境受限）**：无残留——CONS-07、CONS-09 均已于 2026-11-14 在 214 执行通过（见各行证据）。**已执行 ≠ 宣称所有功能/所有组合 100%**。
 - **不适用/变异豁免**：WB-06（视觉展示）、CONS-02（CI 闸门即证据）、文档行（§4.3；豁免 ≠ 验收通过）。
 - **已执行维度**：QA 本轮（第 3 轮终验审查）仍为 **0 行独立执行**（约束：不与统一验证进程并行跑测试/构建）。研发自报（待统一结果核验）：comprehensive* 74 用例 + coverage-fixes 8 + runner 自测 12/12 + 变异 50 个（49 killed + 1 equivalent + Windows 上 M50 excluded）+ browser src 17/17。一切执行结论以统一验证进程与 CI 为准。
 - 变异状态：50/50 定义见 §4.5（find-once 静态校验 QA 全过）；第 2 轮 41 变异体 artifact 为历史快照，已被 50 变异体清单取代；各行「变异建议」列仍为完整选点输入，50 个是有界选点而非穷举。
@@ -287,7 +287,7 @@
 | G10 | **P1（新，安全）** → **闭合于代码层** | 字面敏感值在失败诊断回显泄漏 | 修复入工作树：src/utils/output-secrets.js（收集字面+JSON 转义变体 4 层、最长优先替换、循环安全深拷贝）；cli.js（attempt 上下文经 `_includeAttemptContext` 显式开关传入 {runtime, request}，默认调用签名不变）、engine.js、browser runtime.js/ui-adhoc.js 三端接入；coverage-fixes 6 个敏感用例 + 工作台 4 项敏感回显检查验收；非敏感对照（visible-control）保留防过度脱敏 | 统一验证 |
 | G6 | P2 | skills references 文档与 contract 一致性无自动校验 | 未变（文档行，豁免范围） | 文档行 |
 | G7 | P2 → **闭合于代码层** | `serve --open` 无直接测试 | 已补：C13 经可注入 PATH 桩验证 --open 不真开浏览器；仅 Linux 执行（Windows 显式 SKIP，runner 单列 skipped 非零退出，不冒充通过） | 统一验证 |
-| G8 | P2 → **确定性段闭合 / LLM 段未验证（保持）** | skill-e2e、场景设计 A/B 仅远程 214，不在 CI | **新增 `tests/e2e/`**：真实执行 install.sh（ubuntu）/install.ps1（windows）+ 初始化工程 run 全链，CI `e2e` job 双平台门禁，闭合 G8 的确定性发布消费链段；LLM 段（skill-e2e 冒烟、A/B）仍仅 214 手动，保持未验证，不得以确定性段闭合冒充 LLM 段通过 | 后续按需 |
+| G8 | P2 → **闭合** | skill-e2e、场景设计 A/B 仅远程 214，不在 CI | **确定性段**：`tests/e2e/` 真实执行 install.sh（ubuntu）/install.ps1（windows）+ run 全链，CI `e2e` job 双平台门禁。**LLM 段（214，2026-11-14 已执行）**：CONS-07 接入-执行冒烟 python 4/4 + java 9/9 步 PASS（`new-api/deepseek-v4.1-flash`，java 用 `PORT=18090` 避开 Jenkins）；CONS-09 场景设计 A/B 6 轮 54/54 变异杀死 | 闭合 |
 | G11 | **P2（新）** → **闭合** | comprehensive-README §1 用例计数笔误 | 已修正并核实：README 现写 **74**（A 25 + B 26 + C 23），与机器枚举 25+26+23=74 一致 | — |
 | 观察1 | — | runner SCENARIO_TEST_HOME 为固定目录名（非 mkdtemp） | **部分改善**：已移至 os.tmpdir()（不再污染仓库/用户目录）并剥离 NODE_TEST_CONTEXT；runner 内部串行执行，同一进程内无冲突。残留：同用户并发启动两个 runner 仍共享同一 HOME——低风险，建议后续改 mkdtemp | 研发1 顺带 |
 | 观察2 | — | 修复与新测试是否落地 | **已核实落地**（~13:00 快照）：G9/G10/G5 修复 + coverage-fixes 8 用例 + A5/B8/C11–C13 + runner 重写 + 50 变异体 + browser 17 检查（src+dist）均在分支 `test/comprehensive-coverage` 工作树（未提交）；开发已停止改动。有效性执行待统一结果 | 统一验证 |
@@ -301,7 +301,7 @@
 | CONS-09 A/B 脚本、G6 文档 | 实验脚本/纯文档；文档一致性校验（G6）若要做属 lint 类检查，不属变异范畴 |
 | README/AI Prompt 文案 | 由 contract.test.js「init 模板无手抄名单」投影一致性测试锁定，变异对象是投影不是文案 |
 
-**豁免边界（第 2 轮明确）**：豁免仅指"不要求业务变异"，不改变该行的验证状态。CONS-07 与 CONS-09 的 A/B 半行仍为「未验证」，不得以豁免记录替代远程执行证据（见 G8）。
+**豁免边界（第 2 轮明确）**：豁免仅指"不要求业务变异"，不改变该行的验证状态。CONS-07、CONS-09 已于 2026-11-14 在 214 执行通过（豁免≠通过原则不变，此处为已执行）。
 
 ### 4.4 变异执行约定（供 T02，来源 tasks.md + 本矩阵）
 
