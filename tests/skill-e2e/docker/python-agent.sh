@@ -2,7 +2,7 @@
 set -e
 echo "== target =="
 curl -s -o /dev/null -w "python api: %{http_code}\n" http://127.0.0.1:18081/api/health
-pi --skill /skill -ns -nc --model deepseek-v4.1-flash --no-session -p '当前目录是一个 Python 项目（app.py），本地服务已在 http://127.0.0.1:18081 运行。
+pi --skill /skill -ns -nc --model "${MODEL:-deepseek-v4.1-flash}" --no-session -p '当前目录是一个 Python 项目（app.py），本地服务已在 http://127.0.0.1:18081 运行。
 
 请为以下只读查询接口生成并执行场景测试：
 1) GET /api/health：返回 200 {status:"ok"}；

@@ -2,7 +2,7 @@
 set -e
 echo "== target =="
 curl -s -o /dev/null -w "java api: %{http_code}\n" -X POST http://127.0.0.1:${TARGET_PORT:-18080}/api/login -H 'Content-Type: application/json' -d '{"username":"demo","password":"demo123"}'
-pi --skill /skill -ns -nc --model deepseek-v4.1-flash --no-session -p '当前目录是一个 Spring Boot 项目（src/main/java），本地服务已在 http://127.0.0.1:${TARGET_PORT:-18080} 运行。
+pi --skill /skill -ns -nc --model "${MODEL:-deepseek-v4.1-flash}" --no-session -p '当前目录是一个 Spring Boot 项目（src/main/java），本地服务已在 http://127.0.0.1:${TARGET_PORT:-18080} 运行。
 
 请为以下接口链路生成并执行场景测试：
 1) POST /api/login：JSON body {username:"demo",password:"demo123"}，成功返回 200 {code:0,data:{token,userId}}；错误凭据返回 401。

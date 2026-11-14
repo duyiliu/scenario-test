@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKILL_DIR="${SKILL_DIR:-$ROOT/../../skills/scenario-test}"
 PI_CONFIG_DIR="${PI_CONFIG_DIR:-$HOME/.pi/agent}"
+MODEL="${MODEL:-deepseek-v4.1-flash}"
 WORK="$(mktemp -d)"
 cp -r "$ROOT/python" "$WORK/demo-python"
 
@@ -31,5 +32,6 @@ docker run --rm --network host \
   -v "$WORK:/work" \
   -v "$PI_CONFIG_DIR:/root/.pi/agent" \
   -v "$ROOT/docker/python-agent.sh:/agent.sh:ro" \
+  -e MODEL="$MODEL" \
   -w /work/demo-python \
   pi-agent:1.4.0 bash /agent.sh

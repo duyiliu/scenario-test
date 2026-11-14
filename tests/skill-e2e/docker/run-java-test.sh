@@ -7,6 +7,7 @@ PORT="${PORT:-18080}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKILL_DIR="${SKILL_DIR:-$ROOT/../../skills/scenario-test}"
 PI_CONFIG_DIR="${PI_CONFIG_DIR:-$HOME/.pi/agent}"
+MODEL="${MODEL:-deepseek-v4.1-flash}"
 WORK="$(mktemp -d)"
 cp -r "$ROOT/java-springboot" "$WORK/demo-java"
 
@@ -41,5 +42,6 @@ docker run --rm --network host \
   -v "$PI_CONFIG_DIR:/root/.pi/agent" \
   -v "$ROOT/docker/java-agent.sh:/agent.sh:ro" \
   -e TARGET_PORT="$PORT" \
+  -e MODEL="$MODEL" \
   -w /work/demo-java \
   pi-agent:1.4.0 bash /agent.sh
