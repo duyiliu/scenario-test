@@ -174,6 +174,48 @@ test("CLI run 失败长值输出行级对齐 diff（hunk 上下文/差异定位/
     }
 });
 
+test("CLI run 失败断言输出字段级结构 diff（与 --json 的 diff.entries 同口径）", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-sdiff-"));
+    const secret = "cli-sdiff-secret-160";
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ data: { items: [{ name: "actual", n: 2 }], token: secret }, status: "UP" }));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.mkdirSync(path.join(directory, "scenarios"));
+        fs.writeFileSync(path.join(directory, "scenario.config.js"), `ScenarioTest.registerConfig(ScenarioTest.defineConfig({envs:[{key:"mock",name:"Mock",baseUrl:"http://127.0.0.1:${port}"}],vars:{token:${JSON.stringify(secret)}},scenarios:[{id:"fielddiff",name:"FieldDiff",url:"scenarios/fielddiff.js"}]}));`, "utf8");
+        fs.writeFileSync(path.join(directory, "scenarios/fielddiff.js"), `ScenarioTest.registerScenario("fielddiff",ScenarioTest.defineScenario({name:"FieldDiff",steps:[{name:"对象断言",path:"data",assertions:[{path:"data",equals:{items:[{name:"expected",n:1}],token:"{{vars.token}}"}},{path:"status",equals:"DOWN"}]}]}));`, "utf8");
+        const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.js");
+        const result = await new Promise((resolve) => {
+            const child = spawn(process.execPath, [cli, "--config", path.join(directory, "scenario.config.js"), "--all"], { stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout.on("data", (chunk) => { stdout += chunk; });
+            child.stderr.on("data", (chunk) => { stderr += chunk; });
+            child.on("close", (code) => resolve({ code, stdout, stderr }));
+        });
+        assert.notEqual(result.code, 0, "存在失败场景，退出码应非 0");
+        assert.match(result.stdout, /\[FAIL\] 对象断言/);
+        // 字段级 diff：与 --json 的 diff.entries 同数据源（字段路径 + 类型 + 期望/实际）；
+        // 路径引号经 escapeInlineText 折为字面 \"（防服务端可控键名注入新行）
+        assert.match(result.stdout, /字段差异（2 处）:/);
+        assert.match(result.stdout, /\$\[\\"items\\"\]\[0\]\[\\"name\\"\]（string → string）: 期望 "expected" \/ 实际 "actual"/);
+        assert.match(result.stdout, /\$\[\\"items\\"\]\[0\]\[\\"n\\"\]（number → number）: 期望 1 \/ 实际 2/);
+        // 标量 equals 失败同样落单条目 diff（$（string → string），类型标注是单行 expected/actual 缺的信息）
+        assert.match(result.stdout, /- status: expected="DOWN" actual="UP"/);
+        assert.match(result.stdout, /\$（string → string）: 期望 "DOWN" \/ 实际 "UP"/);
+        // 极性判别：两个失败断言各 1 块（字段级 + 标量），通过断言不产出
+        assert.equal(result.stdout.split("字段差异").length - 1, 2, "每个 equals 失败断言各一块字段差异");
+        // 脱敏口径：vars.token 命中敏感名，diff 行与响应体原文都不透出原文
+        assert.ok(!result.stdout.includes(secret), "字段差异行与输出不得透出敏感原文");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("CLI run 失败步骤输出截断响应体原文（saveResponseAs 提示保存路径，通过步骤不输出）", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-cli-body-"));
     const longBody = "x".repeat(3000);

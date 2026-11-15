@@ -1111,6 +1111,9 @@ const workbenchStyle = (function () {
                 white-space: pre-wrap;
                 word-break: break-word;
             }
+            /* 期望/实际分色高亮（diff 惯例：期望=移除侧红、实际=新增侧绿） */
+            .structural-diff .diff-expected { color: var(--workspace-danger-text, #9f1239); font-weight: 600; }
+            .structural-diff .diff-actual { color: #047857; font-weight: 600; }
             .structural-diff > p { margin: 4px 0 0; color: var(--workspace-muted, #94a3b8); font-size: 10px; }
             .font-mono {
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
