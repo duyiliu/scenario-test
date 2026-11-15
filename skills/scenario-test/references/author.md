@@ -23,4 +23,23 @@
 6. 静态检查所改文件；需要时运行 `doctor`（不调用业务 HTTP），但**不要**擅自执行 `run`、`serve` 或调用业务接口。
 7. 输出场景矩阵、修改文件与待确认项。用户要求执行时才切换到 `execute.md`。
 
+## 造数片段（generatedVars）
+
+测试造数统一声明在场景顶层 `generatedVars`，用 `{{vars.<name>}}` 在步骤中引用；证件/号码/枚举类按 runId+变量名确定性派生（轮内稳定、跨轮换号），不要写死固定号码撞唯一约束。语义与参数校验以 `AI_SCENARIO_PROMPT.md`、`SCENARIO_PATTERNS.md` 为准，这里只给可复制骨架：
+
+```js
+generatedVars: [
+    { name: "idNo", type: "idcard", birthDate: "1990-06-15", gender: "FEMALE" },
+    { name: "mobile", type: "phone", prefix: "138" },
+    { name: "cardNo", type: "luhn", length: 16, prefix: "62" },
+    { name: "corpCode", type: "uscc", regionCode: "110100" },
+    { name: "orderId", type: "uuid" },            // 32 位无连字符用 uuidHex
+    { name: "expireAt", type: "timestamp", offset: "+30d", unit: "s" }, // 偏移 ms/s/m/h/d/w
+    { name: "signTime", type: "timestamp", offset: "-1h", format: "YYYY-MM-DD HH:mm:ss" }, // 与 unit 互斥
+    { name: "channel", type: "enum", values: ["APP", "WEB"], weights: [3, 1] } // 缺省等权，权重 0 永不选中
+]
+```
+
+`idcard` 必填 `birthDate`（YYYY-MM-DD）、可选 `gender`（MALE/FEMALE，默认 MALE）与 `regionCode`（6 位，缺省按轮次派生）；`luhn` 可选 `length`（12-19，默认 16）与 `prefix`（默认 62）；`phone` 可选 `prefix`（1[3-9] 三位号段）；`uscc` 可选 `regionCode`（默认 110100）。`timestamp` 的 `unit` 仅 ms（默认）/s。枚举候选与字段名必须有项目证据（同第 2、4 条）。
+
 安装方的 `AI_SCENARIO_PROMPT.md` 优先于本文件对 DSL 细节的描述；这里是全局工作流，不是 DSL 的第二份事实来源。

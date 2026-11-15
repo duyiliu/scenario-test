@@ -303,6 +303,34 @@ scenario-test/
 - `retryUntil.retryOn` 可选 `assertion`（默认）/`error`/`timeout`，服务刚启动时的网络错误和单次请求超时也能继续轮询；`intervalFactor` / `maxIntervalMs` 支持指数退避。
 - `extract` 支持 `scope: "suite"`，把登录 token 等结果写入本次 run 的共享命名空间，后续场景用 `{{suite.<name>}}` 引用；每个场景以启动时的快照运行，结束时合并（并发时按完成顺序，同名键后完成者覆盖）。`suite` 不跨 run、不建立显式依赖。
 - `from: "headers"` 的首段头名大小写不敏感；`path` 支持 `[*]` 通配段，可产出数组并直接用于 `length`/`includes`/`each` 断言。
+- 场景顶层 `generatedVars` 声明测试造数，每次运行生成一次并以 `{{vars.<name>}}` 引用：证件/号码类（`idcard`/`luhn`/`phone`/`uscc`）按 `runId`+变量名确定性派生（轮内稳定、跨轮换号、校验位合法），枚举类（`enum`）同样按轮次确定性抽取；`uuid`/`uuidHex` 每次随机，`timestamp` 支持 `offset`/`unit`/`format`；另有 `md5`/`signature` 签名造数。时间窗、唯一约束字段无需外部拼值。
+
+```js
+ScenarioTest.registerScenario("member-join", ScenarioTest.defineScenario({
+    name: "会员开户",
+    generatedVars: [
+        { name: "idNo", type: "idcard", birthDate: "1990-06-15", gender: "FEMALE" }, // 18 位身份证，校验位按 GB 11643
+        { name: "cardNo", type: "luhn", length: 16, prefix: "62" },                  // 银行卡号，末位按 Luhn
+        { name: "mobile", type: "phone", prefix: "138" },                            // 大陆手机号
+        { name: "corpCode", type: "uscc", regionCode: "110100" },                    // 统一社会信用代码，校验位按 GB 32100
+        { name: "orderId", type: "uuid" },                                           // 带连字符 UUID v4；uuidHex 为 32 位无连字符
+        { name: "expireAt", type: "timestamp", offset: "+30d", unit: "s" },          // 偏移 ms/s/m/h/d/w；unit 仅 ms（默认）/s
+        { name: "signTime", type: "timestamp", offset: "-1h", format: "YYYY-MM-DD HH:mm:ss" }, // 本地时间串，与 unit 互斥
+        { name: "channel", type: "enum", values: ["APP", "WEB", "H5"], weights: [5, 3, 2] }  // 按权重确定性抽取，缺省等权
+    ],
+    steps: [
+        {
+            name: "创建会员",
+            method: "POST",
+            path: "members",
+            request: { body: { idNo: "{{vars.idNo}}", mobile: "{{vars.mobile}}", expireAt: "{{vars.expireAt}}" } },
+            status: 200
+        }
+    ]
+}));
+```
+
+证件类参数：`idcard` 必填 `birthDate`（YYYY-MM-DD）、可选 `gender`（MALE/FEMALE，默认 MALE）与 `regionCode`（6 位，缺省按轮次从测试区划池派生）；`luhn` 可选 `length`（12-19，默认 16）与 `prefix`（默认 62）；`phone` 可选 `prefix`（1[3-9] 三位号段，缺省按轮次派生）；`uscc` 可选 `regionCode`（默认 110100）。
 
 ### 工作台与运行
 
