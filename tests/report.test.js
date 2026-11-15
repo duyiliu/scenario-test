@@ -123,6 +123,64 @@ test("断言表明细行 eachDetailRows 递归展开且只含失败子断言", (
     assert.equal(eachDetailRows(undefined, ""), "");
 });
 
+test("Markdown 报告失败断言透出期望/实得与字段级 diff（#160）", () => {
+    const diff = {
+        entries: [
+            { path: '$["items"][0]["name"]', expected: "expected", actual: "actual", expectedType: "string", actualType: "string" },
+            { path: '$["items"][0]["n"]', expected: 1, actual: 2, expectedType: "number", actualType: "number" }
+        ],
+        truncated: false
+    };
+    const report = {
+        steps: [failedStep({
+            assertions: [
+                { name: "data", passed: false, expected: { items: [{ name: "expected", n: 1 }] }, actual: { items: [{ name: "actual", n: 2 }] }, diff },
+                { name: "status", passed: false, expected: "UP", actual: "DOWN" },
+                { name: "ok", passed: true, expected: 1, actual: 1 }
+            ]
+        })]
+    };
+    const md = buildMarkdownReport(report);
+    // 失败断言透出期望/实得行（与 each 明细行同一「期望/实得」口径）
+    assert.match(md, /^    - 期望: \{"items":\[\{"name":"expected","n":1\}\]\},实得: \{"items":\[\{"name":"actual","n":2\}\]\}$/m);
+    // 字段级 diff：表头作子项、条目行再深一级（Markdown 嵌套列表 4 空格口径）
+    assert.match(md, /^    - 字段差异（2 处）:$/m);
+    assert.match(md, /^        - \$\["items"\]\[0\]\["name"\]（string → string）: 期望 expected \/ 实际 actual$/m);
+    assert.match(md, /^        - \$\["items"\]\[0\]\["n"\]（number → number）: 期望 1 \/ 实际 2$/m);
+    // 无 diff 的失败断言只有期望/实得行、不产生字段差异行；通过断言不透出
+    assert.equal(md.split("字段差异").length - 1, 1, "仅携带 diff 的断言产生差异行");
+    assert.doesNotMatch(md, /\[x\] ok[\s\S]*?期望: /, "通过断言不透出期望/实得");
+});
+
+test("Markdown 报告 each 子断言 diff 与 undefined 侧（缺失）标注（#160）", () => {
+    const report = {
+        steps: [failedStep({
+            assertions: [{
+                name: "list", passed: false, expected: { each: { equals: { a: 1 } } }, actual: [],
+                detail: [{
+                    index: 0, actual: { a: 2, extra: "new" },
+                    assertions: [{
+                        name: "eq", passed: false, expected: { a: 1 }, actual: { a: 2, extra: "new" },
+                        diff: {
+                            entries: [
+                                { path: '$["a"]', expected: 1, actual: 2, expectedType: "number", actualType: "number" },
+                                { path: '$["extra"]', expected: undefined, actual: "new", expectedType: "missing", actualType: "string" }
+                            ],
+                            truncated: false
+                        }
+                    }]
+                }]
+            }]
+        })]
+    };
+    const md = buildMarkdownReport(report);
+    // each 明细行的子断言 diff：在明细行（depth 1）下 diff 表头深一级、条目再深一级
+    assert.match(md, /^        - 字段差异（2 处）:$/m);
+    assert.match(md, /^            - \$\["a"\]（number → number）: 期望 1 \/ 实际 2$/m);
+    // missing 侧统一标注「（缺失）」（期望侧缺失 = actual 多出的字段）
+    assert.match(md, /期望 （缺失） \/ 实际 new$/m);
+});
+
 test("Markdown 报告透出断言失败原因（顶层与 each 子断言，值经转义）", () => {
     const reason = "includes 不支持对象类型的实际值：请改用 equals 或 path 断言";
     const report = {
@@ -296,7 +354,8 @@ test("Markdown 报告行内正文的反引号转义为字面量：奇数个不�
     assert.ok(md.includes("期望 e\\`1,实得 a\\`2"), "each 明细值反引号应转义");
     // 承载用户值的行不得残留裸反引号（mdCode 生成的行内代码 span 是报告里合法使用反引号的位置）
     const valueLines = md.split("\n").filter((line) => /步骤 \\`A|错误 \\`B|变量 \\`a|字段 \\`x|e\\`1/.test(line));
-    assert.equal(valueLines.length, 5, "五处承载用户值的行都应存在");
+    // 第 6 行是 #160 新增的失败断言「期望/实得」行（含 e`1/a`2 用户值），同样要求零裸反引号
+    assert.equal(valueLines.length, 6, "六处承载用户值的行都应存在");
     for (const line of valueLines) {
         const bare = (line.match(/(^|[^\\])`/g) || []).length;
         assert.equal(bare, 0, `承载用户值的行不得残留裸反引号: ${line}`);

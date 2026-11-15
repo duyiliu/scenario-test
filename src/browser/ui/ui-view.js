@@ -1,4 +1,4 @@
-import { renderStructuralDiff } from '../../utils/structural-diff.js';
+import { renderStructuralDiff, structuralDiffLines } from '../../utils/structural-diff.js';
 import { esc, fmt, safeJson } from './ui-utils.js';
 import { safeDecodeComponent } from '../../utils/safe-decode.js';
 
@@ -63,6 +63,20 @@ const workbenchView = (function () {
         return html;
     }
 
+    // 结构化 diff 行（Markdown 诊断报告）：diff.entries 经 structuralDiffLines 投影为文本行，
+    // 与 CLI 文本输出、--json 的 diff.entries 同一份字段级证据；首行「字段差异」作子项、
+    // 差异条目再深一级缩进（Markdown 嵌套列表 4 空格口径），值与路径经 mdInline 转义
+    function pushDiffLines(lines, diff, depth) {
+        var rows = structuralDiffLines(diff, { formatValue: mdInline, formatPath: mdInline });
+        rows.forEach(function (row, index) {
+            // 首行表头作 depth 层列表项；条目行剥去自带「  」两格缩进后置于 depth+1 层，
+            // 与 each 明细行同一「逐层 4 空格」嵌套口径
+            lines.push(index === 0
+                ? '    '.repeat(depth) + '- ' + row
+                : '    '.repeat(depth + 1) + row.replace(/^  /, ''));
+        });
+    }
+
     // each 失败明细行（Markdown 诊断报告）：与 eachDetailRows 同口径；
     // depth 为列表嵌套深度（1 级 4 空格缩进，与既有明细行一致），值经 mdInline 转义
     function pushEachDetailLines(lines, detail, prefix, depth) {
@@ -75,6 +89,7 @@ const workbenchView = (function () {
                 if (sub.passed) return;
                 lines.push('    '.repeat(depth) + '- ' + label + '失败: 期望 ' + mdInline(sub.expected) + ',实得 ' + mdInline(sub.actual));
                 if (sub.reason) lines.push('    '.repeat(depth + 1) + '- 原因: ' + mdInline(sub.reason));
+                pushDiffLines(lines, sub.diff, depth + 1);
                 pushEachDetailLines(lines, sub.detail, label, depth + 1);
             });
         });
@@ -1439,8 +1454,13 @@ const workbenchView = (function () {
                 lines.push('- **断言结果**:');
                 step.assertions.forEach(function (a) {
                     lines.push('  - [' + (a.passed ? 'x' : ' ') + '] ' + mdInline(a.name));
+                    // 失败断言透出期望/实得（与 each 明细行同一「期望 X,实得 Y」口径），
+                    // 业务接入者不必再回原始响应里对拍；undefined 标注「（无）」
+                    if (!a.passed) lines.push('    - 期望: ' + (a.expected === undefined ? '（无）' : mdInline(a.expected)) + ',实得: ' + (a.actual === undefined ? '（无）' : mdInline(a.actual)));
                     // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言
                     if (a.reason) lines.push('    - 原因: ' + mdInline(a.reason));
+                    // 字段级结构 diff：与 --json 的 diff.entries、CLI 文本、工作台字段差异块同源
+                    pushDiffLines(lines, a.diff, 1);
                     // each 失败明细：逐行列出失败元素（序号 1 基）与失败子断言的期望/实际值；
                     // 嵌套 each 经 pushEachDetailLines 递归展开（路径「 › 」串联），值经 mdInline 转义
                     pushEachDetailLines(lines, a.detail, '', 1);

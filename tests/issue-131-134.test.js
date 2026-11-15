@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { evaluateAssertion, applyExtract } from "../src/core.js";
+import { evaluateAssertion, applyExtract, redactSecrets } from "../src/core.js";
 import { defineScenario } from "../src/registry.js";
-import { structuralDiff, renderStructuralDiff } from "../src/utils/structural-diff.js";
+import { structuralDiff, renderStructuralDiff, structuralDiffLines } from "../src/utils/structural-diff.js";
 import { buildHtmlReport } from "../src/utils/html-report.js";
 import { eachDetailRows } from "../src/browser/ui/ui-view.js";
 
@@ -33,6 +33,40 @@ test("#131 大数组、超长值和深层结构的证据有界", () => {
     let a = 1, b = 2;
     for (let i = 0; i < 100; i++) { a = { a }; b = { a: b }; }
     assert.equal(structuralDiff(a, b).truncated, true);
+});
+
+test("#160 structuralDiffLines 字段级文本投影：路径/类型/期望实际同 entries 口径", () => {
+    const diff = {
+        entries: [
+            { path: '$["items"][0]["name"]', expected: "expected", actual: "actual", expectedType: "string", actualType: "string" },
+            { path: '$["items"][0]["n"]', expected: 1, actual: 2, expectedType: "number", actualType: "number" },
+            { path: '$["extra"]', expected: "x", actual: undefined, expectedType: "string", actualType: "missing" }
+        ],
+        truncated: true
+    };
+    const lines = structuralDiffLines(diff);
+    assert.equal(lines[0], "字段差异（3+ 处）:");
+    assert.equal(lines.length, 5, "头部 + 3 条目 + 截断提示行");
+    assert.match(lines[1], /^  - \$\["items"\]\[0\]\["name"\]（string → string）: 期望 expected \/ 实际 actual$/);
+    assert.match(lines[2], /期望 1 \/ 实际 2$/);
+    // 缺失侧统一标注「（缺失）」，不把 undefined 漏给格式化器
+    assert.match(lines[3], /实际 （缺失）$/);
+    assert.match(lines[4], /截断/);
+    // formatValue/formatPath 注入方转义：Markdown 口径把值拍成行内文本
+    const escaped = structuralDiffLines(diff, {
+        formatValue: (v) => typeof v === "string" ? v : JSON.stringify(v),
+        formatPath: (p) => `\`${p}\``
+    });
+    assert.match(escaped[1], /^  - `\$\["items"\]\[0\]\["name"\]`（string → string）: 期望 expected \/ 实际 actual$/);
+    // 空输入不产出行（调用方按既有短路口径继续）
+    assert.deepEqual(structuralDiffLines(undefined), []);
+    assert.deepEqual(structuralDiffLines({ entries: [], truncated: false }), []);
+    // 调用方先脱敏后投影：diff 里的敏感值经 redactSecrets 遮蔽后文本行不含原文
+    const secret = "render-secret-token-160";
+    const raw = structuralDiff({ token: "public" }, { token: secret });
+    const rendered = structuralDiffLines(redactSecrets(raw, [secret])).join("\n");
+    assert.ok(!rendered.includes(secret), "diff 行不得透出敏感原文");
+    assert.match(rendered, /rend\.\.\.-160/, "脱敏占位（首4+…+尾4）应出现在 diff 行");
 });
 
 test("#131 oneOf 标注候选；notEquals 相等失败；多操作符不伪造差异", () => {

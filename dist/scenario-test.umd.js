@@ -383,9 +383,20 @@ var ScenarioTest = (() => {
   }
   function renderStructuralDiff(diff) {
     if (!diff) return "";
-    const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre>\u671F\u671B: ${esc(JSON.stringify(item.expected))}
-\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</pre></details>`).join("");
+    const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre><span class="diff-expected">\u671F\u671B: ${esc(JSON.stringify(item.expected))}</span>
+<span class="diff-actual">\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</span></pre></details>`).join("");
     return `<details open class="structural-diff"><summary>\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09</summary>${rows}${diff.truncated ? "<p>\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD</p>" : ""}</details>`;
+  }
+  function structuralDiffLines(diff, options = {}) {
+    if (!diff || !Array.isArray(diff.entries) || !diff.entries.length) return [];
+    const present = (value) => value === void 0 ? "\uFF08\u7F3A\u5931\uFF09" : options.formatValue ? options.formatValue(value) : String(value);
+    const showPath = options.formatPath || ((path) => String(path));
+    const lines = [`\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09:`];
+    for (const entry of diff.entries) {
+      lines.push(`  - ${showPath(entry.path)}\uFF08${entry.expectedType} \u2192 ${entry.actualType}\uFF09: \u671F\u671B ${present(entry.expected)} / \u5B9E\u9645 ${present(entry.actual)}`);
+    }
+    if (diff.truncated) lines.push("  - \u2026\uFF08\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD\uFF09");
+    return lines;
   }
   function assertionDiff(definition, expected, actual) {
     if (Object.hasOwn(definition, "equals")) return structuralDiff(expected, actual);
@@ -5044,6 +5055,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
                 white-space: pre-wrap;
                 word-break: break-word;
             }
+            /* \u671F\u671B/\u5B9E\u9645\u5206\u8272\u9AD8\u4EAE\uFF08diff \u60EF\u4F8B\uFF1A\u671F\u671B=\u79FB\u9664\u4FA7\u7EA2\u3001\u5B9E\u9645=\u65B0\u589E\u4FA7\u7EFF\uFF09 */
+            .structural-diff .diff-expected { color: var(--workspace-danger-text, #9f1239); font-weight: 600; }
+            .structural-diff .diff-actual { color: #047857; font-weight: 600; }
             .structural-diff > p { margin: 4px 0 0; color: var(--workspace-muted, #94a3b8); font-size: 10px; }
             .font-mono {
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -5603,6 +5617,12 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
       });
       return html;
     }
+    function pushDiffLines(lines, diff, depth) {
+      var rows = structuralDiffLines(diff, { formatValue: mdInline, formatPath: mdInline });
+      rows.forEach(function(row, index) {
+        lines.push(index === 0 ? "    ".repeat(depth) + "- " + row : "    ".repeat(depth + 1) + row.replace(/^  /, ""));
+      });
+    }
     function pushEachDetailLines(lines, detail, prefix, depth) {
       (Array.isArray(detail) ? detail : []).forEach(function(d) {
         var label = (prefix ? prefix + " \u203A " : "") + (d.path !== void 0 && d.path !== null && d.path !== "" ? d.path : "\u7B2C " + (d.index + 1) + " \u9879");
@@ -5610,6 +5630,7 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           if (sub.passed) return;
           lines.push("    ".repeat(depth) + "- " + label + "\u5931\u8D25: \u671F\u671B " + mdInline(sub.expected) + ",\u5B9E\u5F97 " + mdInline(sub.actual));
           if (sub.reason) lines.push("    ".repeat(depth + 1) + "- \u539F\u56E0: " + mdInline(sub.reason));
+          pushDiffLines(lines, sub.diff, depth + 1);
           pushEachDetailLines(lines, sub.detail, label, depth + 1);
         });
       });
@@ -6627,7 +6648,9 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
           lines.push("- **\u65AD\u8A00\u7ED3\u679C**:");
           step.assertions.forEach(function(a) {
             lines.push("  - [" + (a.passed ? "x" : " ") + "] " + mdInline(a.name));
+            if (!a.passed) lines.push("    - \u671F\u671B: " + (a.expected === void 0 ? "\uFF08\u65E0\uFF09" : mdInline(a.expected)) + ",\u5B9E\u5F97: " + (a.actual === void 0 ? "\uFF08\u65E0\uFF09" : mdInline(a.actual)));
             if (a.reason) lines.push("    - \u539F\u56E0: " + mdInline(a.reason));
+            pushDiffLines(lines, a.diff, 1);
             pushEachDetailLines(lines, a.detail, "", 1);
           });
         }

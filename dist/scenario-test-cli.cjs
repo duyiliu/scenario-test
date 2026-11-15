@@ -393,9 +393,20 @@ function esc(value2) {
 }
 function renderStructuralDiff(diff) {
   if (!diff) return "";
-  const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre>\u671F\u671B: ${esc(JSON.stringify(item.expected))}
-\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</pre></details>`).join("");
+  const rows = diff.entries.map((item) => `<details open><summary>${esc(item.path)} (${esc(item.expectedType)} \u2192 ${esc(item.actualType)})</summary><pre><span class="diff-expected">\u671F\u671B: ${esc(JSON.stringify(item.expected))}</span>
+<span class="diff-actual">\u5B9E\u9645: ${esc(JSON.stringify(item.actual))}</span></pre></details>`).join("");
   return `<details open class="structural-diff"><summary>\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09</summary>${rows}${diff.truncated ? "<p>\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD</p>" : ""}</details>`;
+}
+function structuralDiffLines(diff, options = {}) {
+  if (!diff || !Array.isArray(diff.entries) || !diff.entries.length) return [];
+  const present = (value2) => value2 === void 0 ? "\uFF08\u7F3A\u5931\uFF09" : options.formatValue ? options.formatValue(value2) : String(value2);
+  const showPath = options.formatPath || ((path15) => String(path15));
+  const lines = [`\u5B57\u6BB5\u5DEE\u5F02\uFF08${diff.entries.length}${diff.truncated ? "+" : ""} \u5904\uFF09:`];
+  for (const entry of diff.entries) {
+    lines.push(`  - ${showPath(entry.path)}\uFF08${entry.expectedType} \u2192 ${entry.actualType}\uFF09: \u671F\u671B ${present(entry.expected)} / \u5B9E\u9645 ${present(entry.actual)}`);
+  }
+  if (diff.truncated) lines.push("  - \u2026\uFF08\u5DEE\u5F02\u8BC1\u636E\u5DF2\u622A\u65AD\uFF09");
+  return lines;
 }
 function assertionDiff(definition, expected, actual) {
   if (Object.hasOwn(definition, "equals")) return structuralDiff(expected, actual);
@@ -420,7 +431,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "37e79a9649d5e65f89e02767cba58637631cbe6196fa951ccf996fde55901c3b";
+var BUILD_ID = "a37df893b2cb099953b162884f811715369178cf5a6f51b2a975b339a6390fe9";
 
 // src/contract.js
 var CONTRACT_VERSION = 23;
@@ -6593,7 +6604,7 @@ function buildHtmlReport(reports, options = {}) {
     return `<section><h2>${value(report.scenarioId || report.name)} \xB7 ${value(report.status)}</h2>${steps}${pending ? `<ul>${pending}</ul>` : ""}</section>`;
   }).join("");
   const notRun = (options.notRun || []).map((item) => `<li>\u672A\u6267\u884C\u573A\u666F\uFF1A${value(item)}</li>`).join("");
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}.structural-diff .diff-expected{color:#b91c1c;font-weight:600}.structural-diff .diff-actual{color:#047857;font-weight:600}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
 }
 function writeHtmlReport(file, reports, options) {
   const target = import_node_path9.default.resolve(file);
@@ -8818,6 +8829,13 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
         for (const warning of result.warnings || []) {
           entryPrint(`  [WARN] ${escapeInlineText(redact(warning))}`);
         }
+        const printStructuralDiff = (diff, prefix) => {
+          const lines = structuralDiffLines(redact(diff), {
+            formatPath: escapeInlineText,
+            formatValue: formatFailureValue
+          });
+          for (const line of lines) entryPrint(`${prefix}${line}`);
+        };
         const printEachDetail = (detail, prefix) => {
           for (const item of detail || []) {
             if (!item) continue;
@@ -8830,6 +8848,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
               if (sub.passed) continue;
               entryPrint(`      \u21B3 ${escapeInlineText(redact(label))} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
               if (sub.reason) entryPrint(`        \u539F\u56E0: ${escapeInlineText(redact(sub.reason))}`);
+              printStructuralDiff(sub.diff, "        ");
               for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
                 entryPrint(line);
               }
@@ -8840,6 +8859,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
         for (const assertion of result.assertions.filter((item) => !item.passed)) {
           entryPrint(`  - ${escapeInlineText(redact(assertion.name))}: expected=${formatFailureValue(redact(assertion.expected))} actual=${formatFailureValue(redact(assertion.actual))}`);
           if (assertion.reason) entryPrint(`      \u539F\u56E0: ${escapeInlineText(redact(assertion.reason))}`);
+          printStructuralDiff(assertion.diff, "    ");
           for (const line of failureDiffLines(redact(assertion.expected), redact(assertion.actual), "    ")) {
             entryPrint(line);
           }

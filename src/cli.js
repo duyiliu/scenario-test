@@ -19,6 +19,7 @@ import { writeHtmlReport } from "./utils/html-report.js";
 import { writeJUnitReport } from "./utils/junit.js";
 import { listLegacyRuntimeFiles, resolveProjectLayout } from "./project-layout.js";
 import { defuseCiCommandMarkers, escapeC1, escapeInlineText, failureDiffLines, formatFailureValue } from "./utils/failure-diff.js";
+import { structuralDiffLines } from "./utils/structural-diff.js";
 import {
     DEFAULT_PROXY_TIMEOUT_MS,
     MAX_PROXY_TIMEOUT_MS,
@@ -760,6 +761,16 @@ async function runCommand(args) {
                 for (const warning of result.warnings || []) {
                     entryPrint(`  [WARN] ${escapeInlineText(redact(warning))}`);
                 }
+                // 字段级结构 diff（#160）：equals/notEquals/oneOf 失败时引擎产出
+                // assertion.diff（同 --json 的 diff.entries 数据源）；先脱敏再投影为文本行，
+                // 与 --json/工作台同口径。prefix 对齐 failureDiffLines 的缩进口径。
+                const printStructuralDiff = (diff, prefix) => {
+                    const lines = structuralDiffLines(redact(diff), {
+                        formatPath: escapeInlineText,
+                        formatValue: formatFailureValue
+                    });
+                    for (const line of lines) entryPrint(`${prefix}${line}`);
+                };
                 // each/shape 失败明细：each 按失败元素（序号 1 基）展开，shape 按字段路径展开；
                 // 嵌套 each 递归展开，路径用「 › 」串联定位
                 const printEachDetail = (detail, prefix) => {
@@ -779,6 +790,8 @@ async function runCommand(args) {
                             entryPrint(`      ↳ ${escapeInlineText(redact(label))} ${escapeInlineText(redact(sub.name))}: expected=${formatFailureValue(redact(sub.expected))} actual=${formatFailureValue(redact(sub.actual))}`);
                             // 语义化失败原因（如 includes 对象实际值）：紧随明细行输出，引导替代写法
                             if (sub.reason) entryPrint(`        原因: ${escapeInlineText(redact(sub.reason))}`);
+                            // 字段级 diff 先行（精确定位），与顶层断言同口径
+                            printStructuralDiff(sub.diff, "        ");
                             // 值超短值上限时展开为分块 diff（多行字符串/长 JSON），与顶层断言同口径
                             for (const line of failureDiffLines(redact(sub.expected), redact(sub.actual), "        ")) {
                                 entryPrint(line);
@@ -792,6 +805,8 @@ async function runCommand(args) {
                     // 语义化失败原因（如 includes 对象实际值）：引导改用 equals / 字段 path 断言；
                     // 静态文案同样过 escapeInlineText，防插件注入换行/CI 命令标记
                     if (assertion.reason) entryPrint(`      原因: ${escapeInlineText(redact(assertion.reason))}`);
+                    // 字段级结构 diff：与 --json 的 diff.entries、工作台字段差异块同数据源
+                    printStructuralDiff(assertion.diff, "    ");
                     // 短值保持单行口径；任一值序列化超 80 字符时展开结构化 diff 分块：
                     // 多行字符串按真实换行拆行（行号 + | 前缀，行内容转义防 CRLF 打乱终端）、
                     // 长对象/数组缩进展开、字符串值定位首个差异字符（1 基）并给上下文窗口

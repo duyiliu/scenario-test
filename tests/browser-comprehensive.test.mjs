@@ -135,8 +135,26 @@ try {
     await check('反例：嵌套diff和length组合用户可见证据', async () => {
         await select('diff'); await run(); assert.equal(await count('[data-passed="false"]'), 2);
         await page.locator('#stepsList li').first().click();
-        assert.match(await page.locator('.structural-diff').first().textContent(), /expected/);
-        assert.match(await page.locator('.structural-diff').first().textContent(), /actual/);
+        const diffText = await page.locator('.structural-diff').first().textContent();
+        assert.match(diffText, /expected/);
+        assert.match(diffText, /actual/);
+        // 字段级差异路径透出（与 --json 的 diff.entries 同口径）：name 值差异 + n 字段缺失
+        assert.match(diffText, /items/);
+        assert.match(diffText, /name/);
+        // 期望/实际分色高亮（字段级高亮差异的渲染证据）
+        assert.equal(await page.locator('.structural-diff .diff-expected').count() > 0, true);
+        assert.equal(await page.locator('.structural-diff .diff-actual').count() > 0, true);
+        // 失败诊断报告面板同样展开字段级 diff（不只在断言表）
+        assert.match(await page.locator('#reportPanel').textContent(), /字段差异/);
+        assert.match(await page.locator('#reportPanel .structural-diff').first().textContent(), /name/);
+        // Markdown 诊断报告与 CLI/--json 同口径：字段差异行透出字段路径与期望/实得值
+        await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copied = text; } } }));
+        await page.locator('#copyDiagnosisMarkdownBtn').click();
+        await page.waitForFunction(() => Boolean(window.copied));
+        const markdown = await page.evaluate(() => window.copied);
+        assert.match(markdown, /期望: .*,实得: /);
+        assert.match(markdown, /字段差异/);
+        assert.match(markdown, /name.*expected.*actual|name.*期望.*实际/s);
         await page.screenshot({ path: path.join(artifacts, 'nested-length.png'), fullPage: true });
     });
     await check('反例：临时请求无效JSON不发请求', async () => {
