@@ -6,6 +6,12 @@ import workbenchStyle from './ui-style.js';
 import workbenchView from './ui-view.js';
 import workbenchAdhoc from './ui-adhoc.js';
 import { buildStepCurl } from './curl.js';
+import {
+    buildScenarioFileSource,
+    isSafeScenarioFile,
+    isSafeScenarioId,
+    slugifyScenarioId
+} from './ui-editor.js';
 
 export function createWorkbenchRuntime(options) {
     'use strict';
@@ -175,7 +181,15 @@ export function createWorkbenchRuntime(options) {
         // 与 debugRuntimes[i]（执行前快照）做差集，供工作台「运行时变量」面板展示
         // 每步执行后的变量与 extract 变更项（suite 为本次运行跨步骤共享变量，名称带 suite. 前缀展示）
         varsTrail: [],
-        suiteTrail: []
+        suiteTrail: [],
+        // ===== 场景编辑（YIL-199）=====
+        // scenarioDef = registry 里注册的场景定义（含 onAttempt 等函数字段）；
+        // state.scenario 是它的 JSON 深拷贝执行视图（函数丢失与既有行为一致）。
+        // 编辑操作同时改两份：执行视图保持渲染，序列化保存用 scenarioDef 避免丢函数。
+        scenarioDef: null,
+        scenarioId: '',
+        editing: false,
+        scenarioEdited: false
     };
 
     // ===== 存储与配置辅助 =====
@@ -599,7 +613,7 @@ export function createWorkbenchRuntime(options) {
 
     function renderStepsAll() {
         var varsViews = (state.steps || []).map(function (_, idx) { return buildVarsView(idx); });
-        uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews));
+        uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews), state.editing);
         updateExecutionFooter();
     }
 
@@ -891,6 +905,7 @@ export function createWorkbenchRuntime(options) {
         state.startTime = null;
         state.endTime = null;
         state.executionMode = 'full';
+        state.editing = false;
         stepsFilterState.type = 'all';
         stepsFilterState.keyword = '';
         renderStatsAll();
@@ -899,6 +914,7 @@ export function createWorkbenchRuntime(options) {
         renderReportPanel();
         setSidePanelTab('stats');
         uiView.setRunState('idle', '待执行');
+        syncEditUI();
     }
 
     function showDiagnosticError(error, customState) {
@@ -1046,6 +1062,7 @@ export function createWorkbenchRuntime(options) {
         state.running = true;
         state.activeRuntime = runtime;
         state.executionMode = 'full';
+        state.editing = false;
         state.stepRuntime = null;
         state.stepCheckpoints = [];
         state.debugRuntimes = [];
@@ -1108,6 +1125,7 @@ export function createWorkbenchRuntime(options) {
             state.running = false;
             state.activeRuntime = null;
             setExecutionButtonsDisabled(false);
+            syncEditUI();
         }
     }
 
@@ -1125,6 +1143,7 @@ export function createWorkbenchRuntime(options) {
             }
             state.nextStepIndex = 0;
             state.steps = [];
+            state.editing = false;
             state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
             state.debugRuntimes = [];
             state.lastReport = null;
@@ -1181,6 +1200,7 @@ export function createWorkbenchRuntime(options) {
             state.running = false;
             state.activeRuntime = null;
             setExecutionButtonsDisabled(false);
+            syncEditUI();
         }
     }
 
@@ -1779,6 +1799,544 @@ export function createWorkbenchRuntime(options) {
         window.history.replaceState({}, '', url.toString());
     }
 
+    // ===== 场景编辑（YIL-199）：步骤排序 / 场景复制 / 变量快速编辑，统一经「保存」写回 =====
+    // serve 工作台（window.__SCENARIO_TEST_SERVE_PROXY__）下经
+    // POST /__scenario-test__/scenario-file 与 /config-scenarios 直接写盘；
+    // 独立 UMD / file:// 打开时降级为复制改写后的场景源码到剪贴板。
+
+    function isServeBacked() {
+        return Boolean(window.__SCENARIO_TEST_SERVE_PROXY__);
+    }
+
+    function postScenarioEdit(pathname, payload) {
+        return fetch(pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(function (response) {
+            return response.json().catch(function () { return { ok: false, error: '响应不是合法 JSON' }; }).then(function (body) {
+                if (!response.ok || !body.ok) {
+                    throw new Error(body.error || ('请求失败: HTTP ' + response.status));
+                }
+                return body;
+            });
+        });
+    }
+
+    function setEditStatus(text, isError) {
+        var node = document.getElementById('editStatus');
+        if (!node) return;
+        node.textContent = text || '';
+        node.classList.toggle('text-rose-600', Boolean(isError));
+        node.classList.toggle('text-amber-700', !isError);
+    }
+
+    function syncEditUI() {
+        var editBtn = document.getElementById('editScenarioBtn');
+        var saveBtn = document.getElementById('saveScenarioBtn');
+        var toolbar = document.getElementById('editToolbar');
+        var hint = document.getElementById('editToolbarHint');
+        var dirty = document.getElementById('scenarioDirtyBadge');
+        var blocked = !state.scenario || state.running || (state.steps || []).length > 0;
+        if (editBtn) {
+            editBtn.disabled = blocked;
+            editBtn.textContent = state.editing ? '退出编辑' : '编辑';
+            editBtn.title = blocked
+                ? '有执行结果或正在执行：请先「清除结果」再编辑'
+                : (isServeBacked()
+                    ? '编辑当前场景：拖拽调整步骤顺序、改场景变量，「保存」写回场景文件'
+                    : '编辑当前场景：「保存」会把改写后的场景源码复制到剪贴板（当前不是 serve 工作台，无法直接写文件）');
+        }
+        if (saveBtn) {
+            saveBtn.disabled = !state.scenarioEdited;
+            saveBtn.title = state.scenarioEdited
+                ? (isServeBacked() ? '把当前改动写回 ' + state.scenarioFile : '复制改写后的场景源码到剪贴板')
+                : '当前场景没有未保存改动';
+        }
+        if (toolbar) toolbar.hidden = !(state.editing || state.scenarioEdited);
+        if (hint) {
+            hint.textContent = state.editing
+                ? '编辑模式：拖拽步骤左侧把手或点 ↑↓ 调整顺序；改动经「保存」' + (isServeBacked() ? '写回 ' + state.scenarioFile : '后复制源码到剪贴板')
+                : '有未保存的场景改动，「保存」生效或「放弃改动」。';
+        }
+        if (dirty) dirty.style.display = state.scenarioEdited ? '' : 'none';
+    }
+
+    function markScenarioEdited() {
+        state.scenarioEdited = true;
+        syncEditUI();
+    }
+
+    // 同一改动同步写两份：scenarioDef（注册定义，保留 onAttempt 等函数）用于序列化保存；
+    // scenario（JSON 深拷贝执行视图）保持既有渲染与执行输入（克隆丢函数是既有行为）
+    function syncScenarioField(key, value, remove) {
+        [state.scenarioDef, state.scenario].forEach(function (target) {
+            if (!target) return;
+            if (remove) delete target[key];
+            else target[key] = value;
+        });
+    }
+
+    // JSON 深拷贝会丢函数：场景复制的源定义需要保函数字段的深拷贝
+    function clonePreserveFunctions(value) {
+        if (Array.isArray(value)) return value.map(clonePreserveFunctions);
+        if (isPlainObject(value)) {
+            var out = {};
+            Object.keys(value).forEach(function (k) { out[k] = clonePreserveFunctions(value[k]); });
+            return out;
+        }
+        return value;
+    }
+
+    function moveScenarioStep(fromIndex, insertIndex) {
+        var steps = state.scenario && state.scenario.steps;
+        if (!Array.isArray(steps)) return;
+        var defSteps = state.scenarioDef && state.scenarioDef.steps;
+        var total = steps.length;
+        if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= total) return;
+        insertIndex = Math.max(0, Math.min(total - 1, Number(insertIndex)));
+        if (!Number.isInteger(insertIndex) || insertIndex === fromIndex) return;
+        var item = steps.splice(fromIndex, 1)[0];
+        steps.splice(insertIndex, 0, item);
+        // scenarioDef.steps 与执行视图是两份数组（loadScenario 时 clone），同一重排再应用一次
+        if (Array.isArray(defSteps) && defSteps !== steps && defSteps.length === total) {
+            var defItem = defSteps.splice(fromIndex, 1)[0];
+            defSteps.splice(insertIndex, 0, defItem);
+        }
+        markScenarioEdited();
+        renderStepsAll();
+        setEditStatus('步骤顺序已调整，「保存」后写回 ' + state.scenarioFile);
+    }
+
+    function enterScenarioEditMode() {
+        if (!state.scenario || state.running || (state.steps || []).length) return;
+        state.editing = true;
+        renderStepsAll();
+        syncEditUI();
+    }
+
+    function exitScenarioEditMode() {
+        if (!state.editing) return;
+        state.editing = false;
+        renderStepsAll();
+        syncEditUI();
+    }
+
+    function discardScenarioEdits() {
+        if (!state.scenarioFile) return;
+        if (!window.confirm('放弃对当前场景的未保存改动？将重新从 ' + state.scenarioFile + ' 加载。')) return;
+        loadScenario(state.scenarioFile).catch(function (error) {
+            uiView.setRunState('failed', '加载失败');
+            setEditStatus(error.message, true);
+        });
+    }
+
+    function buildCurrentScenarioSource() {
+        var def = state.scenarioDef;
+        if (!def) throw new Error('当前场景定义不可用，无法序列化');
+        if (!state.scenarioId) throw new Error('当前场景在配置清单中没有 id，无法生成场景文件');
+        return buildScenarioFileSource(state.scenarioId, def);
+    }
+
+    function flashScenarioButton(button, ok, successText) {
+        if (!button) return;
+        if (button.__feedbackTimer) window.clearTimeout(button.__feedbackTimer);
+        if (button.__originalText == null) button.__originalText = button.textContent;
+        button.textContent = ok ? successText : '失败';
+        button.__feedbackTimer = window.setTimeout(function () {
+            button.textContent = button.__originalText;
+            button.__feedbackTimer = null;
+        }, 2000);
+    }
+
+    async function saveScenarioEdits() {
+        if (!state.scenario || !state.scenarioEdited) return;
+        var saveBtn = document.getElementById('saveScenarioBtn');
+        var content;
+        try {
+            content = buildCurrentScenarioSource();
+        } catch (error) {
+            setEditStatus(error.message, true);
+            return;
+        }
+        if (!isServeBacked()) {
+            // 独立 UMD / file:// 没有本地写权限：降级复制源码，由用户手动覆盖场景文件
+            var copied = await copyText(content);
+            flashScenarioButton(saveBtn, copied, '已复制');
+            setEditStatus(copied
+                ? '已把改写后的场景源码复制到剪贴板，请覆盖 ' + state.scenarioFile + '（非 serve 环境无法直接写文件）'
+                : '复制失败，请检查浏览器剪贴板权限', !copied);
+            if (copied) { state.scenarioEdited = false; syncEditUI(); }
+            return;
+        }
+        try {
+            await postScenarioEdit('/__scenario-test__/scenario-file', { file: state.scenarioFile, content: content });
+            state.scenarioEdited = false;
+            flashScenarioButton(saveBtn, true, '已保存');
+            setEditStatus('已保存到 ' + state.scenarioFile);
+            syncEditUI();
+        } catch (error) {
+            flashScenarioButton(saveBtn, false, '');
+            setEditStatus('保存失败: ' + error.message, true);
+        }
+    }
+
+    // ===== 场景变量快速编辑弹窗 =====
+
+    function buildVarRow(container, key, value, valueAsJson) {
+        var row = document.createElement('div');
+        row.className = 'vars-editor-row';
+        var keyInput = document.createElement('input');
+        keyInput.className = 'vars-editor-key';
+        keyInput.placeholder = '变量名';
+        keyInput.value = key || '';
+        var valueInput = document.createElement('input');
+        valueInput.className = 'vars-editor-value';
+        valueInput.placeholder = valueAsJson ? '值（JSON，如 "abc"、123、{"a":1}）' : '标签文字';
+        valueInput.value = valueAsJson ? JSON.stringify(value === undefined ? '' : value) : (value == null ? '' : String(value));
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '✕';
+        removeBtn.title = '删除该变量';
+        removeBtn.addEventListener('click', function () { row.remove(); });
+        row.appendChild(keyInput);
+        row.appendChild(valueInput);
+        row.appendChild(removeBtn);
+        container.appendChild(row);
+        return row;
+    }
+
+    function collectVarRows(container, valueAsJson) {
+        var result = {};
+        var rows = Array.from(container.querySelectorAll('.vars-editor-row'));
+        for (var i = 0; i < rows.length; i += 1) {
+            var key = rows[i].querySelector('.vars-editor-key').value.trim();
+            var rawValue = rows[i].querySelector('.vars-editor-value').value;
+            if (!key) continue;
+            if (Object.prototype.hasOwnProperty.call(result, key)) {
+                throw new Error('变量名重复: ' + key);
+            }
+            if (valueAsJson) {
+                try {
+                    result[key] = rawValue.trim() === '' ? '' : JSON.parse(rawValue);
+                } catch (error) {
+                    throw new Error('变量 ' + key + ' 的值不是合法 JSON: ' + rawValue);
+                }
+            } else {
+                result[key] = String(rawValue);
+            }
+        }
+        return result;
+    }
+
+    function openVarsModal() {
+        if (!state.scenario || state.running) return;
+        var modal = document.getElementById('varsModal');
+        if (!modal) return;
+        var error = document.getElementById('varsModalError');
+        if (error) { error.classList.add('hidden'); error.textContent = ''; }
+        var varsRows = document.getElementById('varsEditorRows');
+        var envVarsRows = document.getElementById('envVarsEditorRows');
+        varsRows.innerHTML = '';
+        envVarsRows.innerHTML = '';
+        Object.keys(state.scenario.vars || {}).forEach(function (name) {
+            buildVarRow(varsRows, name, state.scenario.vars[name], true);
+        });
+        Object.keys(state.scenario.envVars || {}).forEach(function (name) {
+            buildVarRow(envVarsRows, name, state.scenario.envVars[name], false);
+        });
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        window.requestAnimationFrame(function () {
+            var first = varsRows.querySelector('input');
+            if (first) first.focus();
+        });
+    }
+
+    function closeVarsModal() {
+        var modal = document.getElementById('varsModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function applyVarsModal() {
+        var error = document.getElementById('varsModalError');
+        try {
+            var vars = collectVarRows(document.getElementById('varsEditorRows'), true);
+            var envVars = collectVarRows(document.getElementById('envVarsEditorRows'), false);
+            // 与执行路径同口径：保留变量 runId/runNo 禁止在 vars/envVars 声明
+            assertNoReservedVars(vars, '场景 vars');
+            assertNoReservedVars(envVars, '场景 envVars');
+            syncScenarioField('vars', vars, Object.keys(vars).length === 0);
+            syncScenarioField('envVars', envVars, Object.keys(envVars).length === 0);
+            markScenarioEdited();
+            renderScenarioVariableInputs();
+            closeVarsModal();
+            setEditStatus('场景变量已修改，「保存」后写回 ' + state.scenarioFile);
+        } catch (e) {
+            if (error) {
+                error.textContent = e.message;
+                error.classList.remove('hidden');
+            }
+        }
+    }
+
+    function bindVarsModalEvents() {
+        var modal = document.getElementById('varsModal');
+        if (!modal) return;
+        document.getElementById('varsModalCloseBtn').addEventListener('click', closeVarsModal);
+        document.getElementById('varsCancelBtn').addEventListener('click', closeVarsModal);
+        document.getElementById('varsApplyBtn').addEventListener('click', applyVarsModal);
+        document.getElementById('varsAddRowBtn').addEventListener('click', function () {
+            buildVarRow(document.getElementById('varsEditorRows'), '', '', true).querySelector('.vars-editor-key').focus();
+        });
+        document.getElementById('envVarsAddRowBtn').addEventListener('click', function () {
+            buildVarRow(document.getElementById('envVarsEditorRows'), '', '', false).querySelector('.vars-editor-key').focus();
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeVarsModal();
+        });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeVarsModal();
+        });
+    }
+
+    // ===== 场景复制弹窗 =====
+
+    // 经 fetch 拉场景源文本并就地求值，拿到含函数的原始定义（绕过 registry 校验），
+    // 供「复制场景」在非当前场景上也能完整复制 onAttempt 等可执行字段
+    function loadScenarioDefFromSource(file) {
+        return fetch('./' + file + (file.indexOf('?') >= 0 ? '&' : '?') + 'ts=' + Date.now())
+            .then(function (response) {
+                if (!response.ok) throw new Error('读取场景文件失败: ' + file);
+                return response.text();
+            })
+            .then(function (source) {
+                var captured = null;
+                var stub = {
+                    defineScenario: function (def) { return def; },
+                    registerScenario: function (id, def) { captured = { id: id, def: def }; }
+                };
+                // 场景文件按契约只会调用 registerScenario/defineScenario；求值环境仅注入 stub
+                var runner = new Function('ScenarioTest', '"use strict";' + source + '\nreturn null;');
+                runner(stub);
+                if (!captured || !captured.def) throw new Error('场景文件未调用 ScenarioTest.registerScenario: ' + file);
+                return captured;
+            });
+    }
+
+    function scenarioEntryForFile(file) {
+        return (appConfig.scenarios || []).filter(function (item) {
+            return item && (item.url || item.file || item.path) === file;
+        })[0] || null;
+    }
+
+    function openDuplicateModal(sourceFile) {
+        var modal = document.getElementById('duplicateModal');
+        if (!modal || state.running) return;
+        var error = document.getElementById('duplicateError');
+        if (error) { error.classList.add('hidden'); error.textContent = ''; }
+        var hint = document.getElementById('duplicateHint');
+        var entry = scenarioEntryForFile(sourceFile);
+        modal.dataset.sourceFile = sourceFile;
+        var baseId = slugifyScenarioId(entry && entry.id ? entry.id : '') || 'scenario-copy';
+        var sourceName = entry && entry.name ? entry.name : sourceFile;
+        var baseDir = sourceFile.indexOf('/') >= 0 ? sourceFile.slice(0, sourceFile.lastIndexOf('/')) : 'scenarios';
+        var newId = baseId + '-copy';
+        document.getElementById('duplicateNameInput').value = sourceName + ' 副本';
+        document.getElementById('duplicateIdInput').value = newId;
+        document.getElementById('duplicateFileInput').value = baseDir + '/' + newId + '.js';
+        if (hint) {
+            hint.textContent = isServeBacked()
+                ? '将创建新文件并把 { id: "' + newId + '" } 追加到 scenario.config.js 的场景清单。'
+                : '当前不是 serve 工作台：将复制新场景源码到剪贴板，请手动保存文件并注册进 scenario.config.js。';
+        }
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        window.requestAnimationFrame(function () {
+            document.getElementById('duplicateNameInput').focus();
+        });
+    }
+
+    function closeDuplicateModal() {
+        var modal = document.getElementById('duplicateModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function confirmDuplicateScenario() {
+        var modal = document.getElementById('duplicateModal');
+        if (!modal) return;
+        var sourceFile = modal.dataset.sourceFile;
+        var error = document.getElementById('duplicateError');
+        var name = document.getElementById('duplicateNameInput').value.trim();
+        var id = document.getElementById('duplicateIdInput').value.trim();
+        var file = document.getElementById('duplicateFileInput').value.trim().replace(/\\/g, '/').replace(/^\.?\//, '');
+        function fail(message) {
+            if (error) { error.textContent = message; error.classList.remove('hidden'); }
+        }
+        if (!name) { fail('场景名称不能为空'); return; }
+        if (!isSafeScenarioId(id)) { fail('场景 id 不合法（小写字母/数字/短横线，80 字符内）'); return; }
+        if (!isSafeScenarioFile(file)) { fail('场景文件路径不合法（仅允许 scenarios/**/*.js）'); return; }
+        var existing = (appConfig.scenarios || []).some(function (item) {
+            return item && (item.id === id || (item.url || item.file || item.path) === file);
+        });
+        if (existing) { fail('场景 id 或文件路径已存在于场景清单'); return; }
+        var captured;
+        try {
+            // 当前场景优先用内存定义（含未保存改动一并复制）；其余拉源文件求值
+            captured = sourceFile === state.scenarioFile && state.scenarioDef
+                ? { id: id, def: state.scenarioDef }
+                : await loadScenarioDefFromSource(sourceFile);
+        } catch (e) { fail(e.message); return; }
+        var copiedDef = clonePreserveFunctions(captured.def);
+        copiedDef.name = name;
+        var content;
+        try {
+            content = buildScenarioFileSource(id, copiedDef);
+        } catch (e) { fail(e.message); return; }
+        if (!isServeBacked()) {
+            var copied = await copyText(content);
+            if (!copied) { fail('复制失败，请检查浏览器剪贴板权限'); return; }
+            closeDuplicateModal();
+            setEditStatus('已复制新场景源码到剪贴板，请保存为 ' + file + ' 并在 scenario.config.js 的 scenarios 中注册 { id: "' + id + '", url: "' + file + '" }');
+            return;
+        }
+        try {
+            await postScenarioEdit('/__scenario-test__/scenario-file', { file: file, content: content, create: true });
+            await postScenarioEdit('/__scenario-test__/config-scenarios', { id: id, name: name, file: file });
+        } catch (e) { fail('写入失败: ' + e.message); return; }
+        appConfig.scenarios.push({ id: id, name: name, url: file });
+        state.discoveredFiles.push({ name: name, file: file, tags: [] });
+        renderScenarioTagFilter();
+        renderScenarioSelect();
+        closeDuplicateModal();
+        loadScenario(file).catch(function (e2) {
+            uiView.setRunState('failed', '加载失败');
+            var statsPanel = document.getElementById('statsPanel');
+            if (statsPanel) statsPanel.innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(e2.message) + '</div>';
+        });
+    }
+
+    function bindDuplicateModalEvents() {
+        var modal = document.getElementById('duplicateModal');
+        if (!modal) return;
+        document.getElementById('duplicateCloseBtn').addEventListener('click', closeDuplicateModal);
+        document.getElementById('duplicateCancelBtn').addEventListener('click', closeDuplicateModal);
+        document.getElementById('duplicateConfirmBtn').addEventListener('click', function () { confirmDuplicateScenario(); });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeDuplicateModal();
+        });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeDuplicateModal();
+        });
+    }
+
+    // ===== 步骤拖拽排序 =====
+
+    function bindStepReorderEvents() {
+        var ul = document.getElementById('stepsList');
+        if (!ul) return;
+        var dragFrom = -1;
+        var dropTarget = null;
+
+        function clearDropIndicator() {
+            if (!dropTarget) return;
+            dropTarget.node.classList.remove('step-drop-before');
+            dropTarget.node.classList.remove('step-drop-after');
+            dropTarget = null;
+        }
+
+        // ↑↓ 按钮复用 ul 的既有 click 委托（window.__R.toggle 对 <button> 目标直接放行，不会触发展开）
+        ul.addEventListener('click', function (event) {
+            var button = event.target && event.target.closest ? event.target.closest('[data-step-move]') : null;
+            if (!button) return;
+            var index = Number(button.dataset.stepIndex);
+            var direction = button.dataset.stepMove === 'up' ? -1 : 1;
+            moveScenarioStep(index, index + direction);
+        });
+
+        // 只从拖拽把手发起拖放：draggable 作用于整条 li，从按钮/文本拖起也要取消，
+        // 否则行内 复制/cURL/调试 按钮会被浏览器拖放抢走点击
+        ul.addEventListener('dragstart', function (event) {
+            var li = event.target && event.target.closest ? event.target.closest('li[data-step-idx]') : null;
+            var fromHandle = event.target && event.target.closest && event.target.closest('.step-drag-handle');
+            if (!state.editing || !li || li.dataset.passed !== 'pending' || !fromHandle) {
+                if (event.preventDefault) event.preventDefault();
+                return;
+            }
+            dragFrom = Number(li.dataset.stepIdx);
+            if (event.dataTransfer) {
+                try {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', String(dragFrom));
+                } catch (_) { /* dataTransfer 在某些环境下不可写，拖拽本身不受影响 */ }
+            }
+            li.classList.add('step-dragging');
+        });
+        ul.addEventListener('dragover', function (event) {
+            if (!state.editing || dragFrom < 0) return;
+            var li = event.target && event.target.closest ? event.target.closest('li[data-step-idx]') : null;
+            if (!li || li.dataset.passed !== 'pending') return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            var rect = li.getBoundingClientRect();
+            var before = (event.clientY - rect.top) < rect.height / 2;
+            if (dropTarget && dropTarget.node === li && dropTarget.before === before) return;
+            clearDropIndicator();
+            li.classList.add(before ? 'step-drop-before' : 'step-drop-after');
+            dropTarget = { node: li, before: before };
+        });
+        ul.addEventListener('drop', function (event) {
+            if (!state.editing || dragFrom < 0) return;
+            event.preventDefault();
+            var li = event.target && event.target.closest ? event.target.closest('li[data-step-idx]') : null;
+            if (li && li.dataset.passed === 'pending') {
+                var target = Number(li.dataset.stepIdx);
+                var rect = li.getBoundingClientRect();
+                var before = (event.clientY - rect.top) < rect.height / 2;
+                var insertIndex = before ? target : target + 1;
+                // 先移除再插入：目标位在拖拽项之后时索引前移一位
+                if (insertIndex > dragFrom) insertIndex -= 1;
+                moveScenarioStep(dragFrom, insertIndex);
+            }
+            clearDropIndicator();
+            dragFrom = -1;
+        });
+        ul.addEventListener('dragend', function (event) {
+            var li = event.target && event.target.closest ? event.target.closest('li[data-step-idx]') : null;
+            if (li) li.classList.remove('step-dragging');
+            clearDropIndicator();
+            dragFrom = -1;
+        });
+        ul.addEventListener('dragleave', function (event) {
+            // 只在离开整个列表时清指示：子元素间的 enter/leave 噪声会让指示闪烁
+            if (event.relatedTarget && ul.contains(event.relatedTarget)) return;
+            clearDropIndicator();
+        });
+    }
+
+    function bindScenarioEditEvents() {
+        var editBtn = document.getElementById('editScenarioBtn');
+        if (editBtn) {
+            editBtn.addEventListener('click', function () {
+                if (state.editing) exitScenarioEditMode();
+                else enterScenarioEditMode();
+            });
+        }
+        var saveBtn = document.getElementById('saveScenarioBtn');
+        if (saveBtn) saveBtn.addEventListener('click', function () { saveScenarioEdits(); });
+        var discardBtn = document.getElementById('discardScenarioEditsBtn');
+        if (discardBtn) discardBtn.addEventListener('click', discardScenarioEdits);
+        var varsBtn = document.getElementById('editScenarioVarsBtn');
+        if (varsBtn) varsBtn.addEventListener('click', openVarsModal);
+        bindVarsModalEvents();
+        bindDuplicateModalEvents();
+        bindStepReorderEvents();
+    }
+
     function loadScenario(file) {
         return new Promise(function (resolveLoad, rejectLoad) {
             if (!file) {
@@ -1813,6 +2371,12 @@ export function createWorkbenchRuntime(options) {
                     return;
                 }
                 state.scenario = clone(scenario);
+                // scenarioDef 指向注册定义（含函数字段），编辑保存经它序列化；
+                // state.scenario 仍是 JSON 深拷贝执行视图（既有行为不变）
+                state.scenarioDef = scenario;
+                state.scenarioId = entry && entry.id ? entry.id : '';
+                state.editing = false;
+                state.scenarioEdited = false;
                 state.steps = [];
                 state.stepRuntime = null;
                 state.stepCheckpoints = [];
@@ -1820,6 +2384,8 @@ export function createWorkbenchRuntime(options) {
                 state.nextStepIndex = 0;
                 state.lastReport = null;
 
+                syncEditUI();
+                setEditStatus('');
                 syncSettingsInputs();
                 updateHeader();
                 renderScenarioSelect();
@@ -1854,6 +2420,8 @@ export function createWorkbenchRuntime(options) {
         bindCodeCopyActions();
         bindGlobalShortcuts();
         bindScenarioListResizer();
+        bindScenarioEditEvents();
+        syncEditUI();
 
         uiAdhoc.bindAdhocRequestEvents(
             function (idx) {
@@ -1921,9 +2489,15 @@ export function createWorkbenchRuntime(options) {
                 toggleScenarioPin(pinTarget.dataset.pinFile);
                 return;
             }
+            var dupTarget = event.target.closest('[data-dup-file]');
+            if (dupTarget) {
+                openDuplicateModal(dupTarget.dataset.dupFile);
+                return;
+            }
             var target = event.target.closest('[data-scenario-file]');
             var file = target && target.dataset.scenarioFile;
             if (!file || state.running || file === state.scenarioFile) return;
+            if (state.scenarioEdited && !window.confirm('当前场景有未保存改动，切换后将丢失。继续切换？')) return;
             loadScenario(file).catch(function (error) {
                 uiView.setRunState('failed', '加载失败');
                 document.getElementById('statsPanel').innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc(error.message) + '</div>';

@@ -5530,6 +5530,107 @@ var workbenchStyle = function() {
             }
             .step-run-actions button:last-child { border-right: 0; color: var(--workspace-primary); }
             .step-run-actions button:hover { background: var(--workspace-hover); color: var(--workspace-text); }
+
+            /* ===== \u573A\u666F\u7F16\u8F91\uFF08YIL-199\uFF09\uFF1A\u62D6\u62FD\u628A\u624B / \u4E0A\u4E0B\u79FB / \u62D6\u653E\u6307\u793A ===== */
+            .step-edit-controls {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                flex: 0 0 auto;
+                margin-right: 6px;
+            }
+            .step-drag-handle {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 22px;
+                color: var(--workspace-muted);
+                cursor: grab;
+            }
+            .step-drag-handle svg { width: 14px; height: 14px; }
+            .step-drag-handle:active { cursor: grabbing; }
+            .step-move-btn {
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                border: 1px solid var(--workspace-line);
+                border-radius: 4px;
+                background: var(--workspace-surface);
+                color: var(--workspace-muted);
+                font-size: 11px;
+                line-height: 1;
+                cursor: pointer;
+                transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+            }
+            .step-move-btn:hover:not(:disabled) { color: var(--workspace-primary); border-color: var(--workspace-selected-line); background: var(--workspace-hover); }
+            .step-move-btn:disabled { opacity: .35; cursor: not-allowed; }
+            #stepsList > li[draggable="true"] { cursor: default; }
+            #stepsList > li.step-dragging { opacity: .45; }
+            #stepsList > li.step-drop-before { box-shadow: inset 0 2px 0 var(--workspace-info) !important; }
+            #stepsList > li.step-drop-after { box-shadow: inset 0 -2px 0 var(--workspace-info) !important; }
+
+            /* \u573A\u666F\u5217\u8868\u590D\u5236\u6309\u94AE\uFF1A\u4E0E\u7F6E\u9876\u63A7\u4EF6\u540C\u53E3\u5F84\uFF0C\u7F6E\u4E8E\u7F6E\u9876\u5DE6\u4FA7 */
+            #scenarioList .scenario-tree-item__main { padding-right: 52px; }
+            #scenarioList .scenario-dup-control {
+                position: absolute;
+                right: 28px;
+                top: 50%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 24px;
+                height: 24px;
+                padding: 0;
+                transform: translateY(-50%);
+                border: 0;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--workspace-muted);
+                opacity: 0;
+                cursor: pointer;
+                transition: opacity .15s ease, background-color .15s ease, color .15s ease;
+            }
+            #scenarioList .scenario-dup-control svg { width: 14px; height: 14px; }
+            #scenarioList .scenario-tree-item:hover .scenario-dup-control,
+            #scenarioList .scenario-tree-item:focus-within .scenario-dup-control,
+            #scenarioList .scenario-dup-control:focus-visible { opacity: 1; }
+            #scenarioList .scenario-dup-control:hover { background: var(--workspace-selected); color: var(--workspace-primary); }
+            #scenarioList .scenario-dup-control:focus-visible {
+                outline: 2px solid var(--workspace-primary);
+                outline-offset: -2px;
+            }
+            @media (hover: none) { #scenarioList .scenario-dup-control { opacity: 1; } }
+            .vars-editor-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .vars-editor-row input {
+                flex: 1;
+                min-width: 0;
+                padding: 7px 10px;
+                border: 1px solid var(--workspace-line);
+                border-radius: 6px;
+                background: var(--workspace-surface);
+                color: var(--workspace-text);
+                font-size: 12px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            }
+            .vars-editor-row input:focus { outline: none; border-color: var(--workspace-primary); box-shadow: 0 0 0 1px var(--workspace-focus); }
+            .vars-editor-row input.vars-editor-key { max-width: 34%; }
+            .vars-editor-row button {
+                flex: 0 0 auto;
+                padding: 6px 9px;
+                border: 0;
+                border-radius: 6px;
+                background: var(--workspace-selected);
+                color: var(--workspace-muted);
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+            .vars-editor-row button:hover { color: var(--workspace-danger-text); background: var(--workspace-hover); }
             
             .details-panel {
                 display: none;
@@ -6303,8 +6404,23 @@ var workbenchView = function() {
                             <div class="flex items-center gap-2">
                                 <h2 id="scenarioMainTitle" class="text-sm font-bold text-slate-900 tracking-tight truncate">\u672A\u52A0\u8F7D\u573A\u666F</h2>
                                 <span id="scenarioStatusBadge"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">\u5F85\u6267\u884C</span></span>
+                                <span id="scenarioDirtyBadge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200" style="display:none">\u672A\u4FDD\u5B58</span>
                             </div>
                             <div id="scenarioFilePath" class="mt-0.5 text-xs text-slate-400 font-mono truncate"></div>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <button id="editScenarioBtn" type="button" disabled title="\u7F16\u8F91\u5F53\u524D\u573A\u666F\uFF08\u6709\u6267\u884C\u7ED3\u679C\u65F6\u8BF7\u5148\u7528\u300C\u6E05\u9664\u7ED3\u679C\u300D\uFF09" class="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 transition-all active:scale-[0.97]">\u7F16\u8F91</button>
+                            <button id="saveScenarioBtn" type="button" disabled title="\u628A\u6392\u5E8F/\u53D8\u91CF\u7B49\u6539\u52A8\u5199\u56DE\u573A\u666F\u6587\u4EF6\uFF08serve \u6A21\u5F0F\u4E0B\u76F4\u63A5\u5199\u76D8\uFF09" class="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 transition-all active:scale-[0.97]">\u4FDD\u5B58</button>
+                        </div>
+                    </div>
+                    <div id="editToolbar" hidden class="px-4 py-1.5 bg-amber-50/70 border-b border-amber-100 text-[11px] text-amber-800 flex items-center justify-between gap-2 flex-shrink-0">
+                        <div class="min-w-0">
+                            <span id="editToolbarHint">\u7F16\u8F91\u6A21\u5F0F\uFF1A\u62D6\u62FD\u6B65\u9AA4\u5DE6\u4FA7\u628A\u624B\u8C03\u6574\u987A\u5E8F\uFF1B\u6539\u52A8\u9700\u70B9\u300C\u4FDD\u5B58\u300D\u5199\u56DE\u573A\u666F\u6587\u4EF6\u3002</span>
+                            <span id="editStatus" role="status" aria-live="polite" class="block text-amber-700"></span>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <button id="editScenarioVarsBtn" type="button" class="rounded-md border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-all active:scale-[0.97]">\u7F16\u8F91\u53D8\u91CF</button>
+                            <button id="discardScenarioEditsBtn" type="button" class="rounded-md border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-all active:scale-[0.97]">\u653E\u5F03\u6539\u52A8</button>
                         </div>
                     </div>
                     <div id="filterBar" class="flex items-center justify-between bg-slate-50/50 px-3 py-1.5 border-b border-slate-100 flex-shrink-0">
@@ -6429,6 +6545,60 @@ var workbenchView = function() {
                 <div>
                     <div class="scenario-step-loading__title">\u6B63\u5728\u6267\u884C\u5355\u6B65\u8BF7\u6C42</div>
                     <div id="stepLoadingText" class="scenario-step-loading__text">\u8BF7\u7A0D\u5019\u2026</div>
+                </div>
+            </div>
+        </div>
+        <div id="varsModal" class="hidden fixed inset-0 z-40 bg-slate-950/40 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="varsModalTitle">
+            <div class="mx-auto my-8 max-w-2xl rounded-xl bg-white shadow-2xl border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                        <div id="varsModalTitle" class="text-sm font-bold text-slate-800">\u573A\u666F\u53D8\u91CF\u7F16\u8F91</div>
+                        <div id="varsModalHint" class="mt-0.5 text-[11px] text-slate-400">\u4FEE\u6539\u573A\u666F vars / envVars\uFF1B\u503C\u4EE5 JSON \u89E3\u6790\uFF08\u5B57\u7B26\u4E32\u9700\u5E26\u5F15\u53F7\uFF09\uFF0C\u4FDD\u5B58\u540E\u5199\u56DE\u573A\u666F\u6587\u4EF6\u3002</div>
+                    </div>
+                    <button id="varsModalCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">\u5173\u95ED</button>
+                </div>
+                <div class="space-y-4 p-5">
+                    <div id="varsModalError" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-600">\u573A\u666F\u53D8\u91CF (vars)</span>
+                            <button id="varsAddRowBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ \u6DFB\u52A0\u53D8\u91CF</button>
+                        </div>
+                        <div id="varsEditorRows" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-600">\u73AF\u5883\u53D8\u91CF\u540D\u6620\u5C04 (envVars)<span class="font-normal text-slate-400">\uFF08key \u4E3A\u53D8\u91CF\u540D\uFF0Cvalue \u4E3A\u5C55\u793A\u6807\u7B7E\uFF09</span></span>
+                            <button id="envVarsAddRowBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ \u6DFB\u52A0\u6620\u5C04</button>
+                        </div>
+                        <div id="envVarsEditorRows" class="space-y-2"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                        <button id="varsCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">\u53D6\u6D88</button>
+                        <button id="varsApplyBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">\u5E94\u7528\u4FEE\u6539</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="duplicateModal" class="hidden fixed inset-0 z-40 bg-slate-950/40 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="duplicateModalTitle">
+            <div class="mx-auto my-8 max-w-lg rounded-xl bg-white shadow-2xl border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                        <div id="duplicateModalTitle" class="text-sm font-bold text-slate-800">\u590D\u5236\u573A\u666F</div>
+                        <div class="mt-0.5 text-[11px] text-slate-400">\u751F\u6210\u65B0\u7684\u573A\u666F\u6587\u4EF6\u5E76\u6CE8\u518C\u8FDB scenario.config.js \u7684\u573A\u666F\u6E05\u5355\u3002</div>
+                    </div>
+                    <button id="duplicateCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">\u5173\u95ED</button>
+                </div>
+                <div class="space-y-4 p-5">
+                    <div id="duplicateError" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">\u65B0\u573A\u666F\u540D\u79F0</span><input id="duplicateNameInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">\u65B0\u573A\u666F ID<span class="font-normal text-slate-400">\uFF08\u5C0F\u5199\u5B57\u6BCD/\u6570\u5B57/\u77ED\u6A2A\u7EBF\uFF0C\u987B\u4E0E\u573A\u666F\u6E05\u5355\u552F\u4E00\uFF09</span></span><input id="duplicateIdInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">\u65B0\u573A\u666F\u6587\u4EF6</span><input id="duplicateFileInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <div id="duplicateHint" class="text-[11px] text-slate-400"></div>
+                    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                        <button id="duplicateCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">\u53D6\u6D88</button>
+                        <button id="duplicateConfirmBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">\u521B\u5EFA\u526F\u672C</button>
+                    </div>
                 </div>
             </div>
         </div>`;
@@ -6799,7 +6969,7 @@ var workbenchView = function() {
     var pinned = Boolean(options.pinned);
     var fileName = item.name === item.fileName ? "" : item.fileName;
     var pinLabel = pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876";
-    return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc2(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc2(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc2(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc2(fileName) + "</span>" : "") + '</span></button><button type="button" data-pin-file="' + esc2(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
+    return '<div class="scenario-tree-item' + (active ? " is-active" : "") + '"><button type="button" data-scenario-file="' + esc2(item.file) + '"' + (active ? ' aria-current="true"' : "") + ' title="' + esc2(item.name + "\n" + item.file) + '" class="scenario-tree-item__main" style="padding-left:' + (28 + item.depth * 12) + 'px"><svg class="scenario-tree-item__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span class="scenario-tree-item__text"><span class="scenario-tree-item__name">' + esc2(item.name) + "</span>" + (fileName ? '<span class="scenario-tree-item__file">' + esc2(fileName) + "</span>" : "") + '</span></button><button type="button" data-dup-file="' + esc2(item.file) + '" title="\u590D\u5236\u573A\u666F" aria-label="\u590D\u5236\u573A\u666F ' + esc2(item.name) + '" class="scenario-dup-control"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button type="button" data-pin-file="' + esc2(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? " scenario-pin-control--active" : "") + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? "currentColor" : "none") + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg></button></div>';
   }
   function scenarioDirNodeHtml(node, options) {
     var key = "dir:" + node.path;
@@ -6986,7 +7156,10 @@ var workbenchView = function() {
       window.__R.applyFilter();
     }
   }
-  function renderPendingSteps(scenarioSteps, startIndex) {
+  function renderStepEditControls(stepIndex, stepCount) {
+    return '<span class="step-edit-controls"><span class="step-drag-handle" title="\u62D6\u62FD\u8C03\u6574\u6B65\u9AA4\u987A\u5E8F" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span><button type="button" data-step-move="up" data-step-index="' + stepIndex + '"' + (stepIndex === 0 ? " disabled" : "") + ' title="\u4E0A\u79FB\u6B65\u9AA4" aria-label="\u4E0A\u79FB\u7B2C ' + (stepIndex + 1) + ' \u6B65" class="step-move-btn">\u2191</button><button type="button" data-step-move="down" data-step-index="' + stepIndex + '"' + (stepIndex >= stepCount - 1 ? " disabled" : "") + ' title="\u4E0B\u79FB\u6B65\u9AA4" aria-label="\u4E0B\u79FB\u7B2C ' + (stepIndex + 1) + ' \u6B65" class="step-move-btn">\u2193</button></span>';
+  }
+  function renderPendingSteps(scenarioSteps, startIndex, editMode) {
     if (!Array.isArray(scenarioSteps) || startIndex >= scenarioSteps.length) return "";
     return scenarioSteps.slice(startIndex).map(function(step, idx) {
       var stepIndex = startIndex + idx;
@@ -7002,7 +7175,8 @@ var workbenchView = function() {
       var reqHeaders = step.headers ? truncateForDisplay(typeof step.headers === "string" ? step.headers : JSON.stringify(step.headers, null, 2)) : "";
       var reqBody = step.request && step.request.body ? truncateForDisplay(typeof step.request.body === "string" ? step.request.body : JSON.stringify(step.request.body, null, 2)) : step.body ? truncateForDisplay(typeof step.body === "string" ? step.body : JSON.stringify(step.body, null, 2)) : "";
       var queryParams = extractQueryParams(stepPath, step.query);
-      return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc2(((step.name || "") + " " + method + " " + stepPath).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div><span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc2(step.name || "") + '">' + esc2(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc2(stepPath) + '">' + esc2(stepPath) + '</span></div><div class="flex items-center space-x-1.5 flex-shrink-0">' + tags + '<button type="button" data-copy-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button><span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">\u5F85\u6267\u884C</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="details-panel px-4 py-3 bg-slate-50/70 border-t border-slate-200/60 text-[13px]"><div class="space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u5934 (Headers)</div>' + renderCodeBlockWithLines("pending-req-headers-" + stepIndex, reqHeaders) + "</div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u4F53 (Body)</div>' + renderCodeBlockWithLines("pending-req-body-" + stepIndex, reqBody) + "</div>" : '<div class="text-xs text-slate-400 py-1">\u65E0\u8BF7\u6C42\u4F53\u53C2\u6570</div>') + "</div></div></li>";
+      var editControls = editMode ? renderStepEditControls(stepIndex, scenarioSteps.length) : "";
+      return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc2(((step.name || "") + " " + method + " " + stepPath).toLowerCase()) + '"' + (editMode ? ' draggable="true"' : "") + '><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' + editControls + '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3"><div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div><span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc2(step.name || "") + '">' + esc2(step.name || "\u672A\u547D\u540D\u6B65\u9AA4") + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-400 font-mono truncate max-w-[40%]" title="' + esc2(stepPath) + '">' + esc2(stepPath) + '</span></div><div class="flex items-center space-x-1.5 flex-shrink-0">' + tags + '<button type="button" data-copy-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + stepIndex + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button><span class="text-[10.5px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/50">\u5F85\u6267\u884C</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="details-panel px-4 py-3 bg-slate-50/70 border-t border-slate-200/60 text-[13px]"><div class="space-y-3">' + (reqHeaders ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u5934 (Headers)</div>' + renderCodeBlockWithLines("pending-req-headers-" + stepIndex, reqHeaders) + "</div>" : "") + (reqBody ? '<div><div class="text-slate-500 text-[10.5px] font-bold uppercase tracking-wider mb-1">\u8BF7\u6C42\u4F53 (Body)</div>' + renderCodeBlockWithLines("pending-req-body-" + stepIndex, reqBody) + "</div>" : '<div class="text-xs text-slate-400 py-1">\u65E0\u8BF7\u6C42\u4F53\u53C2\u6570</div>') + "</div></div></li>";
     }).join("");
   }
   function renderStepItem(s, i, executionMode, varsView) {
@@ -7058,7 +7232,7 @@ var workbenchView = function() {
     var stepActions = executionMode === "step" ? '<span class="step-run-actions"><button type="button" data-step-action="rewind" data-step-index="' + i + '" title="\u4EC5\u56DE\u9000\u6D4B\u8BD5\u8FD0\u884C\u65F6\u4E0E\u62A5\u544A\uFF0C\u4E0D\u64A4\u9500\u5DF2\u53D1\u51FA\u7684\u4E1A\u52A1\u8BF7\u6C42">\u56DE\u9000</button><button type="button" data-step-action="rerun" data-step-index="' + i + '" title="\u4ECE\u672C\u6B65\u9AA4\u6267\u884C\u524D\u7684\u53D8\u91CF\u5FEB\u7167\u91CD\u65B0\u6267\u884C">\u91CD\u8DD1</button></span>' : "";
     return '<li class="group transition-colors border-b border-slate-100 bg-white" data-passed="' + ok + '" data-skipped="' + skipped + '" data-step-idx="' + i + '" data-search="' + esc2((s.name + " " + s.method + " " + s.path).toLowerCase()) + '"><div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-slate-50/80 transition-colors" role="button" tabindex="0" aria-expanded="' + (!ok ? "true" : "false") + '" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)"><div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' + seqIcon + '<span class="text-xs font-bold ' + nameCls + ' truncate" title="' + esc2(s.name) + '">' + esc2(s.name) + '</span><span class="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border uppercase ' + methodColor + '">' + method + '</span><span class="text-xs text-slate-500 font-mono truncate max-w-[40%]" title="' + esc2(s.path) + '">' + esc2(s.path) + '</span></div><div class="flex items-center space-x-2 flex-shrink-0"><button type="button" data-copy-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u6B65\u9AA4\u6807\u9898\u4E0E\u63A5\u53E3\u8DEF\u5F84">\u590D\u5236</button><button type="button" data-curl-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]" title="\u590D\u5236\u4E3A cURL \u547D\u4EE4\u884C">cURL</button><button type="button" data-adhoc-step="' + i + '" class="step-row-action rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10.5px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-[0.96]">\u8C03\u8BD5</button>' + stepActions + '<span class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-md ' + statusBadgeCls + '">' + esc2(String(s.status || "-")) + '</span><span class="text-slate-400 text-xs font-mono w-16 text-right">' + fmt(s.duration) + '</span><svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 chevron' + chevronCls + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div></div><div class="' + detailPanelCls + '">' + errorHtml + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' + leftColumn + rightColumn + "</div>" + assertHtml + renderVarsSection(varsView) + "</div></li>";
   }
-  function renderStepsAll(steps, scenarioSteps, executionMode, varsViews) {
+  function renderStepsAll(steps, scenarioSteps, executionMode, varsViews, editMode) {
     var ul = document.getElementById("stepsList");
     if (!ul) return;
     steps = steps || [];
@@ -7070,7 +7244,7 @@ var workbenchView = function() {
     varsViews = varsViews || [];
     ul.innerHTML = steps.map(function(s, i) {
       return renderStepItem(s, i, executionMode, varsViews[i]);
-    }).join("") + renderPendingSteps(scenarioSteps, steps.length);
+    }).join("") + renderPendingSteps(scenarioSteps, steps.length, editMode === true);
     if (window.__R && window.__R.applyFilter) {
       window.__R.applyFilter();
     }
@@ -7788,6 +7962,83 @@ function buildStepCurl(step, options) {
   return parts.join(" \\\n  ");
 }
 
+// src/browser/ui/ui-editor.js
+var SCENARIO_FILE_PATTERN = /^scenarios(?:\/[A-Za-z0-9][A-Za-z0-9_-]*)*\/[A-Za-z0-9][A-Za-z0-9_-]*\.js$/;
+var SCENARIO_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
+function isSafeScenarioFile(file) {
+  return SCENARIO_FILE_PATTERN.test(String(file || ""));
+}
+function isSafeScenarioId(id) {
+  return SCENARIO_ID_PATTERN.test(String(id || ""));
+}
+function slugifyScenarioId(name) {
+  var slug = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+  return slug.slice(0, 80).replace(/-+$/g, "");
+}
+function serializeString(value) {
+  return JSON.stringify(value);
+}
+function serializeFunction(fn) {
+  var source = Function.prototype.toString.call(fn).trim();
+  if (/\{\s*\[native code\]\s*\}/.test(source)) {
+    throw new Error("\u573A\u666F\u4E2D\u7684\u51FD\u6570\u5B57\u6BB5\u662F\u539F\u751F/\u7ED1\u5B9A\u51FD\u6570\uFF0C\u65E0\u6CD5\u5E8F\u5217\u5316: " + source.slice(0, 60));
+  }
+  if (/^(async\s+)?function/.test(source) || /^(async\s+)?[\w.()\[\]'"]+\s*=>/.test(source) || source.startsWith("(")) {
+    return source;
+  }
+  var methodMatch = /^(async\s*)?([A-Za-z_$][\w$]*)\s*\([\s\S]*$/.exec(source);
+  if (methodMatch) {
+    return (methodMatch[1] || "") + "function " + source.replace(/^async\s+/, "");
+  }
+  throw new Error("\u573A\u666F\u4E2D\u7684\u51FD\u6570\u5B57\u6BB5\u5F62\u6001\u4E0D\u652F\u6301\u5E8F\u5217\u5316\uFF08\u5982 getter/setter\uFF09: " + source.slice(0, 60));
+}
+function isIdentifierKey(key) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key);
+}
+function serializeValue(value, indent) {
+  if (value === null || value === void 0) return "null";
+  if (typeof value === "function") return serializeFunction(value);
+  if (typeof value === "string") return serializeString(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof RegExp) return String(value);
+  if (value instanceof Date) return "new Date(" + serializeString(value.toISOString()) + ")";
+  if (Array.isArray(value)) {
+    if (!value.length) return "[]";
+    var pad = new Array(indent + 2).join("    ");
+    var closePad = new Array(indent + 1).join("    ");
+    var items = value.map(function(item) {
+      return pad + serializeValue(item, indent + 1);
+    });
+    return "[\n" + items.join(",\n") + "\n" + closePad + "]";
+  }
+  if (typeof value === "object") {
+    var keys = Object.keys(value);
+    if (!keys.length) return "{}";
+    var objPad = new Array(indent + 2).join("    ");
+    var objClosePad = new Array(indent + 1).join("    ");
+    var props = keys.map(function(key) {
+      var printed = isIdentifierKey(key) ? key : serializeString(key);
+      return objPad + printed + ": " + serializeValue(value[key], indent + 1);
+    });
+    return "{\n" + props.join(",\n") + "\n" + objClosePad + "}";
+  }
+  return serializeString(String(value));
+}
+function serializeScenarioSource(scenario) {
+  var keys = Object.keys(scenario || {});
+  if (!keys.length) return "{}";
+  return "{\n" + keys.map(function(key) {
+    var printed = isIdentifierKey(key) ? key : serializeString(key);
+    return "    " + printed + ": " + serializeValue(scenario[key], 1);
+  }).join(",\n") + "\n}";
+}
+function buildScenarioFileSource(id, scenario) {
+  if (typeof id !== "string" || !id.trim()) {
+    throw new Error("\u573A\u666F id \u4E0D\u80FD\u4E3A\u7A7A");
+  }
+  return "ScenarioTest.registerScenario(" + serializeString(id) + ", ScenarioTest.defineScenario(" + serializeScenarioSource(scenario) + "));\n";
+}
+
 // src/browser/ui/runtime.js
 function createWorkbenchRuntime(options) {
   "use strict";
@@ -7932,7 +8183,15 @@ function createWorkbenchRuntime(options) {
     // 与 debugRuntimes[i]（执行前快照）做差集，供工作台「运行时变量」面板展示
     // 每步执行后的变量与 extract 变更项（suite 为本次运行跨步骤共享变量，名称带 suite. 前缀展示）
     varsTrail: [],
-    suiteTrail: []
+    suiteTrail: [],
+    // ===== 场景编辑（YIL-199）=====
+    // scenarioDef = registry 里注册的场景定义（含 onAttempt 等函数字段）；
+    // state.scenario 是它的 JSON 深拷贝执行视图（函数丢失与既有行为一致）。
+    // 编辑操作同时改两份：执行视图保持渲染，序列化保存用 scenarioDef 避免丢函数。
+    scenarioDef: null,
+    scenarioId: "",
+    editing: false,
+    scenarioEdited: false
   };
   function getStorageKeys() {
     var cfg = appConfig;
@@ -8325,7 +8584,7 @@ function createWorkbenchRuntime(options) {
     var varsViews = (state.steps || []).map(function(_, idx) {
       return buildVarsView(idx);
     });
-    uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews));
+    uiView.renderStepsAll(safeOutput(state.steps), safeOutput(state.scenario && state.scenario.steps ? state.scenario.steps : []), state.executionMode, safeOutput(varsViews), state.editing);
     updateExecutionFooter();
   }
   function renderStatsAll() {
@@ -8570,6 +8829,7 @@ function createWorkbenchRuntime(options) {
     state.startTime = null;
     state.endTime = null;
     state.executionMode = "full";
+    state.editing = false;
     stepsFilterState.type = "all";
     stepsFilterState.keyword = "";
     renderStatsAll();
@@ -8578,6 +8838,7 @@ function createWorkbenchRuntime(options) {
     renderReportPanel();
     setSidePanelTab("stats");
     uiView.setRunState("idle", "\u5F85\u6267\u884C");
+    syncEditUI();
   }
   function showDiagnosticError(error, customState) {
     var message = error && error.message ? String(error.message) : error ? String(error) : "\u6267\u884C\u5F02\u5E38";
@@ -8708,6 +8969,7 @@ function createWorkbenchRuntime(options) {
     state.running = true;
     state.activeRuntime = runtime;
     state.executionMode = "full";
+    state.editing = false;
     state.stepRuntime = null;
     state.stepCheckpoints = [];
     state.debugRuntimes = [];
@@ -8762,6 +9024,7 @@ function createWorkbenchRuntime(options) {
       state.running = false;
       state.activeRuntime = null;
       setExecutionButtonsDisabled(false);
+      syncEditUI();
     }
   }
   async function runNextStep() {
@@ -8778,6 +9041,7 @@ function createWorkbenchRuntime(options) {
       }
       state.nextStepIndex = 0;
       state.steps = [];
+      state.editing = false;
       state.stepCheckpoints = [snapshotStepRuntime(state.stepRuntime)];
       state.debugRuntimes = [];
       state.lastReport = null;
@@ -8828,6 +9092,7 @@ function createWorkbenchRuntime(options) {
       state.running = false;
       state.activeRuntime = null;
       setExecutionButtonsDisabled(false);
+      syncEditUI();
     }
   }
   function renderEnvironmentSelects() {
@@ -9369,6 +9634,522 @@ function createWorkbenchRuntime(options) {
     url.searchParams.set("scenario", file);
     window.history.replaceState({}, "", url.toString());
   }
+  function isServeBacked() {
+    return Boolean(window.__SCENARIO_TEST_SERVE_PROXY__);
+  }
+  function postScenarioEdit(pathname, payload) {
+    return fetch(pathname, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function(response) {
+      return response.json().catch(function() {
+        return { ok: false, error: "\u54CD\u5E94\u4E0D\u662F\u5408\u6CD5 JSON" };
+      }).then(function(body) {
+        if (!response.ok || !body.ok) {
+          throw new Error(body.error || "\u8BF7\u6C42\u5931\u8D25: HTTP " + response.status);
+        }
+        return body;
+      });
+    });
+  }
+  function setEditStatus(text, isError) {
+    var node = document.getElementById("editStatus");
+    if (!node) return;
+    node.textContent = text || "";
+    node.classList.toggle("text-rose-600", Boolean(isError));
+    node.classList.toggle("text-amber-700", !isError);
+  }
+  function syncEditUI() {
+    var editBtn = document.getElementById("editScenarioBtn");
+    var saveBtn = document.getElementById("saveScenarioBtn");
+    var toolbar = document.getElementById("editToolbar");
+    var hint = document.getElementById("editToolbarHint");
+    var dirty = document.getElementById("scenarioDirtyBadge");
+    var blocked = !state.scenario || state.running || (state.steps || []).length > 0;
+    if (editBtn) {
+      editBtn.disabled = blocked;
+      editBtn.textContent = state.editing ? "\u9000\u51FA\u7F16\u8F91" : "\u7F16\u8F91";
+      editBtn.title = blocked ? "\u6709\u6267\u884C\u7ED3\u679C\u6216\u6B63\u5728\u6267\u884C\uFF1A\u8BF7\u5148\u300C\u6E05\u9664\u7ED3\u679C\u300D\u518D\u7F16\u8F91" : isServeBacked() ? "\u7F16\u8F91\u5F53\u524D\u573A\u666F\uFF1A\u62D6\u62FD\u8C03\u6574\u6B65\u9AA4\u987A\u5E8F\u3001\u6539\u573A\u666F\u53D8\u91CF\uFF0C\u300C\u4FDD\u5B58\u300D\u5199\u56DE\u573A\u666F\u6587\u4EF6" : "\u7F16\u8F91\u5F53\u524D\u573A\u666F\uFF1A\u300C\u4FDD\u5B58\u300D\u4F1A\u628A\u6539\u5199\u540E\u7684\u573A\u666F\u6E90\u7801\u590D\u5236\u5230\u526A\u8D34\u677F\uFF08\u5F53\u524D\u4E0D\u662F serve \u5DE5\u4F5C\u53F0\uFF0C\u65E0\u6CD5\u76F4\u63A5\u5199\u6587\u4EF6\uFF09";
+    }
+    if (saveBtn) {
+      saveBtn.disabled = !state.scenarioEdited;
+      saveBtn.title = state.scenarioEdited ? isServeBacked() ? "\u628A\u5F53\u524D\u6539\u52A8\u5199\u56DE " + state.scenarioFile : "\u590D\u5236\u6539\u5199\u540E\u7684\u573A\u666F\u6E90\u7801\u5230\u526A\u8D34\u677F" : "\u5F53\u524D\u573A\u666F\u6CA1\u6709\u672A\u4FDD\u5B58\u6539\u52A8";
+    }
+    if (toolbar) toolbar.hidden = !(state.editing || state.scenarioEdited);
+    if (hint) {
+      hint.textContent = state.editing ? "\u7F16\u8F91\u6A21\u5F0F\uFF1A\u62D6\u62FD\u6B65\u9AA4\u5DE6\u4FA7\u628A\u624B\u6216\u70B9 \u2191\u2193 \u8C03\u6574\u987A\u5E8F\uFF1B\u6539\u52A8\u7ECF\u300C\u4FDD\u5B58\u300D" + (isServeBacked() ? "\u5199\u56DE " + state.scenarioFile : "\u540E\u590D\u5236\u6E90\u7801\u5230\u526A\u8D34\u677F") : "\u6709\u672A\u4FDD\u5B58\u7684\u573A\u666F\u6539\u52A8\uFF0C\u300C\u4FDD\u5B58\u300D\u751F\u6548\u6216\u300C\u653E\u5F03\u6539\u52A8\u300D\u3002";
+    }
+    if (dirty) dirty.style.display = state.scenarioEdited ? "" : "none";
+  }
+  function markScenarioEdited() {
+    state.scenarioEdited = true;
+    syncEditUI();
+  }
+  function syncScenarioField(key, value, remove) {
+    [state.scenarioDef, state.scenario].forEach(function(target) {
+      if (!target) return;
+      if (remove) delete target[key];
+      else target[key] = value;
+    });
+  }
+  function clonePreserveFunctions(value) {
+    if (Array.isArray(value)) return value.map(clonePreserveFunctions);
+    if (isPlainObject2(value)) {
+      var out = {};
+      Object.keys(value).forEach(function(k) {
+        out[k] = clonePreserveFunctions(value[k]);
+      });
+      return out;
+    }
+    return value;
+  }
+  function moveScenarioStep(fromIndex, insertIndex) {
+    var steps = state.scenario && state.scenario.steps;
+    if (!Array.isArray(steps)) return;
+    var defSteps = state.scenarioDef && state.scenarioDef.steps;
+    var total = steps.length;
+    if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= total) return;
+    insertIndex = Math.max(0, Math.min(total - 1, Number(insertIndex)));
+    if (!Number.isInteger(insertIndex) || insertIndex === fromIndex) return;
+    var item = steps.splice(fromIndex, 1)[0];
+    steps.splice(insertIndex, 0, item);
+    if (Array.isArray(defSteps) && defSteps !== steps && defSteps.length === total) {
+      var defItem = defSteps.splice(fromIndex, 1)[0];
+      defSteps.splice(insertIndex, 0, defItem);
+    }
+    markScenarioEdited();
+    renderStepsAll();
+    setEditStatus("\u6B65\u9AA4\u987A\u5E8F\u5DF2\u8C03\u6574\uFF0C\u300C\u4FDD\u5B58\u300D\u540E\u5199\u56DE " + state.scenarioFile);
+  }
+  function enterScenarioEditMode() {
+    if (!state.scenario || state.running || (state.steps || []).length) return;
+    state.editing = true;
+    renderStepsAll();
+    syncEditUI();
+  }
+  function exitScenarioEditMode() {
+    if (!state.editing) return;
+    state.editing = false;
+    renderStepsAll();
+    syncEditUI();
+  }
+  function discardScenarioEdits() {
+    if (!state.scenarioFile) return;
+    if (!window.confirm("\u653E\u5F03\u5BF9\u5F53\u524D\u573A\u666F\u7684\u672A\u4FDD\u5B58\u6539\u52A8\uFF1F\u5C06\u91CD\u65B0\u4ECE " + state.scenarioFile + " \u52A0\u8F7D\u3002")) return;
+    loadScenario(state.scenarioFile).catch(function(error) {
+      uiView.setRunState("failed", "\u52A0\u8F7D\u5931\u8D25");
+      setEditStatus(error.message, true);
+    });
+  }
+  function buildCurrentScenarioSource() {
+    var def = state.scenarioDef;
+    if (!def) throw new Error("\u5F53\u524D\u573A\u666F\u5B9A\u4E49\u4E0D\u53EF\u7528\uFF0C\u65E0\u6CD5\u5E8F\u5217\u5316");
+    if (!state.scenarioId) throw new Error("\u5F53\u524D\u573A\u666F\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\u6CA1\u6709 id\uFF0C\u65E0\u6CD5\u751F\u6210\u573A\u666F\u6587\u4EF6");
+    return buildScenarioFileSource(state.scenarioId, def);
+  }
+  function flashScenarioButton(button, ok, successText) {
+    if (!button) return;
+    if (button.__feedbackTimer) window.clearTimeout(button.__feedbackTimer);
+    if (button.__originalText == null) button.__originalText = button.textContent;
+    button.textContent = ok ? successText : "\u5931\u8D25";
+    button.__feedbackTimer = window.setTimeout(function() {
+      button.textContent = button.__originalText;
+      button.__feedbackTimer = null;
+    }, 2e3);
+  }
+  async function saveScenarioEdits() {
+    if (!state.scenario || !state.scenarioEdited) return;
+    var saveBtn = document.getElementById("saveScenarioBtn");
+    var content;
+    try {
+      content = buildCurrentScenarioSource();
+    } catch (error) {
+      setEditStatus(error.message, true);
+      return;
+    }
+    if (!isServeBacked()) {
+      var copied = await copyText(content);
+      flashScenarioButton(saveBtn, copied, "\u5DF2\u590D\u5236");
+      setEditStatus(copied ? "\u5DF2\u628A\u6539\u5199\u540E\u7684\u573A\u666F\u6E90\u7801\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u8BF7\u8986\u76D6 " + state.scenarioFile + "\uFF08\u975E serve \u73AF\u5883\u65E0\u6CD5\u76F4\u63A5\u5199\u6587\u4EF6\uFF09" : "\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6D4F\u89C8\u5668\u526A\u8D34\u677F\u6743\u9650", !copied);
+      if (copied) {
+        state.scenarioEdited = false;
+        syncEditUI();
+      }
+      return;
+    }
+    try {
+      await postScenarioEdit("/__scenario-test__/scenario-file", { file: state.scenarioFile, content });
+      state.scenarioEdited = false;
+      flashScenarioButton(saveBtn, true, "\u5DF2\u4FDD\u5B58");
+      setEditStatus("\u5DF2\u4FDD\u5B58\u5230 " + state.scenarioFile);
+      syncEditUI();
+    } catch (error) {
+      flashScenarioButton(saveBtn, false, "");
+      setEditStatus("\u4FDD\u5B58\u5931\u8D25: " + error.message, true);
+    }
+  }
+  function buildVarRow(container, key, value, valueAsJson) {
+    var row = document.createElement("div");
+    row.className = "vars-editor-row";
+    var keyInput = document.createElement("input");
+    keyInput.className = "vars-editor-key";
+    keyInput.placeholder = "\u53D8\u91CF\u540D";
+    keyInput.value = key || "";
+    var valueInput = document.createElement("input");
+    valueInput.className = "vars-editor-value";
+    valueInput.placeholder = valueAsJson ? '\u503C\uFF08JSON\uFF0C\u5982 "abc"\u3001123\u3001{"a":1}\uFF09' : "\u6807\u7B7E\u6587\u5B57";
+    valueInput.value = valueAsJson ? JSON.stringify(value === void 0 ? "" : value) : value == null ? "" : String(value);
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "\u2715";
+    removeBtn.title = "\u5220\u9664\u8BE5\u53D8\u91CF";
+    removeBtn.addEventListener("click", function() {
+      row.remove();
+    });
+    row.appendChild(keyInput);
+    row.appendChild(valueInput);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+    return row;
+  }
+  function collectVarRows(container, valueAsJson) {
+    var result = {};
+    var rows = Array.from(container.querySelectorAll(".vars-editor-row"));
+    for (var i = 0; i < rows.length; i += 1) {
+      var key = rows[i].querySelector(".vars-editor-key").value.trim();
+      var rawValue = rows[i].querySelector(".vars-editor-value").value;
+      if (!key) continue;
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        throw new Error("\u53D8\u91CF\u540D\u91CD\u590D: " + key);
+      }
+      if (valueAsJson) {
+        try {
+          result[key] = rawValue.trim() === "" ? "" : JSON.parse(rawValue);
+        } catch (error) {
+          throw new Error("\u53D8\u91CF " + key + " \u7684\u503C\u4E0D\u662F\u5408\u6CD5 JSON: " + rawValue);
+        }
+      } else {
+        result[key] = String(rawValue);
+      }
+    }
+    return result;
+  }
+  function openVarsModal() {
+    if (!state.scenario || state.running) return;
+    var modal = document.getElementById("varsModal");
+    if (!modal) return;
+    var error = document.getElementById("varsModalError");
+    if (error) {
+      error.classList.add("hidden");
+      error.textContent = "";
+    }
+    var varsRows = document.getElementById("varsEditorRows");
+    var envVarsRows = document.getElementById("envVarsEditorRows");
+    varsRows.innerHTML = "";
+    envVarsRows.innerHTML = "";
+    Object.keys(state.scenario.vars || {}).forEach(function(name) {
+      buildVarRow(varsRows, name, state.scenario.vars[name], true);
+    });
+    Object.keys(state.scenario.envVars || {}).forEach(function(name) {
+      buildVarRow(envVarsRows, name, state.scenario.envVars[name], false);
+    });
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    window.requestAnimationFrame(function() {
+      var first = varsRows.querySelector("input");
+      if (first) first.focus();
+    });
+  }
+  function closeVarsModal() {
+    var modal = document.getElementById("varsModal");
+    if (!modal || modal.classList.contains("hidden")) return;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+  }
+  function applyVarsModal() {
+    var error = document.getElementById("varsModalError");
+    try {
+      var vars = collectVarRows(document.getElementById("varsEditorRows"), true);
+      var envVars = collectVarRows(document.getElementById("envVarsEditorRows"), false);
+      assertNoReservedVars2(vars, "\u573A\u666F vars");
+      assertNoReservedVars2(envVars, "\u573A\u666F envVars");
+      syncScenarioField("vars", vars, Object.keys(vars).length === 0);
+      syncScenarioField("envVars", envVars, Object.keys(envVars).length === 0);
+      markScenarioEdited();
+      renderScenarioVariableInputs();
+      closeVarsModal();
+      setEditStatus("\u573A\u666F\u53D8\u91CF\u5DF2\u4FEE\u6539\uFF0C\u300C\u4FDD\u5B58\u300D\u540E\u5199\u56DE " + state.scenarioFile);
+    } catch (e) {
+      if (error) {
+        error.textContent = e.message;
+        error.classList.remove("hidden");
+      }
+    }
+  }
+  function bindVarsModalEvents() {
+    var modal = document.getElementById("varsModal");
+    if (!modal) return;
+    document.getElementById("varsModalCloseBtn").addEventListener("click", closeVarsModal);
+    document.getElementById("varsCancelBtn").addEventListener("click", closeVarsModal);
+    document.getElementById("varsApplyBtn").addEventListener("click", applyVarsModal);
+    document.getElementById("varsAddRowBtn").addEventListener("click", function() {
+      buildVarRow(document.getElementById("varsEditorRows"), "", "", true).querySelector(".vars-editor-key").focus();
+    });
+    document.getElementById("envVarsAddRowBtn").addEventListener("click", function() {
+      buildVarRow(document.getElementById("envVarsEditorRows"), "", "", false).querySelector(".vars-editor-key").focus();
+    });
+    document.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") closeVarsModal();
+    });
+    modal.addEventListener("click", function(event) {
+      if (event.target === modal) closeVarsModal();
+    });
+  }
+  function loadScenarioDefFromSource(file) {
+    return fetch("./" + file + (file.indexOf("?") >= 0 ? "&" : "?") + "ts=" + Date.now()).then(function(response) {
+      if (!response.ok) throw new Error("\u8BFB\u53D6\u573A\u666F\u6587\u4EF6\u5931\u8D25: " + file);
+      return response.text();
+    }).then(function(source) {
+      var captured = null;
+      var stub = {
+        defineScenario: function(def) {
+          return def;
+        },
+        registerScenario: function(id, def) {
+          captured = { id, def };
+        }
+      };
+      var runner = new Function("ScenarioTest", '"use strict";' + source + "\nreturn null;");
+      runner(stub);
+      if (!captured || !captured.def) throw new Error("\u573A\u666F\u6587\u4EF6\u672A\u8C03\u7528 ScenarioTest.registerScenario: " + file);
+      return captured;
+    });
+  }
+  function scenarioEntryForFile(file) {
+    return (appConfig.scenarios || []).filter(function(item) {
+      return item && (item.url || item.file || item.path) === file;
+    })[0] || null;
+  }
+  function openDuplicateModal(sourceFile) {
+    var modal = document.getElementById("duplicateModal");
+    if (!modal || state.running) return;
+    var error = document.getElementById("duplicateError");
+    if (error) {
+      error.classList.add("hidden");
+      error.textContent = "";
+    }
+    var hint = document.getElementById("duplicateHint");
+    var entry = scenarioEntryForFile(sourceFile);
+    modal.dataset.sourceFile = sourceFile;
+    var baseId = slugifyScenarioId(entry && entry.id ? entry.id : "") || "scenario-copy";
+    var sourceName = entry && entry.name ? entry.name : sourceFile;
+    var baseDir = sourceFile.indexOf("/") >= 0 ? sourceFile.slice(0, sourceFile.lastIndexOf("/")) : "scenarios";
+    var newId = baseId + "-copy";
+    document.getElementById("duplicateNameInput").value = sourceName + " \u526F\u672C";
+    document.getElementById("duplicateIdInput").value = newId;
+    document.getElementById("duplicateFileInput").value = baseDir + "/" + newId + ".js";
+    if (hint) {
+      hint.textContent = isServeBacked() ? '\u5C06\u521B\u5EFA\u65B0\u6587\u4EF6\u5E76\u628A { id: "' + newId + '" } \u8FFD\u52A0\u5230 scenario.config.js \u7684\u573A\u666F\u6E05\u5355\u3002' : "\u5F53\u524D\u4E0D\u662F serve \u5DE5\u4F5C\u53F0\uFF1A\u5C06\u590D\u5236\u65B0\u573A\u666F\u6E90\u7801\u5230\u526A\u8D34\u677F\uFF0C\u8BF7\u624B\u52A8\u4FDD\u5B58\u6587\u4EF6\u5E76\u6CE8\u518C\u8FDB scenario.config.js\u3002";
+    }
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    window.requestAnimationFrame(function() {
+      document.getElementById("duplicateNameInput").focus();
+    });
+  }
+  function closeDuplicateModal() {
+    var modal = document.getElementById("duplicateModal");
+    if (!modal || modal.classList.contains("hidden")) return;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+  }
+  async function confirmDuplicateScenario() {
+    var modal = document.getElementById("duplicateModal");
+    if (!modal) return;
+    var sourceFile = modal.dataset.sourceFile;
+    var error = document.getElementById("duplicateError");
+    var name = document.getElementById("duplicateNameInput").value.trim();
+    var id = document.getElementById("duplicateIdInput").value.trim();
+    var file = document.getElementById("duplicateFileInput").value.trim().replace(/\\/g, "/").replace(/^\.?\//, "");
+    function fail(message) {
+      if (error) {
+        error.textContent = message;
+        error.classList.remove("hidden");
+      }
+    }
+    if (!name) {
+      fail("\u573A\u666F\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      return;
+    }
+    if (!isSafeScenarioId(id)) {
+      fail("\u573A\u666F id \u4E0D\u5408\u6CD5\uFF08\u5C0F\u5199\u5B57\u6BCD/\u6570\u5B57/\u77ED\u6A2A\u7EBF\uFF0C80 \u5B57\u7B26\u5185\uFF09");
+      return;
+    }
+    if (!isSafeScenarioFile(file)) {
+      fail("\u573A\u666F\u6587\u4EF6\u8DEF\u5F84\u4E0D\u5408\u6CD5\uFF08\u4EC5\u5141\u8BB8 scenarios/**/*.js\uFF09");
+      return;
+    }
+    var existing = (appConfig.scenarios || []).some(function(item) {
+      return item && (item.id === id || (item.url || item.file || item.path) === file);
+    });
+    if (existing) {
+      fail("\u573A\u666F id \u6216\u6587\u4EF6\u8DEF\u5F84\u5DF2\u5B58\u5728\u4E8E\u573A\u666F\u6E05\u5355");
+      return;
+    }
+    var captured;
+    try {
+      captured = sourceFile === state.scenarioFile && state.scenarioDef ? { id, def: state.scenarioDef } : await loadScenarioDefFromSource(sourceFile);
+    } catch (e) {
+      fail(e.message);
+      return;
+    }
+    var copiedDef = clonePreserveFunctions(captured.def);
+    copiedDef.name = name;
+    var content;
+    try {
+      content = buildScenarioFileSource(id, copiedDef);
+    } catch (e) {
+      fail(e.message);
+      return;
+    }
+    if (!isServeBacked()) {
+      var copied = await copyText(content);
+      if (!copied) {
+        fail("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6D4F\u89C8\u5668\u526A\u8D34\u677F\u6743\u9650");
+        return;
+      }
+      closeDuplicateModal();
+      setEditStatus("\u5DF2\u590D\u5236\u65B0\u573A\u666F\u6E90\u7801\u5230\u526A\u8D34\u677F\uFF0C\u8BF7\u4FDD\u5B58\u4E3A " + file + ' \u5E76\u5728 scenario.config.js \u7684 scenarios \u4E2D\u6CE8\u518C { id: "' + id + '", url: "' + file + '" }');
+      return;
+    }
+    try {
+      await postScenarioEdit("/__scenario-test__/scenario-file", { file, content, create: true });
+      await postScenarioEdit("/__scenario-test__/config-scenarios", { id, name, file });
+    } catch (e) {
+      fail("\u5199\u5165\u5931\u8D25: " + e.message);
+      return;
+    }
+    appConfig.scenarios.push({ id, name, url: file });
+    state.discoveredFiles.push({ name, file, tags: [] });
+    renderScenarioTagFilter();
+    renderScenarioSelect();
+    closeDuplicateModal();
+    loadScenario(file).catch(function(e2) {
+      uiView.setRunState("failed", "\u52A0\u8F7D\u5931\u8D25");
+      var statsPanel = document.getElementById("statsPanel");
+      if (statsPanel) statsPanel.innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc2(e2.message) + "</div>";
+    });
+  }
+  function bindDuplicateModalEvents() {
+    var modal = document.getElementById("duplicateModal");
+    if (!modal) return;
+    document.getElementById("duplicateCloseBtn").addEventListener("click", closeDuplicateModal);
+    document.getElementById("duplicateCancelBtn").addEventListener("click", closeDuplicateModal);
+    document.getElementById("duplicateConfirmBtn").addEventListener("click", function() {
+      confirmDuplicateScenario();
+    });
+    document.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") closeDuplicateModal();
+    });
+    modal.addEventListener("click", function(event) {
+      if (event.target === modal) closeDuplicateModal();
+    });
+  }
+  function bindStepReorderEvents() {
+    var ul = document.getElementById("stepsList");
+    if (!ul) return;
+    var dragFrom = -1;
+    var dropTarget = null;
+    function clearDropIndicator() {
+      if (!dropTarget) return;
+      dropTarget.node.classList.remove("step-drop-before");
+      dropTarget.node.classList.remove("step-drop-after");
+      dropTarget = null;
+    }
+    ul.addEventListener("click", function(event) {
+      var button = event.target && event.target.closest ? event.target.closest("[data-step-move]") : null;
+      if (!button) return;
+      var index = Number(button.dataset.stepIndex);
+      var direction = button.dataset.stepMove === "up" ? -1 : 1;
+      moveScenarioStep(index, index + direction);
+    });
+    ul.addEventListener("dragstart", function(event) {
+      var li = event.target && event.target.closest ? event.target.closest("li[data-step-idx]") : null;
+      var fromHandle = event.target && event.target.closest && event.target.closest(".step-drag-handle");
+      if (!state.editing || !li || li.dataset.passed !== "pending" || !fromHandle) {
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      dragFrom = Number(li.dataset.stepIdx);
+      if (event.dataTransfer) {
+        try {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(dragFrom));
+        } catch (_) {
+        }
+      }
+      li.classList.add("step-dragging");
+    });
+    ul.addEventListener("dragover", function(event) {
+      if (!state.editing || dragFrom < 0) return;
+      var li = event.target && event.target.closest ? event.target.closest("li[data-step-idx]") : null;
+      if (!li || li.dataset.passed !== "pending") return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      var rect = li.getBoundingClientRect();
+      var before = event.clientY - rect.top < rect.height / 2;
+      if (dropTarget && dropTarget.node === li && dropTarget.before === before) return;
+      clearDropIndicator();
+      li.classList.add(before ? "step-drop-before" : "step-drop-after");
+      dropTarget = { node: li, before };
+    });
+    ul.addEventListener("drop", function(event) {
+      if (!state.editing || dragFrom < 0) return;
+      event.preventDefault();
+      var li = event.target && event.target.closest ? event.target.closest("li[data-step-idx]") : null;
+      if (li && li.dataset.passed === "pending") {
+        var target = Number(li.dataset.stepIdx);
+        var rect = li.getBoundingClientRect();
+        var before = event.clientY - rect.top < rect.height / 2;
+        var insertIndex = before ? target : target + 1;
+        if (insertIndex > dragFrom) insertIndex -= 1;
+        moveScenarioStep(dragFrom, insertIndex);
+      }
+      clearDropIndicator();
+      dragFrom = -1;
+    });
+    ul.addEventListener("dragend", function(event) {
+      var li = event.target && event.target.closest ? event.target.closest("li[data-step-idx]") : null;
+      if (li) li.classList.remove("step-dragging");
+      clearDropIndicator();
+      dragFrom = -1;
+    });
+    ul.addEventListener("dragleave", function(event) {
+      if (event.relatedTarget && ul.contains(event.relatedTarget)) return;
+      clearDropIndicator();
+    });
+  }
+  function bindScenarioEditEvents() {
+    var editBtn = document.getElementById("editScenarioBtn");
+    if (editBtn) {
+      editBtn.addEventListener("click", function() {
+        if (state.editing) exitScenarioEditMode();
+        else enterScenarioEditMode();
+      });
+    }
+    var saveBtn = document.getElementById("saveScenarioBtn");
+    if (saveBtn) saveBtn.addEventListener("click", function() {
+      saveScenarioEdits();
+    });
+    var discardBtn = document.getElementById("discardScenarioEditsBtn");
+    if (discardBtn) discardBtn.addEventListener("click", discardScenarioEdits);
+    var varsBtn = document.getElementById("editScenarioVarsBtn");
+    if (varsBtn) varsBtn.addEventListener("click", openVarsModal);
+    bindVarsModalEvents();
+    bindDuplicateModalEvents();
+    bindStepReorderEvents();
+  }
   function loadScenario(file) {
     return new Promise(function(resolveLoad, rejectLoad) {
       if (!file) {
@@ -9402,12 +10183,18 @@ function createWorkbenchRuntime(options) {
           return;
         }
         state.scenario = clone2(scenario);
+        state.scenarioDef = scenario;
+        state.scenarioId = entry && entry.id ? entry.id : "";
+        state.editing = false;
+        state.scenarioEdited = false;
         state.steps = [];
         state.stepRuntime = null;
         state.stepCheckpoints = [];
         state.debugRuntimes = [];
         state.nextStepIndex = 0;
         state.lastReport = null;
+        syncEditUI();
+        setEditStatus("");
         syncSettingsInputs();
         updateHeader();
         renderScenarioSelect();
@@ -9441,6 +10228,8 @@ function createWorkbenchRuntime(options) {
     bindCodeCopyActions();
     bindGlobalShortcuts();
     bindScenarioListResizer();
+    bindScenarioEditEvents();
+    syncEditUI();
     uiAdhoc.bindAdhocRequestEvents(
       function(idx) {
         return state.scenario && Array.isArray(state.scenario.steps) ? state.scenario.steps[idx] : null;
@@ -9503,9 +10292,15 @@ function createWorkbenchRuntime(options) {
         toggleScenarioPin(pinTarget.dataset.pinFile);
         return;
       }
+      var dupTarget = event.target.closest("[data-dup-file]");
+      if (dupTarget) {
+        openDuplicateModal(dupTarget.dataset.dupFile);
+        return;
+      }
       var target = event.target.closest("[data-scenario-file]");
       var file = target && target.dataset.scenarioFile;
       if (!file || state.running || file === state.scenarioFile) return;
+      if (state.scenarioEdited && !window.confirm("\u5F53\u524D\u573A\u666F\u6709\u672A\u4FDD\u5B58\u6539\u52A8\uFF0C\u5207\u6362\u540E\u5C06\u4E22\u5931\u3002\u7EE7\u7EED\u5207\u6362\uFF1F")) return;
       loadScenario(file).catch(function(error) {
         uiView.setRunState("failed", "\u52A0\u8F7D\u5931\u8D25");
         document.getElementById("statsPanel").innerHTML = '<div class="text-sm text-rose-500 p-4">' + esc2(error.message) + "</div>";
@@ -9582,7 +10377,7 @@ function createWorkbenchRuntime(options) {
 }
 
 // src/browser/tailwind.generated.js
-var TAILWIND_CSS = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties;\n@layer theme, base, components, utilities;\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-amber-50: oklch(98.7% 0.022 95.277);\n    --color-amber-200: oklch(92.4% 0.12 95.746);\n    --color-amber-400: oklch(82.8% 0.189 84.429);\n    --color-amber-600: oklch(66.6% 0.179 58.318);\n    --color-yellow-50: oklch(98.7% 0.026 102.212);\n    --color-yellow-200: oklch(94.5% 0.129 101.54);\n    --color-yellow-600: oklch(68.1% 0.162 75.834);\n    --color-emerald-50: oklch(97.9% 0.021 166.113);\n    --color-emerald-100: oklch(95% 0.052 163.051);\n    --color-emerald-200: oklch(90.5% 0.093 164.15);\n    --color-emerald-300: oklch(84.5% 0.143 164.978);\n    --color-emerald-400: oklch(76.5% 0.177 163.223);\n    --color-emerald-500: oklch(69.6% 0.17 162.48);\n    --color-emerald-600: oklch(59.6% 0.145 163.225);\n    --color-emerald-700: oklch(50.8% 0.118 165.612);\n    --color-emerald-800: oklch(43.2% 0.095 166.913);\n    --color-blue-50: oklch(97% 0.014 254.604);\n    --color-blue-200: oklch(88.2% 0.059 254.128);\n    --color-blue-600: oklch(54.6% 0.245 262.881);\n    --color-indigo-50: oklch(96.2% 0.018 272.314);\n    --color-indigo-200: oklch(87% 0.065 274.039);\n    --color-indigo-500: oklch(58.5% 0.233 277.117);\n    --color-indigo-600: oklch(51.1% 0.262 276.966);\n    --color-rose-50: oklch(96.9% 0.015 12.422);\n    --color-rose-100: oklch(94.1% 0.03 12.58);\n    --color-rose-200: oklch(89.2% 0.058 10.001);\n    --color-rose-500: oklch(64.5% 0.246 16.439);\n    --color-rose-600: oklch(58.6% 0.253 17.585);\n    --color-rose-700: oklch(51.4% 0.222 16.935);\n    --color-rose-800: oklch(45.5% 0.188 13.697);\n    --color-rose-900: oklch(41% 0.159 10.272);\n    --color-slate-50: oklch(98.4% 0.003 247.858);\n    --color-slate-100: oklch(96.8% 0.007 247.896);\n    --color-slate-200: oklch(92.9% 0.013 255.508);\n    --color-slate-300: oklch(86.9% 0.022 252.894);\n    --color-slate-400: oklch(70.4% 0.04 256.788);\n    --color-slate-500: oklch(55.4% 0.046 257.417);\n    --color-slate-600: oklch(44.6% 0.043 257.281);\n    --color-slate-700: oklch(37.2% 0.044 257.287);\n    --color-slate-800: oklch(27.9% 0.041 260.031);\n    --color-slate-900: oklch(20.8% 0.042 265.755);\n    --color-slate-950: oklch(12.9% 0.042 264.695);\n    --color-gray-200: oklch(92.8% 0.006 264.531);\n    --color-white: #fff;\n    --spacing: 0.25rem;\n    --container-xl: 36rem;\n    --container-3xl: 48rem;\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --tracking-tight: -0.025em;\n    --tracking-normal: 0em;\n    --tracking-wider: 0.05em;\n    --leading-tight: 1.25;\n    --leading-relaxed: 1.625;\n    --radius-md: 0.375rem;\n    --radius-lg: 0.5rem;\n    --radius-xl: 0.75rem;\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n@layer base {\n  *, ::after, ::before, ::backdrop, ::file-selector-button {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n    border: 0 solid;\n  }\n  html, :host {\n    line-height: 1.5;\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n  b, strong {\n    font-weight: bolder;\n  }\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n  small {\n    font-size: 80%;\n  }\n  sub, sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n  sub {\n    bottom: -0.25em;\n  }\n  sup {\n    top: -0.5em;\n  }\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n  progress {\n    vertical-align: baseline;\n  }\n  summary {\n    display: list-item;\n  }\n  ol, ul, menu {\n    list-style: none;\n  }\n  img, svg, video, canvas, audio, iframe, embed, object {\n    display: block;\n    vertical-align: middle;\n  }\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n  button, input, select, optgroup, textarea, ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    border-radius: 0;\n    background-color: transparent;\n    opacity: 1;\n  }\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n  ::placeholder {\n    opacity: 1;\n  }\n  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentcolor;\n      @supports (color: color-mix(in lab, red, red)) {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n  textarea {\n    resize: vertical;\n  }\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n  button, input:where([type="button"], [type="reset"], [type="submit"]), ::file-selector-button {\n    appearance: button;\n  }\n  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {\n    height: auto;\n  }\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n@layer utilities {\n  #scenario-test-root .pointer-events-none {\n    pointer-events: none;\n  }\n  #scenario-test-root .visible {\n    visibility: visible;\n  }\n  #scenario-test-root .sr-only {\n    position: absolute;\n    width: 1px;\n    height: 1px;\n    padding: 0;\n    margin: -1px;\n    overflow: hidden;\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n  }\n  #scenario-test-root .absolute {\n    position: absolute;\n  }\n  #scenario-test-root .fixed {\n    position: fixed;\n  }\n  #scenario-test-root .relative {\n    position: relative;\n  }\n  #scenario-test-root .sticky {\n    position: sticky;\n  }\n  #scenario-test-root .inset-0 {\n    inset: 0px;\n  }\n  #scenario-test-root .top-0 {\n    top: 0px;\n  }\n  #scenario-test-root .left-2\\.5 {\n    left: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .z-10 {\n    z-index: 10;\n  }\n  #scenario-test-root .z-30 {\n    z-index: 30;\n  }\n  #scenario-test-root .z-40 {\n    z-index: 40;\n  }\n  #scenario-test-root .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n  #scenario-test-root .container {\n    width: 100%;\n    @media (width >= 40rem) {\n      max-width: 40rem;\n    }\n    @media (width >= 48rem) {\n      max-width: 48rem;\n    }\n    @media (width >= 64rem) {\n      max-width: 64rem;\n    }\n    @media (width >= 80rem) {\n      max-width: 80rem;\n    }\n    @media (width >= 96rem) {\n      max-width: 96rem;\n    }\n  }\n  #scenario-test-root .mx-auto {\n    margin-inline: auto;\n  }\n  #scenario-test-root .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * 0.5);\n  }\n  #scenario-test-root .mt-1 {\n    margin-top: var(--spacing);\n  }\n  #scenario-test-root .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .mr-1 {\n    margin-right: var(--spacing);\n  }\n  #scenario-test-root .mr-1\\.5 {\n    margin-right: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n  #scenario-test-root .mb-1\\.5 {\n    margin-bottom: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .ml-1 {\n    margin-left: var(--spacing);\n  }\n  #scenario-test-root .ml-1\\.5 {\n    margin-left: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .block {\n    display: block;\n  }\n  #scenario-test-root .flex {\n    display: flex;\n  }\n  #scenario-test-root .grid {\n    display: grid;\n  }\n  #scenario-test-root .hidden {\n    display: none;\n  }\n  #scenario-test-root .inline {\n    display: inline;\n  }\n  #scenario-test-root .inline-flex {\n    display: inline-flex;\n  }\n  #scenario-test-root .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .h-3 {\n    height: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .h-28 {\n    height: calc(var(--spacing) * 28);\n  }\n  #scenario-test-root .h-40 {\n    height: calc(var(--spacing) * 40);\n  }\n  #scenario-test-root .h-full {\n    height: 100%;\n  }\n  #scenario-test-root .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n  #scenario-test-root .max-h-72 {\n    max-height: calc(var(--spacing) * 72);\n  }\n  #scenario-test-root .max-h-\\[85vh\\] {\n    max-height: 85vh;\n  }\n  #scenario-test-root .min-h-0 {\n    min-height: 0px;\n  }\n  #scenario-test-root .w-1\\.5 {\n    width: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .w-1\\/3 {\n    width: calc(1 / 3 * 100%);\n  }\n  #scenario-test-root .w-3 {\n    width: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .w-16 {\n    width: calc(var(--spacing) * 16);\n  }\n  #scenario-test-root .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n  #scenario-test-root .w-40 {\n    width: calc(var(--spacing) * 40);\n  }\n  #scenario-test-root .w-full {\n    width: 100%;\n  }\n  #scenario-test-root .max-w-3xl {\n    max-width: var(--container-3xl);\n  }\n  #scenario-test-root .max-w-\\[40\\%\\] {\n    max-width: 40%;\n  }\n  #scenario-test-root .max-w-\\[280px\\] {\n    max-width: 280px;\n  }\n  #scenario-test-root .max-w-full {\n    max-width: 100%;\n  }\n  #scenario-test-root .min-w-0 {\n    min-width: 0px;\n  }\n  #scenario-test-root .flex-1 {\n    flex: 1;\n  }\n  #scenario-test-root .flex-shrink-0 {\n    flex-shrink: 0;\n  }\n  #scenario-test-root .rotate-180 {\n    rotate: 180deg;\n  }\n  #scenario-test-root .cursor-pointer {\n    cursor: pointer;\n  }\n  #scenario-test-root .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n  #scenario-test-root .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n  #scenario-test-root .flex-col {\n    flex-direction: column;\n  }\n  #scenario-test-root .flex-wrap {\n    flex-wrap: wrap;\n  }\n  #scenario-test-root .items-center {\n    align-items: center;\n  }\n  #scenario-test-root .items-start {\n    align-items: flex-start;\n  }\n  #scenario-test-root .justify-between {\n    justify-content: space-between;\n  }\n  #scenario-test-root .justify-center {\n    justify-content: center;\n  }\n  #scenario-test-root .justify-end {\n    justify-content: flex-end;\n  }\n  #scenario-test-root .gap-1 {\n    gap: var(--spacing);\n  }\n  #scenario-test-root .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-x-1\\.5 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.space-x-2 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 2) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.space-x-2\\.5 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 2.5) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 2.5) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n  #scenario-test-root :where(.divide-slate-100 > :not(:last-child)) {\n    border-color: var(--color-slate-100);\n  }\n  #scenario-test-root .truncate {\n    overflow: hidden;\n    text-overflow: ellipsis;\n    white-space: nowrap;\n  }\n  #scenario-test-root .overflow-auto {\n    overflow: auto;\n  }\n  #scenario-test-root .overflow-hidden {\n    overflow: hidden;\n  }\n  #scenario-test-root .overflow-x-auto {\n    overflow-x: auto;\n  }\n  #scenario-test-root .overflow-y-auto {\n    overflow-y: auto;\n  }\n  #scenario-test-root .rounded {\n    border-radius: 0.25rem;\n  }\n  #scenario-test-root .rounded-full {\n    border-radius: calc(infinity * 1px);\n  }\n  #scenario-test-root .rounded-lg {\n    border-radius: var(--radius-lg);\n  }\n  #scenario-test-root .rounded-md {\n    border-radius: var(--radius-md);\n  }\n  #scenario-test-root .rounded-xl {\n    border-radius: var(--radius-xl);\n  }\n  #scenario-test-root .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n  #scenario-test-root .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n  #scenario-test-root .border-r {\n    border-right-style: var(--tw-border-style);\n    border-right-width: 1px;\n  }\n  #scenario-test-root .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n  #scenario-test-root .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n  #scenario-test-root .border-dashed {\n    --tw-border-style: dashed;\n    border-style: dashed;\n  }\n  #scenario-test-root .border-amber-200 {\n    border-color: var(--color-amber-200);\n  }\n  #scenario-test-root .border-amber-200\\/80 {\n    border-color: color-mix(in srgb, oklch(92.4% 0.12 95.746) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-amber-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-blue-200 {\n    border-color: var(--color-blue-200);\n  }\n  #scenario-test-root .border-emerald-200 {\n    border-color: var(--color-emerald-200);\n  }\n  #scenario-test-root .border-emerald-200\\/80 {\n    border-color: color-mix(in srgb, oklch(90.5% 0.093 164.15) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-emerald-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-emerald-300 {\n    border-color: var(--color-emerald-300);\n  }\n  #scenario-test-root .border-indigo-200\\/80 {\n    border-color: color-mix(in srgb, oklch(87% 0.065 274.039) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-indigo-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-rose-100 {\n    border-color: var(--color-rose-100);\n  }\n  #scenario-test-root .border-rose-200 {\n    border-color: var(--color-rose-200);\n  }\n  #scenario-test-root .border-rose-200\\/60 {\n    border-color: color-mix(in srgb, oklch(89.2% 0.058 10.001) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-rose-200) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-rose-200\\/80 {\n    border-color: color-mix(in srgb, oklch(89.2% 0.058 10.001) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-rose-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-100 {\n    border-color: var(--color-slate-100);\n  }\n  #scenario-test-root .border-slate-200 {\n    border-color: var(--color-slate-200);\n  }\n  #scenario-test-root .border-slate-200\\/50 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 50%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 50%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/60 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/70 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 70%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/80 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-300 {\n    border-color: var(--color-slate-300);\n  }\n  #scenario-test-root .border-slate-300\\/60 {\n    border-color: color-mix(in srgb, oklch(86.9% 0.022 252.894) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-300) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-300\\/80 {\n    border-color: color-mix(in srgb, oklch(86.9% 0.022 252.894) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-300) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-600 {\n    border-color: var(--color-slate-600);\n  }\n  #scenario-test-root .border-slate-700 {\n    border-color: var(--color-slate-700);\n  }\n  #scenario-test-root .border-slate-700\\/80 {\n    border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-700) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-800 {\n    border-color: var(--color-slate-800);\n  }\n  #scenario-test-root .border-slate-800\\/80 {\n    border-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-800) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-yellow-200\\/80 {\n    border-color: color-mix(in srgb, oklch(94.5% 0.129 101.54) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-yellow-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-amber-50 {\n    background-color: var(--color-amber-50);\n  }\n  #scenario-test-root .bg-amber-400 {\n    background-color: var(--color-amber-400);\n  }\n  #scenario-test-root .bg-blue-50 {\n    background-color: var(--color-blue-50);\n  }\n  #scenario-test-root .bg-emerald-50 {\n    background-color: var(--color-emerald-50);\n  }\n  #scenario-test-root .bg-emerald-50\\/40 {\n    background-color: color-mix(in srgb, oklch(97.9% 0.021 166.113) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-emerald-50) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-emerald-50\\/60 {\n    background-color: color-mix(in srgb, oklch(97.9% 0.021 166.113) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-emerald-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-emerald-100 {\n    background-color: var(--color-emerald-100);\n  }\n  #scenario-test-root .bg-emerald-500 {\n    background-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .bg-emerald-600 {\n    background-color: var(--color-emerald-600);\n  }\n  #scenario-test-root .bg-indigo-50 {\n    background-color: var(--color-indigo-50);\n  }\n  #scenario-test-root .bg-rose-50 {\n    background-color: var(--color-rose-50);\n  }\n  #scenario-test-root .bg-rose-50\\/40 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-50\\/60 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-50\\/80 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-500 {\n    background-color: var(--color-rose-500);\n  }\n  #scenario-test-root .bg-slate-50 {\n    background-color: var(--color-slate-50);\n  }\n  #scenario-test-root .bg-slate-50\\/50 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 50%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 50%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-50\\/60 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-50\\/70 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 70%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-100 {\n    background-color: var(--color-slate-100);\n  }\n  #scenario-test-root .bg-slate-100\\/80 {\n    background-color: color-mix(in srgb, oklch(96.8% 0.007 247.896) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-100) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-200\\/80 {\n    background-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-300 {\n    background-color: var(--color-slate-300);\n  }\n  #scenario-test-root .bg-slate-400 {\n    background-color: var(--color-slate-400);\n  }\n  #scenario-test-root .bg-slate-700 {\n    background-color: var(--color-slate-700);\n  }\n  #scenario-test-root .bg-slate-800 {\n    background-color: var(--color-slate-800);\n  }\n  #scenario-test-root .bg-slate-900 {\n    background-color: var(--color-slate-900);\n  }\n  #scenario-test-root .bg-slate-950 {\n    background-color: var(--color-slate-950);\n  }\n  #scenario-test-root .bg-slate-950\\/30 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 30%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 30%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-950\\/40 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-950\\/90 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 90%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 90%, transparent);\n    }\n  }\n  #scenario-test-root .bg-white {\n    background-color: var(--color-white);\n  }\n  #scenario-test-root .bg-yellow-50 {\n    background-color: var(--color-yellow-50);\n  }\n  #scenario-test-root .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .p-2\\.5 {\n    padding: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .p-8 {\n    padding: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .px-1 {\n    padding-inline: var(--spacing);\n  }\n  #scenario-test-root .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .px-3\\.5 {\n    padding-inline: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .px-5 {\n    padding-inline: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .py-0\\.5 {\n    padding-block: calc(var(--spacing) * 0.5);\n  }\n  #scenario-test-root .py-1 {\n    padding-block: var(--spacing);\n  }\n  #scenario-test-root .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .py-px {\n    padding-block: 1px;\n  }\n  #scenario-test-root .pt-1 {\n    padding-top: var(--spacing);\n  }\n  #scenario-test-root .pt-3\\.5 {\n    padding-top: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .pr-2 {\n    padding-right: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pr-3 {\n    padding-right: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .pb-2 {\n    padding-bottom: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pl-3 {\n    padding-left: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .pl-8 {\n    padding-left: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .text-center {\n    text-align: center;\n  }\n  #scenario-test-root .text-left {\n    text-align: left;\n  }\n  #scenario-test-root .text-right {\n    text-align: right;\n  }\n  #scenario-test-root .align-top {\n    vertical-align: top;\n  }\n  #scenario-test-root .font-mono {\n    font-family: var(--font-mono);\n  }\n  #scenario-test-root .font-sans {\n    font-family: var(--font-sans);\n  }\n  #scenario-test-root .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n  #scenario-test-root .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n  #scenario-test-root .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n  #scenario-test-root .text-\\[9\\.5px\\] {\n    font-size: 9.5px;\n  }\n  #scenario-test-root .text-\\[10\\.5px\\] {\n    font-size: 10.5px;\n  }\n  #scenario-test-root .text-\\[10px\\] {\n    font-size: 10px;\n  }\n  #scenario-test-root .text-\\[11px\\] {\n    font-size: 11px;\n  }\n  #scenario-test-root .text-\\[13px\\] {\n    font-size: 13px;\n  }\n  #scenario-test-root .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n  #scenario-test-root .leading-tight {\n    --tw-leading: var(--leading-tight);\n    line-height: var(--leading-tight);\n  }\n  #scenario-test-root .font-bold {\n    --tw-font-weight: var(--font-weight-bold);\n    font-weight: var(--font-weight-bold);\n  }\n  #scenario-test-root .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n  #scenario-test-root .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n  #scenario-test-root .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n  #scenario-test-root .tracking-normal {\n    --tw-tracking: var(--tracking-normal);\n    letter-spacing: var(--tracking-normal);\n  }\n  #scenario-test-root .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n  #scenario-test-root .tracking-wider {\n    --tw-tracking: var(--tracking-wider);\n    letter-spacing: var(--tracking-wider);\n  }\n  #scenario-test-root .break-all {\n    word-break: break-all;\n  }\n  #scenario-test-root .whitespace-nowrap {\n    white-space: nowrap;\n  }\n  #scenario-test-root .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n  #scenario-test-root .text-amber-400 {\n    color: var(--color-amber-400);\n  }\n  #scenario-test-root .text-amber-600 {\n    color: var(--color-amber-600);\n  }\n  #scenario-test-root .text-blue-600 {\n    color: var(--color-blue-600);\n  }\n  #scenario-test-root .text-emerald-400 {\n    color: var(--color-emerald-400);\n  }\n  #scenario-test-root .text-emerald-500 {\n    color: var(--color-emerald-500);\n  }\n  #scenario-test-root .text-emerald-600 {\n    color: var(--color-emerald-600);\n  }\n  #scenario-test-root .text-emerald-600\\/70 {\n    color: color-mix(in srgb, oklch(59.6% 0.145 163.225) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-emerald-600) 70%, transparent);\n    }\n  }\n  #scenario-test-root .text-emerald-700 {\n    color: var(--color-emerald-700);\n  }\n  #scenario-test-root .text-emerald-800 {\n    color: var(--color-emerald-800);\n  }\n  #scenario-test-root .text-indigo-500 {\n    color: var(--color-indigo-500);\n  }\n  #scenario-test-root .text-indigo-600 {\n    color: var(--color-indigo-600);\n  }\n  #scenario-test-root .text-rose-500 {\n    color: var(--color-rose-500);\n  }\n  #scenario-test-root .text-rose-600 {\n    color: var(--color-rose-600);\n  }\n  #scenario-test-root .text-rose-600\\/70 {\n    color: color-mix(in srgb, oklch(58.6% 0.253 17.585) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-rose-600) 70%, transparent);\n    }\n  }\n  #scenario-test-root .text-rose-600\\/80 {\n    color: color-mix(in srgb, oklch(58.6% 0.253 17.585) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-rose-600) 80%, transparent);\n    }\n  }\n  #scenario-test-root .text-rose-700 {\n    color: var(--color-rose-700);\n  }\n  #scenario-test-root .text-rose-800 {\n    color: var(--color-rose-800);\n  }\n  #scenario-test-root .text-rose-900 {\n    color: var(--color-rose-900);\n  }\n  #scenario-test-root .text-slate-200 {\n    color: var(--color-slate-200);\n  }\n  #scenario-test-root .text-slate-300 {\n    color: var(--color-slate-300);\n  }\n  #scenario-test-root .text-slate-400 {\n    color: var(--color-slate-400);\n  }\n  #scenario-test-root .text-slate-500 {\n    color: var(--color-slate-500);\n  }\n  #scenario-test-root .text-slate-600 {\n    color: var(--color-slate-600);\n  }\n  #scenario-test-root .text-slate-700 {\n    color: var(--color-slate-700);\n  }\n  #scenario-test-root .text-slate-800 {\n    color: var(--color-slate-800);\n  }\n  #scenario-test-root .text-slate-900 {\n    color: var(--color-slate-900);\n  }\n  #scenario-test-root .text-white {\n    color: var(--color-white);\n  }\n  #scenario-test-root .text-yellow-600 {\n    color: var(--color-yellow-600);\n  }\n  #scenario-test-root .normal-case {\n    text-transform: none;\n  }\n  #scenario-test-root .uppercase {\n    text-transform: uppercase;\n  }\n  #scenario-test-root .placeholder-slate-400::placeholder {\n    color: var(--color-slate-400);\n  }\n  #scenario-test-root .placeholder-slate-500::placeholder {\n    color: var(--color-slate-500);\n  }\n  #scenario-test-root .opacity-50 {\n    opacity: 50%;\n  }\n  #scenario-test-root .shadow-2xl {\n    --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-2xs {\n    --tw-shadow: 0 1px var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-inner {\n    --tw-shadow: inset 0 2px 4px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-xs {\n    --tw-shadow: 0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .ring-2 {\n    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .ring-emerald-500\\/20 {\n    --tw-ring-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      --tw-ring-color: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);\n    }\n  }\n  #scenario-test-root .outline-hidden {\n    --tw-outline-style: none;\n    outline-style: none;\n    @media (forced-colors: active) {\n      outline: 2px solid transparent;\n      outline-offset: 2px;\n    }\n  }\n  #scenario-test-root .filter {\n    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);\n  }\n  #scenario-test-root .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .duration-150 {\n    --tw-duration: 150ms;\n    transition-duration: 150ms;\n  }\n  #scenario-test-root .duration-200 {\n    --tw-duration: 200ms;\n    transition-duration: 200ms;\n  }\n  #scenario-test-root .duration-300 {\n    --tw-duration: 300ms;\n    transition-duration: 300ms;\n  }\n  #scenario-test-root .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n  @media (hover: hover) {\n    #scenario-test-root .group-hover\\:text-slate-600:is(:where(.group):hover *) {\n      color: var(--color-slate-600);\n    }\n    #scenario-test-root .group-hover\\:text-slate-900:is(:where(.group):hover *) {\n      color: var(--color-slate-900);\n    }\n  }\n  #scenario-test-root .placeholder\\:text-slate-300::placeholder {\n    color: var(--color-slate-300);\n  }\n  @media (hover: hover) {\n    #scenario-test-root .hover\\:border-slate-300:hover {\n      border-color: var(--color-slate-300);\n    }\n    #scenario-test-root .hover\\:bg-emerald-50:hover {\n      background-color: var(--color-emerald-50);\n    }\n    #scenario-test-root .hover\\:bg-emerald-100:hover {\n      background-color: var(--color-emerald-100);\n    }\n    #scenario-test-root .hover\\:bg-emerald-600:hover {\n      background-color: var(--color-emerald-600);\n    }\n    #scenario-test-root .hover\\:bg-emerald-700:hover {\n      background-color: var(--color-emerald-700);\n    }\n    #scenario-test-root .hover\\:bg-slate-50:hover {\n      background-color: var(--color-slate-50);\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 60%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 60%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/70:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 70%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/70:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 70%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/80:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 80%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/80:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 80%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-100:hover {\n      background-color: var(--color-slate-100);\n    }\n    #scenario-test-root .hover\\:bg-slate-600:hover {\n      background-color: var(--color-slate-600);\n    }\n    #scenario-test-root .hover\\:bg-slate-700:hover {\n      background-color: var(--color-slate-700);\n    }\n    #scenario-test-root .hover\\:bg-slate-800:hover {\n      background-color: var(--color-slate-800);\n    }\n    #scenario-test-root .hover\\:bg-white\\/60:hover {\n      background-color: color-mix(in srgb, #fff 60%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-white\\/60:hover {\n        background-color: color-mix(in oklab, var(--color-white) 60%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:text-emerald-400:hover {\n      color: var(--color-emerald-400);\n    }\n    #scenario-test-root .hover\\:text-emerald-700:hover {\n      color: var(--color-emerald-700);\n    }\n    #scenario-test-root .hover\\:text-rose-600:hover {\n      color: var(--color-rose-600);\n    }\n    #scenario-test-root .hover\\:text-slate-600:hover {\n      color: var(--color-slate-600);\n    }\n    #scenario-test-root .hover\\:text-slate-700:hover {\n      color: var(--color-slate-700);\n    }\n    #scenario-test-root .hover\\:text-slate-900:hover {\n      color: var(--color-slate-900);\n    }\n    #scenario-test-root .hover\\:text-white:hover {\n      color: var(--color-white);\n    }\n  }\n  #scenario-test-root .focus\\:border-emerald-500:focus {\n    border-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .focus\\:border-slate-800:focus {\n    border-color: var(--color-slate-800);\n  }\n  #scenario-test-root .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .focus\\:ring-emerald-500:focus {\n    --tw-ring-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .focus\\:ring-slate-800:focus {\n    --tw-ring-color: var(--color-slate-800);\n  }\n  #scenario-test-root .focus\\:outline-hidden:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n    @media (forced-colors: active) {\n      outline: 2px solid transparent;\n      outline-offset: 2px;\n    }\n  }\n  #scenario-test-root .active\\:scale-95:active {\n    --tw-scale-x: 95%;\n    --tw-scale-y: 95%;\n    --tw-scale-z: 95%;\n    scale: var(--tw-scale-x) var(--tw-scale-y);\n  }\n  #scenario-test-root .active\\:scale-\\[0\\.96\\]:active {\n    scale: 0.96;\n  }\n  #scenario-test-root .active\\:scale-\\[0\\.98\\]:active {\n    scale: 0.98;\n  }\n  #scenario-test-root .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n  #scenario-test-root .disabled\\:opacity-50:disabled {\n    opacity: 50%;\n  }\n  @media (width >= 40rem) {\n    #scenario-test-root .sm\\:mt-0 {\n      margin-top: 0px;\n    }\n    #scenario-test-root .sm\\:max-w-xl {\n      max-width: var(--container-xl);\n    }\n    #scenario-test-root .sm\\:grid-cols-\\[120px_1fr\\] {\n      grid-template-columns: 120px 1fr;\n    }\n    #scenario-test-root .sm\\:gap-6 {\n      gap: calc(var(--spacing) * 6);\n    }\n  }\n  @media (width >= 48rem) {\n    #scenario-test-root .md\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n  @media (width >= 64rem) {\n    #scenario-test-root .lg\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n  @media (width >= 80rem) {\n    #scenario-test-root .xl\\:grid-cols-\\[minmax\\(200px\\,260px\\)_1fr_minmax\\(250px\\,290px\\)\\] {\n      grid-template-columns: minmax(200px,260px) 1fr minmax(250px,290px);\n    }\n  }\n}\n@layer base {\n  *, ::before, ::after, ::backdrop, ::file-selector-button {\n    border-color: var(--color-gray-200);\n  }\n}\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-space-x-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n@property --tw-leading {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0px;\n}\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-blur {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-invert {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-duration {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-scale-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@property --tw-scale-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@property --tw-scale-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@layer properties {\n  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {\n    *, ::before, ::after, ::backdrop {\n      --tw-space-y-reverse: 0;\n      --tw-space-x-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-scale-x: 1;\n      --tw-scale-y: 1;\n      --tw-scale-z: 1;\n    }\n  }\n}';
+var TAILWIND_CSS = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties;\n@layer theme, base, components, utilities;\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-amber-50: oklch(98.7% 0.022 95.277);\n    --color-amber-100: oklch(96.2% 0.059 95.617);\n    --color-amber-200: oklch(92.4% 0.12 95.746);\n    --color-amber-400: oklch(82.8% 0.189 84.429);\n    --color-amber-600: oklch(66.6% 0.179 58.318);\n    --color-amber-700: oklch(55.5% 0.163 48.998);\n    --color-amber-800: oklch(47.3% 0.137 46.201);\n    --color-yellow-50: oklch(98.7% 0.026 102.212);\n    --color-yellow-200: oklch(94.5% 0.129 101.54);\n    --color-yellow-600: oklch(68.1% 0.162 75.834);\n    --color-emerald-50: oklch(97.9% 0.021 166.113);\n    --color-emerald-100: oklch(95% 0.052 163.051);\n    --color-emerald-200: oklch(90.5% 0.093 164.15);\n    --color-emerald-300: oklch(84.5% 0.143 164.978);\n    --color-emerald-400: oklch(76.5% 0.177 163.223);\n    --color-emerald-500: oklch(69.6% 0.17 162.48);\n    --color-emerald-600: oklch(59.6% 0.145 163.225);\n    --color-emerald-700: oklch(50.8% 0.118 165.612);\n    --color-emerald-800: oklch(43.2% 0.095 166.913);\n    --color-blue-50: oklch(97% 0.014 254.604);\n    --color-blue-200: oklch(88.2% 0.059 254.128);\n    --color-blue-600: oklch(54.6% 0.245 262.881);\n    --color-indigo-50: oklch(96.2% 0.018 272.314);\n    --color-indigo-200: oklch(87% 0.065 274.039);\n    --color-indigo-500: oklch(58.5% 0.233 277.117);\n    --color-indigo-600: oklch(51.1% 0.262 276.966);\n    --color-rose-50: oklch(96.9% 0.015 12.422);\n    --color-rose-100: oklch(94.1% 0.03 12.58);\n    --color-rose-200: oklch(89.2% 0.058 10.001);\n    --color-rose-500: oklch(64.5% 0.246 16.439);\n    --color-rose-600: oklch(58.6% 0.253 17.585);\n    --color-rose-700: oklch(51.4% 0.222 16.935);\n    --color-rose-800: oklch(45.5% 0.188 13.697);\n    --color-rose-900: oklch(41% 0.159 10.272);\n    --color-slate-50: oklch(98.4% 0.003 247.858);\n    --color-slate-100: oklch(96.8% 0.007 247.896);\n    --color-slate-200: oklch(92.9% 0.013 255.508);\n    --color-slate-300: oklch(86.9% 0.022 252.894);\n    --color-slate-400: oklch(70.4% 0.04 256.788);\n    --color-slate-500: oklch(55.4% 0.046 257.417);\n    --color-slate-600: oklch(44.6% 0.043 257.281);\n    --color-slate-700: oklch(37.2% 0.044 257.287);\n    --color-slate-800: oklch(27.9% 0.041 260.031);\n    --color-slate-900: oklch(20.8% 0.042 265.755);\n    --color-slate-950: oklch(12.9% 0.042 264.695);\n    --color-gray-200: oklch(92.8% 0.006 264.531);\n    --color-white: #fff;\n    --spacing: 0.25rem;\n    --container-lg: 32rem;\n    --container-xl: 36rem;\n    --container-2xl: 42rem;\n    --container-3xl: 48rem;\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --tracking-tight: -0.025em;\n    --tracking-normal: 0em;\n    --tracking-wider: 0.05em;\n    --leading-tight: 1.25;\n    --leading-relaxed: 1.625;\n    --radius-md: 0.375rem;\n    --radius-lg: 0.5rem;\n    --radius-xl: 0.75rem;\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n@layer base {\n  *, ::after, ::before, ::backdrop, ::file-selector-button {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n    border: 0 solid;\n  }\n  html, :host {\n    line-height: 1.5;\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n  b, strong {\n    font-weight: bolder;\n  }\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n  small {\n    font-size: 80%;\n  }\n  sub, sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n  sub {\n    bottom: -0.25em;\n  }\n  sup {\n    top: -0.5em;\n  }\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n  progress {\n    vertical-align: baseline;\n  }\n  summary {\n    display: list-item;\n  }\n  ol, ul, menu {\n    list-style: none;\n  }\n  img, svg, video, canvas, audio, iframe, embed, object {\n    display: block;\n    vertical-align: middle;\n  }\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n  button, input, select, optgroup, textarea, ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    border-radius: 0;\n    background-color: transparent;\n    opacity: 1;\n  }\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n  ::placeholder {\n    opacity: 1;\n  }\n  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentcolor;\n      @supports (color: color-mix(in lab, red, red)) {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n  textarea {\n    resize: vertical;\n  }\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n  button, input:where([type="button"], [type="reset"], [type="submit"]), ::file-selector-button {\n    appearance: button;\n  }\n  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {\n    height: auto;\n  }\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n@layer utilities {\n  #scenario-test-root .pointer-events-none {\n    pointer-events: none;\n  }\n  #scenario-test-root .visible {\n    visibility: visible;\n  }\n  #scenario-test-root .sr-only {\n    position: absolute;\n    width: 1px;\n    height: 1px;\n    padding: 0;\n    margin: -1px;\n    overflow: hidden;\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n  }\n  #scenario-test-root .absolute {\n    position: absolute;\n  }\n  #scenario-test-root .fixed {\n    position: fixed;\n  }\n  #scenario-test-root .relative {\n    position: relative;\n  }\n  #scenario-test-root .sticky {\n    position: sticky;\n  }\n  #scenario-test-root .inset-0 {\n    inset: 0px;\n  }\n  #scenario-test-root .top-0 {\n    top: 0px;\n  }\n  #scenario-test-root .left-2\\.5 {\n    left: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .z-10 {\n    z-index: 10;\n  }\n  #scenario-test-root .z-30 {\n    z-index: 30;\n  }\n  #scenario-test-root .z-40 {\n    z-index: 40;\n  }\n  #scenario-test-root .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n  #scenario-test-root .container {\n    width: 100%;\n    @media (width >= 40rem) {\n      max-width: 40rem;\n    }\n    @media (width >= 48rem) {\n      max-width: 48rem;\n    }\n    @media (width >= 64rem) {\n      max-width: 64rem;\n    }\n    @media (width >= 80rem) {\n      max-width: 80rem;\n    }\n    @media (width >= 96rem) {\n      max-width: 96rem;\n    }\n  }\n  #scenario-test-root .mx-auto {\n    margin-inline: auto;\n  }\n  #scenario-test-root .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * 0.5);\n  }\n  #scenario-test-root .mt-1 {\n    margin-top: var(--spacing);\n  }\n  #scenario-test-root .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .mr-1 {\n    margin-right: var(--spacing);\n  }\n  #scenario-test-root .mr-1\\.5 {\n    margin-right: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n  #scenario-test-root .mb-1\\.5 {\n    margin-bottom: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .ml-1 {\n    margin-left: var(--spacing);\n  }\n  #scenario-test-root .ml-1\\.5 {\n    margin-left: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .block {\n    display: block;\n  }\n  #scenario-test-root .flex {\n    display: flex;\n  }\n  #scenario-test-root .grid {\n    display: grid;\n  }\n  #scenario-test-root .hidden {\n    display: none;\n  }\n  #scenario-test-root .inline {\n    display: inline;\n  }\n  #scenario-test-root .inline-flex {\n    display: inline-flex;\n  }\n  #scenario-test-root .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .h-3 {\n    height: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .h-28 {\n    height: calc(var(--spacing) * 28);\n  }\n  #scenario-test-root .h-40 {\n    height: calc(var(--spacing) * 40);\n  }\n  #scenario-test-root .h-full {\n    height: 100%;\n  }\n  #scenario-test-root .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n  #scenario-test-root .max-h-72 {\n    max-height: calc(var(--spacing) * 72);\n  }\n  #scenario-test-root .max-h-\\[85vh\\] {\n    max-height: 85vh;\n  }\n  #scenario-test-root .min-h-0 {\n    min-height: 0px;\n  }\n  #scenario-test-root .w-1\\.5 {\n    width: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .w-1\\/3 {\n    width: calc(1 / 3 * 100%);\n  }\n  #scenario-test-root .w-3 {\n    width: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .w-16 {\n    width: calc(var(--spacing) * 16);\n  }\n  #scenario-test-root .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n  #scenario-test-root .w-40 {\n    width: calc(var(--spacing) * 40);\n  }\n  #scenario-test-root .w-full {\n    width: 100%;\n  }\n  #scenario-test-root .max-w-2xl {\n    max-width: var(--container-2xl);\n  }\n  #scenario-test-root .max-w-3xl {\n    max-width: var(--container-3xl);\n  }\n  #scenario-test-root .max-w-\\[40\\%\\] {\n    max-width: 40%;\n  }\n  #scenario-test-root .max-w-\\[280px\\] {\n    max-width: 280px;\n  }\n  #scenario-test-root .max-w-full {\n    max-width: 100%;\n  }\n  #scenario-test-root .max-w-lg {\n    max-width: var(--container-lg);\n  }\n  #scenario-test-root .min-w-0 {\n    min-width: 0px;\n  }\n  #scenario-test-root .flex-1 {\n    flex: 1;\n  }\n  #scenario-test-root .flex-shrink-0 {\n    flex-shrink: 0;\n  }\n  #scenario-test-root .rotate-180 {\n    rotate: 180deg;\n  }\n  #scenario-test-root .cursor-pointer {\n    cursor: pointer;\n  }\n  #scenario-test-root .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n  #scenario-test-root .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n  #scenario-test-root .flex-col {\n    flex-direction: column;\n  }\n  #scenario-test-root .flex-wrap {\n    flex-wrap: wrap;\n  }\n  #scenario-test-root .items-center {\n    align-items: center;\n  }\n  #scenario-test-root .items-start {\n    align-items: flex-start;\n  }\n  #scenario-test-root .justify-between {\n    justify-content: space-between;\n  }\n  #scenario-test-root .justify-center {\n    justify-content: center;\n  }\n  #scenario-test-root .justify-end {\n    justify-content: flex-end;\n  }\n  #scenario-test-root .gap-1 {\n    gap: var(--spacing);\n  }\n  #scenario-test-root .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n  #scenario-test-root :where(.space-x-1\\.5 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.space-x-2 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 2) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.space-x-2\\.5 > :not(:last-child)) {\n    --tw-space-x-reverse: 0;\n    margin-inline-start: calc(calc(var(--spacing) * 2.5) * var(--tw-space-x-reverse));\n    margin-inline-end: calc(calc(var(--spacing) * 2.5) * calc(1 - var(--tw-space-x-reverse)));\n  }\n  #scenario-test-root :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n  #scenario-test-root :where(.divide-slate-100 > :not(:last-child)) {\n    border-color: var(--color-slate-100);\n  }\n  #scenario-test-root .truncate {\n    overflow: hidden;\n    text-overflow: ellipsis;\n    white-space: nowrap;\n  }\n  #scenario-test-root .overflow-auto {\n    overflow: auto;\n  }\n  #scenario-test-root .overflow-hidden {\n    overflow: hidden;\n  }\n  #scenario-test-root .overflow-x-auto {\n    overflow-x: auto;\n  }\n  #scenario-test-root .overflow-y-auto {\n    overflow-y: auto;\n  }\n  #scenario-test-root .rounded {\n    border-radius: 0.25rem;\n  }\n  #scenario-test-root .rounded-full {\n    border-radius: calc(infinity * 1px);\n  }\n  #scenario-test-root .rounded-lg {\n    border-radius: var(--radius-lg);\n  }\n  #scenario-test-root .rounded-md {\n    border-radius: var(--radius-md);\n  }\n  #scenario-test-root .rounded-xl {\n    border-radius: var(--radius-xl);\n  }\n  #scenario-test-root .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n  #scenario-test-root .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n  #scenario-test-root .border-r {\n    border-right-style: var(--tw-border-style);\n    border-right-width: 1px;\n  }\n  #scenario-test-root .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n  #scenario-test-root .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n  #scenario-test-root .border-dashed {\n    --tw-border-style: dashed;\n    border-style: dashed;\n  }\n  #scenario-test-root .border-amber-100 {\n    border-color: var(--color-amber-100);\n  }\n  #scenario-test-root .border-amber-200 {\n    border-color: var(--color-amber-200);\n  }\n  #scenario-test-root .border-amber-200\\/80 {\n    border-color: color-mix(in srgb, oklch(92.4% 0.12 95.746) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-amber-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-blue-200 {\n    border-color: var(--color-blue-200);\n  }\n  #scenario-test-root .border-emerald-200 {\n    border-color: var(--color-emerald-200);\n  }\n  #scenario-test-root .border-emerald-200\\/80 {\n    border-color: color-mix(in srgb, oklch(90.5% 0.093 164.15) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-emerald-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-emerald-300 {\n    border-color: var(--color-emerald-300);\n  }\n  #scenario-test-root .border-indigo-200\\/80 {\n    border-color: color-mix(in srgb, oklch(87% 0.065 274.039) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-indigo-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-rose-100 {\n    border-color: var(--color-rose-100);\n  }\n  #scenario-test-root .border-rose-200 {\n    border-color: var(--color-rose-200);\n  }\n  #scenario-test-root .border-rose-200\\/60 {\n    border-color: color-mix(in srgb, oklch(89.2% 0.058 10.001) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-rose-200) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-rose-200\\/80 {\n    border-color: color-mix(in srgb, oklch(89.2% 0.058 10.001) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-rose-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-100 {\n    border-color: var(--color-slate-100);\n  }\n  #scenario-test-root .border-slate-200 {\n    border-color: var(--color-slate-200);\n  }\n  #scenario-test-root .border-slate-200\\/50 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 50%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 50%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/60 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/70 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 70%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-200\\/80 {\n    border-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-300 {\n    border-color: var(--color-slate-300);\n  }\n  #scenario-test-root .border-slate-300\\/60 {\n    border-color: color-mix(in srgb, oklch(86.9% 0.022 252.894) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-300) 60%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-300\\/80 {\n    border-color: color-mix(in srgb, oklch(86.9% 0.022 252.894) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-300) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-600 {\n    border-color: var(--color-slate-600);\n  }\n  #scenario-test-root .border-slate-700 {\n    border-color: var(--color-slate-700);\n  }\n  #scenario-test-root .border-slate-700\\/80 {\n    border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-700) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-slate-800 {\n    border-color: var(--color-slate-800);\n  }\n  #scenario-test-root .border-slate-800\\/80 {\n    border-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-slate-800) 80%, transparent);\n    }\n  }\n  #scenario-test-root .border-yellow-200\\/80 {\n    border-color: color-mix(in srgb, oklch(94.5% 0.129 101.54) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--color-yellow-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-amber-50 {\n    background-color: var(--color-amber-50);\n  }\n  #scenario-test-root .bg-amber-50\\/70 {\n    background-color: color-mix(in srgb, oklch(98.7% 0.022 95.277) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-amber-50) 70%, transparent);\n    }\n  }\n  #scenario-test-root .bg-amber-400 {\n    background-color: var(--color-amber-400);\n  }\n  #scenario-test-root .bg-blue-50 {\n    background-color: var(--color-blue-50);\n  }\n  #scenario-test-root .bg-emerald-50 {\n    background-color: var(--color-emerald-50);\n  }\n  #scenario-test-root .bg-emerald-50\\/40 {\n    background-color: color-mix(in srgb, oklch(97.9% 0.021 166.113) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-emerald-50) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-emerald-50\\/60 {\n    background-color: color-mix(in srgb, oklch(97.9% 0.021 166.113) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-emerald-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-emerald-100 {\n    background-color: var(--color-emerald-100);\n  }\n  #scenario-test-root .bg-emerald-500 {\n    background-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .bg-emerald-600 {\n    background-color: var(--color-emerald-600);\n  }\n  #scenario-test-root .bg-indigo-50 {\n    background-color: var(--color-indigo-50);\n  }\n  #scenario-test-root .bg-rose-50 {\n    background-color: var(--color-rose-50);\n  }\n  #scenario-test-root .bg-rose-50\\/40 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-50\\/60 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-50\\/80 {\n    background-color: color-mix(in srgb, oklch(96.9% 0.015 12.422) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-rose-50) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-rose-500 {\n    background-color: var(--color-rose-500);\n  }\n  #scenario-test-root .bg-slate-50 {\n    background-color: var(--color-slate-50);\n  }\n  #scenario-test-root .bg-slate-50\\/50 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 50%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 50%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-50\\/60 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 60%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 60%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-50\\/70 {\n    background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-50) 70%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-100 {\n    background-color: var(--color-slate-100);\n  }\n  #scenario-test-root .bg-slate-100\\/80 {\n    background-color: color-mix(in srgb, oklch(96.8% 0.007 247.896) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-100) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-200\\/80 {\n    background-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-300 {\n    background-color: var(--color-slate-300);\n  }\n  #scenario-test-root .bg-slate-400 {\n    background-color: var(--color-slate-400);\n  }\n  #scenario-test-root .bg-slate-700 {\n    background-color: var(--color-slate-700);\n  }\n  #scenario-test-root .bg-slate-800 {\n    background-color: var(--color-slate-800);\n  }\n  #scenario-test-root .bg-slate-900 {\n    background-color: var(--color-slate-900);\n  }\n  #scenario-test-root .bg-slate-950 {\n    background-color: var(--color-slate-950);\n  }\n  #scenario-test-root .bg-slate-950\\/30 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 30%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 30%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-950\\/40 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 40%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 40%, transparent);\n    }\n  }\n  #scenario-test-root .bg-slate-950\\/90 {\n    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 90%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      background-color: color-mix(in oklab, var(--color-slate-950) 90%, transparent);\n    }\n  }\n  #scenario-test-root .bg-white {\n    background-color: var(--color-white);\n  }\n  #scenario-test-root .bg-yellow-50 {\n    background-color: var(--color-yellow-50);\n  }\n  #scenario-test-root .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .p-2\\.5 {\n    padding: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .p-8 {\n    padding: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .px-1 {\n    padding-inline: var(--spacing);\n  }\n  #scenario-test-root .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .px-3\\.5 {\n    padding-inline: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .px-5 {\n    padding-inline: calc(var(--spacing) * 5);\n  }\n  #scenario-test-root .py-0\\.5 {\n    padding-block: calc(var(--spacing) * 0.5);\n  }\n  #scenario-test-root .py-1 {\n    padding-block: var(--spacing);\n  }\n  #scenario-test-root .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n  #scenario-test-root .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n  #scenario-test-root .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .py-px {\n    padding-block: 1px;\n  }\n  #scenario-test-root .pt-1 {\n    padding-top: var(--spacing);\n  }\n  #scenario-test-root .pt-3\\.5 {\n    padding-top: calc(var(--spacing) * 3.5);\n  }\n  #scenario-test-root .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .pr-2 {\n    padding-right: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pr-3 {\n    padding-right: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .pb-2 {\n    padding-bottom: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n  #scenario-test-root .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n  #scenario-test-root .pl-3 {\n    padding-left: calc(var(--spacing) * 3);\n  }\n  #scenario-test-root .pl-8 {\n    padding-left: calc(var(--spacing) * 8);\n  }\n  #scenario-test-root .text-center {\n    text-align: center;\n  }\n  #scenario-test-root .text-left {\n    text-align: left;\n  }\n  #scenario-test-root .text-right {\n    text-align: right;\n  }\n  #scenario-test-root .align-top {\n    vertical-align: top;\n  }\n  #scenario-test-root .font-mono {\n    font-family: var(--font-mono);\n  }\n  #scenario-test-root .font-sans {\n    font-family: var(--font-sans);\n  }\n  #scenario-test-root .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n  #scenario-test-root .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n  #scenario-test-root .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n  #scenario-test-root .text-\\[9\\.5px\\] {\n    font-size: 9.5px;\n  }\n  #scenario-test-root .text-\\[10\\.5px\\] {\n    font-size: 10.5px;\n  }\n  #scenario-test-root .text-\\[10px\\] {\n    font-size: 10px;\n  }\n  #scenario-test-root .text-\\[11px\\] {\n    font-size: 11px;\n  }\n  #scenario-test-root .text-\\[13px\\] {\n    font-size: 13px;\n  }\n  #scenario-test-root .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n  #scenario-test-root .leading-tight {\n    --tw-leading: var(--leading-tight);\n    line-height: var(--leading-tight);\n  }\n  #scenario-test-root .font-bold {\n    --tw-font-weight: var(--font-weight-bold);\n    font-weight: var(--font-weight-bold);\n  }\n  #scenario-test-root .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n  #scenario-test-root .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n  #scenario-test-root .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n  #scenario-test-root .tracking-normal {\n    --tw-tracking: var(--tracking-normal);\n    letter-spacing: var(--tracking-normal);\n  }\n  #scenario-test-root .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n  #scenario-test-root .tracking-wider {\n    --tw-tracking: var(--tracking-wider);\n    letter-spacing: var(--tracking-wider);\n  }\n  #scenario-test-root .break-all {\n    word-break: break-all;\n  }\n  #scenario-test-root .whitespace-nowrap {\n    white-space: nowrap;\n  }\n  #scenario-test-root .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n  #scenario-test-root .text-amber-400 {\n    color: var(--color-amber-400);\n  }\n  #scenario-test-root .text-amber-600 {\n    color: var(--color-amber-600);\n  }\n  #scenario-test-root .text-amber-700 {\n    color: var(--color-amber-700);\n  }\n  #scenario-test-root .text-amber-800 {\n    color: var(--color-amber-800);\n  }\n  #scenario-test-root .text-blue-600 {\n    color: var(--color-blue-600);\n  }\n  #scenario-test-root .text-emerald-400 {\n    color: var(--color-emerald-400);\n  }\n  #scenario-test-root .text-emerald-500 {\n    color: var(--color-emerald-500);\n  }\n  #scenario-test-root .text-emerald-600 {\n    color: var(--color-emerald-600);\n  }\n  #scenario-test-root .text-emerald-600\\/70 {\n    color: color-mix(in srgb, oklch(59.6% 0.145 163.225) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-emerald-600) 70%, transparent);\n    }\n  }\n  #scenario-test-root .text-emerald-700 {\n    color: var(--color-emerald-700);\n  }\n  #scenario-test-root .text-emerald-800 {\n    color: var(--color-emerald-800);\n  }\n  #scenario-test-root .text-indigo-500 {\n    color: var(--color-indigo-500);\n  }\n  #scenario-test-root .text-indigo-600 {\n    color: var(--color-indigo-600);\n  }\n  #scenario-test-root .text-rose-500 {\n    color: var(--color-rose-500);\n  }\n  #scenario-test-root .text-rose-600 {\n    color: var(--color-rose-600);\n  }\n  #scenario-test-root .text-rose-600\\/70 {\n    color: color-mix(in srgb, oklch(58.6% 0.253 17.585) 70%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-rose-600) 70%, transparent);\n    }\n  }\n  #scenario-test-root .text-rose-600\\/80 {\n    color: color-mix(in srgb, oklch(58.6% 0.253 17.585) 80%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--color-rose-600) 80%, transparent);\n    }\n  }\n  #scenario-test-root .text-rose-700 {\n    color: var(--color-rose-700);\n  }\n  #scenario-test-root .text-rose-800 {\n    color: var(--color-rose-800);\n  }\n  #scenario-test-root .text-rose-900 {\n    color: var(--color-rose-900);\n  }\n  #scenario-test-root .text-slate-200 {\n    color: var(--color-slate-200);\n  }\n  #scenario-test-root .text-slate-300 {\n    color: var(--color-slate-300);\n  }\n  #scenario-test-root .text-slate-400 {\n    color: var(--color-slate-400);\n  }\n  #scenario-test-root .text-slate-500 {\n    color: var(--color-slate-500);\n  }\n  #scenario-test-root .text-slate-600 {\n    color: var(--color-slate-600);\n  }\n  #scenario-test-root .text-slate-700 {\n    color: var(--color-slate-700);\n  }\n  #scenario-test-root .text-slate-800 {\n    color: var(--color-slate-800);\n  }\n  #scenario-test-root .text-slate-900 {\n    color: var(--color-slate-900);\n  }\n  #scenario-test-root .text-white {\n    color: var(--color-white);\n  }\n  #scenario-test-root .text-yellow-600 {\n    color: var(--color-yellow-600);\n  }\n  #scenario-test-root .normal-case {\n    text-transform: none;\n  }\n  #scenario-test-root .uppercase {\n    text-transform: uppercase;\n  }\n  #scenario-test-root .placeholder-slate-400::placeholder {\n    color: var(--color-slate-400);\n  }\n  #scenario-test-root .placeholder-slate-500::placeholder {\n    color: var(--color-slate-500);\n  }\n  #scenario-test-root .opacity-50 {\n    opacity: 50%;\n  }\n  #scenario-test-root .shadow-2xl {\n    --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-2xs {\n    --tw-shadow: 0 1px var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-inner {\n    --tw-shadow: inset 0 2px 4px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .shadow-xs {\n    --tw-shadow: 0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .ring-2 {\n    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .ring-emerald-500\\/20 {\n    --tw-ring-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);\n    @supports (color: color-mix(in lab, red, red)) {\n      --tw-ring-color: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);\n    }\n  }\n  #scenario-test-root .outline-hidden {\n    --tw-outline-style: none;\n    outline-style: none;\n    @media (forced-colors: active) {\n      outline: 2px solid transparent;\n      outline-offset: 2px;\n    }\n  }\n  #scenario-test-root .filter {\n    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);\n  }\n  #scenario-test-root .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  #scenario-test-root .duration-150 {\n    --tw-duration: 150ms;\n    transition-duration: 150ms;\n  }\n  #scenario-test-root .duration-200 {\n    --tw-duration: 200ms;\n    transition-duration: 200ms;\n  }\n  #scenario-test-root .duration-300 {\n    --tw-duration: 300ms;\n    transition-duration: 300ms;\n  }\n  #scenario-test-root .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n  @media (hover: hover) {\n    #scenario-test-root .group-hover\\:text-slate-600:is(:where(.group):hover *) {\n      color: var(--color-slate-600);\n    }\n    #scenario-test-root .group-hover\\:text-slate-900:is(:where(.group):hover *) {\n      color: var(--color-slate-900);\n    }\n  }\n  #scenario-test-root .placeholder\\:text-slate-300::placeholder {\n    color: var(--color-slate-300);\n  }\n  @media (hover: hover) {\n    #scenario-test-root .hover\\:border-slate-300:hover {\n      border-color: var(--color-slate-300);\n    }\n    #scenario-test-root .hover\\:bg-amber-50:hover {\n      background-color: var(--color-amber-50);\n    }\n    #scenario-test-root .hover\\:bg-emerald-50:hover {\n      background-color: var(--color-emerald-50);\n    }\n    #scenario-test-root .hover\\:bg-emerald-100:hover {\n      background-color: var(--color-emerald-100);\n    }\n    #scenario-test-root .hover\\:bg-emerald-600:hover {\n      background-color: var(--color-emerald-600);\n    }\n    #scenario-test-root .hover\\:bg-emerald-700:hover {\n      background-color: var(--color-emerald-700);\n    }\n    #scenario-test-root .hover\\:bg-slate-50:hover {\n      background-color: var(--color-slate-50);\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 60%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/60:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 60%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/70:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 70%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/70:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 70%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-50\\/80:hover {\n      background-color: color-mix(in srgb, oklch(98.4% 0.003 247.858) 80%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-slate-50\\/80:hover {\n        background-color: color-mix(in oklab, var(--color-slate-50) 80%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:bg-slate-100:hover {\n      background-color: var(--color-slate-100);\n    }\n    #scenario-test-root .hover\\:bg-slate-600:hover {\n      background-color: var(--color-slate-600);\n    }\n    #scenario-test-root .hover\\:bg-slate-700:hover {\n      background-color: var(--color-slate-700);\n    }\n    #scenario-test-root .hover\\:bg-slate-800:hover {\n      background-color: var(--color-slate-800);\n    }\n    #scenario-test-root .hover\\:bg-white\\/60:hover {\n      background-color: color-mix(in srgb, #fff 60%, transparent);\n    }\n    @supports (color: color-mix(in lab, red, red)) {\n      #scenario-test-root .hover\\:bg-white\\/60:hover {\n        background-color: color-mix(in oklab, var(--color-white) 60%, transparent);\n      }\n    }\n    #scenario-test-root .hover\\:text-emerald-400:hover {\n      color: var(--color-emerald-400);\n    }\n    #scenario-test-root .hover\\:text-emerald-700:hover {\n      color: var(--color-emerald-700);\n    }\n    #scenario-test-root .hover\\:text-rose-600:hover {\n      color: var(--color-rose-600);\n    }\n    #scenario-test-root .hover\\:text-slate-600:hover {\n      color: var(--color-slate-600);\n    }\n    #scenario-test-root .hover\\:text-slate-700:hover {\n      color: var(--color-slate-700);\n    }\n    #scenario-test-root .hover\\:text-slate-900:hover {\n      color: var(--color-slate-900);\n    }\n    #scenario-test-root .hover\\:text-white:hover {\n      color: var(--color-white);\n    }\n  }\n  #scenario-test-root .focus\\:border-emerald-500:focus {\n    border-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .focus\\:border-slate-800:focus {\n    border-color: var(--color-slate-800);\n  }\n  #scenario-test-root .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, rgb(59 130 246 / 0.5));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  #scenario-test-root .focus\\:ring-emerald-500:focus {\n    --tw-ring-color: var(--color-emerald-500);\n  }\n  #scenario-test-root .focus\\:ring-slate-800:focus {\n    --tw-ring-color: var(--color-slate-800);\n  }\n  #scenario-test-root .focus\\:outline-hidden:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n    @media (forced-colors: active) {\n      outline: 2px solid transparent;\n      outline-offset: 2px;\n    }\n  }\n  #scenario-test-root .active\\:scale-95:active {\n    --tw-scale-x: 95%;\n    --tw-scale-y: 95%;\n    --tw-scale-z: 95%;\n    scale: var(--tw-scale-x) var(--tw-scale-y);\n  }\n  #scenario-test-root .active\\:scale-\\[0\\.96\\]:active {\n    scale: 0.96;\n  }\n  #scenario-test-root .active\\:scale-\\[0\\.97\\]:active {\n    scale: 0.97;\n  }\n  #scenario-test-root .active\\:scale-\\[0\\.98\\]:active {\n    scale: 0.98;\n  }\n  #scenario-test-root .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n  #scenario-test-root .disabled\\:opacity-40:disabled {\n    opacity: 40%;\n  }\n  #scenario-test-root .disabled\\:opacity-50:disabled {\n    opacity: 50%;\n  }\n  @media (width >= 40rem) {\n    #scenario-test-root .sm\\:mt-0 {\n      margin-top: 0px;\n    }\n    #scenario-test-root .sm\\:max-w-xl {\n      max-width: var(--container-xl);\n    }\n    #scenario-test-root .sm\\:grid-cols-\\[120px_1fr\\] {\n      grid-template-columns: 120px 1fr;\n    }\n    #scenario-test-root .sm\\:gap-6 {\n      gap: calc(var(--spacing) * 6);\n    }\n  }\n  @media (width >= 48rem) {\n    #scenario-test-root .md\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n  @media (width >= 64rem) {\n    #scenario-test-root .lg\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n  @media (width >= 80rem) {\n    #scenario-test-root .xl\\:grid-cols-\\[minmax\\(200px\\,260px\\)_1fr_minmax\\(250px\\,290px\\)\\] {\n      grid-template-columns: minmax(200px,260px) 1fr minmax(250px,290px);\n    }\n  }\n}\n@layer base {\n  *, ::before, ::after, ::backdrop, ::file-selector-button {\n    border-color: var(--color-gray-200);\n  }\n}\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-space-x-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n@property --tw-leading {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0px;\n}\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-blur {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-invert {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-duration {\n  syntax: "*";\n  inherits: false;\n}\n@property --tw-scale-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@property --tw-scale-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@property --tw-scale-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 1;\n}\n@layer properties {\n  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {\n    *, ::before, ::after, ::backdrop {\n      --tw-space-y-reverse: 0;\n      --tw-space-x-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-scale-x: 1;\n      --tw-scale-y: 1;\n      --tw-scale-z: 1;\n    }\n  }\n}';
 
 // src/browser/app.js
 function resolveMount(mount) {
