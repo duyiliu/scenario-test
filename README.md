@@ -390,3 +390,5 @@ CI 在 GitHub Actions 上覆盖 Node 22/24 × Ubuntu/Windows 的单测矩阵、�
 发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 本项目采用 MIT License。
+
+Dashboard detail smoke (YIL-192): 2026-11-15T13:21:14Z UTC
