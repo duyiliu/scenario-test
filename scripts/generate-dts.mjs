@@ -26,7 +26,7 @@ const valueTypeToTs = {
     assertion: "Assertion | Assertion[]"
 };
 
-const operatorMembers = (indent) => Object.entries(contract.assertions.operators).filter(([name]) => name !== "shape").map(([name, spec]) => {
+const operatorMembers = (indent) => Object.entries(contract.assertions.operators).filter(([name]) => name !== "shape" && name !== "jsonSchema").map(([name, spec]) => {
     const tsType = valueTypeToTs[spec.valueType];
     if (!tsType) throw new Error(`contract 操作符 ${name} 的 valueType "${spec.valueType}" 缺少 d.ts TS 类型映射`);
     return `${indent}/** ${spec.description} */\n${indent}${name}?: ${tsType};`;
@@ -131,6 +131,8 @@ export interface Assertion {
 ${operatorMembers("    ")}
     /** 结构级校验（jsonSchema-lite）：失败明细在 result.detail 中按 path 定位 */
     shape?: ShapeDefinition;
+    /** 结构化深校验（JSON Schema draft-07 子集，shape 完整版）：失败明细在 result.detail 中按 path 定位，组合键分支原因挂在子项 detail */
+    jsonSchema?: JsonSchemaDefinition;
 }
 
 export interface ExtractDefinition {
@@ -161,6 +163,62 @@ export interface ShapeDefinition {
     additionalProperties?: boolean;
 }
 
+type JsonSchemaTypeName = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
+
+/** jsonSchema 断言：JSON Schema draft-07 子集（不引入依赖），未识别关键字定义期即拒 */
+export interface JsonSchemaDefinition {
+    /** 单类型或非空类型数组（并集）；integer 与 number 区分 */
+    type?: JsonSchemaTypeName | JsonSchemaTypeName[];
+    enum?: unknown[];
+    const?: unknown;
+    minimum?: number;
+    maximum?: number;
+    /** draft-07 数值口径（布尔形式即拒） */
+    exclusiveMinimum?: number;
+    exclusiveMaximum?: number;
+    multipleOf?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+    /** 白名单：date-time/date/time/email/uri/uuid/ipv4/ipv6；仅约束字符串实际值 */
+    format?: "date-time" | "date" | "time" | "email" | "uri" | "uuid" | "ipv4" | "ipv6";
+    required?: string[];
+    properties?: Record<string, JsonSchemaDefinition>;
+    patternProperties?: Record<string, JsonSchemaDefinition>;
+    /** 布尔闸门或子 schema（作用于未命中 properties/patternProperties 的键） */
+    additionalProperties?: boolean | JsonSchemaDefinition;
+    /** 校验对象键名本身（如 { pattern: "^[a-z][a-z0-9_]*$" }） */
+    propertyNames?: JsonSchemaDefinition;
+    /** 单 schema 或元组数组（元组时配套 additionalItems） */
+    items?: JsonSchemaDefinition | JsonSchemaDefinition[];
+    /** 布尔闸门或子 schema（仅 items 为元组数组时有效） */
+    additionalItems?: boolean | JsonSchemaDefinition;
+    minItems?: number;
+    maxItems?: number;
+    uniqueItems?: boolean;
+    /** 至少一个元素满足该子 schema */
+    contains?: JsonSchemaDefinition;
+    allOf?: JsonSchemaDefinition[];
+    anyOf?: JsonSchemaDefinition[];
+    /** 恰好一个分支满足 */
+    oneOf?: JsonSchemaDefinition[];
+    not?: JsonSchemaDefinition;
+    if?: JsonSchemaDefinition;
+    then?: JsonSchemaDefinition;
+    else?: JsonSchemaDefinition;
+    /** 仅本地指针：#/definitions/...、#/$defs/...、#（自身）；跨文件/网络引用不支持 */
+    $ref?: string;
+    definitions?: Record<string, JsonSchemaDefinition>;
+    $defs?: Record<string, JsonSchemaDefinition>;
+    $schema?: string;
+    $id?: string;
+    /** 注解键：不参与校验 */
+    title?: string;
+    description?: string;
+    default?: unknown;
+    examples?: unknown[];
+}
+
 /** when 对象形式：from: WhenSource（contract.when.sources = vars/suite/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
 export interface WhenDefinition {
     from?: WhenSource;
@@ -168,6 +226,7 @@ export interface WhenDefinition {
     path?: string;
 ${operatorMembers("    ")}
     shape?: ShapeDefinition;
+    jsonSchema?: JsonSchemaDefinition;
 }
 
 export interface GeneratedVarDefinition {
@@ -494,6 +553,7 @@ export declare const contract: {
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
         shape: { keys: readonly string[]; types: readonly string[]; note: string };
+        jsonSchema: { keys: readonly string[]; types: readonly string[]; formats: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; scope: string; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };

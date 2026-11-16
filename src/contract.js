@@ -15,7 +15,8 @@ import { VERSION } from "./version.generated.js";
 // v20：用户级项目登记（projects 命令、serve 固定端口、--open/--reassign）
 // v23：运行时去项目化——项目不再落 .scenario-test 运行时副本，执行/工作台统一使用安装方运行时；
 //       init 移除 --library-url、新增 --clean 清理旧副本
-export const CONTRACT_VERSION = 23;
+// v24：contains 字符串包含操作符与 jsonSchema 结构化深校验（JSON Schema draft-07 子集，shape 完整版）
+export const CONTRACT_VERSION = 24;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -58,12 +59,20 @@ export const contract = Object.freeze({
                 description: "数组包含期望项，或字符串包含期望子串",
                 valueType: "any"
             }),
+            contains: Object.freeze({
+                description: "字符串化后的实际值包含期望子串（大小写敏感；null/undefined 实际值视为空串；数组包含请用 includes 或 each，jsonSchema 的数组 contains 关键字请用 jsonSchema 操作符）",
+                valueType: "string"
+            }),
             each: Object.freeze({
                 description: "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
                 valueType: "assertion"
             }),
             shape: Object.freeze({
                 description: "结构级校验（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构，失败明细定位到字段路径与期望/实际类型",
+                valueType: "any"
+            }),
+            jsonSchema: Object.freeze({
+                description: "结构化深校验（JSON Schema draft-07 子集，shape 完整版）：支持 type/const/enum、数值边界、字符串长度/正则/format、对象属性与必填、数组项/长度/唯一性/contains、allOf/anyOf/oneOf/not、if-then-else、本地 $ref，失败明细定位到字段路径",
                 valueType: "any"
             }),
             matches: Object.freeze({
@@ -109,7 +118,31 @@ export const contract = Object.freeze({
         shape: Object.freeze({
             keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
             types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
-            note: "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言"
+            note: "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言；需要数值边界/字符串 format/anyOf/if-then-else 等完整语义请用 jsonSchema 操作符"
+        }),
+        // jsonSchema 断言支持的关键字与 format 名单（JSON Schema draft-07 子集，不引入依赖）
+        jsonSchema: Object.freeze({
+            keys: Object.freeze([
+                // 通用
+                "type", "enum", "const",
+                // 数值
+                "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+                // 字符串
+                "minLength", "maxLength", "pattern", "format",
+                // 对象
+                "required", "properties", "patternProperties", "additionalProperties", "propertyNames",
+                // 数组
+                "items", "additionalItems", "minItems", "maxItems", "uniqueItems", "contains",
+                // 组合与条件
+                "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
+                // 引用与元数据（注解键不参与校验，书写不报错）
+                "$ref", "definitions", "$defs", "$schema", "$id", "title", "description", "default", "examples"
+            ]),
+            // type 取值（含 type 数组并集形式）；integer 与 number 区分（NaN/Infinity 恒不匹配）
+            types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
+            // format 支持的取值白名单：未识别值定义期即拒（不静默跳过，避免以为校验了实际没校验）
+            formats: Object.freeze(["date-time", "date", "time", "email", "uri", "uuid", "ipv4", "ipv6"]),
+            note: "jsonSchema 是对响应的 JSON Schema draft-07 子集校验（shape 完整版，不引入第三方依赖）：type 支持单值或数组并集（object/array/string/number/integer/boolean/null）；数值键 minimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf 为有限 number（draft-07 口径，布尔形式即拒）；字符串键 minLength/maxLength/pattern/format（format 白名单 date-time/date/time/email/uri/uuid/ipv4/ipv6）；对象键 required/properties/patternProperties/additionalProperties（布尔或子 schema）/propertyNames；数组键 items（单 schema 或元组数组，配套 additionalItems）/minItems/maxItems/uniqueItems/contains；组合 allOf/anyOf/oneOf/not 与条件 if/then/else；$ref 仅支持本地指针（#/definitions/...、#/$defs/...），definitions/$defs 内嵌套与递归引用合法，跨文件/网络引用即拒。未识别关键字定义期即拒（title/description/default/examples/$schema/$id 为注解键，不参与校验）；空 schema 恒真、被定义期拒绝。format 仅约束字符串实际值、数值键仅约束 number 实际值（类型不符时该键跳过，由 type 判定）"
         })
     }),
 

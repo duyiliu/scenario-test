@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.15.0",
-  "contractVersion": 23,
+  "contractVersion": 24,
   "assertions": {
     "operators": {
       "exists": {
@@ -20,12 +20,20 @@
         "description": "数组包含期望项，或字符串包含期望子串",
         "valueType": "any"
       },
+      "contains": {
+        "description": "字符串化后的实际值包含期望子串（大小写敏感；null/undefined 实际值视为空串；数组包含请用 includes 或 each，jsonSchema 的数组 contains 关键字请用 jsonSchema 操作符）",
+        "valueType": "string"
+      },
       "each": {
         "description": "数组逐项断言：实际值必须是数组，expected 为子断言定义对象或其数组，对每个元素套用子断言（子断言 path 相对元素自身，期望值支持模板变量）；任一元素任一子断言失败则整体失败，空数组恒通过，非数组实际值直接失败",
         "valueType": "assertion"
       },
       "shape": {
         "description": "结构级校验（jsonSchema-lite）：按 type/required/properties/items/enum/additionalProperties 校验响应结构，失败明细定位到字段路径与期望/实际类型",
+        "valueType": "any"
+      },
+      "jsonSchema": {
+        "description": "结构化深校验（JSON Schema draft-07 子集，shape 完整版）：支持 type/const/enum、数值边界、字符串长度/正则/format、对象属性与必填、数组项/长度/唯一性/contains、allOf/anyOf/oneOf/not、if-then-else、本地 $ref，失败明细定位到字段路径",
         "valueType": "any"
       },
       "matches": {
@@ -109,7 +117,70 @@
         "boolean",
         "null"
       ],
-      "note": "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言"
+      "note": "shape 是对响应结构的轻量 JSON Schema 子集校验：type 支持 object/array/string/number/integer/boolean/null；required 为对象必填键数组；properties 为逐字段子 schema；items 为数组元素子 schema；enum 为深比较候选值数组；additionalProperties 默认 true，声明 false 时未知键失败。未识别 shape 键定义期即拒。additionalProperties:false 对含动态字段的响应可能误报，动态字段场景请保留默认或改用逐字段断言；需要数值边界/字符串 format/anyOf/if-then-else 等完整语义请用 jsonSchema 操作符"
+    },
+    "jsonSchema": {
+      "keys": [
+        "type",
+        "enum",
+        "const",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "format",
+        "required",
+        "properties",
+        "patternProperties",
+        "additionalProperties",
+        "propertyNames",
+        "items",
+        "additionalItems",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "contains",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "$ref",
+        "definitions",
+        "$defs",
+        "$schema",
+        "$id",
+        "title",
+        "description",
+        "default",
+        "examples"
+      ],
+      "types": [
+        "object",
+        "array",
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ],
+      "formats": [
+        "date-time",
+        "date",
+        "time",
+        "email",
+        "uri",
+        "uuid",
+        "ipv4",
+        "ipv6"
+      ],
+      "note": "jsonSchema 是对响应的 JSON Schema draft-07 子集校验（shape 完整版，不引入第三方依赖）：type 支持单值或数组并集（object/array/string/number/integer/boolean/null）；数值键 minimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf 为有限 number（draft-07 口径，布尔形式即拒）；字符串键 minLength/maxLength/pattern/format（format 白名单 date-time/date/time/email/uri/uuid/ipv4/ipv6）；对象键 required/properties/patternProperties/additionalProperties（布尔或子 schema）/propertyNames；数组键 items（单 schema 或元组数组，配套 additionalItems）/minItems/maxItems/uniqueItems/contains；组合 allOf/anyOf/oneOf/not 与条件 if/then/else；$ref 仅支持本地指针（#/definitions/...、#/$defs/...），definitions/$defs 内嵌套与递归引用合法，跨文件/网络引用即拒。未识别关键字定义期即拒（title/description/default/examples/$schema/$id 为注解键，不参与校验）；空 schema 恒真、被定义期拒绝。format 仅约束字符串实际值、数值键仅约束 number 实际值（类型不符时该键跳过，由 type 判定）"
     }
   },
   "when": {

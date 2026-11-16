@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **新增 `contains` 字符串包含与 `jsonSchema` 结构化深校验（contract v24，GH-159）**。`contains` 与 `startsWith`/`endsWith` 同族（大小写敏感；数组/对象实际值按失败透出并引导 `includes`/`each`，不做字符串化假绿）。`jsonSchema` 是 `shape` 的完整版（JSON Schema draft-07 子集、不引入依赖）：`type`（含数组并集）/`enum`/`const`、数值 `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum`/`multipleOf`、字符串 `minLength`/`maxLength`/`pattern`/`format`（白名单 `date-time`/`date`/`time`/`email`/`uri`/`uuid`/`ipv4`/`ipv6`）、对象 `required`/`properties`/`patternProperties`/`additionalProperties`（布尔或子 schema）/`propertyNames`、数组 `items`（单 schema 或元组 + `additionalItems`）/`minItems`/`maxItems`/`uniqueItems`/`contains` 子 schema、组合 `allOf`/`anyOf`/`oneOf`/`not` 与条件 `if`/`then`/`else`、`$ref` 本地指针（`#/definitions/`、`#/$defs/`，含递归结构支持与循环防护）。定义期对未知键/非法取值 fail-fast（含 `{{` 模板时延后到运行期校验），失败明细复用 `each`/`shape` 字段路径分层结构，CLI/工作台/报告同口径透出。`capabilities`/`d.ts`/AI Prompt/Patterns/README 全部从 `src/contract.js` 单一事实源投影。
 - **新增确定性发布消费链 E2E（`tests/e2e/`），闭合覆盖矩阵 G8 的确定性段**。真实执行 `install.sh`（ubuntu）/`install.ps1`（windows）完成「下载 → SHA-256 校验 → 用户级运行时落盘 → init → doctor → run → 报告产物」全链，经 `HOME`/`USERPROFILE` 隔离到临时目录、本地静态源模拟 CDN、零外网。`tests/e2e/helpers/`（static-source 动态算哈希生成 release.json、fixture-api login/orders、proc 平台脚本分发）；`tests/e2e/project/` 消费工程场景夹具。新增 `npm run test:e2e`（`scripts/run-e2e.mjs`）并接入 `check:all`/`test:all` 与 CI 独立 `e2e` job（ubuntu-24.04 + windows-latest，node 22）。LLM 段（skill-e2e 冒烟、场景设计 A/B）仍仅 192.168.1.214 手动，G8 LLM 段保持未验证。
 
 ## [0.15.0] - 2026-11-13
