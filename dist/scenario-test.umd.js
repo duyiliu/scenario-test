@@ -281,6 +281,7 @@ var ScenarioTest = (() => {
     defineScenario: () => defineScenario,
     evalExpression: () => evalExpression,
     evaluateAssertion: () => evaluateAssertion,
+    evaluateJsonSchema: () => evaluateJsonSchema,
     evaluateShape: () => evaluateShape,
     evaluateWhen: () => evaluateWhen,
     formatAssertionContext: () => formatAssertionContext,
@@ -337,6 +338,7 @@ var ScenarioTest = (() => {
     validateAdapter: () => validateAdapter,
     validateAdapterResponse: () => validateAdapterResponse,
     validateAssertion: () => validateAssertion,
+    validateJsonSchema: () => validateJsonSchema,
     validateShapeSchema: () => validateShapeSchema
   });
 
@@ -423,7 +425,7 @@ var ScenarioTest = (() => {
   var VERSION = "0.15.0";
 
   // src/contract.js
-  var CONTRACT_VERSION = 23;
+  var CONTRACT_VERSION = 24;
   var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
   var contract = Object.freeze({
     contractVersion: CONTRACT_VERSION,
@@ -460,9 +462,17 @@ var ScenarioTest = (() => {
           description: "\u6570\u7EC4\u5305\u542B\u671F\u671B\u9879\uFF0C\u6216\u5B57\u7B26\u4E32\u5305\u542B\u671F\u671B\u5B50\u4E32",
           valueType: "any"
         }),
+        contains: Object.freeze({
+          description: "includes \u7684\u522B\u540D\uFF08\u540C\u53E3\u5F84\uFF09\uFF1A\u6570\u7EC4\u5305\u542B\u671F\u671B\u9879\uFF08\u6DF1\u6BD4\u8F83\uFF09\uFF0C\u6216\u5B57\u7B26\u4E32\u5305\u542B\u671F\u671B\u5B50\u4E32\uFF1B\u4EC5\u4E3A\u5E38\u7528\u547D\u540D\u4E60\u60EF\u63D0\u4F9B\uFF0C\u8BED\u4E49\u4E0E includes \u5B8C\u5168\u4E00\u81F4",
+          valueType: "any"
+        }),
         each: Object.freeze({
           description: "\u6570\u7EC4\u9010\u9879\u65AD\u8A00\uFF1A\u5B9E\u9645\u503C\u5FC5\u987B\u662F\u6570\u7EC4\uFF0Cexpected \u4E3A\u5B50\u65AD\u8A00\u5B9A\u4E49\u5BF9\u8C61\u6216\u5176\u6570\u7EC4\uFF0C\u5BF9\u6BCF\u4E2A\u5143\u7D20\u5957\u7528\u5B50\u65AD\u8A00\uFF08\u5B50\u65AD\u8A00 path \u76F8\u5BF9\u5143\u7D20\u81EA\u8EAB\uFF0C\u671F\u671B\u503C\u652F\u6301\u6A21\u677F\u53D8\u91CF\uFF09\uFF1B\u4EFB\u4E00\u5143\u7D20\u4EFB\u4E00\u5B50\u65AD\u8A00\u5931\u8D25\u5219\u6574\u4F53\u5931\u8D25\uFF0C\u7A7A\u6570\u7EC4\u6052\u901A\u8FC7\uFF0C\u975E\u6570\u7EC4\u5B9E\u9645\u503C\u76F4\u63A5\u5931\u8D25",
           valueType: "assertion"
+        }),
+        jsonSchema: Object.freeze({
+          description: "JSON Schema \u5B50\u96C6\u6DF1\u6821\u9A8C\uFF08shape \u5B8C\u6574\u7248\uFF09\uFF1A\u652F\u6301\u65AD\u8A00\u952E\u767D\u540D\u5355\u5185\u7684\u7ED3\u6784/\u6570\u503C/\u5B57\u7B26\u4E32/\u6570\u7EC4/\u7EC4\u5408\u5173\u952E\u5B57\u4E0E boolean \u5B50\u6A21\u5F0F\uFF0C\u5931\u8D25\u660E\u7EC6\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\uFF1B$ref \u4E0D\u89E3\u6790\u3001\u672A\u77E5\u952E\u5B9A\u4E49\u671F\u5373\u62D2",
+          valueType: "schema"
         }),
         shape: Object.freeze({
           description: "\u7ED3\u6784\u7EA7\u6821\u9A8C\uFF08jsonSchema-lite\uFF09\uFF1A\u6309 type/required/properties/items/enum/additionalProperties \u6821\u9A8C\u54CD\u5E94\u7ED3\u6784\uFF0C\u5931\u8D25\u660E\u7EC6\u5B9A\u4F4D\u5230\u5B57\u6BB5\u8DEF\u5F84\u4E0E\u671F\u671B/\u5B9E\u9645\u7C7B\u578B",
@@ -512,6 +522,75 @@ var ScenarioTest = (() => {
         keys: Object.freeze(["type", "required", "properties", "items", "enum", "additionalProperties"]),
         types: Object.freeze(["object", "array", "string", "number", "integer", "boolean", "null"]),
         note: "shape \u662F\u5BF9\u54CD\u5E94\u7ED3\u6784\u7684\u8F7B\u91CF JSON Schema \u5B50\u96C6\u6821\u9A8C\uFF1Atype \u652F\u6301 object/array/string/number/integer/boolean/null\uFF1Brequired \u4E3A\u5BF9\u8C61\u5FC5\u586B\u952E\u6570\u7EC4\uFF1Bproperties \u4E3A\u9010\u5B57\u6BB5\u5B50 schema\uFF1Bitems \u4E3A\u6570\u7EC4\u5143\u7D20\u5B50 schema\uFF1Benum \u4E3A\u6DF1\u6BD4\u8F83\u5019\u9009\u503C\u6570\u7EC4\uFF1BadditionalProperties \u9ED8\u8BA4 true\uFF0C\u58F0\u660E false \u65F6\u672A\u77E5\u952E\u5931\u8D25\u3002\u672A\u8BC6\u522B shape \u952E\u5B9A\u4E49\u671F\u5373\u62D2\u3002additionalProperties:false \u5BF9\u542B\u52A8\u6001\u5B57\u6BB5\u7684\u54CD\u5E94\u53EF\u80FD\u8BEF\u62A5\uFF0C\u52A8\u6001\u5B57\u6BB5\u573A\u666F\u8BF7\u4FDD\u7559\u9ED8\u8BA4\u6216\u6539\u7528\u9010\u5B57\u6BB5\u65AD\u8A00"
+      }),
+      // jsonSchema 断言支持的键与 format 值（JSON Schema draft-07 常用子集，不引入依赖、不解析 $ref）
+      jsonSchema: Object.freeze({
+        keys: Object.freeze([
+          "$schema",
+          "$id",
+          "$defs",
+          "title",
+          "description",
+          "comment",
+          "default",
+          "examples",
+          "definitions",
+          "type",
+          "const",
+          "enum",
+          "format",
+          "required",
+          "properties",
+          "patternProperties",
+          "additionalProperties",
+          "propertyNames",
+          "minProperties",
+          "maxProperties",
+          "dependentRequired",
+          "dependentSchemas",
+          "items",
+          "additionalItems",
+          "contains",
+          "minItems",
+          "maxItems",
+          "uniqueItems",
+          "minLength",
+          "maxLength",
+          "pattern",
+          "minimum",
+          "maximum",
+          "exclusiveMinimum",
+          "exclusiveMaximum",
+          "multipleOf",
+          "allOf",
+          "anyOf",
+          "oneOf",
+          "not",
+          "if",
+          "then",
+          "else"
+        ]),
+        formats: Object.freeze([
+          "date-time",
+          "date",
+          "time",
+          "duration",
+          "email",
+          "hostname",
+          "uri",
+          "uri-reference",
+          "ipv4",
+          "ipv6",
+          "uuid",
+          "json-pointer",
+          "regex",
+          "byte",
+          "int32",
+          "int64",
+          "float",
+          "double"
+        ]),
+        note: "jsonSchema \u662F JSON Schema draft-07 \u5E38\u7528\u5B50\u96C6\u6DF1\u6821\u9A8C\uFF08shape \u5B8C\u6574\u7248\uFF09\uFF1Atype \u652F\u6301 object/array/string/number/integer/boolean/null \u6216\u5176\u6570\u7EC4\uFF1B\u5B50\u6A21\u5F0F\u53EF\u5199\u5BF9\u8C61\u6216 boolean\uFF08false \u6C38\u4E0D\u5339\u914D\uFF09\u3002\u5173\u952E\u5B57\u6309\u7C7B\u578B\u5206\u6D3E\uFF1Aminimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf \u4EC5\u5BF9\u6570\u5B57\u751F\u6548\uFF1BminLength/maxLength/pattern \u4EC5\u5BF9\u5B57\u7B26\u4E32\uFF1Bproperties/patternProperties/additionalProperties\uFF08\u53EF\u5199 schema\uFF09/required/minProperties/maxProperties/dependentRequired/dependentSchemas/propertyNames \u4EC5\u5BF9\u5BF9\u8C61\uFF1Bitems\uFF08\u53EF\u5199 schema \u6570\u7EC4\u505A\u5143\u7EC4\u6821\u9A8C\uFF09/additionalItems/contains/minItems/maxItems/uniqueItems \u4EC5\u5BF9\u6570\u7EC4\uFF1BallOf/anyOf/oneOf/not/if-then-else \u7EC4\u5408\u5668\u4E0E const/enum/format \u5BF9\u4EFB\u610F\u7C7B\u578B\u751F\u6548\uFF1B\u672A\u58F0\u660E type \u65F6\u6309 JSON Schema \u89C4\u8303\u5904\u7406\uFF08\u5173\u952E\u5B57\u5BF9\u4E0D\u5339\u914D\u7C7B\u578B\u4E0D\u751F\u6548\uFF09\uFF0C\u7ED3\u6784\u65AD\u8A00\u5EFA\u8BAE\u59CB\u7EC8\u663E\u5F0F\u58F0\u660E type\u3002format \u4EC5\u652F\u6301 formats \u5217\u51FA\u7684\u503C\uFF08\u767D\u540D\u5355\u5916\u5B9A\u4E49\u671F\u5373\u62D2\uFF0C\u907F\u514D\u9759\u9ED8\u4E0D\u6821\u9A8C\u7684\u5047\u7EFF\uFF09\u3002\u4E0D\u89E3\u6790 $ref\uFF08\u672C\u673A\u5B50\u96C6\u65E0\u8FDC\u7A0B/\u5FAA\u73AF\u5F15\u7528\uFF09\uFF0Cdefinitions/$defs \u4EC5\u4F5C\u58F0\u660E\u5B58\u653E\u3002\u672A\u8BC6\u522B\u952E\u5B9A\u4E49\u671F\u5373\u62D2"
       })
     }),
     when: Object.freeze({
@@ -1253,8 +1332,7 @@ var ScenarioTest = (() => {
     }
     return failures;
   }
-  function evaluateShape(schema, actual) {
-    const failures = collectShapeFailures(actual, schema, "", []);
+  function schemaFailureDetails(failures) {
     return failures.map((failure, index) => ({
       index,
       path: failure.path,
@@ -1274,6 +1352,508 @@ var ScenarioTest = (() => {
         actualType: failure.actualType
       }]
     }));
+  }
+  function evaluateShape(schema, actual) {
+    return schemaFailureDetails(collectShapeFailures(actual, schema, "", []));
+  }
+  var JSON_SCHEMA_KEYS = new Set(contract.assertions.jsonSchema.keys);
+  var JSON_SCHEMA_FORMATS = new Set(contract.assertions.jsonSchema.formats);
+  var JSON_SCHEMA_ANNOTATION_KEYS = /* @__PURE__ */ new Set(
+    ["$schema", "$id", "$defs", "title", "description", "comment", "default", "examples", "definitions"]
+  );
+  function isJsonSchemaCandidate(value) {
+    return typeof value === "boolean" || isPlainObject(value);
+  }
+  function validateJsonSchema(schema, trail = "jsonSchema", topLevel = false) {
+    if (typeof schema === "boolean") {
+      if (topLevel) throw new TypeError(`${trail} \u9876\u5C42\u5FC5\u987B\u662F\u5BF9\u8C61\uFF08boolean \u5B50\u6A21\u5F0F\u4EC5\u5728\u5185\u5D4C\u4F4D\u7F6E\u6709\u6548\uFF09`);
+      return schema;
+    }
+    if (!isPlainObject(schema)) throw new TypeError(`${trail} \u5FC5\u987B\u662F\u5BF9\u8C61\u6216 boolean\uFF08JSON Schema \u5B50\u96C6\uFF09`);
+    const unknown = Object.keys(schema).filter((key) => !JSON_SCHEMA_KEYS.has(key));
+    if (unknown.length) {
+      const hasRef = unknown.includes("$ref");
+      throw new TypeError(
+        `${trail} \u5305\u542B\u672A\u77E5\u952E ${unknown.map((key) => `"${key}"`).join(", ")}\uFF0C\u5141\u8BB8\u7684\u952E\u4E3A ${contract.assertions.jsonSchema.keys.join("/")}` + (hasRef ? "\uFF08$ref \u4E0D\u89E3\u6790\uFF1A\u8BF7\u628A\u88AB\u5F15\u7528\u6A21\u5F0F\u5185\u8054\u5230\u672C schema\uFF09" : "")
+      );
+    }
+    if (topLevel) {
+      const effective = Object.keys(schema).filter((key) => !JSON_SCHEMA_ANNOTATION_KEYS.has(key));
+      if (!effective.length) {
+        throw new TypeError(`${trail} \u81F3\u5C11\u9700\u8981\u58F0\u660E\u4E00\u4E2A\u7EA6\u675F\u5173\u952E\u5B57\uFF08\u5982 type/properties/required/enum\uFF1B\u7EAF\u6CE8\u89E3 schema \u6052\u901A\u8FC7\u5C5E\u5047\u7EFF\uFF09`);
+      }
+    }
+    const sub = (value, keyTrail) => {
+      if (!isJsonSchemaCandidate(value)) {
+        throw new TypeError(`${keyTrail} \u5FC5\u987B\u662F\u5BF9\u8C61\u6216 boolean\uFF08JSON Schema \u5B50\u6A21\u5F0F\uFF09`);
+      }
+      validateJsonSchema(value, keyTrail);
+    };
+    const keyList = (value, keyTrail) => {
+      if (!isPlainObject(value)) throw new TypeError(`${keyTrail} \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      for (const [key, child] of Object.entries(value)) sub(child, `${keyTrail}.${key}`);
+    };
+    const stringArray = (value, keyTrail, unique = false) => {
+      if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {
+        throw new TypeError(`${keyTrail} \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\u6570\u7EC4`);
+      }
+      if (unique && new Set(value).size !== value.length) {
+        throw new TypeError(`${keyTrail} \u4E0D\u80FD\u5305\u542B\u91CD\u590D\u9879`);
+      }
+    };
+    const templated = (value) => typeof value === "string" && value.includes("{{");
+    if (schema.type !== void 0 && !templated(schema.type)) {
+      const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+      if (!types.length || types.some((type) => !SHAPE_TYPES.has(type))) {
+        throw new TypeError(`${trail}.type \u53EA\u652F\u6301 ${[...SHAPE_TYPES].join("/")}\uFF08\u53EF\u6570\u7EC4\u5F62\u5F0F\uFF0C\u5982 ["string","null"]\uFF1B\u5F53\u524D ${JSON.stringify(schema.type)}\uFF09`);
+      }
+      if (Array.isArray(schema.type) && new Set(types).size !== types.length) {
+        throw new TypeError(`${trail}.type \u6570\u7EC4\u4E0D\u80FD\u5305\u542B\u91CD\u590D\u7C7B\u578B`);
+      }
+    }
+    if (schema.required !== void 0 && !templated(schema.required)) stringArray(schema.required, `${trail}.required`, true);
+    if (schema.properties !== void 0) keyList(schema.properties, `${trail}.properties`);
+    if (schema.patternProperties !== void 0) {
+      if (!isPlainObject(schema.patternProperties)) throw new TypeError(`${trail}.patternProperties \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      for (const [pattern, child] of Object.entries(schema.patternProperties)) {
+        try {
+          new RegExp(pattern);
+        } catch (error) {
+          throw new TypeError(`${trail}.patternProperties["${pattern}"] \u7684\u952E\u4E0D\u662F\u5408\u6CD5\u6B63\u5219: ${error.message}`);
+        }
+        sub(child, `${trail}.patternProperties["${pattern}"]`);
+      }
+    }
+    if (schema.additionalProperties !== void 0) sub(schema.additionalProperties, `${trail}.additionalProperties`);
+    if (schema.propertyNames !== void 0) sub(schema.propertyNames, `${trail}.propertyNames`);
+    if (schema.dependentRequired !== void 0) {
+      if (!isPlainObject(schema.dependentRequired)) throw new TypeError(`${trail}.dependentRequired \u5FC5\u987B\u662F\u5BF9\u8C61`);
+      for (const [key, deps] of Object.entries(schema.dependentRequired)) {
+        stringArray(deps, `${trail}.dependentRequired.${key}`);
+      }
+    }
+    if (schema.dependentSchemas !== void 0) keyList(schema.dependentSchemas, `${trail}.dependentSchemas`);
+    if (schema.items !== void 0) {
+      if (Array.isArray(schema.items)) {
+        schema.items.forEach((item, index) => sub(item, `${trail}.items[${index}]`));
+      } else {
+        sub(schema.items, `${trail}.items`);
+      }
+    }
+    if (schema.additionalItems !== void 0) {
+      if (!Array.isArray(schema.items) && !templated(schema.items)) {
+        throw new TypeError(`${trail}.additionalItems \u4EC5\u5F53 items \u4E3A\u6570\u7EC4\uFF08\u5143\u7EC4\u6821\u9A8C\uFF09\u65F6\u6709\u6548`);
+      }
+      sub(schema.additionalItems, `${trail}.additionalItems`);
+    }
+    if (schema.contains !== void 0) sub(schema.contains, `${trail}.contains`);
+    if (schema.enum !== void 0 && !templated(schema.enum)) {
+      if (!Array.isArray(schema.enum) || !schema.enum.length) throw new TypeError(`${trail}.enum \u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4`);
+    }
+    if (schema.format !== void 0 && !templated(schema.format)) {
+      if (!JSON_SCHEMA_FORMATS.has(schema.format)) {
+        throw new TypeError(
+          `${trail}.format \u53EA\u652F\u6301 ${contract.assertions.jsonSchema.formats.join("/")}\uFF08\u5F53\u524D ${JSON.stringify(schema.format)}\uFF1B\u767D\u540D\u5355\u5916\u7684 format \u4E00\u5F8B\u62D2\u7EDD\u800C\u975E\u9759\u9ED8\u8DF3\u8FC7\uFF0C\u907F\u514D\u4E0D\u6821\u9A8C\u7684\u5047\u7EFF\uFF09`
+        );
+      }
+    }
+    for (const key of ["minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"]) {
+      if (schema[key] !== void 0 && !templated(schema[key])) {
+        if (!Number.isInteger(schema[key]) || schema[key] < 0) {
+          throw new TypeError(`${trail}.${key} \u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570`);
+        }
+      }
+    }
+    if (schema.pattern !== void 0 && !templated(schema.pattern)) {
+      if (typeof schema.pattern !== "string") throw new TypeError(`${trail}.pattern \u5FC5\u987B\u662F\u5B57\u7B26\u4E32`);
+      try {
+        new RegExp(schema.pattern);
+      } catch (error) {
+        throw new TypeError(`${trail}.pattern \u4E0D\u662F\u5408\u6CD5\u6B63\u5219\u8868\u8FBE\u5F0F\uFF08${schema.pattern}\uFF09: ${error.message}`);
+      }
+    }
+    for (const key of ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"]) {
+      if (schema[key] !== void 0 && !templated(schema[key])) {
+        if (typeof schema[key] !== "number" || !Number.isFinite(schema[key])) {
+          throw new TypeError(`${trail}.${key} \u5FC5\u987B\u662F\u6709\u9650 number\uFF08draft-07 \u8D77 exclusive \u4E3A\u6570\u503C\u8BED\u4E49\uFF0C\u4E0D\u63A5\u53D7\u5E03\u5C14\uFF09`);
+        }
+      }
+    }
+    if (schema.multipleOf !== void 0 && !templated(schema.multipleOf)) {
+      if (typeof schema.multipleOf !== "number" || !Number.isFinite(schema.multipleOf) || schema.multipleOf <= 0) {
+        throw new TypeError(`${trail}.multipleOf \u5FC5\u987B\u662F\u5927\u4E8E 0 \u7684\u6709\u9650\u6570`);
+      }
+    }
+    for (const key of ["allOf", "anyOf", "oneOf"]) {
+      if (schema[key] !== void 0) {
+        if (!Array.isArray(schema[key]) || !schema[key].length) {
+          throw new TypeError(`${trail}.${key} \u5FC5\u987B\u662F\u975E\u7A7A\u5B50\u6A21\u5F0F\u6570\u7EC4`);
+        }
+        schema[key].forEach((child, index) => sub(child, `${trail}.${key}[${index}]`));
+      }
+    }
+    for (const key of ["not", "if", "then", "else"]) {
+      if (schema[key] !== void 0) sub(schema[key], `${trail}.${key}`);
+    }
+    if (schema.if === void 0 && (schema.then !== void 0 || schema.else !== void 0)) {
+      throw new TypeError(`${trail} \u58F0\u660E then/else \u5FC5\u987B\u540C\u65F6\u58F0\u660E if`);
+    }
+    if (schema.if !== void 0 && schema.then === void 0 && schema.else === void 0) {
+      throw new TypeError(`${trail} \u58F0\u660E if \u5FC5\u987B\u540C\u65F6\u58F0\u660E then \u6216 else\uFF08\u5426\u5219 if \u6052\u4E0D\u751F\u6548\uFF09`);
+    }
+    if (schema.definitions !== void 0) keyList(schema.definitions, `${trail}.definitions`);
+    if (schema.$defs !== void 0) keyList(schema.$defs, `${trail}.$defs`);
+    return schema;
+  }
+  var JSON_SCHEMA_FORMAT_CHECKS = Object.freeze({
+    "date-time": (value) => {
+      const match = /^(\d{4})-(\d{2})-(\d{2})[Tt]([0-2]\d):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-][0-2]\d:[0-5]\d)$/.exec(value);
+      if (!match) return false;
+      const [, year, month, day, hour] = match;
+      if (+month < 1 || +month > 12 || +hour > 23) return false;
+      const dayMax = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+      return +day >= 1 && +day <= dayMax;
+    },
+    "date": (value) => {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) return false;
+      const [, year, month, day] = match;
+      if (+month < 1 || +month > 12) return false;
+      const dayMax = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+      return +day >= 1 && +day <= dayMax;
+    },
+    // RFC3339 的 time 必须带偏移（Z 或 ±hh:mm）；本地时间断言请用 pattern/matches
+    "time": (value) => {
+      const match = /^([0-2]\d):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-][0-2]\d:[0-5]\d)$/.exec(value);
+      return Boolean(match) && +match[1] <= 23;
+    },
+    "duration": (value) => /^-?P(?=\d|T\d)(?:\d+W|(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$/.test(value),
+    "email": (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    "hostname": (value) => {
+      if (value.length > 253) return false;
+      const labels = value.replace(/\.$/, "").split(".");
+      return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+    },
+    "uri": (value) => {
+      if (/\s/.test(value)) return false;
+      try {
+        const parsed = new URL(value);
+        return Boolean(parsed.protocol && /^[a-z][a-z0-9+.-]*:$/i.test(parsed.protocol));
+      } catch {
+        return false;
+      }
+    },
+    "uri-reference": (value) => {
+      if (/\s/.test(value)) return false;
+      try {
+        new URL(value, "https://example.invalid/base");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    "ipv4": (value) => {
+      const parts = value.split(".");
+      return parts.length === 4 && parts.every((part) => {
+        if (!/^\d{1,3}$/.test(part)) return false;
+        if (part.length > 1 && part.startsWith("0")) return false;
+        return Number(part) <= 255;
+      });
+    },
+    "ipv6": (value) => {
+      try {
+        return new URL(`http://[${value}]/`).hostname === `[${value.toLowerCase()}]`;
+      } catch {
+        return false;
+      }
+    },
+    "uuid": (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
+    // RFC6901：空串合法；否则以 / 开头，~ 只允许 ~0/~1 转义
+    "json-pointer": (value) => value === "" || value.startsWith("/") && !/~(?![01])/.test(value),
+    "regex": (value) => {
+      try {
+        new RegExp(value);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    // RFC4648 base64（含 = 填充），空串合法
+    "byte": (value) => /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  });
+  var JSON_SCHEMA_NUMBER_FORMATS = /* @__PURE__ */ new Set(["int32", "int64", "float", "double"]);
+  function jsonSchemaFormatOk(format, value) {
+    if (JSON_SCHEMA_NUMBER_FORMATS.has(format)) {
+      if (typeof value === "bigint") {
+        if (format === "int32") return value >= -2147483648n && value <= 2147483647n;
+        if (format === "int64") return value >= -9223372036854775808n && value <= 9223372036854775807n;
+        return true;
+      }
+      if (typeof value !== "number" || !Number.isFinite(value)) return true;
+      if (format === "int32") return Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
+      if (format === "int64") return Number.isInteger(value) && Number.isSafeInteger(value);
+      return true;
+    }
+    if (typeof value !== "string") return true;
+    return JSON_SCHEMA_FORMAT_CHECKS[format](value);
+  }
+  function jsonSchemaMatches(schema, value) {
+    if (schema === true) return true;
+    if (schema === false) return false;
+    return collectJsonSchemaFailures(value, schema, "", []).length === 0;
+  }
+  function collectJsonSchemaFailures(value, schema, path, failures) {
+    if (schema === true) return failures;
+    if (schema === false) {
+      pushShapeFailure(failures, {
+        path,
+        expected: "\u53EF\u5339\u914D\u7684\u6A21\u5F0F\uFF08\u8BE5\u4F4D\u7F6E\u58F0\u660E\u4E86 false\uFF09",
+        actual: value,
+        reason: "\u5B50\u6A21\u5F0F\u4E3A false\uFF1A\u4EFB\u4F55\u503C\u90FD\u4E0D\u5339\u914D"
+      });
+      return failures;
+    }
+    const actualType = shapeActualType(value);
+    if (schema.type !== void 0) {
+      const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+      if (!types.some((type) => shapeTypeMatches(value, type))) {
+        pushShapeFailure(failures, {
+          path,
+          expected: `type: ${types.join(" | ")}`,
+          expectedType: types.join(" | "),
+          actual: value,
+          actualType,
+          reason: `\u7C7B\u578B\u4E0D\u7B26\uFF1A\u671F\u671B ${types.join(" / ")}\uFF0C\u5B9E\u9645 ${actualType}`
+        });
+        return failures;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(schema, "const")) {
+      if (stableStringify(value) !== stableStringify(schema.const)) {
+        pushShapeFailure(failures, {
+          path,
+          expected: `const: ${JSON.stringify(schema.const)}`,
+          actual: value,
+          actualType,
+          reason: "\u4E0E const \u58F0\u660E\u503C\u4E0D\u76F8\u7B49\uFF08\u6DF1\u6BD4\u8F83\uFF09"
+        });
+      }
+    }
+    if (Array.isArray(schema.enum)) {
+      const actualText = stableStringify(value);
+      if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
+        pushShapeFailure(failures, {
+          path,
+          expected: `enum: ${JSON.stringify(schema.enum)}`,
+          actual: value,
+          actualType,
+          reason: `\u53D6\u503C\u4E0D\u5728 enum \u5141\u8BB8\u8303\u56F4\uFF08\u5B9E\u9645 ${actualType}\uFF09`
+        });
+      }
+    }
+    if (schema.format !== void 0 && !jsonSchemaFormatOk(schema.format, value)) {
+      pushShapeFailure(failures, {
+        path,
+        expected: `format: ${schema.format}`,
+        actual: value,
+        actualType,
+        reason: `\u4E0D\u6EE1\u8DB3 format:${schema.format} \u7684\u683C\u5F0F\u8981\u6C42`
+      });
+    }
+    const numericValue = typeof value === "number" ? value : typeof value === "bigint" && value >= -9007199254740991n && value <= 9007199254740991n ? Number(value) : void 0;
+    if (numericValue !== void 0 && Number.isFinite(numericValue)) {
+      if (schema.minimum !== void 0 && numericValue < schema.minimum) {
+        pushShapeFailure(failures, { path, expected: `minimum: ${schema.minimum}`, actual: value, actualType, reason: `\u5C0F\u4E8E minimum ${schema.minimum}` });
+      }
+      if (schema.maximum !== void 0 && numericValue > schema.maximum) {
+        pushShapeFailure(failures, { path, expected: `maximum: ${schema.maximum}`, actual: value, actualType, reason: `\u5927\u4E8E maximum ${schema.maximum}` });
+      }
+      if (schema.exclusiveMinimum !== void 0 && numericValue <= schema.exclusiveMinimum) {
+        pushShapeFailure(failures, { path, expected: `exclusiveMinimum: ${schema.exclusiveMinimum}`, actual: value, actualType, reason: `\u4E0D\u5927\u4E8E exclusiveMinimum ${schema.exclusiveMinimum}` });
+      }
+      if (schema.exclusiveMaximum !== void 0 && numericValue >= schema.exclusiveMaximum) {
+        pushShapeFailure(failures, { path, expected: `exclusiveMaximum: ${schema.exclusiveMaximum}`, actual: value, actualType, reason: `\u4E0D\u5C0F\u4E8E exclusiveMaximum ${schema.exclusiveMaximum}` });
+      }
+      if (schema.multipleOf !== void 0) {
+        const quotient = numericValue / schema.multipleOf;
+        if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+          pushShapeFailure(failures, { path, expected: `multipleOf: ${schema.multipleOf}`, actual: value, actualType, reason: `\u4E0D\u662F ${schema.multipleOf} \u7684\u6574\u6570\u500D` });
+        }
+      }
+    }
+    if (typeof value === "string") {
+      if (schema.minLength !== void 0 && value.length < schema.minLength) {
+        pushShapeFailure(failures, { path, expected: `minLength: ${schema.minLength}`, actual: value, actualType, reason: `\u957F\u5EA6 ${value.length} \u5C0F\u4E8E minLength ${schema.minLength}` });
+      }
+      if (schema.maxLength !== void 0 && value.length > schema.maxLength) {
+        pushShapeFailure(failures, { path, expected: `maxLength: ${schema.maxLength}`, actual: value, actualType, reason: `\u957F\u5EA6 ${value.length} \u5927\u4E8E maxLength ${schema.maxLength}` });
+      }
+      if (schema.pattern !== void 0 && !new RegExp(schema.pattern).test(value)) {
+        pushShapeFailure(failures, { path, expected: `pattern: ${JSON.stringify(schema.pattern)}`, actual: value, actualType, reason: `\u4E0D\u5339\u914D pattern ${schema.pattern}` });
+      }
+    }
+    if (isPlainObject(value)) {
+      const keyCount = Object.keys(value).length;
+      if (schema.minProperties !== void 0 && keyCount < schema.minProperties) {
+        pushShapeFailure(failures, { path, expected: `minProperties: ${schema.minProperties}`, actual: value, actualType, reason: `\u952E\u6570 ${keyCount} \u5C0F\u4E8E minProperties ${schema.minProperties}` });
+      }
+      if (schema.maxProperties !== void 0 && keyCount > schema.maxProperties) {
+        pushShapeFailure(failures, { path, expected: `maxProperties: ${schema.maxProperties}`, actual: value, actualType, reason: `\u952E\u6570 ${keyCount} \u5927\u4E8E maxProperties ${schema.maxProperties}` });
+      }
+      const present = (key) => Object.prototype.hasOwnProperty.call(value, key) && value[key] !== void 0;
+      for (const key of schema.required || []) {
+        if (!present(key)) {
+          pushShapeFailure(failures, { path: shapeChildPath(path, key), expected: "\u5FC5\u586B\u5B57\u6BB5\u5B58\u5728", actual: void 0, actualType: "undefined", reason: "\u7F3A\u5C11\u5FC5\u586B\u5B57\u6BB5" });
+        }
+      }
+      const declared = /* @__PURE__ */ new Set();
+      for (const [key, child] of Object.entries(isPlainObject(schema.properties) ? schema.properties : {})) {
+        declared.add(key);
+        if (!present(key)) continue;
+        collectJsonSchemaFailures(value[key], child, shapeChildPath(path, key), failures);
+      }
+      const compiledPatterns = (isPlainObject(schema.patternProperties) ? Object.entries(schema.patternProperties) : []).map(([pattern, child]) => [new RegExp(pattern), child]);
+      const matchedByPattern = (key) => compiledPatterns.filter(([pattern]) => pattern.test(key)).map(([, child]) => child);
+      for (const key of Object.keys(value)) {
+        if (value[key] === void 0) continue;
+        for (const child of matchedByPattern(key)) {
+          collectJsonSchemaFailures(value[key], child, shapeChildPath(path, key), failures);
+        }
+      }
+      const additional = schema.additionalProperties;
+      for (const key of Object.keys(value)) {
+        if (declared.has(key) || matchedByPattern(key).length) continue;
+        if (additional === false) {
+          pushShapeFailure(failures, {
+            path: shapeChildPath(path, key),
+            expected: "\u4E0D\u5141\u8BB8\u7684\u989D\u5916\u5B57\u6BB5",
+            actual: value[key],
+            actualType: shapeActualType(value[key]),
+            reason: `additionalProperties:false\uFF1A\u51FA\u73B0\u672A\u58F0\u660E\u952E "${key}"`
+          });
+        } else if (additional !== void 0 && additional !== true) {
+          collectJsonSchemaFailures(value[key], additional, shapeChildPath(path, key), failures);
+        }
+      }
+      for (const [key, deps] of Object.entries(isPlainObject(schema.dependentRequired) ? schema.dependentRequired : {})) {
+        if (!present(key)) continue;
+        for (const dep of deps) {
+          if (!present(dep)) {
+            pushShapeFailure(failures, {
+              path: shapeChildPath(path, dep),
+              expected: `\u5B58\u5728 "${key}" \u65F6\u5FC5\u586B "${dep}"`,
+              actual: void 0,
+              actualType: "undefined",
+              reason: `dependentRequired\uFF1A"${key}" \u5B58\u5728\u4F46\u7F3A\u5C11 "${dep}"`
+            });
+          }
+        }
+      }
+      for (const [key, child] of Object.entries(isPlainObject(schema.dependentSchemas) ? schema.dependentSchemas : {})) {
+        if (!present(key)) continue;
+        collectJsonSchemaFailures(value, child, path, failures);
+      }
+      if (schema.propertyNames !== void 0) {
+        for (const key of Object.keys(value)) {
+          collectJsonSchemaFailures(key, schema.propertyNames, shapeChildPath(path, key), failures);
+        }
+      }
+    }
+    if (Array.isArray(value)) {
+      if (schema.minItems !== void 0 && value.length < schema.minItems) {
+        pushShapeFailure(failures, { path, expected: `minItems: ${schema.minItems}`, actual: value, actualType, reason: `\u5143\u7D20\u6570 ${value.length} \u5C0F\u4E8E minItems ${schema.minItems}` });
+      }
+      if (schema.maxItems !== void 0 && value.length > schema.maxItems) {
+        pushShapeFailure(failures, { path, expected: `maxItems: ${schema.maxItems}`, actual: value, actualType, reason: `\u5143\u7D20\u6570 ${value.length} \u5927\u4E8E maxItems ${schema.maxItems}` });
+      }
+      if (schema.uniqueItems === true) {
+        const seen = /* @__PURE__ */ new Map();
+        for (let index = 0; index < value.length; index += 1) {
+          const text = stableStringify(value[index]);
+          if (seen.has(text)) {
+            pushShapeFailure(failures, {
+              path: shapeIndexPath(path, index),
+              expected: "\u4E0E\u524D\u9762\u5143\u7D20\u4E0D\u91CD\u590D",
+              actual: value[index],
+              actualType: shapeActualType(value[index]),
+              reason: `uniqueItems\uFF1A\u7B2C ${index + 1} \u9879\u4E0E\u7B2C ${seen.get(text) + 1} \u9879\u91CD\u590D`
+            });
+            break;
+          }
+          seen.set(text, index);
+        }
+      }
+      if (Array.isArray(schema.items)) {
+        const tuple = schema.items;
+        for (let index = 0; index < value.length; index += 1) {
+          if (index < tuple.length) {
+            collectJsonSchemaFailures(value[index], tuple[index], shapeIndexPath(path, index), failures);
+          } else if (schema.additionalItems === false) {
+            pushShapeFailure(failures, {
+              path: shapeIndexPath(path, index),
+              expected: `\u5143\u7EC4\u4EC5\u5141\u8BB8 ${tuple.length} \u9879`,
+              actual: value[index],
+              actualType: shapeActualType(value[index]),
+              reason: `additionalItems:false\uFF1A\u7B2C ${index + 1} \u9879\u8D85\u51FA\u5143\u7EC4\u957F\u5EA6`
+            });
+          } else if (schema.additionalItems !== void 0 && schema.additionalItems !== true) {
+            collectJsonSchemaFailures(value[index], schema.additionalItems, shapeIndexPath(path, index), failures);
+          }
+        }
+      } else if (schema.items !== void 0) {
+        value.forEach((item, index) => collectJsonSchemaFailures(item, schema.items, shapeIndexPath(path, index), failures));
+      }
+      if (schema.contains !== void 0 && !value.some((item) => jsonSchemaMatches(schema.contains, item))) {
+        pushShapeFailure(failures, {
+          path,
+          expected: "\u81F3\u5C11\u4E00\u9879\u5339\u914D contains \u5B50\u6A21\u5F0F",
+          actual: value,
+          actualType,
+          reason: `contains\uFF1A${value.length} \u4E2A\u5143\u7D20\u5747\u4E0D\u5339\u914D\u5B50\u6A21\u5F0F`
+        });
+      }
+    }
+    for (const child of Array.isArray(schema.allOf) ? schema.allOf : []) {
+      collectJsonSchemaFailures(value, child, path, failures);
+    }
+    if (Array.isArray(schema.anyOf) && !schema.anyOf.some((child) => jsonSchemaMatches(child, value))) {
+      pushShapeFailure(failures, {
+        path,
+        expected: "\u4EFB\u4E00 anyOf \u5B50\u6A21\u5F0F\u5339\u914D",
+        actual: value,
+        actualType,
+        reason: `anyOf\uFF1A${schema.anyOf.length} \u4E2A\u5B50\u6A21\u5F0F\u5747\u4E0D\u5339\u914D`
+      });
+    }
+    if (schema.oneOf !== void 0 && Array.isArray(schema.oneOf)) {
+      const matched = schema.oneOf.reduce((count, child) => count + (jsonSchemaMatches(child, value) ? 1 : 0), 0);
+      if (matched !== 1) {
+        pushShapeFailure(failures, {
+          path,
+          expected: "\u6070\u597D\u4E00\u4E2A oneOf \u5B50\u6A21\u5F0F\u5339\u914D",
+          actual: value,
+          actualType,
+          reason: `oneOf\uFF1A\u5339\u914D\u4E86 ${matched} \u4E2A\u5B50\u6A21\u5F0F\uFF08\u8981\u6C42\u6070\u597D 1 \u4E2A\uFF09`
+        });
+      }
+    }
+    if (schema.not !== void 0 && jsonSchemaMatches(schema.not, value)) {
+      pushShapeFailure(failures, {
+        path,
+        expected: "\u4E0D\u5339\u914D not \u5B50\u6A21\u5F0F",
+        actual: value,
+        actualType,
+        reason: "not\uFF1A\u5B9E\u9645\u503C\u5339\u914D\u4E86\u88AB\u7981\u6B62\u7684\u5B50\u6A21\u5F0F"
+      });
+    }
+    if (schema.if !== void 0) {
+      const branch = jsonSchemaMatches(schema.if, value) ? schema.then : schema.else;
+      if (branch !== void 0) collectJsonSchemaFailures(value, branch, path, failures);
+    }
+    return failures;
+  }
+  function evaluateJsonSchema(schema, actual) {
+    return schemaFailureDetails(collectJsonSchemaFailures(actual, schema, "", []));
   }
   function validateAssertion(definition, context, options = {}) {
     const where = formatAssertionContext(context);
@@ -1335,6 +1915,9 @@ var ScenarioTest = (() => {
     if (definition.shape !== void 0) {
       validateShapeSchema(definition.shape, `${prefix}: shape`);
     }
+    if (definition.jsonSchema !== void 0 && !(typeof definition.jsonSchema === "string" && definition.jsonSchema.includes("{{"))) {
+      validateJsonSchema(definition.jsonSchema, `${prefix}: jsonSchema`, true);
+    }
     if (definition.each !== void 0) {
       const eachLabel = `${prefix}: each \u7684\u671F\u671B\u503C\u5FC5\u987B\u662F\u5B50\u65AD\u8A00\u5BF9\u8C61\u6216\u5176\u6570\u7EC4`;
       if (Array.isArray(definition.each)) {
@@ -1375,7 +1958,7 @@ var ScenarioTest = (() => {
     }
     return `{${entries.join(",")}}`;
   }
-  var INCLUDES_OBJECT_ACTUAL_REASON = 'includes \u4E0D\u652F\u6301\u5BF9\u8C61\u7C7B\u578B\u7684\u5B9E\u9645\u503C\uFF08String(actual) \u6052\u4E3A "[object Object]"\uFF0C\u65AD\u8A00\u5FC5\u7136\u5931\u8D25\uFF09\uFF1A\u5BF9\u8C61\u6DF1\u6BD4\u8F83\u8BF7\u6539\u7528 equals\uFF0C\u6216\u5BF9\u5177\u4F53\u5B57\u6BB5\u7528 path \u65AD\u8A00\uFF08\u5982 path: "data.id"\uFF09';
+  var objectActualReason = (op) => `${op} \u4E0D\u652F\u6301\u5BF9\u8C61\u7C7B\u578B\u7684\u5B9E\u9645\u503C\uFF08String(actual) \u6052\u4E3A "[object Object]"\uFF0C\u65AD\u8A00\u5FC5\u7136\u5931\u8D25\uFF09\uFF1A\u5BF9\u8C61\u6DF1\u6BD4\u8F83\u8BF7\u6539\u7528 equals \u6216 jsonSchema\uFF0C\u6216\u5BF9\u5177\u4F53\u5B57\u6BB5\u7528 path \u65AD\u8A00\uFF08\u5982 path: "data.id"\uFF09`;
   var validatedAssertions = /* @__PURE__ */ new WeakSet();
   var MATCHES_PATTERN_CACHE_LIMIT = 128;
   var matchesPatternCache = /* @__PURE__ */ new Map();
@@ -1419,11 +2002,12 @@ var ScenarioTest = (() => {
       expected = resolve(definition.notEquals, runtime);
       passed = passed && stableStringify(actual) !== stableStringify(expected);
     }
-    if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
-      expected = resolve(definition.includes, runtime);
+    for (const op of ["includes", "contains"]) {
+      if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+      expected = resolve(definition[op], runtime);
       if (isPlainObject(actual)) {
         passed = false;
-        reason = INCLUDES_OBJECT_ACTUAL_REASON;
+        reason = objectActualReason(op);
       } else if (Array.isArray(actual)) {
         passed = passed && actual.length > 0;
         if (passed) {
@@ -1472,6 +2056,48 @@ var ScenarioTest = (() => {
         const failures = evaluateShape(expected, actual);
         if (failures.length) {
           shapeFailures = failures;
+          passed = false;
+        }
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(definition, "jsonSchema")) {
+      expected = resolve(definition.jsonSchema, runtime);
+      let jsonSchemaError = "";
+      if (isJsonSchemaCandidate(expected)) {
+        try {
+          validateJsonSchema(expected, "jsonSchema", true);
+        } catch (error) {
+          jsonSchemaError = error?.message || String(error);
+        }
+      } else {
+        jsonSchemaError = "jsonSchema \u5B9A\u4E49\u5FC5\u987B\u662F\u5BF9\u8C61\uFF08JSON Schema \u5B50\u96C6\uFF09";
+      }
+      if (jsonSchemaError) {
+        passed = false;
+        const actualType = shapeActualType(expected);
+        shapeFailures = [...shapeFailures || [], {
+          index: 0,
+          path: "(\u6839)",
+          expected: "jsonSchema \u5B9A\u4E49\u5BF9\u8C61",
+          actual: actualType,
+          value: expected,
+          expectedType: "object",
+          actualType,
+          reason: jsonSchemaError,
+          assertions: [{
+            name: "(\u6839)",
+            passed: false,
+            expected: "jsonSchema \u5B9A\u4E49\u5BF9\u8C61",
+            actual: actualType,
+            reason: jsonSchemaError,
+            expectedType: "object",
+            actualType
+          }]
+        }];
+      } else {
+        const failures = evaluateJsonSchema(expected, actual);
+        if (failures.length) {
+          shapeFailures = [...shapeFailures || [], ...failures];
           passed = false;
         }
       }
@@ -3684,6 +4310,13 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
             types: [...assertions.shape.types],
             ...assertions.shape.note ? { note: assertions.shape.note } : {}
           }
+        } : {},
+        ...assertions.jsonSchema ? {
+          jsonSchema: {
+            keys: [...assertions.jsonSchema.keys],
+            formats: [...assertions.jsonSchema.formats],
+            ...assertions.jsonSchema.note ? { note: assertions.jsonSchema.note } : {}
+          }
         } : {}
       },
       when: {
@@ -3777,6 +4410,10 @@ ${errors.map((e) => `  - ${e}`).join("\n")}`);
     if (capabilities.assertions.shape) {
       lines.push(`  shape \u652F\u6301: type = ${capabilities.assertions.shape.types.join(" / ")}\uFF1B\u952E = ${capabilities.assertions.shape.keys.join(" / ")}`);
       if (capabilities.assertions.shape.note) lines.push(`  ${capabilities.assertions.shape.note}`);
+    }
+    if (capabilities.assertions.jsonSchema) {
+      lines.push(`  jsonSchema \u652F\u6301: \u952E = ${capabilities.assertions.jsonSchema.keys.join(" / ")}\uFF1Bformat = ${capabilities.assertions.jsonSchema.formats.join(" / ")}`);
+      if (capabilities.assertions.jsonSchema.note) lines.push(`  ${capabilities.assertions.jsonSchema.note}`);
     }
     lines.push("");
     lines.push(`when \u6761\u4EF6\u6765\u6E90: ${capabilities.when.sources.join(" / ")}`);

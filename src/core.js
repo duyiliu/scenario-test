@@ -700,8 +700,7 @@ function collectShapeFailures(value, schema, path, failures) {
 // 对外保留 evaluateShape(schema, actual)：返回可直接渲染的明细项。
 // 每项同时携带 each 的 index/assertions 分层结构与 path 等扁平字段，
 // 既能复用工作台/CLI 的 each 明细渲染，也兼容仅读取 path/expected/actual 的旧消费方。
-export function evaluateShape(schema, actual) {
-    const failures = collectShapeFailures(actual, schema, "", []);
+function schemaFailureDetails(failures) {
     return failures.map((failure, index) => ({
         index,
         path: failure.path,
@@ -721,6 +720,535 @@ export function evaluateShape(schema, actual) {
             actualType: failure.actualType
         }]
     }));
+}
+
+export function evaluateShape(schema, actual) {
+    return schemaFailureDetails(collectShapeFailures(actual, schema, "", []));
+}
+
+// ===== jsonSchema 断言（JSON Schema draft-07 常用子集，无第三方依赖、不解析 $ref）=====
+// 与 shape 的关系：shape 只保留 6 个结构键；jsonSchema 接受契约白名单内的常用关键字
+// （含组合器与 boolean 子模式）。未识别键定义期即拒，避免拼错静默通过的假绿。
+const JSON_SCHEMA_KEYS = new Set(contract.assertions.jsonSchema.keys);
+const JSON_SCHEMA_FORMATS = new Set(contract.assertions.jsonSchema.formats);
+// 仅约束性关键字（注解键如 $schema/title/default 不计）：顶层断言全注解属于永远通过的假绿
+const JSON_SCHEMA_ANNOTATION_KEYS = new Set(
+    ["$schema", "$id", "$defs", "title", "description", "comment", "default", "examples", "definitions"]
+);
+
+function isJsonSchemaCandidate(value) {
+    return typeof value === "boolean" || isPlainObject(value);
+}
+
+export function validateJsonSchema(schema, trail = "jsonSchema", topLevel = false) {
+    if (typeof schema === "boolean") {
+        // boolean 子模式只在内嵌位置有意义（items/additionalProperties/not/组合器等）；
+        // 顶层 jsonSchema:true 恒真、false 恒假，断言上都是无意义定义
+        if (topLevel) throw new TypeError(`${trail} 顶层必须是对象（boolean 子模式仅在内嵌位置有效）`);
+        return schema;
+    }
+    if (!isPlainObject(schema)) throw new TypeError(`${trail} 必须是对象或 boolean（JSON Schema 子集）`);
+    const unknown = Object.keys(schema).filter((key) => !JSON_SCHEMA_KEYS.has(key));
+    if (unknown.length) {
+        // $ref 单列提示：不支持引用解析，拼进白名单会被误读成「支持但取不到」
+        const hasRef = unknown.includes("$ref");
+        throw new TypeError(
+            `${trail} 包含未知键 ${unknown.map((key) => `"${key}"`).join(", ")}，` +
+            `允许的键为 ${contract.assertions.jsonSchema.keys.join("/")}` +
+            (hasRef ? "（$ref 不解析：请把被引用模式内联到本 schema）" : "")
+        );
+    }
+    if (topLevel) {
+        const effective = Object.keys(schema).filter((key) => !JSON_SCHEMA_ANNOTATION_KEYS.has(key));
+        if (!effective.length) {
+            throw new TypeError(`${trail} 至少需要声明一个约束关键字（如 type/properties/required/enum；纯注解 schema 恒通过属假绿）`);
+        }
+    }
+    const sub = (value, keyTrail) => {
+        if (!isJsonSchemaCandidate(value)) {
+            throw new TypeError(`${keyTrail} 必须是对象或 boolean（JSON Schema 子模式）`);
+        }
+        validateJsonSchema(value, keyTrail);
+    };
+    const keyList = (value, keyTrail) => {
+        if (!isPlainObject(value)) throw new TypeError(`${keyTrail} 必须是对象`);
+        for (const [key, child] of Object.entries(value)) sub(child, `${keyTrail}.${key}`);
+    };
+    const stringArray = (value, keyTrail, unique = false) => {
+        if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {
+            throw new TypeError(`${keyTrail} 必须是非空字符串数组`);
+        }
+        if (unique && new Set(value).size !== value.length) {
+            throw new TypeError(`${keyTrail} 不能包含重复项`);
+        }
+    };
+    // 标量关键字值可能含 {{ }} 模板（如 minimum: "{{vars.floor}}"）：定义期跳过静态校验，
+    // 运行期 resolve 后再完整校验（与 matches 操作符同口径）；模式结构（嵌套子模式、
+    // 数组形式）不做模板化，仍定义期校验
+    const templated = (value) => typeof value === "string" && value.includes("{{");
+    if (schema.type !== undefined && !templated(schema.type)) {
+        const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+        if (!types.length || types.some((type) => !SHAPE_TYPES.has(type))) {
+            throw new TypeError(`${trail}.type 只支持 ${[...SHAPE_TYPES].join("/")}（可数组形式，如 ["string","null"]；当前 ${JSON.stringify(schema.type)}）`);
+        }
+        if (Array.isArray(schema.type) && new Set(types).size !== types.length) {
+            throw new TypeError(`${trail}.type 数组不能包含重复类型`);
+        }
+    }
+    if (schema.required !== undefined && !templated(schema.required)) stringArray(schema.required, `${trail}.required`, true);
+    if (schema.properties !== undefined) keyList(schema.properties, `${trail}.properties`);
+    if (schema.patternProperties !== undefined) {
+        if (!isPlainObject(schema.patternProperties)) throw new TypeError(`${trail}.patternProperties 必须是对象`);
+        for (const [pattern, child] of Object.entries(schema.patternProperties)) {
+            try { new RegExp(pattern); }
+            catch (error) { throw new TypeError(`${trail}.patternProperties["${pattern}"] 的键不是合法正则: ${error.message}`); }
+            sub(child, `${trail}.patternProperties["${pattern}"]`);
+        }
+    }
+    if (schema.additionalProperties !== undefined) sub(schema.additionalProperties, `${trail}.additionalProperties`);
+    if (schema.propertyNames !== undefined) sub(schema.propertyNames, `${trail}.propertyNames`);
+    if (schema.dependentRequired !== undefined) {
+        if (!isPlainObject(schema.dependentRequired)) throw new TypeError(`${trail}.dependentRequired 必须是对象`);
+        for (const [key, deps] of Object.entries(schema.dependentRequired)) {
+            stringArray(deps, `${trail}.dependentRequired.${key}`);
+        }
+    }
+    if (schema.dependentSchemas !== undefined) keyList(schema.dependentSchemas, `${trail}.dependentSchemas`);
+    if (schema.items !== undefined) {
+        if (Array.isArray(schema.items)) {
+            // 元组形式：逐位置子模式，越界元素交给 additionalItems
+            schema.items.forEach((item, index) => sub(item, `${trail}.items[${index}]`));
+        } else {
+            sub(schema.items, `${trail}.items`);
+        }
+    }
+    if (schema.additionalItems !== undefined) {
+        if (!Array.isArray(schema.items) && !templated(schema.items)) {
+            throw new TypeError(`${trail}.additionalItems 仅当 items 为数组（元组校验）时有效`);
+        }
+        sub(schema.additionalItems, `${trail}.additionalItems`);
+    }
+    if (schema.contains !== undefined) sub(schema.contains, `${trail}.contains`);
+    if (schema.enum !== undefined && !templated(schema.enum)) {
+        if (!Array.isArray(schema.enum) || !schema.enum.length) throw new TypeError(`${trail}.enum 必须是非空数组`);
+    }
+    if (schema.format !== undefined && !templated(schema.format)) {
+        if (!JSON_SCHEMA_FORMATS.has(schema.format)) {
+            throw new TypeError(
+                `${trail}.format 只支持 ${contract.assertions.jsonSchema.formats.join("/")}` +
+                `（当前 ${JSON.stringify(schema.format)}；白名单外的 format 一律拒绝而非静默跳过，避免不校验的假绿）`
+            );
+        }
+    }
+    for (const key of ["minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"]) {
+        if (schema[key] !== undefined && !templated(schema[key])) {
+            if (!Number.isInteger(schema[key]) || schema[key] < 0) {
+                throw new TypeError(`${trail}.${key} 必须是非负整数`);
+            }
+        }
+    }
+    if (schema.pattern !== undefined && !templated(schema.pattern)) {
+        if (typeof schema.pattern !== "string") throw new TypeError(`${trail}.pattern 必须是字符串`);
+        try { new RegExp(schema.pattern); }
+        catch (error) { throw new TypeError(`${trail}.pattern 不是合法正则表达式（${schema.pattern}）: ${error.message}`); }
+    }
+    for (const key of ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"]) {
+        if (schema[key] !== undefined && !templated(schema[key])) {
+            if (typeof schema[key] !== "number" || !Number.isFinite(schema[key])) {
+                throw new TypeError(`${trail}.${key} 必须是有限 number（draft-07 起 exclusive 为数值语义，不接受布尔）`);
+            }
+        }
+    }
+    if (schema.multipleOf !== undefined && !templated(schema.multipleOf)) {
+        if (typeof schema.multipleOf !== "number" || !Number.isFinite(schema.multipleOf) || schema.multipleOf <= 0) {
+            throw new TypeError(`${trail}.multipleOf 必须是大于 0 的有限数`);
+        }
+    }
+    for (const key of ["allOf", "anyOf", "oneOf"]) {
+        if (schema[key] !== undefined) {
+            if (!Array.isArray(schema[key]) || !schema[key].length) {
+                throw new TypeError(`${trail}.${key} 必须是非空子模式数组`);
+            }
+            schema[key].forEach((child, index) => sub(child, `${trail}.${key}[${index}]`));
+        }
+    }
+    for (const key of ["not", "if", "then", "else"]) {
+        if (schema[key] !== undefined) sub(schema[key], `${trail}.${key}`);
+    }
+    // if 与 then/else 的配对：仅写 if 是恒通过的假绿写法，仅写 then/else 是死键，均定义期拒绝
+    if (schema.if === undefined && (schema.then !== undefined || schema.else !== undefined)) {
+        throw new TypeError(`${trail} 声明 then/else 必须同时声明 if`);
+    }
+    if (schema.if !== undefined && schema.then === undefined && schema.else === undefined) {
+        throw new TypeError(`${trail} 声明 if 必须同时声明 then 或 else（否则 if 恒不生效）`);
+    }
+    if (schema.definitions !== undefined) keyList(schema.definitions, `${trail}.definitions`);
+    if (schema.$defs !== undefined) keyList(schema.$defs, `${trail}.$defs`);
+    return schema;
+}
+
+// format 判定器：白名单内各自做确定性校验。判定范围按「期望输入类型」分派——
+// 类型不匹配时关键字不生效（JSON Schema 规范口径），避免对无关字段误报。
+const JSON_SCHEMA_FORMAT_CHECKS = Object.freeze({
+    "date-time": (value) => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})[Tt]([0-2]\d):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-][0-2]\d:[0-5]\d)$/.exec(value);
+        if (!match) return false;
+        const [, year, month, day, hour] = match;
+        if (+month < 1 || +month > 12 || +hour > 23) return false;
+        const dayMax = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+        return +day >= 1 && +day <= dayMax;
+    },
+    "date": (value) => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+        const [, year, month, day] = match;
+        if (+month < 1 || +month > 12) return false;
+        const dayMax = new Date(Date.UTC(+year, +month, 0)).getUTCDate();
+        return +day >= 1 && +day <= dayMax;
+    },
+    // RFC3339 的 time 必须带偏移（Z 或 ±hh:mm）；本地时间断言请用 pattern/matches
+    "time": (value) => {
+        const match = /^([0-2]\d):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-][0-2]\d:[0-5]\d)$/.exec(value);
+        return Boolean(match) && +match[1] <= 23;
+    },
+    "duration": (value) => /^-?P(?=\d|T\d)(?:\d+W|(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?)$/.test(value),
+    "email": (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    "hostname": (value) => {
+        if (value.length > 253) return false;
+        const labels = value.replace(/\.$/, "").split(".");
+        return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+    },
+    "uri": (value) => {
+        if (/\s/.test(value)) return false;
+        try {
+            const parsed = new URL(value);
+            // 绝对 URI 必须有 scheme（URL 解析出的 protocol）
+            return Boolean(parsed.protocol && /^[a-z][a-z0-9+.-]*:$/i.test(parsed.protocol));
+        } catch { return false; }
+    },
+    "uri-reference": (value) => {
+        if (/\s/.test(value)) return false;
+        try { new URL(value, "https://example.invalid/base"); return true; }
+        catch { return false; }
+    },
+    "ipv4": (value) => {
+        const parts = value.split(".");
+        return parts.length === 4 && parts.every((part) => {
+            if (!/^\d{1,3}$/.test(part)) return false;
+            // 拒绝前导零写法（"01"），与常见实现口径一致
+            if (part.length > 1 && part.startsWith("0")) return false;
+            return Number(part) <= 255;
+        });
+    },
+    "ipv6": (value) => {
+        try { return new URL(`http://[${value}]/`).hostname === `[${value.toLowerCase()}]`; }
+        catch { return false; }
+    },
+    "uuid": (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
+    // RFC6901：空串合法；否则以 / 开头，~ 只允许 ~0/~1 转义
+    "json-pointer": (value) => value === "" || (value.startsWith("/") && !/~(?![01])/.test(value)),
+    "regex": (value) => { try { new RegExp(value); return true; } catch { return false; } },
+    // RFC4648 base64（含 = 填充），空串合法
+    "byte": (value) => /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+});
+
+// format 期望的输入类型：字符串类格式只作用于 string 实际值，数值格式只作用于 number/bigint。
+// 类型不匹配不生效（规范口径）；bigint 实际值参与 int32/int64/double/float 判定。
+const JSON_SCHEMA_NUMBER_FORMATS = new Set(["int32", "int64", "float", "double"]);
+
+function jsonSchemaFormatOk(format, value) {
+    if (JSON_SCHEMA_NUMBER_FORMATS.has(format)) {
+        if (typeof value === "bigint") {
+            if (format === "int32") return value >= -2147483648n && value <= 2147483647n;
+            if (format === "int64") return value >= -9223372036854775808n && value <= 9223372036854775807n;
+            return true; // float/double：bigint 属整数数值，天然在表示域内
+        }
+        if (typeof value !== "number" || !Number.isFinite(value)) return true; // 非数值不生效
+        if (format === "int32") return Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
+        if (format === "int64") return Number.isInteger(value) && Number.isSafeInteger(value);
+        return true; // float/double：有限 number 即符合
+    }
+    if (typeof value !== "string") return true; // 字符串类格式对非字符串实际值不生效
+    return JSON_SCHEMA_FORMAT_CHECKS[format](value);
+}
+
+// 判定式求值：子模式是否匹配该值（供 not/contains/if/anyOf/oneOf 复用）
+function jsonSchemaMatches(schema, value) {
+    if (schema === true) return true;
+    if (schema === false) return false;
+    return collectJsonSchemaFailures(value, schema, "", []).length === 0;
+}
+
+// 递归收集全部校验失败（不短路）：与 collectShapeFailures 同口径的字段级明细。
+// 未声明 type 时按规范处理：关键字仅对匹配类型的实际值生效（如 minimum 对字符串不生效）。
+function collectJsonSchemaFailures(value, schema, path, failures) {
+    if (schema === true) return failures;
+    if (schema === false) {
+        pushShapeFailure(failures, {
+            path,
+            expected: "可匹配的模式（该位置声明了 false）",
+            actual: value,
+            reason: "子模式为 false：任何值都不匹配"
+        });
+        return failures;
+    }
+    const actualType = shapeActualType(value);
+    if (schema.type !== undefined) {
+        const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+        if (!types.some((type) => shapeTypeMatches(value, type))) {
+            pushShapeFailure(failures, {
+                path,
+                expected: `type: ${types.join(" | ")}`,
+                expectedType: types.join(" | "),
+                actual: value,
+                actualType,
+                reason: `类型不符：期望 ${types.join(" / ")}，实际 ${actualType}`
+            });
+            // 根类型不符时继续下钻只会产生噪声
+            return failures;
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(schema, "const")) {
+        if (stableStringify(value) !== stableStringify(schema.const)) {
+            pushShapeFailure(failures, {
+                path,
+                expected: `const: ${JSON.stringify(schema.const)}`,
+                actual: value,
+                actualType,
+                reason: "与 const 声明值不相等（深比较）"
+            });
+        }
+    }
+    if (Array.isArray(schema.enum)) {
+        const actualText = stableStringify(value);
+        if (!schema.enum.some((candidate) => stableStringify(candidate) === actualText)) {
+            pushShapeFailure(failures, {
+                path,
+                expected: `enum: ${JSON.stringify(schema.enum)}`,
+                actual: value,
+                actualType,
+                reason: `取值不在 enum 允许范围（实际 ${actualType}）`
+            });
+        }
+    }
+    if (schema.format !== undefined && !jsonSchemaFormatOk(schema.format, value)) {
+        pushShapeFailure(failures, {
+            path,
+            expected: `format: ${schema.format}`,
+            actual: value,
+            actualType,
+            reason: `不满足 format:${schema.format} 的格式要求`
+        });
+    }
+    // —— 数值关键字：仅对 number/bigint 实际值生效（bigint 在安全整数范围内参与比较）
+    const numericValue = typeof value === "number" ? value
+        : (typeof value === "bigint" && value >= -9007199254740991n && value <= 9007199254740991n ? Number(value) : undefined);
+    if (numericValue !== undefined && Number.isFinite(numericValue)) {
+        if (schema.minimum !== undefined && numericValue < schema.minimum) {
+            pushShapeFailure(failures, { path, expected: `minimum: ${schema.minimum}`, actual: value, actualType, reason: `小于 minimum ${schema.minimum}` });
+        }
+        if (schema.maximum !== undefined && numericValue > schema.maximum) {
+            pushShapeFailure(failures, { path, expected: `maximum: ${schema.maximum}`, actual: value, actualType, reason: `大于 maximum ${schema.maximum}` });
+        }
+        if (schema.exclusiveMinimum !== undefined && numericValue <= schema.exclusiveMinimum) {
+            pushShapeFailure(failures, { path, expected: `exclusiveMinimum: ${schema.exclusiveMinimum}`, actual: value, actualType, reason: `不大于 exclusiveMinimum ${schema.exclusiveMinimum}` });
+        }
+        if (schema.exclusiveMaximum !== undefined && numericValue >= schema.exclusiveMaximum) {
+            pushShapeFailure(failures, { path, expected: `exclusiveMaximum: ${schema.exclusiveMaximum}`, actual: value, actualType, reason: `不小于 exclusiveMaximum ${schema.exclusiveMaximum}` });
+        }
+        if (schema.multipleOf !== undefined) {
+            // 用商到最近整数的距离判定：直接取余对 0.3%0.1 这类浮点噪声会误报失败
+            const quotient = numericValue / schema.multipleOf;
+            if (Math.abs(quotient - Math.round(quotient)) > 1e-9) {
+                pushShapeFailure(failures, { path, expected: `multipleOf: ${schema.multipleOf}`, actual: value, actualType, reason: `不是 ${schema.multipleOf} 的整数倍` });
+            }
+        }
+    }
+    // —— 字符串关键字：仅对 string 实际值生效
+    if (typeof value === "string") {
+        if (schema.minLength !== undefined && value.length < schema.minLength) {
+            pushShapeFailure(failures, { path, expected: `minLength: ${schema.minLength}`, actual: value, actualType, reason: `长度 ${value.length} 小于 minLength ${schema.minLength}` });
+        }
+        if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+            pushShapeFailure(failures, { path, expected: `maxLength: ${schema.maxLength}`, actual: value, actualType, reason: `长度 ${value.length} 大于 maxLength ${schema.maxLength}` });
+        }
+        if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) {
+            pushShapeFailure(failures, { path, expected: `pattern: ${JSON.stringify(schema.pattern)}`, actual: value, actualType, reason: `不匹配 pattern ${schema.pattern}` });
+        }
+    }
+    // —— 对象关键字：仅对 plain object 实际值生效
+    if (isPlainObject(value)) {
+        const keyCount = Object.keys(value).length;
+        if (schema.minProperties !== undefined && keyCount < schema.minProperties) {
+            pushShapeFailure(failures, { path, expected: `minProperties: ${schema.minProperties}`, actual: value, actualType, reason: `键数 ${keyCount} 小于 minProperties ${schema.minProperties}` });
+        }
+        if (schema.maxProperties !== undefined && keyCount > schema.maxProperties) {
+            pushShapeFailure(failures, { path, expected: `maxProperties: ${schema.maxProperties}`, actual: value, actualType, reason: `键数 ${keyCount} 大于 maxProperties ${schema.maxProperties}` });
+        }
+        const present = (key) => Object.prototype.hasOwnProperty.call(value, key) && value[key] !== undefined;
+        for (const key of schema.required || []) {
+            if (!present(key)) {
+                pushShapeFailure(failures, { path: shapeChildPath(path, key), expected: "必填字段存在", actual: undefined, actualType: "undefined", reason: "缺少必填字段" });
+            }
+        }
+        const declared = new Set();
+        for (const [key, child] of Object.entries(isPlainObject(schema.properties) ? schema.properties : {})) {
+            declared.add(key);
+            if (!present(key)) continue;
+            collectJsonSchemaFailures(value[key], child, shapeChildPath(path, key), failures);
+        }
+        const compiledPatterns = (isPlainObject(schema.patternProperties) ? Object.entries(schema.patternProperties) : [])
+            .map(([pattern, child]) => [new RegExp(pattern), child]);
+        const matchedByPattern = (key) => compiledPatterns.filter(([pattern]) => pattern.test(key)).map(([, child]) => child);
+        for (const key of Object.keys(value)) {
+            if (value[key] === undefined) continue;
+            for (const child of matchedByPattern(key)) {
+                collectJsonSchemaFailures(value[key], child, shapeChildPath(path, key), failures);
+            }
+        }
+        const additional = schema.additionalProperties;
+        for (const key of Object.keys(value)) {
+            if (declared.has(key) || matchedByPattern(key).length) continue;
+            if (additional === false) {
+                pushShapeFailure(failures, {
+                    path: shapeChildPath(path, key),
+                    expected: "不允许的额外字段",
+                    actual: value[key],
+                    actualType: shapeActualType(value[key]),
+                    reason: `additionalProperties:false：出现未声明键 "${key}"`
+                });
+            } else if (additional !== undefined && additional !== true) {
+                // additionalProperties 为 schema 时对额外字段逐个校验
+                collectJsonSchemaFailures(value[key], additional, shapeChildPath(path, key), failures);
+            }
+        }
+        for (const [key, deps] of Object.entries(isPlainObject(schema.dependentRequired) ? schema.dependentRequired : {})) {
+            if (!present(key)) continue;
+            for (const dep of deps) {
+                if (!present(dep)) {
+                    pushShapeFailure(failures, {
+                        path: shapeChildPath(path, dep),
+                        expected: `存在 "${key}" 时必填 "${dep}"`,
+                        actual: undefined,
+                        actualType: "undefined",
+                        reason: `dependentRequired："${key}" 存在但缺少 "${dep}"`
+                    });
+                }
+            }
+        }
+        for (const [key, child] of Object.entries(isPlainObject(schema.dependentSchemas) ? schema.dependentSchemas : {})) {
+            if (!present(key)) continue;
+            collectJsonSchemaFailures(value, child, path, failures);
+        }
+        if (schema.propertyNames !== undefined) {
+            for (const key of Object.keys(value)) {
+                // 键名按字符串值校验（JSON 对象键恒为字符串）
+                collectJsonSchemaFailures(key, schema.propertyNames, shapeChildPath(path, key), failures);
+            }
+        }
+    }
+    // —— 数组关键字：仅对 array 实际值生效
+    if (Array.isArray(value)) {
+        if (schema.minItems !== undefined && value.length < schema.minItems) {
+            pushShapeFailure(failures, { path, expected: `minItems: ${schema.minItems}`, actual: value, actualType, reason: `元素数 ${value.length} 小于 minItems ${schema.minItems}` });
+        }
+        if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+            pushShapeFailure(failures, { path, expected: `maxItems: ${schema.maxItems}`, actual: value, actualType, reason: `元素数 ${value.length} 大于 maxItems ${schema.maxItems}` });
+        }
+        if (schema.uniqueItems === true) {
+            // 深比较去重（键序不敏感）；发现第一对重复即报，路径定位到后者
+            const seen = new Map();
+            for (let index = 0; index < value.length; index += 1) {
+                const text = stableStringify(value[index]);
+                if (seen.has(text)) {
+                    pushShapeFailure(failures, {
+                        path: shapeIndexPath(path, index),
+                        expected: "与前面元素不重复",
+                        actual: value[index],
+                        actualType: shapeActualType(value[index]),
+                        reason: `uniqueItems：第 ${index + 1} 项与第 ${seen.get(text) + 1} 项重复`
+                    });
+                    break;
+                }
+                seen.set(text, index);
+            }
+        }
+        if (Array.isArray(schema.items)) {
+            // 元组校验：逐位置比对；越界元素由 additionalItems 决定
+            const tuple = schema.items;
+            for (let index = 0; index < value.length; index += 1) {
+                if (index < tuple.length) {
+                    collectJsonSchemaFailures(value[index], tuple[index], shapeIndexPath(path, index), failures);
+                } else if (schema.additionalItems === false) {
+                    pushShapeFailure(failures, {
+                        path: shapeIndexPath(path, index),
+                        expected: `元组仅允许 ${tuple.length} 项`,
+                        actual: value[index],
+                        actualType: shapeActualType(value[index]),
+                        reason: `additionalItems:false：第 ${index + 1} 项超出元组长度`
+                    });
+                } else if (schema.additionalItems !== undefined && schema.additionalItems !== true) {
+                    collectJsonSchemaFailures(value[index], schema.additionalItems, shapeIndexPath(path, index), failures);
+                }
+            }
+        } else if (schema.items !== undefined) {
+            value.forEach((item, index) => collectJsonSchemaFailures(item, schema.items, shapeIndexPath(path, index), failures));
+        }
+        if (schema.contains !== undefined && !value.some((item) => jsonSchemaMatches(schema.contains, item))) {
+            pushShapeFailure(failures, {
+                path,
+                expected: "至少一项匹配 contains 子模式",
+                actual: value,
+                actualType,
+                reason: `contains：${value.length} 个元素均不匹配子模式`
+            });
+        }
+    }
+    // —— 组合器：对任意类型生效
+    for (const child of (Array.isArray(schema.allOf) ? schema.allOf : [])) {
+        collectJsonSchemaFailures(value, child, path, failures);
+    }
+    if (Array.isArray(schema.anyOf) && !schema.anyOf.some((child) => jsonSchemaMatches(child, value))) {
+        pushShapeFailure(failures, {
+            path,
+            expected: "任一 anyOf 子模式匹配",
+            actual: value,
+            actualType,
+            reason: `anyOf：${schema.anyOf.length} 个子模式均不匹配`
+        });
+    }
+    if (schema.oneOf !== undefined && Array.isArray(schema.oneOf)) {
+        const matched = schema.oneOf.reduce((count, child) => count + (jsonSchemaMatches(child, value) ? 1 : 0), 0);
+        if (matched !== 1) {
+            pushShapeFailure(failures, {
+                path,
+                expected: "恰好一个 oneOf 子模式匹配",
+                actual: value,
+                actualType,
+                reason: `oneOf：匹配了 ${matched} 个子模式（要求恰好 1 个）`
+            });
+        }
+    }
+    if (schema.not !== undefined && jsonSchemaMatches(schema.not, value)) {
+        pushShapeFailure(failures, {
+            path,
+            expected: "不匹配 not 子模式",
+            actual: value,
+            actualType,
+            reason: "not：实际值匹配了被禁止的子模式"
+        });
+    }
+    if (schema.if !== undefined) {
+        const branch = jsonSchemaMatches(schema.if, value) ? schema.then : schema.else;
+        if (branch !== undefined) collectJsonSchemaFailures(value, branch, path, failures);
+    }
+    return failures;
+}
+
+// 对外暴露 evaluateJsonSchema(schema, actual)：与 evaluateShape 同形状的明细项，
+// 复用 each/shape 的分层渲染（工作台/CLI/报告零改动）。
+export function evaluateJsonSchema(schema, actual) {
+    return schemaFailureDetails(collectJsonSchemaFailures(actual, schema, "", []));
 }
 
 export function validateAssertion(definition, context, options = {}) {
@@ -805,6 +1333,11 @@ export function validateAssertion(definition, context, options = {}) {
     if (definition.shape !== undefined) {
         validateShapeSchema(definition.shape, `${prefix}: shape`);
     }
+    // jsonSchema：同口径定义期完整校验（未知键/$ref/非法关键字/顶层空 schema 即拒）。
+    // 整串模板（"{{vars.schema}}"）定义期跳过——运行期 resolve 后再校验，非法解析结果按断言失败处理
+    if (definition.jsonSchema !== undefined && !(typeof definition.jsonSchema === "string" && definition.jsonSchema.includes("{{"))) {
+        validateJsonSchema(definition.jsonSchema, `${prefix}: jsonSchema`, true);
+    }
     // each：期望值为子断言定义对象或其数组，递归复用同一 schema 校验，
     // 让非法子断言（缺操作符/未知键/非对象项）在定义期 fail-fast 并定位到具体项
     if (definition.each !== undefined) {        const eachLabel = `${prefix}: each 的期望值必须是子断言对象或其数组`;
@@ -860,12 +1393,13 @@ function stableStringify(value) {
     return `{${entries.join(",")}}`;
 }
 
-// includes 对 plain object 实际值的失败原因：非数组分支会走 String(actual)，对象恒为
+// includes/contains 对 plain object 实际值的失败原因：非数组分支会走 String(actual)，对象恒为
 // "[object Object]"，断言必然失败且看起来像「对象不包含期望值」——属静默语义陷阱。
 // 保持失败口径不变（历史上恒 false，不可能有正当依赖），仅把原因换成可操作引导。
-const INCLUDES_OBJECT_ACTUAL_REASON =
-    "includes 不支持对象类型的实际值（String(actual) 恒为 \"[object Object]\"，断言必然失败）：" +
-    "对象深比较请改用 equals，或对具体字段用 path 断言（如 path: \"data.id\"）";
+// contains 是 includes 的同义别名，reason 按实际命中的操作符名输出。
+const objectActualReason = (op) =>
+    `${op} 不支持对象类型的实际值（String(actual) 恒为 "[object Object]"，断言必然失败）：` +
+    "对象深比较请改用 equals 或 jsonSchema，或对具体字段用 path 断言（如 path: \"data.id\"）";
 
 // 断言定义执行期校验去重：retryUntil 轮询里同一定义对象每次尝试都会重新进
 // evaluateAssertion——同一对象的校验结果不变（插件 transform 在 runScenario 前完成，
@@ -929,13 +1463,15 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
         expected = resolve(definition.notEquals, runtime);
         passed = passed && stableStringify(actual) !== stableStringify(expected);
     }
-    if (Object.prototype.hasOwnProperty.call(definition, "includes")) {
-        expected = resolve(definition.includes, runtime);
+    // includes / contains（同口径别名）：数组深比较成员包含，或字符串子串包含
+    for (const op of ["includes", "contains"]) {
+        if (!Object.prototype.hasOwnProperty.call(definition, op)) continue;
+        expected = resolve(definition[op], runtime);
         if (isPlainObject(actual)) {
             // 对象实际值：不再走字符串化分支——结果与历史一致（失败），但透出语义化原因，
-            // 引导改用 equals 做对象深比较或对具体字段 path 断言
+            // 引导改用 equals/jsonSchema 做对象深比较或对具体字段 path 断言
             passed = false;
-            reason = INCLUDES_OBJECT_ACTUAL_REASON;
+            reason = objectActualReason(op);
         } else if (Array.isArray(actual)) {
             // 仅在累计结果仍可能通过且实际数组非空时序列化：空数组必然失败、
             // 前序操作符已失败时也无需再比较——避免对不可序列化值（如 BigInt）
@@ -994,6 +1530,51 @@ function evaluateValidatedAssertion(definition, response, runtime, context) {
             const failures = evaluateShape(expected, actual);
             if (failures.length) {
                 shapeFailures = failures;
+                passed = false;
+            }
+        }
+    }
+    // jsonSchema：与 shape 同口径——期望值先经模板解析再完整校验（解析后可能改变
+    // 结构），非法定义按断言失败处理并给出明细，而非抛异常中断整个步骤
+    if (Object.prototype.hasOwnProperty.call(definition, "jsonSchema")) {
+        expected = resolve(definition.jsonSchema, runtime);
+        let jsonSchemaError = "";
+        if (isJsonSchemaCandidate(expected)) {
+            try {
+                validateJsonSchema(expected, "jsonSchema", true);
+            } catch (error) {
+                jsonSchemaError = error?.message || String(error);
+            }
+        } else {
+            jsonSchemaError = "jsonSchema 定义必须是对象（JSON Schema 子集）";
+        }
+        if (jsonSchemaError) {
+            passed = false;
+            const actualType = shapeActualType(expected);
+            shapeFailures = [...(shapeFailures || []), {
+                index: 0,
+                path: "(根)",
+                expected: "jsonSchema 定义对象",
+                actual: actualType,
+                value: expected,
+                expectedType: "object",
+                actualType,
+                reason: jsonSchemaError,
+                assertions: [{
+                    name: "(根)",
+                    passed: false,
+                    expected: "jsonSchema 定义对象",
+                    actual: actualType,
+                    reason: jsonSchemaError,
+                    expectedType: "object",
+                    actualType
+                }]
+            }];
+        } else {
+            const failures = evaluateJsonSchema(expected, actual);
+            if (failures.length) {
+                // 同一断言同时声明 shape + jsonSchema 时明细合并（与 each/shape 合并口径一致）
+                shapeFailures = [...(shapeFailures || []), ...failures];
                 passed = false;
             }
         }
