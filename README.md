@@ -15,6 +15,37 @@
 
 典型流程：在业务项目根目录接入 → 提供一个业务功能及其代码或接口入口 → 检查生成的场景和环境配置 → 使用工作台或 CLI 执行。执行场景会调用实际接口，可能产生业务数据，请先确认目标环境和场景内容。
 
+## CLI 用法示例
+
+以下命令均从业务项目根目录执行，`<运行时目录>` 替换为安装方运行时路径（Skill `runtime/` 或 `~/.scenario-test/runtime/`），`local`、`health-check` 替换为项目中实际配置的环境 key 与场景 ID。
+
+### doctor：体检接入状态
+
+```bash
+node "<运行时目录>/scenario-test-cli.cjs" doctor \
+  --config ./scenario-test/scenario.config.js
+```
+
+预期结果：校验配置、场景与运行时版本，终端逐项输出检查结论；全部通过时以退出码 0 结束，发现问题时按项列出原因。
+
+### run：执行场景
+
+```bash
+node "<运行时目录>/scenario-test-cli.cjs" run \
+  --config ./scenario-test/scenario.config.js \
+  --env local --scenario health-check
+```
+
+预期结果：按场景步骤依次发起真实 HTTP 请求，终端输出每步断言结果与耗时，末尾汇总通过/失败数；省略 `--scenario` 改用 `--all` 可运行全部非 manual 场景。
+
+### capabilities：查看能力清单
+
+```bash
+node "<运行时目录>/scenario-test-cli.cjs" capabilities
+```
+
+预期结果：在终端打印当前运行时的 DSL 能力清单（断言操作符、提取、步骤字段等），追加 `--json` 可输出机器可读 JSON，供 AI 生成场景时核对契约版本。
+
 ## 结果留档与耗时提取（主分支新增）
 
 `run --all --report reports/result.html --junit reports/result.xml --json` 可同时导出离线 HTML、JUnit 与 JSON。HTML 仅保留运行证据，不嵌入源码；已识别敏感变量值沿用 CLI 脱敏，长证据截断。
