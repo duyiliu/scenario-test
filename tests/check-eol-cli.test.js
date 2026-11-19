@@ -4,14 +4,28 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { main } from "../scripts/check-eol.mjs";
+import { fileURLToPath } from "node:url";
 
 // check:eol 是 CI 的廉价门禁（工作流行尾审计），脚本注释承诺的退出码
-// 0/1/2 至今只有单元级断言。这里直接锁 main() 的进程契约，防止门禁
-// 在 git 不可用或工作区漂移时静默返回 0。
+// 0/1/2 至今只有单元级断言。这里直接跑脚本进程，锁定 CI 实际消费的
+// 退出码，防止门禁在 git 不可用或工作区漂移时静默返回 0。
+
+const script = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../scripts/check-eol.mjs");
 
 function makeDirectory(prefix) {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+function runGate(cwd) {
+    const env = { ...process.env };
+    delete env.GIT_DIR;
+    delete env.GIT_WORK_TREE;
+    // 脚本以自身位置推导 REPO_ROOT，必须把它放进被测目录的 scripts/ 下，
+    // 否则进程会去审计本仓库而不是临时 fixture。
+    const installed = path.join(cwd, "scripts", "check-eol.mjs");
+    fs.mkdirSync(path.dirname(installed), { recursive: true });
+    fs.copyFileSync(script, installed);
+    return spawnSync(process.execPath, [installed], { cwd, encoding: "utf8", env });
 }
 
 function runGit(cwd, ...args) {
@@ -26,42 +40,38 @@ function initRepository(directory) {
     runGit(directory, "add", ".gitattributes", "clean.txt");
 }
 
-test("check:eol main：非 git 目录返回 2，不把无法审计当成通过", () => {
+test("check:eol 进程：非 git 目录退出 2，不把无法审计当成通过", () => {
     const directory = makeDirectory("scenario-test-eol-nogit-");
-    const originalError = console.error;
-    let stderr = "";
-    console.error = (message) => { stderr += `${message}\n`; };
     try {
-        assert.equal(main(directory), 2);
+        const result = runGate(directory);
+        assert.equal(result.status, 2);
+        assert.match(result.stderr, /\[check:eol\] 无法执行 git ls-files --eol/);
     } finally {
-        console.error = originalError;
         fs.rmSync(directory, { recursive: true, force: true });
     }
-    assert.match(stderr, /\[check:eol\] 无法执行 git ls-files --eol/);
 });
 
-test("check:eol main：索引与工作区均为 LF 时返回 0", () => {
+test("check:eol 进程：索引与工作区均为 LF 时退出 0", () => {
     const directory = makeDirectory("scenario-test-eol-clean-");
     try {
         initRepository(directory);
-        assert.equal(main(directory), 0);
+        const result = runGate(directory);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /\[check:eol\] 行尾策略通过/);
     } finally {
         fs.rmSync(directory, { recursive: true, force: true });
     }
 });
 
-test("check:eol main：工作区 CRLF 幻影改动返回 1，并指出期望/实际行尾", () => {
+test("check:eol 进程：工作区 CRLF 幻影改动退出 1，并指出期望/实际行尾", () => {
     const directory = makeDirectory("scenario-test-eol-drift-");
-    const originalError = console.error;
-    let stderr = "";
-    console.error = (message) => { stderr += `${message}\n`; };
     try {
         initRepository(directory);
         fs.writeFileSync(path.join(directory, "clean.txt"), "line\r\n", "utf8");
-        assert.equal(main(directory), 1);
+        const result = runGate(directory);
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /clean\.txt（工作区：期望 lf，实际 crlf）/);
     } finally {
-        console.error = originalError;
         fs.rmSync(directory, { recursive: true, force: true });
     }
-    assert.match(stderr, /clean\.txt（工作区：期望 lf，实际 crlf）/);
 });
