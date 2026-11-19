@@ -16,10 +16,19 @@ if (testFiles.length === 0) {
     process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ["--test", ...process.argv.slice(2), ...testFiles], {
-    cwd: root,
-    stdio: "inherit"
-});
+// 单测试超时：任一测试超过该时长即记为失败（testTimeoutFailure）并继续汇总，
+// 避免半成品代码的 hang（如 server.listen 永不关闭）把整轮 npm test 无限拖死。
+// 正常单测试远低于 120s；需要放宽时可用 TEST_TIMEOUT_MS 覆盖。
+const testTimeoutMs = Number.parseInt(process.env.TEST_TIMEOUT_MS || "120000", 10);
+
+const result = spawnSync(
+    process.execPath,
+    ["--test", `--test-timeout=${testTimeoutMs}`, ...process.argv.slice(2), ...testFiles],
+    {
+        cwd: root,
+        stdio: "inherit"
+    }
+);
 
 if (result.error) {
     console.error(result.error.message);
