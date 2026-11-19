@@ -65,6 +65,13 @@ const assertionCases = [
     { path: "empty", includes: "" },
     { path: "total", includes: "1" },
     { path: "total", includes: 10 },
+    // contains：includes 同口径别名（字符串子串 / 数组深比较成员 / 对象实际值失败）
+    { path: "text", contains: "b" },
+    { path: "text", contains: "B" },
+    { path: "list", contains: 20 },
+    { path: "list", contains: 2 },
+    { path: "obj", contains: 1 },
+    { path: "missing", contains: "x" },
     // matches（无效正则已在 validateAssertion 定义期/执行期校验被拒，不在本表锁定）
     { path: "total", matches: "^10$" },
     { path: "total", matches: "^9$" },
@@ -134,7 +141,16 @@ const assertionCases = [
     // 嵌套 each：外层数组元素仍是数组，内层逐项断言；matrix=[[1,2],[3,4]]
     { path: "matrix", each: { each: { lt: 5 } } },
     // 嵌套 each 判别：内层条件对最后一个元素必失败（内层 some 语义或外层 any 语义均会假绿）
-    { path: "matrix", each: { each: { gt: 3 } } }
+    { path: "matrix", each: { each: { gt: 3 } } },
+    // jsonSchema：结构深校验（与 shape 不同的判别点：type 数组、数值范围、组合器、元组）
+    { path: "obj", jsonSchema: { type: "object", required: ["x"] } },
+    { path: "obj", jsonSchema: { type: "object", required: ["y"] } },
+    { path: "items", jsonSchema: { type: "array", items: { type: "integer" } } },
+    { path: "items", jsonSchema: { type: "array", items: { minimum: 2 } } },
+    { path: "total", jsonSchema: { type: ["integer", "null"], minimum: 5 } },
+    { path: "text", jsonSchema: { anyOf: [{ type: "integer" }, { pattern: "^z" }] } },
+    { path: "matrix", jsonSchema: { type: "array", items: { type: "array", items: { type: "integer" } } } },
+    { path: "code", jsonSchema: { oneOf: [{ type: "integer" }, { minimum: 100 }] } }
 ];
 
 // 每个用例的期望 passed（与 assertionCases 顺序一一对应）。
@@ -159,6 +175,12 @@ const expectedPassed = [
     true,  // includes: 非数组 empty="" 含 ""
     true,  // includes: 非数组 10 含 "1"
     true,  // includes: 非数组 10 含 10
+    true,  // contains: "abc" 含 "b"
+    false, // contains: "abc" 不含 "B"（大小写敏感，与 includes 同口径）
+    true,  // contains: list=[10,20] 含 20（深比较成员）
+    false, // contains: list 含 2（数组不字符串化，类型敏感）
+    false, // contains: 对象实际值必失败（含语义化 reason）
+    false, // contains: 缺失路径按空串处理，非空期望必失败
     true,  // matches ^10$
     false, // matches ^9$
     true,  // oneOf [200,201]
@@ -215,7 +237,15 @@ const expectedPassed = [
     false, // each 对非数组实际值（code=200）必失败——判别 vs gte（200>=0 会通过）
     false, // each 对 missing（undefined 非数组）必失败
     true,  // 嵌套 each {lt:5} 对 matrix=[[1,2],[3,4]]：全部元素通过
-    false  // 嵌套 each {gt:3} 对 matrix：内层 [1,2] 首元素 1 不满足，判别内外层 any/some 语义假绿
+    false, // 嵌套 each {gt:3} 对 matrix：内层 [1,2] 首元素 1 不满足，判别内外层 any/some 语义假绿
+    true,  // jsonSchema: obj 含 x 必填满足
+    false, // jsonSchema: obj 缺 y 必填必失败
+    true,  // jsonSchema: items 全整数 items:{type:integer}
+    false, // jsonSchema: items[0]=1 不满足 items:{minimum:2}
+    true,  // jsonSchema: total=10 满足 type:[integer,null]+minimum:5
+    false, // jsonSchema: "abc" 既非 integer 也不匹配 ^z（anyOf 判别：任一误报为 allOf 会假绿）
+    true,  // jsonSchema: 嵌套数组结构逐层 items 校验
+    false  // jsonSchema: code=200 同时匹配 integer 与 minimum:100（oneOf 判 2 个匹配为失败）
 ];
 
 test("断言求值极性：全部操作符逐条锁定 passed（含 includes/oneOf/exists 假绿回归）", () => {

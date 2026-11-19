@@ -374,7 +374,7 @@ ScenarioTest.registerScenario("member-join", ScenarioTest.defineScenario({
 - `doctor` 校验配置、场景、运行时版本和 SHA256 指纹；`capabilities --json` 输出机器可读能力清单。
 - `projects` 管理用户级项目登记（`~/.scenario-test/projects.json`）：`list` 查看项目与固定端口，`set-port` / `set-default-port` 修改，`ensure` 供 agent-app-manager 等工作台复用，`remove` 移除登记。
 - `import --har` / `import --curl` 把真实流量或 curl 示例转成场景草稿；静态资源与预检会被过滤，敏感头和查询参数替换为 `{{vars.*}}` 占位，二进制/multipart 请求体会省略并注明。
-- 还支持 `shape` 结构断言、`always` 清理步骤、文件上传、响应保存和自定义 Node 插件。
+- 还支持 `shape`/`jsonSchema` 结构断言（后者为 JSON Schema draft-07 常用子集：type 可数组、数值/字符串/数组/对象约束、anyOf/oneOf/not、if-then-else、format 等，不解析 `$ref`、未知键定义期即拒）、`always` 清理步骤、文件上传、响应保存和自定义 Node 插件。
 
 完整示例见 [`examples/complete`](examples/complete)；DSL 能力以运行时 `scenario-test-capabilities.json` 为准（本仓库由 `src/contract.js` 生成，安装方运行时内提供）。更多文档：[适配器指南](docs/ADAPTER_GUIDE.md)、[示例索引](examples/EXAMPLES_INDEX.md)。
 

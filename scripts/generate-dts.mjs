@@ -23,10 +23,15 @@ const valueTypeToTs = {
     string: "string",
     array: "unknown[]",
     finiteNumber: "number",
-    assertion: "Assertion | Assertion[]"
+    assertion: "Assertion | Assertion[]",
+    schema: "JsonSchema"
 };
 
-const operatorMembers = (indent) => Object.entries(contract.assertions.operators).filter(([name]) => name !== "shape").map(([name, spec]) => {
+// shape/jsonSchema 的期望值不是普通 valueType 直投（各自有结构化定义接口），
+// 从自动成员投影中排除后手工声明
+const STRUCTURED_OPERATORS = new Set(["shape", "jsonSchema"]);
+
+const operatorMembers = (indent) => Object.entries(contract.assertions.operators).filter(([name]) => !STRUCTURED_OPERATORS.has(name)).map(([name, spec]) => {
     const tsType = valueTypeToTs[spec.valueType];
     if (!tsType) throw new Error(`contract 操作符 ${name} 的 valueType "${spec.valueType}" 缺少 d.ts TS 类型映射`);
     return `${indent}/** ${spec.description} */\n${indent}${name}?: ${tsType};`;
@@ -131,6 +136,8 @@ export interface Assertion {
 ${operatorMembers("    ")}
     /** 结构级校验（jsonSchema-lite）：失败明细在 result.detail 中按 path 定位 */
     shape?: ShapeDefinition;
+    /** JSON Schema 子集深校验（shape 完整版，contract v24）：失败明细在 result.detail 中按 path 定位 */
+    jsonSchema?: JsonSchema;
 }
 
 export interface ExtractDefinition {
@@ -161,6 +168,68 @@ export interface ShapeDefinition {
     additionalProperties?: boolean;
 }
 
+/** JSON Schema 子模式：对象形式或 boolean（false 永不匹配，仅内嵌位置） */
+export type JsonSchema = JsonSchemaDefinition | boolean;
+
+/** jsonSchema 断言（contract v24）：JSON Schema draft-07 常用子集，不解析 $ref，未知键定义期即拒 */
+export interface JsonSchemaDefinition {
+    $schema?: string;
+    $id?: string;
+    title?: string;
+    description?: string;
+    comment?: string;
+    default?: unknown;
+    examples?: unknown[];
+    /** 仅作声明存放（$ref 不解析），值为子模式对象 */
+    definitions?: Record<string, JsonSchema>;
+    /** 仅作声明存放（$ref 不解析），值为子模式对象 */
+    $defs?: Record<string, JsonSchema>;
+    type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null" | Array<"object" | "array" | "string" | "number" | "integer" | "boolean" | "null">;
+    const?: unknown;
+    enum?: unknown[];
+    format?: "date-time" | "date" | "time" | "duration" | "email" | "hostname" | "uri" | "uri-reference" | "ipv4" | "ipv6" | "uuid" | "json-pointer" | "regex" | "byte" | "int32" | "int64" | "float" | "double";
+    required?: string[];
+    properties?: Record<string, JsonSchema>;
+    /** 键名为正则的模式属性（编译失败定义期即拒） */
+    patternProperties?: Record<string, JsonSchema>;
+    /** boolean 或子模式（对额外字段逐个校验） */
+    additionalProperties?: JsonSchema;
+    /** 对键名本身套用子模式 */
+    propertyNames?: JsonSchema;
+    minProperties?: number;
+    maxProperties?: number;
+    /** 键存在时要求哪些键同时存在（draft-07 dependencies 的数组形式） */
+    dependentRequired?: Record<string, string[]>;
+    /** 键存在时对整体对象套用子模式 */
+    dependentSchemas?: Record<string, JsonSchema>;
+    /** 单一子模式或元组形式（越界元素由 additionalItems 决定） */
+    items?: JsonSchema | JsonSchema[];
+    /** 仅当 items 为元组形式时有效 */
+    additionalItems?: JsonSchema;
+    /** 数组中至少一项匹配子模式 */
+    contains?: JsonSchema;
+    minItems?: number;
+    maxItems?: number;
+    uniqueItems?: boolean;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+    minimum?: number;
+    maximum?: number;
+    /** draft-07 数值语义（不接受布尔） */
+    exclusiveMinimum?: number;
+    exclusiveMaximum?: number;
+    multipleOf?: number;
+    allOf?: JsonSchema[];
+    anyOf?: JsonSchema[];
+    oneOf?: JsonSchema[];
+    not?: JsonSchema;
+    /** if/then/else 必须配对声明 */
+    if?: JsonSchema;
+    then?: JsonSchema;
+    else?: JsonSchema;
+}
+
 /** when 对象形式：from: WhenSource（contract.when.sources = vars/suite/lastResponse/status），或用 target: WhenTarget 读取上一步响应通道（contract.when.targets，目前仅 status） */
 export interface WhenDefinition {
     from?: WhenSource;
@@ -168,6 +237,7 @@ export interface WhenDefinition {
     path?: string;
 ${operatorMembers("    ")}
     shape?: ShapeDefinition;
+    jsonSchema?: JsonSchema;
 }
 
 export interface GeneratedVarDefinition {
@@ -494,6 +564,7 @@ export declare const contract: {
         operators: Record<AssertionOperator, { description: string; valueType: string }>;
         numericOperators: readonly NumericAssertionOperator[];
         shape: { keys: readonly string[]; types: readonly string[]; note: string };
+        jsonSchema: { keys: readonly string[]; formats: readonly string[]; note: string };
     };
     when: { sources: readonly WhenSource[]; targets: readonly WhenTarget[]; note: string };
     extract: { metaKeys: readonly string[]; scopes: readonly ExtractScope[]; scope: string; from: readonly ExtractSource[]; targets: readonly string[]; required: string; default: string; note: string };

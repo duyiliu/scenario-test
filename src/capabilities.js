@@ -26,6 +26,13 @@ export function buildCapabilities(inputContract = contract) {
                     types: [...assertions.shape.types],
                     ...(assertions.shape.note ? { note: assertions.shape.note } : {})
                 }
+            } : {}),
+            ...(assertions.jsonSchema ? {
+                jsonSchema: {
+                    keys: [...assertions.jsonSchema.keys],
+                    formats: [...assertions.jsonSchema.formats],
+                    ...(assertions.jsonSchema.note ? { note: assertions.jsonSchema.note } : {})
+                }
             } : {})
         },
         when: {
@@ -121,6 +128,10 @@ export function renderCapabilitiesText(capabilities) {
     if (capabilities.assertions.shape) {
         lines.push(`  shape 支持: type = ${capabilities.assertions.shape.types.join(" / ")}；键 = ${capabilities.assertions.shape.keys.join(" / ")}`);
         if (capabilities.assertions.shape.note) lines.push(`  ${capabilities.assertions.shape.note}`);
+    }
+    if (capabilities.assertions.jsonSchema) {
+        lines.push(`  jsonSchema 支持: 键 = ${capabilities.assertions.jsonSchema.keys.join(" / ")}；format = ${capabilities.assertions.jsonSchema.formats.join(" / ")}`);
+        if (capabilities.assertions.jsonSchema.note) lines.push(`  ${capabilities.assertions.jsonSchema.note}`);
     }
     lines.push("");
     lines.push(`when 条件来源: ${capabilities.when.sources.join(" / ")}`);
