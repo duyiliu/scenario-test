@@ -22,5 +22,15 @@ export const scenarios = {
     diff: { name: '嵌套差异与长度', failurePolicy: 'continue', steps: [
         { name: '对象差异', path: 'nested', assertions: [{ path: 'data', equals: { items: [{ name: 'expected' }] } }] },
         { name: '长度组合', path: 'nested', assertions: [{ path: 'data.items', length: 2, notEquals: [] }] }
-    ] }
+    ] },
+    // YIL-199：场景编辑夹具——vars + 三步可排序；路径含变量模板便于保存后序列化核对
+    editvars: {
+        name: '变量编辑与排序夹具',
+        vars: { tenant: 'fixture', limit: 3, labels: { a: '甲' } },
+        steps: [
+            { name: '第一步 seed', path: 'seed', extract: [{ name: 'id', path: 'id' }] },
+            { name: '第二步 echo', method: 'POST', path: 'echo', request: { body: { tenant: '{{vars.tenant}}' } } },
+            { name: '第三步 ok', path: 'ok' }
+        ]
+    }
 };

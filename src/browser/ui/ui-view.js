@@ -245,8 +245,23 @@ const workbenchView = (function () {
                             <div class="flex items-center gap-2">
                                 <h2 id="scenarioMainTitle" class="text-sm font-bold text-slate-900 tracking-tight truncate">未加载场景</h2>
                                 <span id="scenarioStatusBadge"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">待执行</span></span>
+                                <span id="scenarioDirtyBadge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200" style="display:none">未保存</span>
                             </div>
                             <div id="scenarioFilePath" class="mt-0.5 text-xs text-slate-400 font-mono truncate"></div>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <button id="editScenarioBtn" type="button" disabled title="编辑当前场景（有执行结果时请先用「清除结果」）" class="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 transition-all active:scale-[0.97]">编辑</button>
+                            <button id="saveScenarioBtn" type="button" disabled title="把排序/变量等改动写回场景文件（serve 模式下直接写盘）" class="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 transition-all active:scale-[0.97]">保存</button>
+                        </div>
+                    </div>
+                    <div id="editToolbar" hidden class="px-4 py-1.5 bg-amber-50/70 border-b border-amber-100 text-[11px] text-amber-800 flex items-center justify-between gap-2 flex-shrink-0">
+                        <div class="min-w-0">
+                            <span id="editToolbarHint">编辑模式：拖拽步骤左侧把手调整顺序；改动需点「保存」写回场景文件。</span>
+                            <span id="editStatus" role="status" aria-live="polite" class="block text-amber-700"></span>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <button id="editScenarioVarsBtn" type="button" class="rounded-md border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-all active:scale-[0.97]">编辑变量</button>
+                            <button id="discardScenarioEditsBtn" type="button" class="rounded-md border border-amber-200 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-all active:scale-[0.97]">放弃改动</button>
                         </div>
                     </div>
                     <div id="filterBar" class="flex items-center justify-between bg-slate-50/50 px-3 py-1.5 border-b border-slate-100 flex-shrink-0">
@@ -371,6 +386,60 @@ const workbenchView = (function () {
                 <div>
                     <div class="scenario-step-loading__title">正在执行单步请求</div>
                     <div id="stepLoadingText" class="scenario-step-loading__text">请稍候…</div>
+                </div>
+            </div>
+        </div>
+        <div id="varsModal" class="hidden fixed inset-0 z-40 bg-slate-950/40 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="varsModalTitle">
+            <div class="mx-auto my-8 max-w-2xl rounded-xl bg-white shadow-2xl border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                        <div id="varsModalTitle" class="text-sm font-bold text-slate-800">场景变量编辑</div>
+                        <div id="varsModalHint" class="mt-0.5 text-[11px] text-slate-400">修改场景 vars / envVars；值以 JSON 解析（字符串需带引号），保存后写回场景文件。</div>
+                    </div>
+                    <button id="varsModalCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">关闭</button>
+                </div>
+                <div class="space-y-4 p-5">
+                    <div id="varsModalError" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-600">场景变量 (vars)</span>
+                            <button id="varsAddRowBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ 添加变量</button>
+                        </div>
+                        <div id="varsEditorRows" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-600">环境变量名映射 (envVars)<span class="font-normal text-slate-400">（key 为变量名，value 为展示标签）</span></span>
+                            <button id="envVarsAddRowBtn" type="button" class="text-xs font-bold text-emerald-600 hover:text-emerald-700">+ 添加映射</button>
+                        </div>
+                        <div id="envVarsEditorRows" class="space-y-2"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                        <button id="varsCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">取消</button>
+                        <button id="varsApplyBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">应用修改</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="duplicateModal" class="hidden fixed inset-0 z-40 bg-slate-950/40 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="duplicateModalTitle">
+            <div class="mx-auto my-8 max-w-lg rounded-xl bg-white shadow-2xl border border-slate-200">
+                <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                        <div id="duplicateModalTitle" class="text-sm font-bold text-slate-800">复制场景</div>
+                        <div class="mt-0.5 text-[11px] text-slate-400">生成新的场景文件并注册进 scenario.config.js 的场景清单。</div>
+                    </div>
+                    <button id="duplicateCloseBtn" type="button" class="rounded-lg px-2.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors">关闭</button>
+                </div>
+                <div class="space-y-4 p-5">
+                    <div id="duplicateError" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">新场景名称</span><input id="duplicateNameInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">新场景 ID<span class="font-normal text-slate-400">（小写字母/数字/短横线，须与场景清单唯一）</span></span><input id="duplicateIdInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <label class="block"><span class="text-xs font-bold text-slate-600">新场景文件</span><input id="duplicateFileInput" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-hidden focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all" type="text"></label>
+                    <div id="duplicateHint" class="text-[11px] text-slate-400"></div>
+                    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+                        <button id="duplicateCancelBtn" type="button" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-[0.98]">取消</button>
+                        <button id="duplicateConfirmBtn" type="button" class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm transition-all active:scale-[0.98]">创建副本</button>
+                    </div>
                 </div>
             </div>
         </div>`;
@@ -812,6 +881,9 @@ const workbenchView = (function () {
                 (fileName ? '<span class="scenario-tree-item__file">' + esc(fileName) + '</span>' : '') +
                 '</span>' +
             '</button>' +
+            '<button type="button" data-dup-file="' + esc(item.file) + '" title="复制场景" aria-label="复制场景 ' + esc(item.name) + '" class="scenario-dup-control">' +
+                '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>' +
+            '</button>' +
             '<button type="button" data-pin-file="' + esc(item.file) + '" title="' + pinLabel + '" aria-label="' + pinLabel + '" class="scenario-pin-control' + (pinned ? ' scenario-pin-control--active' : '') + '">' +
                 '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4V3z" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path></svg>' +
             '</button>' +
@@ -1105,7 +1177,19 @@ const workbenchView = (function () {
         }
     }
 
-    function renderPendingSteps(scenarioSteps, startIndex) {
+    // 编辑模式（YIL-199）：待执行步骤行渲染拖拽把手与上/下移按钮；拖拽只影响
+    // state.scenario.steps 的顺序，不写执行结果（编辑模式禁止在有结果时进入）
+    function renderStepEditControls(stepIndex, stepCount) {
+        return '<span class="step-edit-controls">' +
+            '<span class="step-drag-handle" title="拖拽调整步骤顺序" aria-hidden="true">' +
+                '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>' +
+            '</span>' +
+            '<button type="button" data-step-move="up" data-step-index="' + stepIndex + '"' + (stepIndex === 0 ? ' disabled' : '') + ' title="上移步骤" aria-label="上移第 ' + (stepIndex + 1) + ' 步" class="step-move-btn">↑</button>' +
+            '<button type="button" data-step-move="down" data-step-index="' + stepIndex + '"' + (stepIndex >= stepCount - 1 ? ' disabled' : '') + ' title="下移步骤" aria-label="下移第 ' + (stepIndex + 1) + ' 步" class="step-move-btn">↓</button>' +
+        '</span>';
+    }
+
+    function renderPendingSteps(scenarioSteps, startIndex, editMode) {
         if (!Array.isArray(scenarioSteps) || startIndex >= scenarioSteps.length) return '';
         return scenarioSteps.slice(startIndex).map(function (step, idx) {
             var stepIndex = startIndex + idx;
@@ -1121,9 +1205,11 @@ const workbenchView = (function () {
             var reqHeaders = step.headers ? truncateForDisplay(typeof step.headers === 'string' ? step.headers : JSON.stringify(step.headers, null, 2)) : '';
             var reqBody = step.request && step.request.body ? truncateForDisplay(typeof step.request.body === 'string' ? step.request.body : JSON.stringify(step.request.body, null, 2)) : (step.body ? truncateForDisplay(typeof step.body === 'string' ? step.body : JSON.stringify(step.body, null, 2)) : '');
             var queryParams = extractQueryParams(stepPath, step.query);
+            var editControls = editMode ? renderStepEditControls(stepIndex, scenarioSteps.length) : '';
 
-            return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '">' +
+            return '<li class="hover:bg-slate-50/70 group transition-all duration-150 border-b border-slate-100 bg-white" data-passed="pending" data-step-idx="' + stepIndex + '" data-search="' + esc(((step.name || '') + ' ' + method + ' ' + stepPath).toLowerCase()) + '"' + (editMode ? ' draggable="true"' : '') + '>' +
                 '<div class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none" role="button" tabindex="0" aria-expanded="false" onclick="window.__R.toggle(this, event)" onkeydown="window.__R.toggleKey(this, event)">' +
+                    editControls +
                     '<div class="flex items-center space-x-2.5 min-w-0 flex-1 pr-3">' +
                         '<div class="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 text-[10.5px] font-bold bg-slate-100 border border-slate-200 text-slate-500 font-mono">' + seqNum + '</div>' +
                         '<span class="text-xs text-slate-700 font-medium truncate group-hover:text-slate-900" title="' + esc(step.name || '') + '">' + esc(step.name || '未命名步骤') + '</span>' +
@@ -1344,7 +1430,7 @@ const workbenchView = (function () {
         '</li>';
     }
 
-    function renderStepsAll(steps, scenarioSteps, executionMode, varsViews) {
+    function renderStepsAll(steps, scenarioSteps, executionMode, varsViews, editMode) {
         var ul = document.getElementById('stepsList');
         if (!ul) return;
         steps = steps || [];
@@ -1355,7 +1441,7 @@ const workbenchView = (function () {
         }
         varsViews = varsViews || [];
         ul.innerHTML = steps.map(function (s, i) { return renderStepItem(s, i, executionMode, varsViews[i]); }).join('')
-            + renderPendingSteps(scenarioSteps, steps.length);
+            + renderPendingSteps(scenarioSteps, steps.length, editMode === true);
         if (window.__R && window.__R.applyFilter) {
             window.__R.applyFilter();
         }

@@ -1057,6 +1057,107 @@ const workbenchStyle = (function () {
             }
             .step-run-actions button:last-child { border-right: 0; color: var(--workspace-primary); }
             .step-run-actions button:hover { background: var(--workspace-hover); color: var(--workspace-text); }
+
+            /* ===== 场景编辑（YIL-199）：拖拽把手 / 上下移 / 拖放指示 ===== */
+            .step-edit-controls {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                flex: 0 0 auto;
+                margin-right: 6px;
+            }
+            .step-drag-handle {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 22px;
+                color: var(--workspace-muted);
+                cursor: grab;
+            }
+            .step-drag-handle svg { width: 14px; height: 14px; }
+            .step-drag-handle:active { cursor: grabbing; }
+            .step-move-btn {
+                width: 18px;
+                height: 18px;
+                padding: 0;
+                border: 1px solid var(--workspace-line);
+                border-radius: 4px;
+                background: var(--workspace-surface);
+                color: var(--workspace-muted);
+                font-size: 11px;
+                line-height: 1;
+                cursor: pointer;
+                transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+            }
+            .step-move-btn:hover:not(:disabled) { color: var(--workspace-primary); border-color: var(--workspace-selected-line); background: var(--workspace-hover); }
+            .step-move-btn:disabled { opacity: .35; cursor: not-allowed; }
+            #stepsList > li[draggable="true"] { cursor: default; }
+            #stepsList > li.step-dragging { opacity: .45; }
+            #stepsList > li.step-drop-before { box-shadow: inset 0 2px 0 var(--workspace-info) !important; }
+            #stepsList > li.step-drop-after { box-shadow: inset 0 -2px 0 var(--workspace-info) !important; }
+
+            /* 场景列表复制按钮：与置顶控件同口径，置于置顶左侧 */
+            #scenarioList .scenario-tree-item__main { padding-right: 52px; }
+            #scenarioList .scenario-dup-control {
+                position: absolute;
+                right: 28px;
+                top: 50%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 24px;
+                height: 24px;
+                padding: 0;
+                transform: translateY(-50%);
+                border: 0;
+                border-radius: 4px;
+                background: transparent;
+                color: var(--workspace-muted);
+                opacity: 0;
+                cursor: pointer;
+                transition: opacity .15s ease, background-color .15s ease, color .15s ease;
+            }
+            #scenarioList .scenario-dup-control svg { width: 14px; height: 14px; }
+            #scenarioList .scenario-tree-item:hover .scenario-dup-control,
+            #scenarioList .scenario-tree-item:focus-within .scenario-dup-control,
+            #scenarioList .scenario-dup-control:focus-visible { opacity: 1; }
+            #scenarioList .scenario-dup-control:hover { background: var(--workspace-selected); color: var(--workspace-primary); }
+            #scenarioList .scenario-dup-control:focus-visible {
+                outline: 2px solid var(--workspace-primary);
+                outline-offset: -2px;
+            }
+            @media (hover: none) { #scenarioList .scenario-dup-control { opacity: 1; } }
+            .vars-editor-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .vars-editor-row input {
+                flex: 1;
+                min-width: 0;
+                padding: 7px 10px;
+                border: 1px solid var(--workspace-line);
+                border-radius: 6px;
+                background: var(--workspace-surface);
+                color: var(--workspace-text);
+                font-size: 12px;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            }
+            .vars-editor-row input:focus { outline: none; border-color: var(--workspace-primary); box-shadow: 0 0 0 1px var(--workspace-focus); }
+            .vars-editor-row input.vars-editor-key { max-width: 34%; }
+            .vars-editor-row button {
+                flex: 0 0 auto;
+                padding: 6px 9px;
+                border: 0;
+                border-radius: 6px;
+                background: var(--workspace-selected);
+                color: var(--workspace-muted);
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+            .vars-editor-row button:hover { color: var(--workspace-danger-text); background: var(--workspace-hover); }
             
             .details-panel {
                 display: none;

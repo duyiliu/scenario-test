@@ -319,6 +319,181 @@ export function proxyRequest(request, response, targetUrl, options = {}) {
 // 写方法在交给扩展前统一按代理口径校验本机来源，阻断跨站页面向回环地址发起副作用请求
 const EXTENSION_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+// ===== 工作台场景编辑持久化（YIL-199）=====
+// 两个写接口与 UMD 虚拟路由同层：浏览器工作台 POST 场景文件源码/清单条目，
+// serve 校验本机来源 + 场景文件白名单后才写盘。独立打开 index.html（无 serve）
+// 时工作台降级为剪贴板复制源码，不会触达这两个接口。
+export const SCENARIO_FILE_PATTERN = /^scenarios(?:\/[A-Za-z0-9][A-Za-z0-9_-]*)*\/[A-Za-z0-9][A-Za-z0-9_-]*\.js$/;
+export const SCENARIO_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
+const MAX_SCENARIO_WRITE_BYTES = 512 * 1024;
+
+function sendJson(response, status, body) {
+    response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify(body));
+}
+
+function scenarioWriteError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+}
+
+function readJsonBody(request) {
+    return new Promise((resolve, reject) => {
+        let raw = "";
+        request.on("data", (chunk) => {
+            raw += chunk;
+            if (raw.length > MAX_SCENARIO_WRITE_BYTES) {
+                reject(scenarioWriteError(413, "请求体过大"));
+                request.destroy();
+            }
+        });
+        request.on("end", () => {
+            try { resolve(JSON.parse(raw || "{}")); }
+            catch { reject(scenarioWriteError(400, "请求体不是合法 JSON")); }
+        });
+        request.on("error", reject);
+    });
+}
+
+// 配置清单项对应的场景文件相对路径（与浏览器端 entry.file || entry.path || entry.url 同口径）
+function scenarioEntryFile(entry) {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return "";
+    return String(entry.file || entry.path || entry.url || "");
+}
+
+// 保存场景文件：file 必须在配置清单内（create 除外——新文件只受形态白名单约束），
+// 写盘前再过一次词法/真实路径越界与私有路径校验。返回 { file, created }
+export function writeScenarioFile(workspace, config, payload) {
+    const file = String(payload && payload.file || "").trim();
+    if (!SCENARIO_FILE_PATTERN.test(file)) {
+        throw scenarioWriteError(400, `非法场景文件路径（仅允许 scenarios/**/*.js）: ${file}`);
+    }
+    const content = payload && payload.content;
+    if (typeof content !== "string" || !content.trim()) {
+        throw scenarioWriteError(400, "场景文件内容为空");
+    }
+    if (Buffer.byteLength(content, "utf8") > MAX_SCENARIO_WRITE_BYTES) {
+        throw scenarioWriteError(413, "场景文件内容过大");
+    }
+    const create = payload && payload.create === true;
+    const listed = (config && Array.isArray(config.scenarios) ? config.scenarios : [])
+        .some((entry) => scenarioEntryFile(entry) === file);
+    const target = path.resolve(workspace, file);
+    if (!isRealPathWithinRoot(path.resolve(workspace), target)) {
+        throw scenarioWriteError(403, `场景文件路径越出工作区: ${file}`);
+    }
+    if (!create && !listed) {
+        throw scenarioWriteError(403, `场景文件不在配置清单中，已拒绝写入: ${file}`);
+    }
+    if (create && fs.existsSync(target)) {
+        throw scenarioWriteError(409, `场景文件已存在，请换一个路径: ${file}`);
+    }
+    if (!create && !fs.existsSync(target)) {
+        throw scenarioWriteError(404, `场景文件不存在: ${file}`);
+    }
+    fs.writeFileSync(target, content, "utf8");
+    return { file, created: create };
+}
+
+// 在文本中定位 `scenarios:` 的数组字面量并返回 [start(含'['), end(']'之后))；
+// 允许字符串/注释中的 "scenarios" 误导时仍按首个键名匹配——配置文件由 init 模板
+// 与 AI 按固定形态维护，形态不匹配时直接报错而不是猜测。
+function locateScenariosArray(source) {
+    const match = /(^|[^A-Za-z0-9_$])scenarios\s*:/.exec(source);
+    if (!match) return null;
+    const colonAt = match.index + match[0].length - 1;
+    let pos = colonAt + 1;
+    while (pos < source.length && /\s/.test(source[pos])) pos += 1;
+    if (source[pos] !== "[") return null;
+    // 配对扫描：跳过字符串/模板串/行注释/块注释，只跟踪 [ ] 深度
+    let depth = 0;
+    for (let i = pos; i < source.length; i += 1) {
+        const ch = source[i];
+        const next = source[i + 1];
+        if (ch === '"' || ch === "'" || ch === "`") {
+            const quote = ch;
+            i += 1;
+            while (i < source.length) {
+                if (source[i] === "\\") { i += 2; continue; }
+                if (source[i] === quote) break;
+                i += 1;
+            }
+            continue;
+        }
+        if (ch === "/" && next === "/") { i = source.indexOf("\n", i); if (i < 0) return null; continue; }
+        if (ch === "/" && next === "*") { i = source.indexOf("*/", i + 2); if (i < 0) return null; i += 1; continue; }
+        if (ch === "[") depth += 1;
+        else if (ch === "]") {
+            depth -= 1;
+            if (depth === 0) return [pos, i + 1];
+        }
+    }
+    return null;
+}
+
+// 向 scenario.config.js 的 scenarios 数组追加一条清单项并写盘；id/url 重复按 409 拒绝
+export function insertConfigScenarioEntry(workspace, configFile, config, payload) {
+    const id = String(payload && payload.id || "").trim();
+    const name = String(payload && payload.name || "").trim();
+    const file = String(payload && payload.file || "").trim();
+    if (!SCENARIO_ID_PATTERN.test(id)) {
+        throw scenarioWriteError(400, `非法场景 id（小写字母/数字/短横线，80 字符内）: ${id}`);
+    }
+    if (!SCENARIO_FILE_PATTERN.test(file)) {
+        throw scenarioWriteError(400, `非法场景文件路径（仅允许 scenarios/**/*.js）: ${file}`);
+    }
+    if (!name) throw scenarioWriteError(400, "场景名称不能为空");
+    const entries = config && Array.isArray(config.scenarios) ? config.scenarios : [];
+    if (entries.some((entry) => entry && typeof entry === "object" && entry.id === id)) {
+        throw scenarioWriteError(409, `场景 id 已存在于清单: ${id}`);
+    }
+    if (entries.some((entry) => scenarioEntryFile(entry) === file)) {
+        throw scenarioWriteError(409, `场景文件已存在于清单: ${file}`);
+    }
+    const configPath = path.resolve(workspace, configFile || "scenario.config.js");
+    if (!isRealPathWithinRoot(path.resolve(workspace), configPath) || !fs.existsSync(configPath)) {
+        throw scenarioWriteError(500, `配置文件不存在: ${configFile}`);
+    }
+    const source = fs.readFileSync(configPath, "utf8");
+    const span = locateScenariosArray(source);
+    if (!span) {
+        throw scenarioWriteError(500, "无法定位 scenario.config.js 的 scenarios 数组，请手动维护清单");
+    }
+    const inner = source.slice(span[0] + 1, span[1] - 1);
+    // 数组项沿用 8 空格缩进（与 init 模板一致）；末项无尾逗号时先补逗号再插新项
+    const trimmedInner = inner.replace(/\s+$/, "");
+    const needsComma = trimmedInner.length > 0 && !trimmedInner.endsWith(",");
+    const entryLine = `${needsComma ? "," : ""}\n        { id: ${JSON.stringify(id)}, name: ${JSON.stringify(name)}, url: ${JSON.stringify(file)} }`;
+    const updated = source.slice(0, span[1] - 1) + (trimmedInner.length === 0 ? "\n" : "") + entryLine + source.slice(span[1] - 1);
+    fs.writeFileSync(configPath, updated, "utf8");
+    // 内存清单同步追加：否则新注册的场景在 serve 重启前仍被「不在清单中」挡住保存
+    entries.push({ id, name, url: file });
+    return { id, name, file };
+}
+
+// POST /__scenario-test__/scenario-file 与 /__scenario-test__/config-scenarios 的统一入口；
+// 返回 true 表示已接管（含校验失败），false 表示非编辑路径
+export async function handleScenarioEditRequest(request, response, pathname, context) {
+    if (pathname !== "/__scenario-test__/scenario-file" && pathname !== "/__scenario-test__/config-scenarios") return false;
+    if (request.method !== "POST") {
+        response.writeHead(405, { "Content-Type": "application/json; charset=utf-8", "Allow": "POST" });
+        response.end(JSON.stringify({ ok: false, error: "仅接受 POST" }));
+        return true;
+    }
+    try {
+        const payload = await readJsonBody(request);
+        const result = pathname === "/__scenario-test__/scenario-file"
+            ? writeScenarioFile(context.workspace, context.config, payload)
+            : insertConfigScenarioEntry(context.workspace, context.configFile, context.config, payload);
+        sendJson(response, 200, { ok: true, ...result });
+    } catch (error) {
+        sendJson(response, error.status || 500, { ok: false, error: error.message });
+    }
+    return true;
+}
+
 export function isPrivateServePath(pathname) {
     const segments = pathname.replaceAll("\\", "/").split("/").filter(Boolean);
     return segments.some((segment) => {
@@ -417,6 +592,15 @@ export function createServeServer(options) {
                 response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
                 response.end(request.method === "HEAD" ? undefined : JSON.stringify(identity));
                 return;
+            }
+            // 工作台场景编辑写接口：与扩展写方法同口径，先校验本机来源再落盘（YIL-199）
+            if (pathname === "/__scenario-test__/scenario-file" || pathname === "/__scenario-test__/config-scenarios") {
+                if (!isProxyOriginAllowed(request.headers, request.headers.host, port)) {
+                    response.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+                    response.end(JSON.stringify({ ok: false, error: "场景编辑接口只接受本机工作台来源的写请求" }));
+                    return;
+                }
+                if (await handleScenarioEditRequest(request, response, pathname, { workspace, configFile, config })) return;
             }
             // 兼容唯一公开 npm UMD 路径，其他依赖/状态文件不进入静态层或代理。
             if (pathname !== "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js" && isPrivateServePath(pathname)) {
