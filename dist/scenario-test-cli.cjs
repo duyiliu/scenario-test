@@ -433,7 +433,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "af48332bb5280c0af449f1c01c0ebccb43b233562614a6bfe0158a890ebd3f25";
+var BUILD_ID = "f4ee4e4279d6b54d53ba246fd285aaad748dbd384450ee6100a6ccdf0fb3223d";
 
 // src/contract.js
 var CONTRACT_VERSION = 24;
@@ -7520,6 +7520,169 @@ function proxyRequest(request, response, targetUrl, options = {}) {
   request.pipe(upstream);
 }
 var EXTENSION_SAFE_METHODS = /* @__PURE__ */ new Set(["GET", "HEAD", "OPTIONS"]);
+var SCENARIO_FILE_PATTERN = /^scenarios(?:\/[A-Za-z0-9][A-Za-z0-9_-]*)*\/[A-Za-z0-9][A-Za-z0-9_-]*\.js$/;
+var SCENARIO_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
+var MAX_SCENARIO_WRITE_BYTES = 512 * 1024;
+function sendJson(response, status, body) {
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify(body));
+}
+function scenarioWriteError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+function readJsonBody(request) {
+  return new Promise((resolve2, reject) => {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > MAX_SCENARIO_WRITE_BYTES) {
+        reject(scenarioWriteError(413, "\u8BF7\u6C42\u4F53\u8FC7\u5927"));
+        request.destroy();
+      }
+    });
+    request.on("end", () => {
+      try {
+        resolve2(JSON.parse(raw || "{}"));
+      } catch {
+        reject(scenarioWriteError(400, "\u8BF7\u6C42\u4F53\u4E0D\u662F\u5408\u6CD5 JSON"));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+function scenarioEntryFile(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return "";
+  return String(entry.file || entry.path || entry.url || "");
+}
+function writeScenarioFile(workspace, config, payload) {
+  const file = String(payload && payload.file || "").trim();
+  if (!SCENARIO_FILE_PATTERN.test(file)) {
+    throw scenarioWriteError(400, `\u975E\u6CD5\u573A\u666F\u6587\u4EF6\u8DEF\u5F84\uFF08\u4EC5\u5141\u8BB8 scenarios/**/*.js\uFF09: ${file}`);
+  }
+  const content = payload && payload.content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw scenarioWriteError(400, "\u573A\u666F\u6587\u4EF6\u5185\u5BB9\u4E3A\u7A7A");
+  }
+  if (Buffer.byteLength(content, "utf8") > MAX_SCENARIO_WRITE_BYTES) {
+    throw scenarioWriteError(413, "\u573A\u666F\u6587\u4EF6\u5185\u5BB9\u8FC7\u5927");
+  }
+  const create = payload && payload.create === true;
+  const listed = (config && Array.isArray(config.scenarios) ? config.scenarios : []).some((entry) => scenarioEntryFile(entry) === file);
+  const target = import_node_path10.default.resolve(workspace, file);
+  if (!isRealPathWithinRoot(import_node_path10.default.resolve(workspace), target)) {
+    throw scenarioWriteError(403, `\u573A\u666F\u6587\u4EF6\u8DEF\u5F84\u8D8A\u51FA\u5DE5\u4F5C\u533A: ${file}`);
+  }
+  if (!create && !listed) {
+    throw scenarioWriteError(403, `\u573A\u666F\u6587\u4EF6\u4E0D\u5728\u914D\u7F6E\u6E05\u5355\u4E2D\uFF0C\u5DF2\u62D2\u7EDD\u5199\u5165: ${file}`);
+  }
+  if (create && import_node_fs10.default.existsSync(target)) {
+    throw scenarioWriteError(409, `\u573A\u666F\u6587\u4EF6\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A\u8DEF\u5F84: ${file}`);
+  }
+  if (!create && !import_node_fs10.default.existsSync(target)) {
+    throw scenarioWriteError(404, `\u573A\u666F\u6587\u4EF6\u4E0D\u5B58\u5728: ${file}`);
+  }
+  import_node_fs10.default.writeFileSync(target, content, "utf8");
+  return { file, created: create };
+}
+function locateScenariosArray(source) {
+  const match = /(^|[^A-Za-z0-9_$])scenarios\s*:/.exec(source);
+  if (!match) return null;
+  const colonAt = match.index + match[0].length - 1;
+  let pos = colonAt + 1;
+  while (pos < source.length && /\s/.test(source[pos])) pos += 1;
+  if (source[pos] !== "[") return null;
+  let depth = 0;
+  for (let i = pos; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch;
+      i += 1;
+      while (i < source.length) {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (source[i] === quote) break;
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i = source.indexOf("\n", i);
+      if (i < 0) return null;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i = source.indexOf("*/", i + 2);
+      if (i < 0) return null;
+      i += 1;
+      continue;
+    }
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) return [pos, i + 1];
+    }
+  }
+  return null;
+}
+function insertConfigScenarioEntry(workspace, configFile, config, payload) {
+  const id = String(payload && payload.id || "").trim();
+  const name = String(payload && payload.name || "").trim();
+  const file = String(payload && payload.file || "").trim();
+  if (!SCENARIO_ID_PATTERN.test(id)) {
+    throw scenarioWriteError(400, `\u975E\u6CD5\u573A\u666F id\uFF08\u5C0F\u5199\u5B57\u6BCD/\u6570\u5B57/\u77ED\u6A2A\u7EBF\uFF0C80 \u5B57\u7B26\u5185\uFF09: ${id}`);
+  }
+  if (!SCENARIO_FILE_PATTERN.test(file)) {
+    throw scenarioWriteError(400, `\u975E\u6CD5\u573A\u666F\u6587\u4EF6\u8DEF\u5F84\uFF08\u4EC5\u5141\u8BB8 scenarios/**/*.js\uFF09: ${file}`);
+  }
+  if (!name) throw scenarioWriteError(400, "\u573A\u666F\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+  const entries = config && Array.isArray(config.scenarios) ? config.scenarios : [];
+  if (entries.some((entry) => entry && typeof entry === "object" && entry.id === id)) {
+    throw scenarioWriteError(409, `\u573A\u666F id \u5DF2\u5B58\u5728\u4E8E\u6E05\u5355: ${id}`);
+  }
+  if (entries.some((entry) => scenarioEntryFile(entry) === file)) {
+    throw scenarioWriteError(409, `\u573A\u666F\u6587\u4EF6\u5DF2\u5B58\u5728\u4E8E\u6E05\u5355: ${file}`);
+  }
+  const configPath = import_node_path10.default.resolve(workspace, configFile || "scenario.config.js");
+  if (!isRealPathWithinRoot(import_node_path10.default.resolve(workspace), configPath) || !import_node_fs10.default.existsSync(configPath)) {
+    throw scenarioWriteError(500, `\u914D\u7F6E\u6587\u4EF6\u4E0D\u5B58\u5728: ${configFile}`);
+  }
+  const source = import_node_fs10.default.readFileSync(configPath, "utf8");
+  const span = locateScenariosArray(source);
+  if (!span) {
+    throw scenarioWriteError(500, "\u65E0\u6CD5\u5B9A\u4F4D scenario.config.js \u7684 scenarios \u6570\u7EC4\uFF0C\u8BF7\u624B\u52A8\u7EF4\u62A4\u6E05\u5355");
+  }
+  const inner = source.slice(span[0] + 1, span[1] - 1);
+  const trimmedInner = inner.replace(/\s+$/, "");
+  const needsComma = trimmedInner.length > 0 && !trimmedInner.endsWith(",");
+  const entryLine = `${needsComma ? "," : ""}
+        { id: ${JSON.stringify(id)}, name: ${JSON.stringify(name)}, url: ${JSON.stringify(file)} }`;
+  const updated = source.slice(0, span[1] - 1) + (trimmedInner.length === 0 ? "\n" : "") + entryLine + source.slice(span[1] - 1);
+  import_node_fs10.default.writeFileSync(configPath, updated, "utf8");
+  entries.push({ id, name, url: file });
+  return { id, name, file };
+}
+async function handleScenarioEditRequest(request, response, pathname, context) {
+  if (pathname !== "/__scenario-test__/scenario-file" && pathname !== "/__scenario-test__/config-scenarios") return false;
+  if (request.method !== "POST") {
+    response.writeHead(405, { "Content-Type": "application/json; charset=utf-8", "Allow": "POST" });
+    response.end(JSON.stringify({ ok: false, error: "\u4EC5\u63A5\u53D7 POST" }));
+    return true;
+  }
+  try {
+    const payload = await readJsonBody(request);
+    const result = pathname === "/__scenario-test__/scenario-file" ? writeScenarioFile(context.workspace, context.config, payload) : insertConfigScenarioEntry(context.workspace, context.configFile, context.config, payload);
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    sendJson(response, error.status || 500, { ok: false, error: error.message });
+  }
+  return true;
+}
 function isPrivateServePath(pathname) {
   const segments = pathname.replaceAll("\\", "/").split("/").filter(Boolean);
   return segments.some((segment) => {
@@ -7609,6 +7772,14 @@ function createServeServer(options) {
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         response.end(request.method === "HEAD" ? void 0 : JSON.stringify(identity));
         return;
+      }
+      if (pathname === "/__scenario-test__/scenario-file" || pathname === "/__scenario-test__/config-scenarios") {
+        if (!isProxyOriginAllowed(request.headers, request.headers.host, port)) {
+          response.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ ok: false, error: "\u573A\u666F\u7F16\u8F91\u63A5\u53E3\u53EA\u63A5\u53D7\u672C\u673A\u5DE5\u4F5C\u53F0\u6765\u6E90\u7684\u5199\u8BF7\u6C42" }));
+          return;
+        }
+        if (await handleScenarioEditRequest(request, response, pathname, { workspace, configFile, config })) return;
       }
       if (pathname !== "/node_modules/@yc_yzkj/scenario-test/dist/scenario-test.umd.js" && isPrivateServePath(pathname)) {
         response.writeHead(403);
