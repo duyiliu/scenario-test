@@ -1,0 +1,124 @@
+name: merge-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: gate/verify
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 判定改动类别
+        id: cls
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename' > /tmp/changed.txt
+          echo "--- 改动文件 ---"
+          cat /tmp/changed.txt
+
+          if [ ! -s /tmp/changed.txt ]; then
+            echo "改动列表为空，按高风险处理"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 低风险 = 只碰 docs/ 或 *.md；AGENTS.md 与 .github/ 例外（必须走人工审）
+          risky=$(grep -vE '^(docs/|.*\.md$)' /tmp/changed.txt || true)
+          guards=$(grep -E '(^|/)AGENTS\.md$|^\.github/' /tmp/changed.txt || true)
+          if [ -z "$risky" ] && [ -z "$guards" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 文档类改动跑行尾审计
+        if: steps.cls.outputs.code == 'false'
+        run: npm run check:eol
+
+      - name: 代码类改动等 CI 全绿
+        if: steps.cls.outputs.code == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 75); do
+            summary=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.name != "gate/verify")] | "\(length) \(map(select(.status != "completed")) | length) \(map(select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required")) | length)"')
+            read -r total pending failed <<< "$summary"
+            echo "第 $i 次：共 $total，未完成 $pending，失败 $failed"
+            if [ "$failed" -gt 0 ]; then
+              echo "存在失败检查，门禁不通过"
+              exit 1
+            fi
+            if [ "$total" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              echo "CI 全绿，门禁通过"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "等待 CI 超时（25 分钟），门禁不通过"
+          exit 1
+
+  auto-merge:
+    name: auto-merge
+    needs: verify
+    if: github.event.pull_request.draft == false && github.event.pull_request.base.ref == 'master'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 判定是否自动合并
+        id: judge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          num=${{ github.event.pull_request.number }}
+
+          gh api "repos/${{ github.repository }}/pulls/$num/files" \
+            --paginate --jq '.[].filename' > /tmp/changed.txt
+          labels=$(gh api "repos/${{ github.repository }}/issues/$num/labels" --jq '.[].name' || true)
+
+          risky=$(grep -vE '^(docs/|.*\.md$)' /tmp/changed.txt || true)
+          guards=$(grep -E '(^|/)AGENTS\.md$|^\.github/' /tmp/changed.txt || true)
+          if [ -s /tmp/changed.txt ] && [ -z "$risky" ] && [ -z "$guards" ]; then
+            low=true
+          else
+            low=false
+          fi
+          echo "低风险改动：$low"
+
+          if [ "$low" = true ] || printf '%s\n' "$labels" | grep -qx 'merge-approved'; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "未带 merge-approved 且不是纯文档改动，留给人工合并"
+          fi
+
+      - name: 开启自动合并
+        if: steps.judge.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} --auto --squash
