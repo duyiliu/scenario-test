@@ -93,25 +93,16 @@ jobs:
         run: |
           set -euo pipefail
           num=${{ github.event.pull_request.number }}
-
-          gh api "repos/${{ github.repository }}/pulls/$num/files" \
-            --paginate --jq '.[].filename' > /tmp/changed.txt
           labels=$(gh api "repos/${{ github.repository }}/issues/$num/labels" --jq '.[].name' || true)
+          echo "--- labels ---"
+          printf '%s\n' "$labels"
 
-          risky=$(grep -vE '^(docs/|.*\.md$)' /tmp/changed.txt || true)
-          guards=$(grep -E '(^|/)AGENTS\.md$|^\.github/' /tmp/changed.txt || true)
-          if [ -s /tmp/changed.txt ] && [ -z "$risky" ] && [ -z "$guards" ]; then
-            low=true
-          else
-            low=false
-          fi
-          echo "低风险改动：$low"
-
-          if [ "$low" = true ] || printf '%s\n' "$labels" | grep -qx 'merge-approved'; then
+          # 没有任何"人确认 / 评审 bot 通过"的信号，一律不排队
+          if printf '%s\n' "$labels" | grep -qx 'merge-approved'; then
             echo "eligible=true" >> "$GITHUB_OUTPUT"
           else
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "未带 merge-approved 且不是纯文档改动，留给人工合并"
+            echo "未带 merge-approved，留在原地等人工合并"
           fi
 
       - name: 开启自动合并
