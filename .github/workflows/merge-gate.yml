@@ -1,5 +1,8 @@
 name: merge-gate
 
+# 合并规则：任何 PR 都必须拿到明确的确认信号（merge-approved 标签，
+# 由人或评审 bot 在通过后打上）才会进入自动合并；没有标签一律不排队。
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
