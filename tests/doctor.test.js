@@ -605,7 +605,10 @@ test("doctor：PowerShell 接入命令经受控替身执行，路径参数不拆
             '"PWD=$PWD"',
             '"BASE=$env:E2E_BASE_URL"'
         ].join("\n");
-        const run = spawnSync("pwsh", ["-NoProfile", "-Command", "-"], { input: script, encoding: "utf8", env: childEnv() });
+        // Linux 上的 pwsh 在 stdin 为管道且 TERM 为终端类型时，会先向 stdout 写键盘模式
+        // 转义序列（ESC[?1h / ESC[?1l），把首行前缀污染，行首锚定的替身记录就丢了；
+        // TERM=dumb 关闭该行为。Windows 忽略 TERM，行为不变。
+        const run = spawnSync("pwsh", ["-NoProfile", "-Command", "-"], { input: script, encoding: "utf8", env: { ...childEnv(), TERM: "dumb" } });
         assert.equal(run.status, 0, run.stdout + run.stderr);
         // 逐条精确比对，证明没有额外执行；只断言进程状态不足以证明目录切换
         const logLines = run.stdout.split(/\r?\n/).filter((line) => /^(npm|npx|node)\[\d+\]=/.test(line));
