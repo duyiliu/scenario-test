@@ -94,6 +94,19 @@ try {
         await page.locator(`[data-adhoc-step="${index}"]`).click();
         await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'adhocNameInput');
     };
+    // 同一类竞态：变量弹窗与复制弹窗也在 rAF 里补默认聚焦。不先等聚焦落定就 fill，
+    // 焦点被 rAF 抢走后 insertText 会写进第一行，产生 "tenanttenant"、非法路径这类假失败。
+    const openVars = async () => {
+        await page.locator('#editScenarioVarsBtn').click();
+        await page.waitForFunction(() => {
+            const first = document.querySelector('#varsEditorRows .vars-editor-row .vars-editor-key');
+            return !!first && document.activeElement === first;
+        });
+    };
+    const openDuplicate = async file => {
+        await page.locator(`[data-dup-file="${file}"]`).click();
+        await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'duplicateNameInput');
+    };
     const count = selector => page.locator(`#stepsList li${selector}`).count();
     await select('flow');
     await check('正例：all变量传递和环境A实际到达', async () => {
@@ -315,7 +328,7 @@ try {
     await check('YIL-199 变量快编 + 保存降级剪贴板：vars/envVars 改写并入源码', async () => {
         await select('editvars');
         await page.locator('#editScenarioBtn').click();
-        await page.locator('#editScenarioVarsBtn').click();
+        await openVars();
         assert.equal(await page.locator('#varsModal').isVisible(), true);
         // 既有行渲染：vars 3 行、envVars 空；新增一行 envVars 映射（加载期凭据校验不适用编辑路径）
         assert.equal(await page.locator('#varsEditorRows .vars-editor-row').count(), 3);
@@ -338,9 +351,14 @@ try {
         // envVars 注入后场景凭据输入面板出现 apiToken 输入框
         assert.equal(await page.locator('#scenarioVar_apiToken').count(), 1);
         // 重复变量名被拒：再把 limit 改名为 tenant → 错误提示、弹窗不关
-        await page.locator('#editScenarioVarsBtn').click();
+        await openVars();
         await page.locator('#varsEditorRows .vars-editor-row').nth(1).locator('.vars-editor-key').fill('tenant');
         await page.locator('#varsApplyBtn').click();
+        // 等错误文本真正出现再读：点击后校验与渲染是异步的，直接读会拿到空串
+        await page.waitForFunction(() => {
+            const el = document.getElementById('varsModalError');
+            return !!el && el.textContent.includes('变量名重复');
+        });
         assert.match(await page.locator('#varsModalError').textContent(), /变量名重复/);
         assert.equal(await page.locator('#varsModal').isVisible(), true);
         await page.locator('#varsCancelBtn').click();
@@ -362,8 +380,9 @@ try {
         await select('flow');
         await select('editvars');
         // 非 serve：复制新场景源码到剪贴板
+        // 复制弹窗同样在 rAF 里聚焦 name 输入；先等聚焦落定，否则 fill 会被抢走写进错误输入框
         await page.evaluate(() => { window.copied = ''; });
-        await page.locator('[data-dup-file="cases/editvars.js"]').click();
+        await openDuplicate('cases/editvars.js');
         assert.equal(await page.locator('#duplicateModal').isVisible(), true);
         await page.locator('#duplicateIdInput').fill('editvars-copy');
         await page.locator('#duplicateNameInput').fill('夹具副本');
@@ -372,9 +391,13 @@ try {
         // 校验失败会落在 #duplicateError 而不是剪贴板：两者任一出现才往下走，超时带原因
         await page.waitForFunction(() => Boolean(window.copied)
             || !document.getElementById('duplicateError').classList.contains('hidden'), undefined, { timeout: 10000 });
-        const dupError = await page.locator('#duplicateError').textContent();
-        assert.equal(dupError.trim(), '', `复制校验应通过: ${dupError}`);
-        assert.ok(await page.evaluate(() => Boolean(window.copied)), '降级模式应已写入剪贴板');
+        // 两条分支是竞态：错误框可能先短暂出现又被本次成功覆盖，剪贴板也可能稍后写入。
+        // 以剪贴板为成功信号，等它落定再判错误；不要先读错误框再断言剪贴板。
+        const copied = await page.waitForFunction(() => Boolean(window.copied), undefined, { timeout: 10000 })
+            .then(() => true).catch(() => false);
+        const dupError = (await page.locator('#duplicateError').textContent()).trim();
+        assert.ok(copied, `降级模式应已写入剪贴板（#duplicateError: ${dupError || '空'}）`);
+        assert.equal(dupError, '', `复制校验应通过: ${dupError}`);
         const copiedSource = await page.evaluate(() => window.copied);
         assert.match(copiedSource, /registerScenario\("editvars-copy"/);
         assert.match(copiedSource, /name: "夹具副本"/);
@@ -402,12 +425,14 @@ try {
         });
         // 前端确认后会立即按 <script> 拉新场景文件：先把虚拟文件挂到 /scenarios/ 路由
         virtualScenarios['editvars-copy2'] = `ScenarioTest.registerScenario("editvars-copy2", ScenarioTest.defineScenario({name: "夹具副本2", steps: [{ name: "第一步 seed", path: "seed" }, { name: "第二步 echo", method: "POST", path: "echo", request: { body: {} } }, { name: "第三步 ok", path: "ok" }]}));`;
-        await page.locator('[data-dup-file="cases/editvars.js"]').click();
+        await openDuplicate('cases/editvars.js');
         await page.locator('#duplicateNameInput').fill('夹具副本2');
         await page.locator('#duplicateIdInput').fill('editvars-copy2');
         await page.locator('#duplicateFileInput').fill('scenarios/editvars-copy2.js');
         await page.locator('#duplicateConfirmBtn').click();
-        await page.waitForFunction(() => document.querySelector('#duplicateModal').classList.contains('hidden'));
+        // 等两个写接口都回执 + 弹窗关闭，而不是只等弹窗；POST 是异步的，7s 默认超时在慢 runner 上不够
+        await page.waitForFunction(() => (window.__editStub?.posts?.length || 0) >= 2
+            && document.querySelector('#duplicateModal').classList.contains('hidden'), undefined, { timeout: 20000 });
         const posts = await page.evaluate(() => window.__editStub.posts);
         assert.equal(posts.length, 2);
         assert.equal(posts[0].url, '/__scenario-test__/scenario-file');
