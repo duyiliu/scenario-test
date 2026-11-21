@@ -1,0 +1,208 @@
+name: Merge Gate
+
+# 低风险自动合并闸门：分类 -> 校验必需检查 -> 合并决策。
+# 政策（2026-11-21）：标签不是唯一信号；非低风险改动必须同时具备
+# merge-approved 标签和一条与本轮 head SHA 完全绑定的批准评论。
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number }}
+  # 新事件必须作废上一轮：verify 最长轮询 30 分钟，否则新推送会排在旧轮次后面。
+  # 合并调用本身是原子的；runner 被取消发生在调用前后都不会产生半合并。
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: classify risk
+    runs-on: ubuntu-24.04
+    outputs:
+      low_risk: ${{ steps.risk.outputs.low_risk }}
+      head_sha: ${{ steps.risk.outputs.head_sha }}
+    steps:
+      # 分类脚本必须来自 base 分支：绝不执行 PR 自带的策略代码。
+      - name: Check out trusted base revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Classify changed files
+        id: risk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          files_file="$RUNNER_TEMP/changed-files.txt"
+          gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' > "$files_file"
+
+          echo "### 风险分类" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PR: #$PR_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- head SHA: \`$HEAD_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 改动文件（$(wc -l < "$files_file" | tr -d ' ') 个）：" >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/- /' "$files_file" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -f scripts/ci/classify-risk.sh ]; then
+            echo "::warning::base 分支还没有 scripts/ci/classify-risk.sh，失败关闭（low_risk=false）"
+            echo "low_risk=false" >> "$GITHUB_OUTPUT"
+            echo "- 结论：**low_risk=false**（base 分支缺少分类脚本，失败关闭）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          result=$(bash scripts/ci/classify-risk.sh < "$files_file")
+          case "$result" in
+            low_risk=true|low_risk=false) ;;
+            *)
+              echo "::error::分类脚本输出非法：$result"
+              exit 1
+              ;;
+          esac
+          echo "$result" >> "$GITHUB_OUTPUT"
+          echo "- 结论：**$result**" >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: verify required checks
+    runs-on: ubuntu-24.04
+    needs: classify
+    timeout-minutes: 40
+    steps:
+      - name: Wait for the eight required checks on the head SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            "unit (ubuntu-24.04, node 22)"
+            "unit (ubuntu-24.04, node 24)"
+            "unit (windows-latest, node 22)"
+            "unit (windows-latest, node 24)"
+            "d.ts 类型自检"
+            "browser (playwright)"
+            "e2e install+run chain (ubuntu-24.04)"
+            "e2e install+run chain (windows-latest)"
+          )
+
+          deadline=$((SECONDS + 1800))
+          while :; do
+            mergeable=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeable --jq '.mergeable')
+            runs_file="$RUNNER_TEMP/check-runs.tsv"
+            gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --paginate \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "null")] | @tsv' > "$runs_file"
+
+            pending=()
+            for name in "${required[@]}"; do
+              line=$(awk -F'\t' -v n="$name" '$1 == n { found = $0 } END { if (found != "") print found }' "$runs_file")
+              if [ -z "$line" ]; then
+                pending+=("$name:absent")
+                continue
+              fi
+              status=$(printf '%s\n' "$line" | cut -f2)
+              conclusion=$(printf '%s\n' "$line" | cut -f3)
+              if [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
+                pending+=("$name:$status/$conclusion")
+              fi
+            done
+            if [ "$mergeable" != "MERGEABLE" ]; then
+              pending+=("mergeable:$mergeable")
+            fi
+
+            if [ "${#pending[@]}" -eq 0 ]; then
+              echo "8 项必需检查全部 success，PR mergeable=MERGEABLE"
+              echo "### 校验" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 8 项必需检查全部 success；mergeable=MERGEABLE" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            echo "等待中（剩余 $((deadline - SECONDS))s）：${pending[*]}"
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::30 分钟内未满足合并前提：${pending[*]}"
+              echo "### 校验" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **超时未通过**：${pending[*]}" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            sleep 20
+          done
+
+  merge:
+    name: merge decision
+    runs-on: ubuntu-24.04
+    needs: [classify, verify]
+    steps:
+      - name: Decide and merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          LOW_RISK: ${{ needs.classify.outputs.low_risk }}
+        run: |
+          set -euo pipefail
+          summary() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
+          summary "### 合并决策"
+          summary ""
+
+          labels=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name')
+
+          if printf '%s\n' "$labels" | grep -qxE 'hold|do-not-merge'; then
+            summary "- **不合并**：存在 hold / do-not-merge 标签"
+            exit 0
+          fi
+
+          if [ "$(gh pr view "$PR_NUMBER" --repo "$REPO" --json isDraft --jq '.isDraft')" = "true" ]; then
+            summary "- **不合并**：PR 仍是 draft"
+            exit 0
+          fi
+
+          current_sha=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
+          if [ "$current_sha" != "$HEAD_SHA" ]; then
+            summary "- **不合并**：head 已从 \`$HEAD_SHA\` 变为 \`$current_sha\`，等待新一轮校验"
+            exit 0
+          fi
+
+          if [ "$LOW_RISK" = "true" ]; then
+            reason="低风险改动（只涉及 docs/ 与 Markdown）"
+          else
+            if ! printf '%s\n' "$labels" | grep -qx 'merge-approved'; then
+              summary "- **不合并**：非低风险改动，且没有 merge-approved 标签"
+              exit 0
+            fi
+
+            comments_file="$RUNNER_TEMP/comments.txt"
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '.[].body' > "$comments_file"
+            if ! grep -Fxq "merge-approved head=$HEAD_SHA" "$comments_file"; then
+              summary "- **不合并**：缺少与本轮 head \`$HEAD_SHA\` 完全绑定的批准评论"
+              exit 0
+            fi
+            reason="人工批准（merge-approved 标签 + head 绑定评论）"
+          fi
+
+          summary "- **合并**：$reason"
+          summary "- head SHA: \`$HEAD_SHA\`"
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          state=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,mergedAt --jq '"\(.state) \(.mergedAt)"')
+          summary "- 结果：\`$state\`"
