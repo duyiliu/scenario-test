@@ -9,7 +9,8 @@
 #   low_risk=true 当且仅当每个文件都是 Markdown，且满足其一：
 #     - docs/ 下任意深度（docs/**/*.md）；
 #     - 仓库根目录的 *.md（不含子目录）。
-#   例外：根目录的 AGENTS.md / CLAUDE.md 是 agent 指令，不算文档。
+#   例外（先判，覆盖所有目录）：任意层级名为 AGENTS.md / CLAUDE.md 的文件是 agent 指令，
+#   不算文档——docs/AGENTS.md、docs/sub/CLAUDE.md 同样必须 false。
 #   其余一律 false，特别是 skills/**、tests/**、examples/**、src/** 下的 Markdown
 #   （它们是指令、评测输入或契约的一部分），以及 .github/**、docs/ 下的非 Markdown 文件。
 #   空列表按 false 处理（无法确认改动范围时不合）。
@@ -33,18 +34,16 @@ fi
 
 for file in "${files[@]}"; do
   case "$file" in
+    AGENTS.md|*/AGENTS.md|CLAUDE.md|*/CLAUDE.md)
+      echo "low_risk=false"
+      exit 0
+      ;;
     docs/*.md)
       continue
       ;;
   esac
 
   if [[ "$file" == *.md && "$file" != */* ]]; then
-    case "$file" in
-      AGENTS.md|CLAUDE.md)
-        echo "low_risk=false"
-        exit 0
-        ;;
-    esac
     continue
   fi
 
