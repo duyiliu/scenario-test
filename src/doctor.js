@@ -386,7 +386,49 @@ export function buildDoctorReport(options) {
 
 const STATUS_MARK = { PASS: "[PASS]", WARN: "[WARN]", FAIL: "[FAIL]", INFO: "[INFO]" };
 
-export function renderDoctorText(report) {
+// E2E 托管接入命令提示（YIL-203）：只用于文本渲染层，不进入 --json 报告，
+// 不改动诊断判定与退出码；doctor 自身不执行任何一条命令。
+// 命令来源均为仓库真实路径：npm install / npx playwright install chromium 见
+// src/e2e/templates.js 与 skills 的 e2e 参考；serve --config 见 src/cli.js serveCommand。
+const E2E_BASE_URL_EXAMPLE = "https://your-business.example.com";
+const E2E_BASE_URL_EXAMPLE_NOTE = "示例地址，必须替换为真实业务地址后再执行";
+
+// PowerShell 单引号字面量：内部单引号按 PowerShell 规则加倍
+function quotePowerShellArg(value) {
+    return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+// POSIX 单引号字面量：内部单引号用 '\'' 断开重引，避免拆词或额外执行
+function quotePosixArg(value) {
+    return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+// 托管 E2E 的可复制接入命令：安装依赖、安装 Chromium、设置业务地址、启动现有工作台。
+// 未知业务地址只给明确标注的示例，不假称探测；channel 仅作可选行，不是必填。
+// PowerShell 的 cd/Set-Location -Path 会把 [] 当通配符（项目 [demo] 会切换失败），
+// 因此目录切换必须用 -LiteralPath 的字面路径语义；引号本身不能关闭该解释。
+export function buildE2eCommandHints({ e2eDir, configPath, cliPath }) {
+    return {
+        powershell: [
+            `Set-Location -LiteralPath ${quotePowerShellArg(e2eDir)}`,
+            "npm install",
+            "npx playwright install chromium",
+            `$env:E2E_BASE_URL = ${quotePowerShellArg(E2E_BASE_URL_EXAMPLE)}   # ${E2E_BASE_URL_EXAMPLE_NOTE}`,
+            `node ${quotePowerShellArg(cliPath)} serve --config ${quotePowerShellArg(configPath)} --open`,
+            `# 可选：$env:E2E_BROWSER_CHANNEL = ${quotePowerShellArg("chrome")}   本机已安装浏览器时设置，可替代 Chromium 下载`
+        ],
+        posix: [
+            `cd ${quotePosixArg(e2eDir)}`,
+            "npm install",
+            "npx playwright install chromium",
+            `export E2E_BASE_URL=${quotePosixArg(E2E_BASE_URL_EXAMPLE)}   # ${E2E_BASE_URL_EXAMPLE_NOTE}`,
+            `node ${quotePosixArg(cliPath)} serve --config ${quotePosixArg(configPath)} --open`,
+            `# 可选：export E2E_BROWSER_CHANNEL=${quotePosixArg("chrome")}   本机已安装浏览器时设置，可替代 Chromium 下载`
+        ]
+    };
+}
+
+export function renderDoctorText(report, e2eHints) {
     const lines = [];
     lines.push(`场景测试 Doctor`);
     lines.push(`版本: v${report.runtimeVersion}（contract v${report.contractVersion}）`);
@@ -397,6 +439,16 @@ export function renderDoctorText(report) {
     }
     for (const item of report.info) {
         lines.push(`[INFO] ${item.name}: ${item.message}`);
+    }
+    if (e2eHints) {
+        lines.push("");
+        lines.push("E2E 托管接入命令（doctor 仅提示，不会自动执行；复制当前平台对应一组）：");
+        lines.push("");
+        lines.push("PowerShell：");
+        for (const line of e2eHints.powershell) lines.push(`  ${line}`);
+        lines.push("");
+        lines.push("POSIX：");
+        for (const line of e2eHints.posix) lines.push(`  ${line}`);
     }
     lines.push("");
     lines.push(`摘要: ${report.summary.passed} PASS, ${report.summary.warned} WARN, ${report.summary.failed} FAIL, ${report.summary.info} INFO`);
