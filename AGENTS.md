@@ -70,7 +70,7 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 - **merge gate 不得从 PR head 执行写操作；合并只能来自受信任上下文或人。** `pull_request` 运行的是 PR 自带的 workflow 定义，仓库默认 workflow 权限是 `write`，任何改 `.github/workflows/**` 的 PR 都能让 runner 带着写权限执行自己的步骤。
 - 改 `.github/workflows/**`、`scripts/ci/**`、分支保护或仓库设置的 PR 一律人工合并，不适用任何"低风险"豁免。
-- 分类口径只有两种低风险：`docs/**/*.md` 与仓库根目录的 `*.md`（根 `AGENTS.md`/`CLAUDE.md` 除外）。`skills/**`、`tests/**`、`examples/**`、`src/**` 下的 Markdown 是指令、评测输入或契约的一部分，不算文档。
+- 分类口径只有两种低风险：`docs/**/*.md` 与仓库根目录的 `*.md`。**任意层级**的 `AGENTS.md` / `CLAUDE.md` 都是 agent 指令，一律排除（`docs/AGENTS.md`、`docs/sub/CLAUDE.md` 同样不算文档）。`skills/**`、`tests/**`、`examples/**`、`src/**` 下的 Markdown 是指令、评测输入或契约的一部分，也不算文档。
 - `bash scripts/ci/assert-readonly-gate.sh` 是防回归断言（`assert-readonly-gate.test.sh` 证明它真会失败），不是安全边界：真正的边界是 workflow 只持有 read 权限，以及人工复审。
 - 纯文档 PR 被 `ci.yml` 的 `paths-ignore` 跳过、不产生必需检查，闸门 5 分钟内即失败并注明"需要 #181"，不空转等 30 分钟。
 - 真正的自动合并另开设计，先给威胁模型（谁能改 workflow、谁能造 check-run、谁能评论），不要在本 workflow 里偷偷恢复写能力。
