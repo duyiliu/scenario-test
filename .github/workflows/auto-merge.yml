@@ -59,6 +59,14 @@ jobs:
           set -euo pipefail
           summary() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
           skip() { summary "- **不合并**：$*"; exit 0; }
+          # L3：任何未预期失败也留下原因，避免只有红叉没有解释。
+          on_exit() {
+            local rc=$?
+            if [ "$rc" -ne 0 ]; then
+              summary "- **中止**：步骤非零退出（rc=$rc），未合并"
+            fi
+          }
+          trap on_exit EXIT
 
           summary "### 纯文档自动合并"
           summary ""
@@ -76,10 +84,23 @@ jobs:
 
           all_file="$RUNNER_TEMP/changed-all.txt"
           listed_file="$RUNNER_TEMP/changed-listed.txt"
+          status_file="$RUNNER_TEMP/changed-status.tsv"
           # 含改名前的旧路径：git mv .github/x.md docs/x.md 只有新路径会被放行。
-          gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
-            --jq '.[] | .filename, (.previous_filename // empty)' > "$all_file"
-          gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' > "$listed_file"
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$all_file"; then
+            summary "- **不合并**：读取 PR 文件清单（含 previous_filename）失败"
+            exit 1
+          fi
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[].filename' > "$listed_file"; then
+            summary "- **不合并**：读取 PR 文件清单失败"
+            exit 1
+          fi
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | [.status, .filename] | @tsv' > "$status_file"; then
+            summary "- **不合并**：读取 PR 改动状态失败"
+            exit 1
+          fi
 
           listed=$(wc -l < "$listed_file" | tr -d ' ')
           changed=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json changedFiles --jq '.changedFiles')
@@ -103,10 +124,33 @@ jobs:
             low_risk=true|low_risk=false) ;;
             *)
               echo "::error::分类脚本输出非法：$result"
+              summary "- **不合并**：分类脚本输出非法：\`$result\`"
               exit 1
               ;;
           esac
           [ "$result" = "low_risk=true" ] || skip "不是纯文档（classify: $result）"
+
+          # M2：classify 只看路径；这里用 head tree 的 mode 排除 symlink / gitlink。
+          tree_json="$RUNNER_TEMP/tree.json"
+          tree_file="$RUNNER_TEMP/tree.tsv"
+          if ! gh api "repos/$REPO/git/trees/$HEAD_SHA?recursive=1" > "$tree_json"; then
+            summary "- **不合并**：读取 head tree 失败（$HEAD_SHA）"
+            exit 1
+          fi
+          truncated=$(jq -r '.truncated // false' "$tree_json")
+          if ! jq -r '.tree[] | [.path, .mode] | @tsv' "$tree_json" > "$tree_file"; then
+            summary "- **不合并**：解析 head tree 失败"
+            exit 1
+          fi
+          tree_report=$(bash scripts/ci/evaluate-tree.sh "$truncated" "$status_file" "$tree_file")
+          if ! printf '%s\n' "$tree_report" | grep -qx $'verdict\tok'; then
+            while IFS=$'\t' read -r kind path reason; do
+              [ "$kind" = "not-ok" ] || continue
+              summary "- **不合并**：\`$path\` — $reason"
+            done <<< "$tree_report"
+            exit 0
+          fi
+          summary "- tree 校验：全部文档路径为普通文件（100644/100755），未截断"
 
           required=(
             "unit (ubuntu-24.04, node 22)"
@@ -153,6 +197,7 @@ jobs:
               --jq '.check_runs[] | [.name, .status, (.conclusion // "null"), (.app.slug // "null"), (.details_url // "")] | @tsv' \
               > "$raw_file"; then
               echo "::error::无法读取 head $HEAD_SHA 的 check-runs"
+              summary "- **不合并**：无法读取 head \`$HEAD_SHA\` 的 check-runs"
               exit 1
             fi
 
@@ -209,7 +254,15 @@ jobs:
             --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeStateStatus)"')
           [ "$state" = "MERGEABLE CLEAN" ] || skip "合并前状态不再是 MERGEABLE CLEAN：$state"
 
+          if ! bash scripts/ci/assert-auto-merge-guards.sh .github/workflows/auto-merge.yml; then
+            summary "- **不合并**：auto-merge 守卫断言失败"
+            exit 1
+          fi
+
           summary "- **合并**：纯文档；8 项必需检查全部 success；mergeStateStatus=clean"
-          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          if ! gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+            summary "- **合并失败**：gh pr merge 返回非零（head 可能已变或被拒绝）"
+            exit 1
+          fi
           merged=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,mergedAt --jq '"\(.state) \(.mergedAt)"')
           summary "- 结果：\`$merged\`"

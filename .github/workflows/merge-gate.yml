@@ -158,7 +158,9 @@ jobs:
             bash scripts/ci/classify-risk.test.sh
             bash scripts/ci/reconcile-files.test.sh
             bash scripts/ci/evaluate-checks.test.sh
+            bash scripts/ci/evaluate-tree.test.sh
             bash scripts/ci/assert-readonly-gate.test.sh
+            bash scripts/ci/assert-auto-merge-guards.test.sh
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
