@@ -433,7 +433,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "48d06da89d151a4e04b76f21167ad5cfb117d460b32c822f24778e3f0bc7650e";
+var BUILD_ID = "bfbfeb4380e5757cff78b60af82784d8e8877107876a436231ddd9a132bcc9a6";
 
 // src/contract.js
 var CONTRACT_VERSION = 24;
@@ -9233,6 +9233,18 @@ ${optionHelp}
   --output <file>       \u81EA\u5B9A\u4E49\u8F93\u51FA\u6587\u4EF6\uFF1B\u9ED8\u8BA4 scenarios/imported-<ts>.js
   --host <host,...>     \u53EA\u5BFC\u5165\u6307\u5B9A\u4E3B\u673A\u7684\u8BF7\u6C42\uFF1B--max-entries \u9650\u5236\u5BFC\u5165\u6761\u6570\uFF08\u9ED8\u8BA4 50\uFF09
 
+\u9879\u76EE\u767B\u8BB0\u547D\u4EE4:
+  projects              \u5217\u51FA\u767B\u8BB0\u7684\u9879\u76EE\uFF08\u7B49\u4EF7\u4E8E projects list\uFF1B--json \u8F93\u51FA
+                        schemaVersion/defaultPort/projects \u673A\u5668\u53EF\u8BFB JSON\uFF09
+  projects list         \u540C\u4E0A\uFF0C\u5217\u51FA\u6240\u6709\u767B\u8BB0\u9879\u76EE\u53CA\u5176\u7AEF\u53E3\u4E0E\u914D\u7F6E\u8DEF\u5F84
+  projects set-port <\u7AEF\u53E3>     \u56FA\u5B9A\u5F53\u524D\u9879\u76EE\u7684\u767B\u8BB0\u7AEF\u53E3\uFF081-65535\uFF09
+  projects set-default-port <\u7AEF\u53E3>
+                        \u56FA\u5B9A\u672A\u767B\u8BB0\u9879\u76EE\u9996\u6B21\u542F\u52A8\u65F6\u7684\u8D77\u59CB\u5206\u914D\u7AEF\u53E3
+  projects ensure       \u786E\u4FDD\u5F53\u524D\u9879\u76EE\u5DF2\u767B\u8BB0\uFF1B--port \u663E\u5F0F\u6307\u5B9A\u7AEF\u53E3\uFF0C
+                        --reassign \u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3
+  projects remove       \u4ECE\u767B\u8BB0\u4E2D\u79FB\u9664\u5F53\u524D\u9879\u76EE
+  --config <file>       \u6307\u5B9A\u9879\u76EE\u914D\u7F6E\uFF1B\u9ED8\u8BA4\u4ECE\u5F53\u524D\u76EE\u5F55\u5411\u4E0A\u53D1\u73B0 scenario.config.js
+
 \u8BA4\u8BC1\u9009\u9879:
   \u73AF\u5883\u53D8\u91CF SCENARIO_AUTH       \u63A8\u8350\u65B9\u5F0F\uFF0C\u8BBE\u7F6E\u6388\u6743\u4EE4\u724C\uFF1B\u907F\u514D\u4EE4\u724C\u8FDB\u5165\u8FDB\u7A0B\u53C2\u6570\u3002
 
@@ -9250,7 +9262,11 @@ ${optionHelp}
 
   # PowerShell
   $env:SCENARIO_AUTH = "Bearer your-token"
-  node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
+  node scenario-test-cli.cjs --config "./scenario.config.js" --all
+
+  # \u9879\u76EE\u767B\u8BB0\uFF1A\u67E5\u770B\u5DF2\u767B\u8BB0\u9879\u76EE\u3001\u56FA\u5B9A\u5F53\u524D\u9879\u76EE\u7AEF\u53E3
+  node scenario-test-cli.cjs projects list
+  node scenario-test-cli.cjs projects set-port 4301`);
 }
 function writeProjectFile(projectRoot, relativePath, content, force) {
   const target = import_node_path14.default.resolve(projectRoot, relativePath);
