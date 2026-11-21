@@ -64,6 +64,17 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 对比旧版 Skill 时用 `SKILL_DIR` 指向对应 tag 的 `skills/scenario-test`，并用 `--tag baseline-N` 命名，`summarize.mjs` 按 `-` 前的前缀分组。单轮结果不作为结论，至少各 6 轮看分布。
 
+## 合并闸门（merge gate）
+
+`.github/workflows/merge-gate.yml` 是**只读建议版**：只分类、只校验、只写 Step Summary，没有写权限，不写标签、不发评论、不合并。
+
+- **merge gate 不得从 PR head 执行写操作；合并只能来自受信任上下文或人。** `pull_request` 运行的是 PR 自带的 workflow 定义，仓库默认 workflow 权限是 `write`，任何改 `.github/workflows/**` 的 PR 都能让 runner 带着写权限执行自己的步骤。
+- 改 `.github/workflows/**`、`scripts/ci/**`、分支保护或仓库设置的 PR 一律人工合并，不适用任何"低风险"豁免。
+- 分类口径只有两种低风险：`docs/**/*.md` 与仓库根目录的 `*.md`（根 `AGENTS.md`/`CLAUDE.md` 除外）。`skills/**`、`tests/**`、`examples/**`、`src/**` 下的 Markdown 是指令、评测输入或契约的一部分，不算文档。
+- `bash scripts/ci/assert-readonly-gate.sh` 是防回归断言（`assert-readonly-gate.test.sh` 证明它真会失败），不是安全边界：真正的边界是 workflow 只持有 read 权限，以及人工复审。
+- 纯文档 PR 被 `ci.yml` 的 `paths-ignore` 跳过、不产生必需检查，闸门 5 分钟内即失败并注明"需要 #181"，不空转等 30 分钟。
+- 真正的自动合并另开设计，先给威胁模型（谁能改 workflow、谁能造 check-run、谁能评论），不要在本 workflow 里偷偷恢复写能力。
+
 ## 架构
 
 核心思想：**`src/contract.js` 是 DSL 的唯一事实来源。** 它声明操作符列表、断言元键、`when`/`extract` 来源、保留变量、`generatedVars` 类型、globals 类型、config/scenario/scenario-step 键列表以及 CLI 选项。所有对外投射 DSL 的模块都从 `contract` 读取——`capabilities.js` → `dist/scenario-test-capabilities.json` 与 `capabilities` 命令；`scripts/generate-dts.mjs` → `dist/scenario-test.d.ts`；`init-templates.js` → AI 提示词 / 模式 / 项目 README；`doctor.js` → 其 DSL 检查。**切勿手写任何操作符/键列表的第二份副本**——构建与测试会校验一致性（`tests/contract.test.js`、`tests/dts.test.js`）。契约一经发布即不可变；新增能力时递增 `contractVersion` 并保留旧字段。

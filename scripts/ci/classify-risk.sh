@@ -5,10 +5,14 @@
 # 输出：单行 low_risk=true 或 low_risk=false。
 # 退出码：0 判定完成；非 0 仅表示脚本自身无法运行。
 #
-# 规则：
-#   low_risk=true 当且仅当所有文件匹配 ^docs/ 或 \.md$，
-#   且没有任何文件匹配 (^|/)AGENTS\.md$ 或 ^\.github/。
-# 空列表按 false 处理（无法确认改动范围时不合）。
+# 规则（宁可漏放，不可错放）：
+#   low_risk=true 当且仅当每个文件都是 Markdown，且满足其一：
+#     - docs/ 下任意深度（docs/**/*.md）；
+#     - 仓库根目录的 *.md（不含子目录）。
+#   例外：根目录的 AGENTS.md / CLAUDE.md 是 agent 指令，不算文档。
+#   其余一律 false，特别是 skills/**、tests/**、examples/**、src/** 下的 Markdown
+#   （它们是指令、评测输入或契约的一部分），以及 .github/**、docs/ 下的非 Markdown 文件。
+#   空列表按 false 处理（无法确认改动范围时不合）。
 set -u
 
 files=()
@@ -28,17 +32,22 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 for file in "${files[@]}"; do
-  if [[ "$file" == .github/* ]]; then
-    echo "low_risk=false"
-    exit 0
-  fi
-  if [[ "$file" == AGENTS.md || "$file" == */AGENTS.md ]]; then
-    echo "low_risk=false"
-    exit 0
-  fi
-  if [[ "$file" == docs/* || "$file" == *.md ]]; then
+  case "$file" in
+    docs/*.md)
+      continue
+      ;;
+  esac
+
+  if [[ "$file" == *.md && "$file" != */* ]]; then
+    case "$file" in
+      AGENTS.md|CLAUDE.md)
+        echo "low_risk=false"
+        exit 0
+        ;;
+    esac
     continue
   fi
+
   echo "low_risk=false"
   exit 0
 done
