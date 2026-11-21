@@ -1,0 +1,2 @@
+unit (ubuntu-24.04, node 22)	completed	success	github-actions	.github/workflows/ci.yml
+d.ts 类型自检	completed	success	github-actions	.github/workflows/ci.yml
