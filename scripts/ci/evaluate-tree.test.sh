@@ -38,6 +38,8 @@ run_case "tree truncated"            reject true  normal.changed.tsv  normal.tre
 run_case "清单路径不在 tree"          reject false missing.changed.tsv missing.tree.tsv
 run_case "删除文档（不在 head tree）" ok     false removed.changed.tsv removed.tree.tsv
 run_case "未知 mode 100600"           reject false badmode.changed.tsv badmode.tree.tsv
+run_case "路径含反斜杠 a\\b.md"        ok     false backslash.changed.tsv backslash.tree.tsv
+run_case "路径含反斜杠 a\\tb.md"       ok     false backslash-t.changed.tsv backslash-t.tree.tsv
 
 printf '\nSUMMARY %d/%d passed, %d failed\n' "$((total - failed))" "$total" "$failed"
 [ "$failed" -eq 0 ]

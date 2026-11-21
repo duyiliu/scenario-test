@@ -85,6 +85,8 @@ jobs:
           all_file="$RUNNER_TEMP/changed-all.txt"
           listed_file="$RUNNER_TEMP/changed-listed.txt"
           status_file="$RUNNER_TEMP/changed-status.tsv"
+          # N4：三次 pulls/:n/files 快照之间可能不一致；由 --match-head-commit 与 concurrency 兜底，
+          # 这里不额外加逻辑。
           # 含改名前的旧路径：git mv .github/x.md docs/x.md 只有新路径会被放行。
           if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
             --jq '.[] | .filename, (.previous_filename // empty)' > "$all_file"; then

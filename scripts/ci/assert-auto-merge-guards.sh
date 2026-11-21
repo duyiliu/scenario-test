@@ -70,6 +70,40 @@ for f in "${files[@]}"; do
       err "$f 出现不允许的写权限：$scope"
     fi
   done
+
+  # 6) N2：run 内容不得执行外部/下载来的代码
+  run_scan=$(awk '
+    /^[[:space:]]*run:[[:space:]]*\|[[:space:]]*$/ { inrun = 1; next }
+    inrun && /^[[:space:]]*$/ { print ""; next }
+    inrun {
+      if ($0 ~ /^[[:space:]]+/) { print; next }
+      inrun = 0
+    }
+  ' "$f")
+
+  if printf '%s\n' "$run_scan" | grep -nE '(curl|wget)[^|]*\|[[:space:]]*(bash|sh)([[:space:]]|$)'; then
+    err "$f 的 run 出现 curl/wget 管道到 shell"
+  fi
+  if printf '%s\n' "$run_scan" | grep -nE '(^|[^[:alnum:]_])eval([^[:alnum:]_]|$)'; then
+    err "$f 的 run 出现 eval"
+  fi
+  if printf '%s\n' "$run_scan" | grep -nE 'git[[:space:]]+(clone|fetch|submodule)'; then
+    err "$f 的 run 出现 git clone/fetch/submodule"
+  fi
+  if printf '%s\n' "$run_scan" | grep -nE '(npm[[:space:]]+(install|ci)|(^|[^[:alnum:]_])npx([^[:alnum:]_]|$))'; then
+    err "$f 的 run 出现 npm install/ci 或 npx"
+  fi
+
+  # 7) N3：补齐 head 引用模式
+  if grep -nE 'github\.head_ref' "$f"; then
+    err "$f 出现 github.head_ref"
+  fi
+  if grep -nE 'refs/pull/' "$f"; then
+    err "$f 出现 refs/pull/"
+  fi
+  if grep -nE '^[[:space:]]*ref:.*pull_request\.head\.sha' "$f"; then
+    err "$f 的 ref 指向 pull_request.head.sha"
+  fi
 done
 
 if [ "$fail" -ne 0 ]; then

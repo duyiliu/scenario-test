@@ -45,7 +45,8 @@ if [ -f "$changed_file" ] && [ -f "$tree_file" ]; then
     entries=$((entries + 1))
     [ "$status" = "removed" ] && continue
 
-    mode=$(awk -F'\t' -v p="$path" '$1 == p { print $2; exit }' "$tree_file")
+    # N1：awk -v 会把路径里的反斜杠当转义序列；用 ENVIRON 传值，按字节比较。
+    mode=$(P="$path" awk -F'\t' '$1 == ENVIRON["P"] { print $2; exit }' "$tree_file")
     if [ -z "$mode" ]; then
       not_ok "$path" "missing-from-tree"
       continue
