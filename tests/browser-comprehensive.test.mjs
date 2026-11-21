@@ -454,6 +454,41 @@ try {
         assert.equal(await page.locator('#saveScenarioBtn').isDisabled(), true);
         await page.evaluate(() => { delete window.__SCENARIO_TEST_SERVE_PROXY__; });
     });
+    await check('YIL-205 弹窗重开不抢已有焦点：复制/变量/配置三处 rAF 守卫', async () => {
+        // 固定 runtime.js 三处 rAF 守卫：焦点已在弹窗内时再次打开同一弹窗，默认聚焦不得抢走它。
+        // 重开走真实点击处理链路（复制是 scenarioList 委派、变量/配置是按钮直挂监听）；
+        // 这里用 dispatchEvent 而不是 click()，因为弹窗遮罩会拦住真实点击，click({force:true}) 只跳过
+        // 可操作性等待、坐标仍打在遮罩上，触发不到开启控件。
+        const settleFrames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const activeId = () => page.evaluate(() => (document.activeElement && document.activeElement.id) || '');
+        await select('editvars');
+        // 复制弹窗：焦点在文件路径输入框 → 重开不得被抢回 name
+        await openDuplicate('cases/editvars.js');
+        await page.locator('#duplicateFileInput').focus();
+        assert.equal(await activeId(), 'duplicateFileInput');
+        await page.locator('[data-dup-file="cases/editvars.js"]').dispatchEvent('click');
+        await settleFrames();
+        assert.equal(await activeId(), 'duplicateFileInput', '重开复制弹窗时 rAF 抢走了弹窗内已有焦点');
+        await page.locator('#duplicateCancelBtn').click();
+        // 变量快编弹窗：焦点放在 Apply 按钮（行会被重建，按钮不会）→ 重开不得改到首行输入
+        await page.locator('#editScenarioBtn').click();
+        await openVars();
+        await page.locator('#varsApplyBtn').focus();
+        assert.equal(await activeId(), 'varsApplyBtn');
+        await page.locator('#editScenarioVarsBtn').dispatchEvent('click');
+        await settleFrames();
+        assert.equal(await activeId(), 'varsApplyBtn', '重开变量弹窗时 rAF 抢走了弹窗内已有焦点');
+        await page.locator('#varsCancelBtn').click();
+        // 配置弹窗：焦点在关闭按钮 → 重开不得被抢到 #environmentInput
+        await page.locator('#configToggleBtn').click();
+        await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'environmentInput');
+        await page.locator('#configCloseBtn').focus();
+        assert.equal(await activeId(), 'configCloseBtn');
+        await page.locator('#configToggleBtn').dispatchEvent('click');
+        await settleFrames();
+        assert.equal(await activeId(), 'configCloseBtn', '重开配置弹窗时 rAF 抢走了弹窗内已有焦点');
+        await page.locator('#configCloseBtn').click();
+    });
     await check('边界：空场景清单不会发请求', async () => {
         const before = hits.length; await page.goto(`${origin}/?empty`);
         await page.waitForSelector('#runBtn'); assert.equal(await page.locator('[data-scenario-file]').count(), 0);
