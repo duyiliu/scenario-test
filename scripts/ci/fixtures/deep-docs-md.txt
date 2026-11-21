@@ -1,0 +1,2 @@
+docs/archive/notes.md
+docs/testing/coverage-matrix.md

@@ -1,0 +1,311 @@
+name: Merge Gate (advisory)
+
+# 只读建议版（v1，2026-11-21）：分类 + 校验必需检查 + 结论只写 Step Summary。
+#
+# 为什么必须只读：本 workflow 由 PR 自带（pull_request 事件运行的是 merge tree 里的这份
+# 定义），而仓库默认 workflow 权限是 write。只要这里保留任一写能力，任何人改本文件就能让
+# runner 替自己执行写操作。因此本版本：
+#   - 权限只到 read，不写标签、不发评论、不执行合并；
+#   - 被伪造的最坏结果只是一份错误的报告，合不了任何东西；
+#   - 真正的自动合并另开设计，先给威胁模型（谁能改 workflow、谁能造 check-run、谁能评论）。
+#
+# 分类与对账脚本一律从 base 分支检出执行，不执行 PR 自带的策略代码。
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: guard read-only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # 回归告警：本 job 只是防止下一次不小心加回写权限，不是安全边界。
+      # 真正的边界是上面的 token 只有 read 权限。断言脚本本身随 PR 一起被改写，
+      # 所以人工复审 .github/workflows/** 仍然不可省。
+      - name: Assert this workflow carries no write capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/assert-readonly-gate.sh .github/workflows/merge-gate.yml
+          echo "guard: 未发现写权限、写操作或外部凭据"
+          {
+            echo "### 只读断言"
+            echo ""
+            echo "- 无任何写权限声明"
+            echo "- 无合并、审查、评论命令，无提权或自动合并开关，无 pull request target 事件"
+            echo "- 只使用 GITHUB_TOKEN"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  classify:
+    name: classify risk
+    runs-on: ubuntu-24.04
+    needs: guard
+    timeout-minutes: 10
+    outputs:
+      low_risk: ${{ steps.risk.outputs.low_risk }}
+      head_sha: ${{ steps.risk.outputs.head_sha }}
+    steps:
+      - name: Check out trusted base revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Classify changed files
+        id: risk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          summary() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          # 清单含改名前的旧路径：git mv src/a.md docs/a.md 只有新路径会被放行。
+          all_file="$RUNNER_TEMP/changed-all.txt"
+          listed_file="$RUNNER_TEMP/changed-listed.txt"
+          gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$all_file"
+          gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' > "$listed_file"
+
+          listed=$(wc -l < "$listed_file" | tr -d ' ')
+          changed=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json changedFiles --jq '.changedFiles')
+
+          summary "### 风险分类（只读建议）"
+          summary ""
+          summary "- PR: #$PR_NUMBER"
+          summary "- head SHA: \`$HEAD_SHA\`"
+          summary "- PR 报告的改动数（changedFiles）：$changed"
+          summary "- 文件清单返回条数：$listed"
+
+          if [ ! -f scripts/ci/classify-risk.sh ] || [ ! -f scripts/ci/reconcile-files.sh ]; then
+            echo "::warning::base 分支缺少 scripts/ci 分类或对账脚本，失败关闭（low_risk=false）"
+            echo "low_risk=false" >> "$GITHUB_OUTPUT"
+            summary "- 结论：**low_risk=false**（base 分支缺少分类/对账脚本，失败关闭）"
+            exit 0
+          fi
+
+          # C2：pulls/:n/files 最多返回 3000 条，--paginate 也不会更多。
+          recon=$(bash scripts/ci/reconcile-files.sh "$listed" "$changed")
+          summary "- 清单对账：\`$recon\`"
+          if [ "$recon" != "reconcile=ok" ]; then
+            echo "low_risk=false" >> "$GITHUB_OUTPUT"
+            summary "- 结论：**low_risk=false**（文件清单与 PR 改动数不一致，清单可能被截断）"
+            exit 0
+          fi
+
+          summary "- 改动文件（含改名前的旧路径）："
+          head -n 100 "$all_file" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(wc -l < "$all_file" | tr -d ' ')" -gt 100 ]; then
+            summary "- …（仅列前 100 行）"
+          fi
+
+          result=$(bash scripts/ci/classify-risk.sh < "$all_file")
+          case "$result" in
+            low_risk=true|low_risk=false) ;;
+            *)
+              echo "::error::分类脚本输出非法：$result"
+              exit 1
+              ;;
+          esac
+          echo "$result" >> "$GITHUB_OUTPUT"
+          summary "- 结论：**$result**"
+
+  selftest:
+    name: classifier fixtures
+    runs-on: ubuntu-24.04
+    needs: guard
+    timeout-minutes: 5
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # 证据，不是安全边界：这些用例来自 PR 自己，能被改坏，只用于复核分类口径。
+      - name: Run classifier and reconciliation cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### 分类用例"
+            echo ""
+            echo '```'
+            bash scripts/ci/classify-risk.test.sh
+            bash scripts/ci/reconcile-files.test.sh
+            bash scripts/ci/evaluate-checks.test.sh
+            bash scripts/ci/evaluate-tree.test.sh
+            bash scripts/ci/assert-readonly-gate.test.sh
+            bash scripts/ci/assert-auto-merge-guards.test.sh
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: verify required checks
+    runs-on: ubuntu-24.04
+    needs: classify
+    timeout-minutes: 32
+    steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Wait for the eight required checks on the head SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          summary() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
+
+          required=(
+            "unit (ubuntu-24.04, node 22)"
+            "unit (ubuntu-24.04, node 24)"
+            "unit (windows-latest, node 22)"
+            "unit (windows-latest, node 24)"
+            "d.ts 类型自检"
+            "browser (playwright)"
+            "e2e install+run chain (ubuntu-24.04)"
+            "e2e install+run chain (windows-latest)"
+          )
+
+          raw_file="$RUNNER_TEMP/check-runs-raw.tsv"
+          eval_file="$RUNNER_TEMP/check-runs.tsv"
+          run_cache="$RUNNER_TEMP/run-paths.tsv"
+          : > "$run_cache"
+
+          # 检查来源必须是 GitHub Actions 并且属于 ci.yml，否则同名 job 可以来自任意 workflow。
+          run_path() {
+            local id=$1 cached
+            cached=$(awk -F'\t' -v i="$id" '$1 == i { print $2 }' "$run_cache")
+            if [ -n "$cached" ]; then
+              printf '%s' "$cached"
+              return 0
+            fi
+            local path
+            path=$(gh api "repos/$REPO/actions/runs/$id" --jq '.path' 2>/dev/null || printf 'api-error')
+            printf '%s\t%s\n' "$id" "$path" >> "$run_cache"
+            printf '%s' "$path"
+          }
+
+          deadline=$((SECONDS + 1800))
+          absent_since=""
+          verdict=""
+
+          while :; do
+            mergeable=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeable --jq '.mergeable')
+            if ! gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --paginate \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "null"), (.app.slug // "null"), (.details_url // "")] | @tsv' \
+              > "$raw_file"; then
+              echo "::error::无法读取 head $HEAD_SHA 的 check-runs"
+              exit 1
+            fi
+
+            # 把 details_url 解析成 workflow.path，判定逻辑交给可测试的 evaluate-checks.sh。
+            : > "$eval_file"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              head_fields=$(printf '%s' "$line" | cut -f1-4)
+              run_id=$(printf '%s' "$line" | sed -n 's#.*/actions/runs/\([0-9]\{1,\}\).*#\1#p')
+              if [ -z "$run_id" ]; then
+                printf '%s\t(no-run-id)\n' "$head_fields" >> "$eval_file"
+                continue
+              fi
+              printf '%s\t%s\n' "$head_fields" "$(run_path "$run_id")" >> "$eval_file"
+            done < "$raw_file"
+
+            report=$(bash scripts/ci/evaluate-checks.sh "${required[@]}" < "$eval_file")
+            absence_count=$(printf '%s\n' "$report" | grep -c $'\tabsent$' || true)
+            absent=$absence_count
+
+            pending=()
+            while IFS=$'\t' read -r kind cname reason; do
+              [ "$kind" = "not-ok" ] || continue
+              pending+=("$cname:$reason")
+            done <<< "$(printf '%s\n' "$report" | grep -v '^verdict')"
+            if [ "$mergeable" != "MERGEABLE" ]; then
+              pending+=("mergeable:$mergeable")
+            fi
+
+            if [ "$absent" -eq "${#required[@]}" ]; then
+              if [ -z "$absent_since" ]; then
+                absent_since=$SECONDS
+              elif [ $((SECONDS - absent_since)) -ge 300 ]; then
+                echo "::error::5 分钟内 8 项必需检查全部 absent：纯文档 PR 被 ci.yml 的 paths-ignore 跳过，不产生任何必需检查（需要 #181 合入）"
+                summary "### 校验（只读建议）"
+                summary ""
+                summary "- **8 项必需检查 5 分钟内全部 absent**"
+                summary "- 原因：ci.yml 对 \`docs/**\` 与 \`*.md\` 设了 paths-ignore，纯文档 PR 不产生任何必需检查"
+                summary "- 处置：需要 #181 合入（补 docs 恒过检查）；本 workflow 不合并、不阻塞"
+                exit 1
+              fi
+            else
+              absent_since=""
+            fi
+
+            if [ "${#pending[@]}" -eq 0 ]; then
+              verdict="ok"
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              verdict="timeout"
+              break
+            fi
+            echo "等待中（剩余 $((deadline - SECONDS))s）：${pending[*]}"
+            sleep 20
+          done
+
+          summary "### 校验（只读建议）"
+          summary ""
+          summary "| 必需检查 | 结果 |"
+          summary "| --- | --- |"
+          for name in "${required[@]}"; do
+            rows=$(awk -F'\t' -v n="$name" '$1 == n' "$eval_file")
+            state="absent"
+            if [ -n "$rows" ]; then
+              state=$(printf '%s\n' "$rows" | awk -F'\t' '{ printf "%s/%s ", $2, $3 }')
+            fi
+            summary "| $name | $state |"
+          done
+          summary ""
+          summary "- mergeable: \`$mergeable\`"
+
+          if [ "$verdict" = "ok" ]; then
+            summary "- 结论：**8 项必需检查全部 success，可人工合并**"
+            summary "- 本 workflow 只报告，不合并、不写标签、不发评论"
+            echo "8 项必需检查全部 success，PR mergeable=MERGEABLE（只读建议，不合并）"
+            exit 0
+          fi
+
+          summary "- 结论：**超时未满足**（对照上方表格；本 workflow 不合并、不阻塞）"
+          echo "::error::30 分钟内未满足：${pending[*]}"
+          exit 1
