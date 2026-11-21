@@ -94,8 +94,8 @@ try {
         await page.locator(`[data-adhoc-step="${index}"]`).click();
         await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'adhocNameInput');
     };
-    // 同一类竞态：变量弹窗与复制弹窗也在 rAF 里补默认聚焦。不先等聚焦落定就 fill，
-    // 焦点被 rAF 抢走后 insertText 会写进第一行，产生 "tenanttenant"、非法路径这类假失败。
+    // 同一类竞态：复制/变量弹窗也在 rAF 里补默认聚焦；fill 前先等聚焦落定，避免 insertText 写进别的输入框。
+    // 不先等就 fill，焦点被 rAF 抢走后 insertText 会写进第一行，产生 "tenanttenant"、非法路径这类假失败。
     const openVars = async () => {
         await page.locator('#editScenarioVarsBtn').click();
         await page.waitForFunction(() => {
@@ -106,6 +106,11 @@ try {
     const openDuplicate = async file => {
         await page.locator(`[data-dup-file="${file}"]`).click();
         await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'duplicateNameInput');
+    };
+    // fill 后立刻核对落点：焦点被抢时以输入值不符暴露，而不是让后续校验报无关错误
+    const fillChecked = async (locator, value, label) => {
+        await locator.fill(value);
+        assert.equal(await locator.inputValue(), value, `${label} 的输入被焦点抢占改写`);
     };
     const count = selector => page.locator(`#stepsList li${selector}`).count();
     await select('flow');
@@ -334,17 +339,17 @@ try {
         assert.equal(await page.locator('#varsEditorRows .vars-editor-row').count(), 3);
         assert.equal(await page.locator('#envVarsEditorRows .vars-editor-row').count(), 0);
         await page.locator('#envVarsAddRowBtn').click();
-        await page.locator('#envVarsEditorRows .vars-editor-row').nth(0).locator('.vars-editor-key').fill('apiToken');
-        await page.locator('#envVarsEditorRows .vars-editor-row').nth(0).locator('.vars-editor-value').fill('联调 Token');
+        await fillChecked(page.locator('#envVarsEditorRows .vars-editor-row').nth(0).locator('.vars-editor-key'), 'apiToken', 'envVars 变量名');
+        await fillChecked(page.locator('#envVarsEditorRows .vars-editor-row').nth(0).locator('.vars-editor-value'), '联调 Token', 'envVars 变量值');
         // 改值：tenant → "renamed"，labels → {"a":"乙","b":2}
         const varsRows = page.locator('#varsEditorRows .vars-editor-row');
-        await varsRows.nth(0).locator('.vars-editor-value').fill('"renamed"');
-        await varsRows.nth(2).locator('.vars-editor-value').fill('{"a":"乙","b":2}');
+        await fillChecked(varsRows.nth(0).locator('.vars-editor-value'), '"renamed"', 'vars tenant 值');
+        await fillChecked(varsRows.nth(2).locator('.vars-editor-value'), '{"a":"乙","b":2}', 'vars labels 值');
         // 新增一行 token
         await page.locator('#varsAddRowBtn').click();
         const newRow = varsRows.nth(3);
-        await newRow.locator('.vars-editor-key').fill('token');
-        await newRow.locator('.vars-editor-value').fill('"t-9"');
+        await fillChecked(newRow.locator('.vars-editor-key'), 'token', 'vars 新增行变量名');
+        await fillChecked(newRow.locator('.vars-editor-value'), '"t-9"', 'vars 新增行变量值');
         await page.locator('#varsApplyBtn').click();
         await page.waitForFunction(() => document.querySelector('#varsModal').classList.contains('hidden'));
         assert.equal(await page.locator('#scenarioDirtyBadge').isVisible(), true);
@@ -352,7 +357,7 @@ try {
         assert.equal(await page.locator('#scenarioVar_apiToken').count(), 1);
         // 重复变量名被拒：再把 limit 改名为 tenant → 错误提示、弹窗不关
         await openVars();
-        await page.locator('#varsEditorRows .vars-editor-row').nth(1).locator('.vars-editor-key').fill('tenant');
+        await fillChecked(page.locator('#varsEditorRows .vars-editor-row').nth(1).locator('.vars-editor-key'), 'tenant', 'vars 重命名 limit');
         await page.locator('#varsApplyBtn').click();
         // 等错误文本真正出现再读：点击后校验与渲染是异步的，直接读会拿到空串
         await page.waitForFunction(() => {
@@ -384,9 +389,9 @@ try {
         await page.evaluate(() => { window.copied = ''; });
         await openDuplicate('cases/editvars.js');
         assert.equal(await page.locator('#duplicateModal').isVisible(), true);
-        await page.locator('#duplicateIdInput').fill('editvars-copy');
-        await page.locator('#duplicateNameInput').fill('夹具副本');
-        await page.locator('#duplicateFileInput').fill('scenarios/editvars-copy.js');
+        await fillChecked(page.locator('#duplicateIdInput'), 'editvars-copy', '复制场景 id');
+        await fillChecked(page.locator('#duplicateNameInput'), '夹具副本', '复制场景名称');
+        await fillChecked(page.locator('#duplicateFileInput'), 'scenarios/editvars-copy.js', '复制场景文件路径');
         await page.locator('#duplicateConfirmBtn').click();
         // 校验失败会落在 #duplicateError 而不是剪贴板：两者任一出现才往下走，超时带原因
         await page.waitForFunction(() => Boolean(window.copied)
@@ -426,9 +431,9 @@ try {
         // 前端确认后会立即按 <script> 拉新场景文件：先把虚拟文件挂到 /scenarios/ 路由
         virtualScenarios['editvars-copy2'] = `ScenarioTest.registerScenario("editvars-copy2", ScenarioTest.defineScenario({name: "夹具副本2", steps: [{ name: "第一步 seed", path: "seed" }, { name: "第二步 echo", method: "POST", path: "echo", request: { body: {} } }, { name: "第三步 ok", path: "ok" }]}));`;
         await openDuplicate('cases/editvars.js');
-        await page.locator('#duplicateNameInput').fill('夹具副本2');
-        await page.locator('#duplicateIdInput').fill('editvars-copy2');
-        await page.locator('#duplicateFileInput').fill('scenarios/editvars-copy2.js');
+        await fillChecked(page.locator('#duplicateNameInput'), '夹具副本2', '复制场景名称(serve)');
+        await fillChecked(page.locator('#duplicateIdInput'), 'editvars-copy2', '复制场景 id(serve)');
+        await fillChecked(page.locator('#duplicateFileInput'), 'scenarios/editvars-copy2.js', '复制场景文件路径(serve)');
         await page.locator('#duplicateConfirmBtn').click();
         // 等两个写接口都回执 + 弹窗关闭，而不是只等弹窗；POST 是异步的，7s 默认超时在慢 runner 上不够
         await page.waitForFunction(() => (window.__editStub?.posts?.length || 0) >= 2

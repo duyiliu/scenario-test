@@ -9301,6 +9301,8 @@ function createWorkbenchRuntime(options) {
       modal.classList.remove("hidden");
       modal.setAttribute("aria-hidden", "false");
       window.requestAnimationFrame(function() {
+        var active = document.activeElement;
+        if (active && active !== document.body && modal.contains(active)) return;
         var firstInput = document.getElementById("environmentInput");
         if (firstInput) firstInput.focus();
       });
@@ -9857,6 +9859,8 @@ function createWorkbenchRuntime(options) {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     window.requestAnimationFrame(function() {
+      var active = document.activeElement;
+      if (active && active !== document.body && modal.contains(active)) return;
       var first = varsRows.querySelector("input");
       if (first) first.focus();
     });
@@ -9955,6 +9959,8 @@ function createWorkbenchRuntime(options) {
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     window.requestAnimationFrame(function() {
+      var active = document.activeElement;
+      if (active && active !== document.body && modal.contains(active)) return;
       document.getElementById("duplicateNameInput").focus();
     });
   }
