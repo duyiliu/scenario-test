@@ -1,3 +1,3 @@
 docs/changelog.md
 README.md
-notes/design.md
+docs/guide/install.md
