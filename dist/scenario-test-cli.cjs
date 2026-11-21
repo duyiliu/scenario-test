@@ -433,7 +433,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "48d06da89d151a4e04b76f21167ad5cfb117d460b32c822f24778e3f0bc7650e";
+var BUILD_ID = "492b4826001dffc494d4843963154cb216dd2bcc6e2b3bcb03986f6099209af3";
 
 // src/contract.js
 var CONTRACT_VERSION = 24;
@@ -6927,7 +6927,35 @@ function buildDoctorReport(options) {
   };
 }
 var STATUS_MARK = { PASS: "[PASS]", WARN: "[WARN]", FAIL: "[FAIL]", INFO: "[INFO]" };
-function renderDoctorText(report) {
+var E2E_BASE_URL_EXAMPLE = "https://your-business.example.com";
+var E2E_BASE_URL_EXAMPLE_NOTE = "\u793A\u4F8B\u5730\u5740\uFF0C\u5FC5\u987B\u66FF\u6362\u4E3A\u771F\u5B9E\u4E1A\u52A1\u5730\u5740\u540E\u518D\u6267\u884C";
+function quotePowerShellArg(value2) {
+  return `'${String(value2).replace(/'/g, "''")}'`;
+}
+function quotePosixArg(value2) {
+  return `'${String(value2).replace(/'/g, `'\\''`)}'`;
+}
+function buildE2eCommandHints({ e2eDir, configPath, cliPath }) {
+  return {
+    powershell: [
+      `Set-Location -LiteralPath ${quotePowerShellArg(e2eDir)}`,
+      "npm install",
+      "npx playwright install chromium",
+      `$env:E2E_BASE_URL = ${quotePowerShellArg(E2E_BASE_URL_EXAMPLE)}   # ${E2E_BASE_URL_EXAMPLE_NOTE}`,
+      `node ${quotePowerShellArg(cliPath)} serve --config ${quotePowerShellArg(configPath)} --open`,
+      `# \u53EF\u9009\uFF1A$env:E2E_BROWSER_CHANNEL = ${quotePowerShellArg("chrome")}   \u672C\u673A\u5DF2\u5B89\u88C5\u6D4F\u89C8\u5668\u65F6\u8BBE\u7F6E\uFF0C\u53EF\u66FF\u4EE3 Chromium \u4E0B\u8F7D`
+    ],
+    posix: [
+      `cd ${quotePosixArg(e2eDir)}`,
+      "npm install",
+      "npx playwright install chromium",
+      `export E2E_BASE_URL=${quotePosixArg(E2E_BASE_URL_EXAMPLE)}   # ${E2E_BASE_URL_EXAMPLE_NOTE}`,
+      `node ${quotePosixArg(cliPath)} serve --config ${quotePosixArg(configPath)} --open`,
+      `# \u53EF\u9009\uFF1Aexport E2E_BROWSER_CHANNEL=${quotePosixArg("chrome")}   \u672C\u673A\u5DF2\u5B89\u88C5\u6D4F\u89C8\u5668\u65F6\u8BBE\u7F6E\uFF0C\u53EF\u66FF\u4EE3 Chromium \u4E0B\u8F7D`
+    ]
+  };
+}
+function renderDoctorText(report, e2eHints) {
   const lines = [];
   lines.push(`\u573A\u666F\u6D4B\u8BD5 Doctor`);
   lines.push(`\u7248\u672C: v${report.runtimeVersion}\uFF08contract v${report.contractVersion}\uFF09`);
@@ -6938,6 +6966,16 @@ function renderDoctorText(report) {
   }
   for (const item of report.info) {
     lines.push(`[INFO] ${item.name}: ${item.message}`);
+  }
+  if (e2eHints) {
+    lines.push("");
+    lines.push("E2E \u6258\u7BA1\u63A5\u5165\u547D\u4EE4\uFF08doctor \u4EC5\u63D0\u793A\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6267\u884C\uFF1B\u590D\u5236\u5F53\u524D\u5E73\u53F0\u5BF9\u5E94\u4E00\u7EC4\uFF09\uFF1A");
+    lines.push("");
+    lines.push("PowerShell\uFF1A");
+    for (const line of e2eHints.powershell) lines.push(`  ${line}`);
+    lines.push("");
+    lines.push("POSIX\uFF1A");
+    for (const line of e2eHints.posix) lines.push(`  ${line}`);
   }
   lines.push("");
   lines.push(`\u6458\u8981: ${report.summary.passed} PASS, ${report.summary.warned} WARN, ${report.summary.failed} FAIL, ${report.summary.info} INFO`);
@@ -10139,11 +10177,16 @@ function doctorCommand(args) {
     configDir = import_node_path14.default.dirname(configPath);
   }
   const report = buildDoctorReport({ configPath, api: node_exports, configDir });
+  const e2eHints = isE2eProject(configDir) ? buildE2eCommandHints({
+    e2eDir: import_node_path14.default.join(configDir, "e2e"),
+    configPath,
+    cliPath: process.argv[1] || "scenario-test-cli.cjs"
+  }) : null;
   if (args.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}
 `);
   } else {
-    console.log(renderDoctorText(report));
+    console.log(renderDoctorText(report, e2eHints));
   }
   process.exitCode = report.exitCode;
 }

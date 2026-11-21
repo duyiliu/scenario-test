@@ -9,7 +9,7 @@ import { createE2eProjectFiles } from "./e2e/templates.js";
 import { createE2eExtension, isE2eProject } from "./e2e/extension.js";
 import { contract, CONTRACT_VERSION } from "./contract.js";
 import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
-import { buildDoctorReport, renderDoctorText } from "./doctor.js";
+import { buildDoctorReport, buildE2eCommandHints, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
 import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveClone, resolveString, SAVED_RESPONSE } from "./core.js";
@@ -1336,11 +1336,19 @@ function doctorCommand(args) {
         configDir = path.dirname(configPath);
     }
     const report = buildDoctorReport({ configPath, api: ScenarioTest, configDir });
+    // YIL-203：托管 E2E 时在文本层附可复制接入命令；--json 契约不变，不写入报告
+    const e2eHints = isE2eProject(configDir)
+        ? buildE2eCommandHints({
+            e2eDir: path.join(configDir, "e2e"),
+            configPath,
+            cliPath: process.argv[1] || "scenario-test-cli.cjs"
+        })
+        : null;
     if (args.json) {
         // JSON 模式 stdout 纯净：只输出合法 JSON
         process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     } else {
-        console.log(renderDoctorText(report));
+        console.log(renderDoctorText(report, e2eHints));
     }
     process.exitCode = report.exitCode;
 }
