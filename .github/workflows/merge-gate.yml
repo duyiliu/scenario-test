@@ -157,6 +157,7 @@ jobs:
             echo '```'
             bash scripts/ci/classify-risk.test.sh
             bash scripts/ci/reconcile-files.test.sh
+            bash scripts/ci/evaluate-checks.test.sh
             bash scripts/ci/assert-readonly-gate.test.sh
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -167,6 +168,11 @@ jobs:
     needs: classify
     timeout-minutes: 32
     steps:
+      - name: Check out pull request revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Wait for the eight required checks on the head SHA
         shell: bash
         env:
@@ -189,7 +195,8 @@ jobs:
             "e2e install+run chain (windows-latest)"
           )
 
-          runs_file="$RUNNER_TEMP/check-runs.tsv"
+          raw_file="$RUNNER_TEMP/check-runs-raw.tsv"
+          eval_file="$RUNNER_TEMP/check-runs.tsv"
           run_cache="$RUNNER_TEMP/run-paths.tsv"
           : > "$run_cache"
 
@@ -215,45 +222,33 @@ jobs:
             mergeable=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeable --jq '.mergeable')
             if ! gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --paginate \
               --jq '.check_runs[] | [.name, .status, (.conclusion // "null"), (.app.slug // "null"), (.details_url // "")] | @tsv' \
-              > "$runs_file"; then
+              > "$raw_file"; then
               echo "::error::无法读取 head $HEAD_SHA 的 check-runs"
               exit 1
             fi
 
-            pending=()
-            absent=0
-            for name in "${required[@]}"; do
-              rows=$(awk -F'\t' -v n="$name" '$1 == n' "$runs_file")
-              if [ -z "$rows" ]; then
-                pending+=("$name:absent")
-                absent=$((absent + 1))
+            # 把 details_url 解析成 workflow.path，判定逻辑交给可测试的 evaluate-checks.sh。
+            : > "$eval_file"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              head_fields=$(printf '%s' "$line" | cut -f1-4)
+              run_id=$(printf '%s' "$line" | sed -n 's#.*/actions/runs/\([0-9]\{1,\}\).*#\1#p')
+              if [ -z "$run_id" ]; then
+                printf '%s\t(no-run-id)\n' "$head_fields" >> "$eval_file"
                 continue
               fi
-              bad=""
-              while IFS=$'\t' read -r cname cstatus cconclusion cslug curl; do
-                [ -n "$cname" ] || continue
-                if [ "$cslug" != "github-actions" ]; then
-                  bad+=" source=$cslug"
-                  continue
-                fi
-                if [ "$cstatus" != "completed" ] || [ "$cconclusion" != "success" ]; then
-                  bad+=" $cstatus/$cconclusion"
-                  continue
-                fi
-                run_id=$(printf '%s' "$curl" | sed -n 's#.*/actions/runs/\([0-9]\{1,\}\).*#\1#p')
-                if [ -z "$run_id" ]; then
-                  bad+=" no-run-id"
-                  continue
-                fi
-                path=$(run_path "$run_id")
-                if [ "$path" != ".github/workflows/ci.yml" ]; then
-                  bad+=" workflow=$path"
-                fi
-              done <<< "$rows"
-              if [ -n "$bad" ]; then
-                pending+=("$name:$bad")
-              fi
-            done
+              printf '%s\t%s\n' "$head_fields" "$(run_path "$run_id")" >> "$eval_file"
+            done < "$raw_file"
+
+            report=$(bash scripts/ci/evaluate-checks.sh "${required[@]}" < "$eval_file")
+            absence_count=$(printf '%s\n' "$report" | grep -c $'\tabsent$' || true)
+            absent=$absence_count
+
+            pending=()
+            while IFS=$'\t' read -r kind cname reason; do
+              [ "$kind" = "not-ok" ] || continue
+              pending+=("$cname:$reason")
+            done <<< "$(printf '%s\n' "$report" | grep -v '^verdict')"
             if [ "$mergeable" != "MERGEABLE" ]; then
               pending+=("mergeable:$mergeable")
             fi
@@ -292,7 +287,7 @@ jobs:
           summary "| 必需检查 | 结果 |"
           summary "| --- | --- |"
           for name in "${required[@]}"; do
-            rows=$(awk -F'\t' -v n="$name" '$1 == n' "$runs_file")
+            rows=$(awk -F'\t' -v n="$name" '$1 == n' "$eval_file")
             state="absent"
             if [ -n "$rows" ]; then
               state=$(printf '%s\n' "$rows" | awk -F'\t' '{ printf "%s/%s ", $2, $3 }')
