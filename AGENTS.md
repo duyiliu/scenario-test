@@ -72,12 +72,15 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 `.github/workflows/merge-gate.yml` 是**只读建议版**：只分类、只校验、只写 Step Summary，没有写权限，不写标签、不发评论、不合并。
 
+`.github/workflows/auto-merge.yml` 是**可信上下文的纯文档自动合并**：用 `pull_request_target` 运行 master 上的这份定义，PR 改不了它；只 checkout base（`base.sha`），绝不 checkout PR head、绝不执行 PR 内脚本；分类、对账、检查判定一律用 base 的 `scripts/ci/*`。
+
 - **merge gate 不得从 PR head 执行写操作；合并只能来自受信任上下文或人。** `pull_request` 运行的是 PR 自带的 workflow 定义，仓库默认 workflow 权限是 `write`，任何改 `.github/workflows/**` 的 PR 都能让 runner 带着写权限执行自己的步骤。
-- 改 `.github/workflows/**`、`scripts/ci/**`、分支保护或仓库设置的 PR 一律人工合并，不适用任何"低风险"豁免。
+- **以下 PR 永不自动合并**：涉及 `.github/**`、`scripts/ci/**`、任意 `AGENTS.md` / `CLAUDE.md`，以及改分支保护或仓库设置的 PR；它们一律人工合并，不适用任何"低风险"豁免。
 - 分类口径只有两种低风险：`docs/**/*.md` 与仓库根目录的 `*.md`。**任意层级**的 `AGENTS.md` / `CLAUDE.md` 都是 agent 指令，一律排除（`docs/AGENTS.md`、`docs/sub/CLAUDE.md` 同样不算文档）。`skills/**`、`tests/**`、`examples/**`、`src/**` 下的 Markdown 是指令、评测输入或契约的一部分，也不算文档。
-- `bash scripts/ci/assert-readonly-gate.sh` 是防回归断言（`assert-readonly-gate.test.sh` 证明它真会失败），不是安全边界：真正的边界是 workflow 只持有 read 权限，以及人工复审。
+- **自动合并前置条件**：`docs/**/*.md` 与根 `*.md` 在 head tree 中必须是普通文件（`100644`/`100755`）；symlink（`120000`）、gitlink（`160000`）、tree `truncated=true` 或路径不在 tree 中一律不合并。8 项必需检查同名全部 `completed/success`、`app.slug=github-actions`、workflow 为 `.github/workflows/ci.yml`；`mergeStateStatus=clean`；合并前 head SHA 未变；命令为 `gh pr merge --squash --delete-branch --match-head-commit <SHA>`。
+- `bash scripts/ci/assert-readonly-gate.sh` 与 `bash scripts/ci/assert-auto-merge-guards.sh` 是防回归断言（各自的 `.test.sh` 用变异副本证明它真会失败），不是安全边界：真正的边界是 merge-gate 只持有 read 权限、auto-merge 只运行 base 代码，以及人工复审。
+- `GITHUB_TOKEN` 的合并不会触发 master 的 push workflow（GitHub 不递归触发 Actions）：自动合并后 master 上的 push CI 不会因这次合并而跑。
 - 纯文档 PR 被 `ci.yml` 的 `paths-ignore` 跳过、不产生必需检查，闸门 5 分钟内即失败并注明"需要 #181"，不空转等 30 分钟。
-- 真正的自动合并另开设计，先给威胁模型（谁能改 workflow、谁能造 check-run、谁能评论），不要在本 workflow 里偷偷恢复写能力。
 
 ## 架构
 
