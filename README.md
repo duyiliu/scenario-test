@@ -17,7 +17,7 @@
 
 ## CLI 用法示例
 
-以下命令均从业务项目根目录执行，`<运行时目录>` 替换为安装方运行时路径（Skill `runtime/` 或 `~/.scenario-test/runtime/`），`local`、`health-check` 替换为项目中实际配置的环境 key 与场景 ID。
+以下命令均从业务项目根目录执行，`<运行时目录>` 替换为 `~/.scenario-test/runtime/<版本>/`（Skill 与安装脚本落点相同），`local`、`health-check` 替换为项目中实际配置的环境 key 与场景 ID。
 
 ### doctor：体检接入状态
 
@@ -100,7 +100,7 @@ npx skills-cn@latest add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g 
 
 两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
 
-`#vX.Y.Z` 钉住 Git Tag，Skill 与内置运行时版本固定、可复现（推荐团队环境使用）；省略 `#` 部分则跟随默认分支最新提交，适合尝鲜。升级到新版本时把 Tag 换成目标版本重新安装，或对未钉版本的安装执行 `npx skills update scenario-test -g`。
+`#vX.Y.Z` 钉住 Git Tag，Skill 与其下载的运行时版本固定、可复现（推荐团队环境使用）；省略 `#` 部分则跟随默认分支最新提交，适合尝鲜。升级到新版本时把 Tag 换成目标版本重新安装，或对未钉版本的安装执行 `npx skills update scenario-test -g`。
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
@@ -114,7 +114,7 @@ Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md)
 
 1. 如果尚未安装全局 Skill，先完成上一节；然后在业务项目根目录打开支持 Agent Skills 的 AI 助手。
 2. 告诉 AI 需要测试的业务功能，并提供页面、Controller、接口或已有测试中的任一入口。例如：`为 OrderController 生成 HTTP 场景测试`。
-3. 项目尚未接入时，Skill 会确认项目根目录和环境；运行时未安装则先按需下载对应版本（约 1.2 MB，只需一次），再初始化并执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
+3. 项目尚未接入时，Skill 会确认项目根目录和环境；运行时未安装则先按需下载对应版本（约 300 KB，只需一次），再初始化并执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
 4. AI 根据项目证据维护 `scenario.config.js` 和 `scenarios/`。生成阶段不会调用业务接口；需要执行时，请明确提出并确认目标环境和场景内容。
 
 初始场景清单为空。场景准备好后，可用[浏览器工作台](#启动浏览器工作台)或 [CLI](#执行场景)运行；工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
@@ -386,7 +386,7 @@ ScenarioTest.registerScenario("member-join", ScenarioTest.defineScenario({
 
 ## 升级
 
-运行时由安装方统一提供：使用全局 Skill 时是其 `runtime/`，使用安装脚本时是用户级 `~/.scenario-test/runtime/`；业务项目只保留 `scenario.config.js`、`scenarios/` 等场景数据，不持有运行时副本。升级即更新安装方，更新后新启动的会话与执行使用新版本，无需逐项目操作；普通的生成或执行请求不会自动升级已有运行时。
+运行时由安装方统一提供，无论用全局 Skill 还是安装脚本，都只在用户级 `~/.scenario-test/runtime/<版本>/` 一份；业务项目只保留 `scenario.config.js`、`scenarios/` 等场景数据，不持有运行时副本。升级即更新安装方，更新后新启动的会话与执行使用新版本，无需逐项目操作；普通的生成或执行请求不会自动升级已有运行时。
 
 ### 更新全局 Skill
 
@@ -396,7 +396,7 @@ Skill 按 Git Tag 钉版本安装，升级时**把 Tag 换成目标版本重新�
 npx skills add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g
 ```
 
-未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。当前内置运行时版本可查看 `<Skill目录>/runtime/release.json` 的 `version`。
+未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。已安装的运行时版本可查看 `~/.scenario-test/runtime/<版本>/release.json` 的 `version`。
 
 ### 升级运行时
 

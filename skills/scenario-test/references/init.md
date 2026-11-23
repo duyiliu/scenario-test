@@ -18,7 +18,7 @@
 
 ## 自动初始化（默认行为）
 
-1. 确认 Node.js 22+、项目根目录可写。运行时未就绪时执行 `node <本Skill目录>/scripts/ensure-runtime.mjs`（按版本下载，约 1.2 MB，仅首次），再用 `node <本Skill目录>/scripts/check-runtime.mjs` 校验完整性（含 AI 规则文件）。
+1. 确认 Node.js 22+、项目根目录可写。运行时未就绪时执行 `node <本Skill目录>/scripts/ensure-runtime.mjs`（按版本下载，约 300 KB，仅首次），再用 `node <本Skill目录>/scripts/check-runtime.mjs` 校验完整性（含 AI 规则文件）。
 2. 在确认的项目根目录执行 `node <运行时目录>/scenario-test-cli.cjs init --project <projectRoot> --dir scenario-test --no-input`；自定义目录使用探测时的 `--dir`。init 只写 `scenario.config.js`、`scenarios/`、`README.md` 与 `start-scenario-test.cmd`（内含本机运行时路径，机器本地），不复制任何运行时文件。
 3. 重新探测，再使用 Skill CLI 运行 `doctor --config <config>`；任何检查失败时停止并报告。
 4. 用户明确拒绝自动安装、设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或项目不完整时，不自动初始化或修复；只询问能力时不安装。
@@ -34,5 +34,5 @@
 ## 安装后的确认
 
 1. 重新运行探测脚本，确认 `status=installed`、`legacy` 为空。
-2. 执行 `node <cli> doctor --config <config>`（`<cli>` 即探测结果中的 Skill 运行时路径）。存在 FAIL 时停止并报告；`scenario-register`/`config-load` 类 FAIL 多半是场景按更高 contract 所写，按 fix 提示引导用户升级安装方，不在本流程内升级项目。
+2. 执行 `node <cli> doctor --config <config>`（`<cli>` 即探测结果中的用户级运行时路径 `~/.scenario-test/runtime/<版本>/`）。存在 FAIL 时停止并报告；`scenario-register`/`config-load` 类 FAIL 多半是场景按更高 contract 所写，按 fix 提示引导用户升级安装方，不在本流程内升级项目。
 3. 通过后加载安装方的 `AI_SCENARIO_PROMPT.md`（探测结果 `authoringPrompt`）；如用户已提供业务功能与入口可接着进入编写阶段；若没有业务目标，只问用户要测试哪个业务功能（页面、Controller、接口或已有测试任一入口）。

@@ -55,7 +55,7 @@ npx skills-cn@latest add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g 
 ```
 
 - `-g`：用户级全局安装；`-y`：跳过交互确认。
-- `#vX.Y.Z` 钉住 Git Tag，Skill 与内置运行时版本固定、可复现；省略则跟随默认分支最新提交（尝鲜用）。
+- `#vX.Y.Z` 钉住 Git Tag，Skill 与其下载的运行时版本固定、可复现；省略则跟随默认分支最新提交（尝鲜用）。
 - 只安装 Skill，**不**在业务项目装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需分别安装。
 
 > Skill 自带发布版运行时；初始化时把运行时能力用于该项目。v23 起**项目内不再落 `.scenario-test/` 运行时副本**，执行/工作台统一使用安装方运行时。
@@ -562,7 +562,7 @@ node <cli> capabilities --json   # 机器可读，供 AI 核对契约版本
 ## 13. 常见问题
 
 **Q：运行时目录在哪？**
-A：用户级 `~/.scenario-test/runtime/`，或 Skill 的 `runtime/`；`start-scenario-test.cmd` 记录了本机路径。v23 起项目内不再有副本。
+A：用户级 `~/.scenario-test/runtime/<版本>/`，Skill 与安装脚本落点相同；`start-scenario-test.cmd` 记录了本机路径。v23 起项目内不再有副本。
 
 **Q：工作台和 CLI 有什么区别？**
 A：同一套场景。工作台可视化调试；CLI 适合批量/CI。

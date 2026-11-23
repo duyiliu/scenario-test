@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // 只读取当前工作目录及其父目录，外加用户级运行时目录的状态；不扫描其它项目、
 // 不访问网络、不修改文件。运行时的下载由 ensure-runtime.mjs 负责——探测必须保持
-// 只读，否则"问一句这个工具能干什么"都会触发 1.2 MB 下载。
+// 只读，否则"问一句这个工具能干什么"都会触发几百 KB 下载。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT_MARKERS = ['.git', 'pom.xml', 'settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts', 'package.json', 'go.mod', 'Cargo.toml', 'pyproject.toml'];
-// v23 起运行时去项目化：项目只保留场景数据，执行/工作台统一用 Skill 运行时。
+// v23 起运行时去项目化：项目只保留场景数据，执行/工作台统一用用户级运行时。
 // 旧版 init 落盘的 .scenario-test 运行时副本按 legacy 报告，由 Skill 提示 --clean 清理。
 const REQUIRED_FILES = ['scenario.config.js'];
 const RUNTIME_FILES = [
