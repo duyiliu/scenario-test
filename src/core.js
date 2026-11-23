@@ -1734,6 +1734,25 @@ export function buildAssertions(step, response, runtime, context) {
 // ===== 保留变量（来自 contract）=====
 export const RESERVED_VARS = [...contract.reservedVars];
 
+export function buildWorkerContext(workerIndex, workerTotal, sharedRequestKey = false) {
+    const index = Number(workerIndex);
+    const total = Number(workerTotal);
+    if (!Number.isInteger(index) || index < 1) throw new TypeError("workerIndex 必须是大于等于 1 的整数");
+    if (!Number.isInteger(total) || total < 1) throw new TypeError("workerTotal 必须是大于等于 1 的整数");
+    if (index > total) throw new TypeError("workerIndex 不能超过 workerTotal");
+    return Object.freeze({
+        index,
+        total,
+        sharedRequestKey: sharedRequestKey === true,
+        vars: Object.freeze({
+            worker: index,
+            workerIndex: index,
+            workerTotal: total,
+            ...(sharedRequestKey === true ? { sharedRequestKey: "shared" } : {})
+        })
+    });
+}
+
 export function assertNotReservedVar(name, label) {
     if (RESERVED_VARS.includes(name)) {
         throw new Error(`${label || "变量"} "${name}" 是运行时自动生成的保留变量，禁止声明或覆盖`);
