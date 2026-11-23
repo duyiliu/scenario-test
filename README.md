@@ -105,9 +105,9 @@ npx skills-cn@latest add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g 
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；Skill 自带发布版运行时，初始化时将运行时复制到业务项目；日常使用项目内版本，后续使用无需再次下载工具，执行测试仍需连接目标服务。
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；v23 起运行时去项目化：CLI、工作台页面与 AI 规则统一由安装方提供（Skill 的 `runtime/`），初始化只在业务项目写入 `scenario.config.js`、目录说明与启动入口，场景放在 `scenarios/`，不复制运行时。后续使用无需再次下载工具，执行测试仍需连接目标服务。
 
-未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。全局 Skill 和各项目运行时分别升级；已接入项目使用自己的 CLI，不要求与 Skill 版本一致，见[升级](#升级)。
+未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。同一安装方下的项目共用该运行时；升级只需更新安装方（换 Tag 重装 Skill 或重跑安装脚本），不需要逐项目替换运行时，见[升级](#升级)。
 
 Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md) 和 [`detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。探测只检查文件是否存在；配置与运行时完整性以 `doctor` 结果为准。
 
@@ -389,7 +389,7 @@ ScenarioTest.registerScenario("member-join", ScenarioTest.defineScenario({
 
 ## 升级
 
-全局 Skill 和每个业务项目的运行时分别维护。更新 Skill 不会更新业务项目；普通的生成或执行请求也不会自动升级已有运行时。
+运行时由安装方统一提供：使用全局 Skill 时是其 `runtime/`，使用安装脚本时是用户级 `~/.scenario-test/runtime/`；业务项目只保留 `scenario.config.js`、`scenarios/` 等场景数据，不持有运行时副本。升级即更新安装方，更新后新启动的会话与执行使用新版本，无需逐项目操作；普通的生成或执行请求不会自动升级已有运行时。
 
 ### 更新全局 Skill
 
@@ -401,7 +401,7 @@ npx skills add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g
 
 未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。当前内置运行时版本可查看 `<Skill目录>/runtime/release.json` 的 `version`。
 
-### 升级业务项目运行时
+### 升级运行时
 
 在目标业务项目根目录，向 AI 明确提出：
 
@@ -410,13 +410,13 @@ npx skills add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g
 保留现有配置和场景，并在升级后运行 doctor。
 ```
 
-Skill 会先确认当前项目、现有版本锁、目标发布版本和安装来源，再执行升级。升级前应保存或备份相关未提交改动；默认保留 `scenario.config.js` 和 `scenarios/`，并刷新 AI 规则和模式库。版本或契约不一致、运行时缺失或与锁定指纹不一致时会刷新运行时副本。不要随意传 `--force`，它会覆盖与初始化模板同名的已有文件，包括配置文件。
+Skill 会先确认当前项目、目标发布版本和安装来源，再更新安装方运行时。项目内没有运行时副本，也没有版本锁。升级前应保存或备份相关未提交改动；默认保留 `scenario.config.js`、`scenarios/` 和可选的 `e2e/`，`init --no-input` 不覆盖已有文件，只补建缺失文件。不要随意传 `--force`，它会覆盖与初始化模板同名的已有文件，包括配置文件。
 
-升级后检查 `doctor` 的版本锁、能力清单和配置结果；有 FAIL 时先排查，不能只凭安装命令退出成功认定升级完成。`doctor` 是静态体检，不会替代场景实际执行。各业务项目需要分别升级。
+升级后运行 `doctor`，检查输出中的运行时版本与 contract 版本、能力清单和配置结果；有 FAIL 时先排查，不能只凭安装命令退出成功认定升级完成。`doctor` 是静态体检，不会替代场景实际执行。同一安装方下的项目共用运行时，更新后无需逐项目升级。
 
 ### 手动升级与内网备用
 
-需要手动操作时，先核对目标发布版本，在业务项目根目录重跑[固定版本安装脚本](#skill-使用的固定版本安装脚本)（`--no-input` 保留配置与场景，仅刷新运行时和 AI 规则）。存量 `package.json` 中若有 `@yc_yzkj/scenario-test` 依赖，那是旧的 npm 接入方式——npm 包已冻结不再更新，请改用安装脚本并移除该依赖。
+需要手动操作时，先核对目标发布版本，在业务项目根目录重跑[固定版本安装脚本](#skill-使用的固定版本安装脚本)：脚本更新用户级运行时（含 AI 规则），`--no-input` 不覆盖项目已有配置与场景。存量 `package.json` 中若有 `@yc_yzkj/scenario-test` 依赖，那是旧的 npm 接入方式——npm 包已冻结不再更新，请改用安装脚本并移除该依赖。
 
 无外网时，先准备对应版本的安装脚本及[内网运行时文件](#自定义下载源)，例如：
 
