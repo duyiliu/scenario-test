@@ -3,8 +3,8 @@
 仅在 `status=installed` 且项目文件可读时进入。日常使用**不再安装、不自动升级**。遇到版本锁或文件异常时先诊断。
 
 1. 读取安装方的 `AI_SCENARIO_PROMPT.md`、`SCENARIO_PATTERNS.md`、`scenario-test-capabilities.json`（探测结果 `authoringPrompt`/`patterns`/`capabilities` 即其路径，均指向 Skill 运行时），再读当前项目的 `scenario.config.js` 与已有场景；不要使用别的项目的规则。能力有疑问时执行 `node <cli> capabilities --json`。
-2. 只定位本次业务目标涉及的 Controller、OpenAPI、前端 API、接口文档与已有测试。有功能名称和入口就直接工作；缺少依据时询问**最小**的必要信息。不遍历整个业务仓库。
-3. 先按项目内 AI 规则得到功能卡片与场景矩阵，再对每条候选行为决策：
+2. 只定位本次业务目标涉及的 Controller、OpenAPI、前端 API、接口文档与已有测试。有功能名称和入口就直接工作；缺少依据时询问**最小**的必要信息。不遍历整个业务仓库。**若目标功能有可读后端源码，按需读取同目录的 [backend.md](backend.md)，先提取直接相关的调用链、业务规则与源码证据；没有后端源码时跳过。**
+3. 先按项目内 AI 规则得到功能卡片与场景矩阵；将 backend.md 中已确认且能够通过 HTTP 观察的关键规则纳入候选场景。内部实现细节或无法通过 HTTP 稳定验证的风险，不强行转成 HTTP 场景。再对每条候选行为决策：
 
    | 决策 | 判据 |
    | --- | --- |
