@@ -1,7 +1,7 @@
 {
   "schema": "scenario-test-capabilities",
   "version": "0.15.0",
-  "contractVersion": 24,
+  "contractVersion": 25,
   "assertions": {
     "operators": {
       "exists": {
@@ -473,6 +473,19 @@
         "kind": "value",
         "description": "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行",
         "parse": "number"
+      },
+      "workers": {
+        "kind": "value",
+        "description": "同一场景并发执行的 worker 数；必须与 --same-scenario 同时使用",
+        "parse": "number"
+      },
+      "same-scenario": {
+        "kind": "flag",
+        "description": "将选定场景复制为 --workers 个并发实例，worker 通过启动屏障对齐首个请求"
+      },
+      "shared-request-key": {
+        "kind": "flag",
+        "description": "同场景并发时启用共享请求键模式，并注入 vars.sharedRequestKey=shared（可在场景中直接引用）"
       },
       "e2e": {
         "kind": "flag",

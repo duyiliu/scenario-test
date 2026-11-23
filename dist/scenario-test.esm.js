@@ -317,7 +317,7 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 var VERSION = "0.15.0";
 
 // src/contract.js
-var CONTRACT_VERSION = 24;
+var CONTRACT_VERSION = 25;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -643,6 +643,9 @@ var contract = Object.freeze({
       open: { kind: "flag", prop: "open", description: "serve \u76D1\u542C\u6210\u529F\u540E\u7528\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00\u5DE5\u4F5C\u53F0" },
       reassign: { kind: "flag", prop: "reassign", description: "projects ensure\uFF1A\u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3\u5E76\u66F4\u65B0\u767B\u8BB0" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
+      workers: { kind: "value", prop: "workers", parse: "number", description: "\u540C\u4E00\u573A\u666F\u5E76\u53D1\u6267\u884C\u7684 worker \u6570\uFF1B\u5FC5\u987B\u4E0E --same-scenario \u540C\u65F6\u4F7F\u7528" },
+      "same-scenario": { kind: "flag", prop: "sameScenario", description: "\u5C06\u9009\u5B9A\u573A\u666F\u590D\u5236\u4E3A --workers \u4E2A\u5E76\u53D1\u5B9E\u4F8B\uFF0Cworker \u901A\u8FC7\u542F\u52A8\u5C4F\u969C\u5BF9\u9F50\u9996\u4E2A\u8BF7\u6C42" },
+      "shared-request-key": { kind: "flag", prop: "sharedRequestKey", description: "\u540C\u573A\u666F\u5E76\u53D1\u65F6\u542F\u7528\u5171\u4EAB\u8BF7\u6C42\u952E\u6A21\u5F0F\uFF0C\u5E76\u6CE8\u5165 vars.sharedRequestKey=shared\uFF08\u53EF\u5728\u573A\u666F\u4E2D\u76F4\u63A5\u5F15\u7528\uFF09" },
       e2e: { kind: "flag", prop: "e2e", description: "init \u53EF\u9009\u521D\u59CB\u5316\u6D4F\u89C8\u5668 E2E \u9879\u76EE" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
@@ -2115,6 +2118,24 @@ function buildAssertions(step, response, runtime, context) {
   return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
 }
 var RESERVED_VARS = [...contract.reservedVars];
+function buildWorkerContext(workerIndex, workerTotal, sharedRequestKey = false) {
+  const index = Number(workerIndex);
+  const total = Number(workerTotal);
+  if (!Number.isInteger(index) || index < 1) throw new TypeError("workerIndex \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+  if (!Number.isInteger(total) || total < 1) throw new TypeError("workerTotal \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+  if (index > total) throw new TypeError("workerIndex \u4E0D\u80FD\u8D85\u8FC7 workerTotal");
+  return Object.freeze({
+    index,
+    total,
+    sharedRequestKey: sharedRequestKey === true,
+    vars: Object.freeze({
+      worker: index,
+      workerIndex: index,
+      workerTotal: total,
+      ...sharedRequestKey === true ? { sharedRequestKey: "shared" } : {}
+    })
+  });
+}
 function assertNotReservedVar(name, label) {
   if (RESERVED_VARS.includes(name)) {
     throw new Error(`${label || "\u53D8\u91CF"} "${name}" \u662F\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\u7684\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u58F0\u660E\u6216\u8986\u76D6`);
@@ -3316,11 +3337,13 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
   const identifiers = createRunIdentifiers();
   const suiteVars = layers.suite || {};
   const configVars = layers.configVars || {};
+  const workerVars = options.worker?.vars || {};
   const optionVars = layers.optionVars || {};
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
   assertNoReservedVars(configVars, "\u914D\u7F6E vars");
   assertNoReservedVars(optionVars, "\u9009\u9879 vars");
-  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...identifiers };
+  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...workerVars };
+  for (const [name, value] of Object.entries(identifiers)) setRuntimeVar(vars, name, value);
   const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
@@ -3353,6 +3376,7 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
   return vars;
 }
 function createRuntime(scenario, options = {}) {
+  const worker = options.worker === void 0 ? null : options.worker === true ? buildWorkerContext(options.workerIndex || 1, options.workerTotal || 1, options.sharedRequestKey) : buildWorkerContext(options.worker.index, options.worker.total, options.worker.sharedRequestKey);
   const config = options.config || {};
   const suite = isPlainObject(options.suite) ? options.suite : isPlainObject(options.suiteVars) ? options.suiteVars : {};
   const runtime = {
@@ -3360,7 +3384,7 @@ function createRuntime(scenario, options = {}) {
       scenario,
       { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
       options.environmentVariables || {},
-      { now: options.now, clock: options.clock }
+      { now: options.now, clock: options.clock, worker }
     ),
     // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
     // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
@@ -3369,7 +3393,8 @@ function createRuntime(scenario, options = {}) {
     lastResponse: null,
     lastResponseBody: null,
     // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
-    cookieJar: []
+    cookieJar: [],
+    worker
   };
   return runtime;
 }
@@ -4095,6 +4120,12 @@ function createEngine(engineOptions = {}) {
       config,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+      worker: runOptions.worker !== void 0 ? runOptions.worker : engineOptions.worker,
+      ...runOptions.worker === true ? {
+        workerIndex: runOptions.workerIndex,
+        workerTotal: runOptions.workerTotal,
+        sharedRequestKey: runOptions.sharedRequestKey
+      } : {},
       // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
       suite: runOptions.suite !== void 0 ? runOptions.suite : runOptions.suiteVars !== void 0 ? runOptions.suiteVars : engineOptions.suite !== void 0 ? engineOptions.suite : engineOptions.suiteVars,
       // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
@@ -4103,6 +4134,21 @@ function createEngine(engineOptions = {}) {
     });
     const results = [];
     let halted = false;
+    const emitStep = async (result, index) => {
+      result.stepNo = index + 1;
+      results.push(result);
+      try {
+        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+      } catch (hookError) {
+        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        result.passed = false;
+        result.skipped = false;
+        result.status = "ERROR";
+        result.error = message;
+        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
+      }
+      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+    };
     for (let index = 0; index < scenario.steps.length; index += 1) {
       const step = scenario.steps[index];
       if (halted && step.always !== true) {
@@ -4119,34 +4165,38 @@ function createEngine(engineOptions = {}) {
           warnings: ["\u524D\u7F6E\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\uFF0C\u975E always \u6B65\u9AA4\u672A\u6267\u884C"],
           assertions: [],
           request: null,
-          response: null,
-          stepNo: index + 1
+          response: null
         };
-        results.push(skipped2);
-        try {
-          await (runOptions.onStep ?? engineOptions.onStep)?.(skipped2, index, runtime);
-        } catch (hookError) {
-          skipped2.passed = false;
-          skipped2.skipped = false;
-          skipped2.status = "ERROR";
-          skipped2.error = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        }
+        await emitStep(skipped2, index);
+        continue;
+      }
+      let beforeStepError = null;
+      try {
+        await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
+      } catch (hookError) {
+        beforeStepError = hookError;
+      }
+      if (beforeStepError) {
+        const message = `beforeStep \u56DE\u8C03\u629B\u9519: ${beforeStepError?.message || beforeStepError}`;
+        await emitStep({
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: String(step.method || step.request && step.request.method || "GET").toUpperCase(),
+          path: step.path || "",
+          status: "ERROR",
+          duration: 0,
+          passed: false,
+          always: step.always === true,
+          error: message,
+          warnings: [],
+          assertions: [{ name: "beforeStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(beforeStepError?.message || beforeStepError), expected: "\u65E0\u5F02\u5E38" }],
+          request: null,
+          response: null
+        }, index);
+        if (runOptions.signal?.aborted) break;
         continue;
       }
       const result = await runStep(step, runtime, { ...runOptions, config });
-      result.stepNo = index + 1;
-      results.push(result);
-      try {
-        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
-      } catch (hookError) {
-        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        result.passed = false;
-        result.skipped = false;
-        result.status = "ERROR";
-        result.error = message;
-        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
-      }
-      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+      await emitStep(result, index);
       if (runOptions.signal?.aborted) break;
     }
     const skipped = results.filter((item) => item.skipped).length;
@@ -4157,6 +4207,15 @@ function createEngine(engineOptions = {}) {
     const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       scenarioName: scenario.name,
+      // worker 是运行标识：报告只投影 index/total/sharedRequestKey，
+      // 不把内部 vars 容器带进输出（与 d.ts 声明形状一致）。
+      ...runtime.worker ? {
+        worker: {
+          index: runtime.worker.index,
+          total: runtime.worker.total,
+          sharedRequestKey: runtime.worker.sharedRequestKey
+        }
+      } : {},
       passed: failed === 0 && results.length === scenario.steps.length,
       status,
       planned: scenario.steps.length,
@@ -10489,6 +10548,7 @@ export {
   buildChinaIdNumber,
   buildUrl,
   buildUsccCode,
+  buildWorkerContext,
   clearAdapters,
   clearScenarios,
   clone,

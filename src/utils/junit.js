@@ -99,6 +99,38 @@ export function buildJUnitXml(reports, options = {}) {
         );
     }
 
+    // 同场景并发（#191）摘要：每个 worker 一条 testcase，冲突按 skipped 落盘，
+    // 使 CI 能同时看到「恰好一个成功 + 其余业务冲突」的竞争结论与失败明细。
+    // --data 时同一场景有多轮竞争，suite 名带上数据行，避免同名 suite 在 CI 里互相覆盖。
+    for (const summary of options.concurrency || []) {
+        const suiteName = `${summary.scenarioId || "scenario"}${summary.dataRow ? `#row-${summary.dataRow}` : ""}#workers`;
+        const cases = [];
+        for (const worker of summary.workerResults || []) {
+            const name = escapeXml(`W${worker.worker} ${worker.outcome}`);
+            const classname = escapeXml(suiteName);
+            const detail = (worker.assertions || [])
+                .filter((item) => !item.passed)
+                .map((item) => `${item.name}: expected=${safeJson(item.expected)} actual=${safeJson(item.actual)}`)
+                .join("\n");
+            if (worker.outcome === "conflict") {
+                cases.push(`    <testcase name="${name}" classname="${classname}" time="0.000"><skipped message="业务冲突（幂等/并发预期）">${escapeXml(detail)}</skipped></testcase>`);
+                totalTests += 1;
+                totalSkipped += 1;
+            } else if (worker.outcome === "success") {
+                cases.push(`    <testcase name="${name}" classname="${classname}" time="0.000"/>`);
+                totalTests += 1;
+            } else {
+                cases.push(`    <testcase name="${name}" classname="${classname}" time="0.000"><failure message="${escapeXml(worker.status || "FAILED")}">${escapeXml(detail || "请求执行失败")}</failure></testcase>`);
+                totalTests += 1;
+                totalFailures += 1;
+            }
+        }
+        suites.push(
+            `  <testsuite name="${escapeXml(suiteName)}" tests="${cases.length}" failures="${(summary.workerResults || []).filter((item) => item.outcome === "failed").length}" skipped="${(summary.workerResults || []).filter((item) => item.outcome === "conflict").length}" time="0.000">\n`
+            + `${cases.join("\n")}${cases.length ? "\n" : ""}  </testsuite>`
+        );
+    }
+
     // 未执行场景（--bail / 并发中断）：以 skipped testcase 落盘，避免 CI 报告只看到
     // 已有用例而完全不知道有场景被跳过
     for (const skippedEntry of options.notRun || []) {
