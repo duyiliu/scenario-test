@@ -1,0 +1,270 @@
+name: Auto Merge (docs only)
+
+# 威胁模型（2026-11-21，v2）：
+# 1. pull_request_target 执行的是 base 分支（master）上的本文件，不是 PR 里的版本；
+#    改 .github/workflows/** 的 PR 改不到这里。
+# 2. 本 workflow 绝不 checkout PR head、绝不执行 PR 内任何脚本；只 checkout base.sha，
+#    分类、对账、检查判定全部运行 base 分支的 scripts/ci/*。
+# 3. 写权限只用于 squash merge 与删除已合并分支；任何缺数据、清单截断、检查来源不明、
+#    head SHA 变化都 fail-closed（不合并）。
+# 4. 只对纯文档生效：docs/**/*.md 与仓库根 *.md；
+#    涉及 .github/**、scripts/ci/**、任意层级 AGENTS.md / CLAUDE.md 的 PR 永不自动合并。
+#
+# 本文件不得 checkout PR head，不得执行 PR 脚本。新增步骤前先回答：它读的是 base 还是 PR？
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    name: auto merge docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      # 只允许 base：这里绝不能出现 PR head 的 ref。
+      - name: Check out trusted base revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Guard, verify and merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          summary() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
+          skip() { summary "- **不合并**：$*"; exit 0; }
+          # L3：任何未预期失败也留下原因，避免只有红叉没有解释。
+          on_exit() {
+            local rc=$?
+            if [ "$rc" -ne 0 ]; then
+              summary "- **中止**：步骤非零退出（rc=$rc），未合并"
+            fi
+          }
+          trap on_exit EXIT
+
+          summary "### 纯文档自动合并"
+          summary ""
+          summary "- PR: #$PR_NUMBER"
+          summary "- head SHA: \`$HEAD_SHA\`"
+
+          [ "$HEAD_REPO" = "$REPO" ] || skip "fork PR（head repo=$HEAD_REPO）"
+          [ "$BASE_REF" = "master" ] || skip "base 不是 master（base=$BASE_REF）"
+          [ "$PR_DRAFT" != "true" ] || skip "PR 仍是 draft"
+
+          labels=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name')
+          if printf '%s\n' "$labels" | grep -qxE 'hold|do-not-merge'; then
+            skip "存在 hold / do-not-merge 标签"
+          fi
+
+          all_file="$RUNNER_TEMP/changed-all.txt"
+          listed_file="$RUNNER_TEMP/changed-listed.txt"
+          status_file="$RUNNER_TEMP/changed-status.tsv"
+          # N4：三次 pulls/:n/files 快照之间可能不一致；由 --match-head-commit 与 concurrency 兜底，
+          # 这里不额外加逻辑。
+          # 含改名前的旧路径：git mv .github/x.md docs/x.md 只有新路径会被放行。
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$all_file"; then
+            summary "- **不合并**：读取 PR 文件清单（含 previous_filename）失败"
+            exit 1
+          fi
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[].filename' > "$listed_file"; then
+            summary "- **不合并**：读取 PR 文件清单失败"
+            exit 1
+          fi
+          if ! gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | [.status, .filename] | @tsv' > "$status_file"; then
+            summary "- **不合并**：读取 PR 改动状态失败"
+            exit 1
+          fi
+
+          listed=$(wc -l < "$listed_file" | tr -d ' ')
+          changed=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json changedFiles --jq '.changedFiles')
+          recon=$(bash scripts/ci/reconcile-files.sh "$listed" "$changed")
+          summary "- 清单对账：\`$recon\`（changedFiles=$changed，返回 $listed 条）"
+          [ "$recon" = "reconcile=ok" ] || skip "文件清单与 PR 改动数不一致，可能被截断"
+
+          blocked=""
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            case "$file" in
+              .github/*) blocked=".github/**"; break ;;
+              scripts/ci/*) blocked="scripts/ci/**"; break ;;
+              AGENTS.md|*/AGENTS.md|CLAUDE.md|*/CLAUDE.md) blocked="AGENTS.md / CLAUDE.md"; break ;;
+            esac
+          done < "$all_file"
+          [ -z "$blocked" ] || skip "涉及 $blocked，属于永不自动合并路径"
+
+          result=$(bash scripts/ci/classify-risk.sh < "$all_file")
+          case "$result" in
+            low_risk=true|low_risk=false) ;;
+            *)
+              echo "::error::分类脚本输出非法：$result"
+              summary "- **不合并**：分类脚本输出非法：\`$result\`"
+              exit 1
+              ;;
+          esac
+          [ "$result" = "low_risk=true" ] || skip "不是纯文档（classify: $result）"
+
+          # M2：classify 只看路径；这里用 head tree 的 mode 排除 symlink / gitlink。
+          tree_json="$RUNNER_TEMP/tree.json"
+          tree_file="$RUNNER_TEMP/tree.tsv"
+          if ! gh api "repos/$REPO/git/trees/$HEAD_SHA?recursive=1" > "$tree_json"; then
+            summary "- **不合并**：读取 head tree 失败（$HEAD_SHA）"
+            exit 1
+          fi
+          truncated=$(jq -r '.truncated // false' "$tree_json")
+          if ! jq -r '.tree[] | [.path, .mode] | @tsv' "$tree_json" > "$tree_file"; then
+            summary "- **不合并**：解析 head tree 失败"
+            exit 1
+          fi
+          tree_report=$(bash scripts/ci/evaluate-tree.sh "$truncated" "$status_file" "$tree_file")
+          if ! printf '%s\n' "$tree_report" | grep -qx $'verdict\tok'; then
+            while IFS=$'\t' read -r kind path reason; do
+              [ "$kind" = "not-ok" ] || continue
+              summary "- **不合并**：\`$path\` — $reason"
+            done <<< "$tree_report"
+            exit 0
+          fi
+          summary "- tree 校验：全部文档路径为普通文件（100644/100755），未截断"
+
+          required=(
+            "unit (ubuntu-24.04, node 22)"
+            "unit (ubuntu-24.04, node 24)"
+            "unit (windows-latest, node 22)"
+            "unit (windows-latest, node 24)"
+            "d.ts 类型自检"
+            "browser (playwright)"
+            "e2e install+run chain (ubuntu-24.04)"
+            "e2e install+run chain (windows-latest)"
+          )
+
+          raw_file="$RUNNER_TEMP/check-runs-raw.tsv"
+          eval_file="$RUNNER_TEMP/check-runs.tsv"
+          run_cache="$RUNNER_TEMP/run-paths.tsv"
+          : > "$run_cache"
+
+          run_path() {
+            local id=$1 cached
+            cached=$(awk -F'\t' -v i="$id" '$1 == i { print $2 }' "$run_cache")
+            if [ -n "$cached" ]; then
+              printf '%s' "$cached"
+              return 0
+            fi
+            local path
+            path=$(gh api "repos/$REPO/actions/runs/$id" --jq '.path' 2>/dev/null || printf 'api-error')
+            printf '%s\t%s\n' "$id" "$path" >> "$run_cache"
+            printf '%s' "$path"
+          }
+
+          deadline=$((SECONDS + 1800))
+          absent_since=""
+          while :; do
+            state=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+              --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeStateStatus)"')
+            mergeable=${state%% *}
+            merge_state=${state#* }
+            if [ "$mergeable" = "UNKNOWN" ] || [ "$merge_state" = "UNKNOWN" ]; then
+              sleep 20
+              continue
+            fi
+
+            if ! gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --paginate \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "null"), (.app.slug // "null"), (.details_url // "")] | @tsv' \
+              > "$raw_file"; then
+              echo "::error::无法读取 head $HEAD_SHA 的 check-runs"
+              summary "- **不合并**：无法读取 head \`$HEAD_SHA\` 的 check-runs"
+              exit 1
+            fi
+
+            : > "$eval_file"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              head_fields=$(printf '%s' "$line" | cut -f1-4)
+              details=$(printf '%s' "$line" | cut -f5)
+              run_id=$(printf '%s' "$details" | sed -n 's#.*/actions/runs/\([0-9]\{1,\}\).*#\1#p')
+              if [ -z "$run_id" ] || [[ "$details" != "https://github.com/$REPO/actions/runs/"* ]]; then
+                printf '%s\t(foreign-url)\n' "$head_fields" >> "$eval_file"
+                continue
+              fi
+              printf '%s\t%s\n' "$head_fields" "$(run_path "$run_id")" >> "$eval_file"
+            done < "$raw_file"
+
+            report=$(bash scripts/ci/evaluate-checks.sh "${required[@]}" < "$eval_file")
+            absent=$(printf '%s\n' "$report" | grep -c $'\tabsent$' || true)
+
+            pending=()
+            while IFS=$'\t' read -r kind name reason; do
+              [ "$kind" = "not-ok" ] || continue
+              pending+=("$name:$reason")
+            done <<< "$(printf '%s\n' "$report" | grep -v '^verdict' || true)"
+            [ "$mergeable" = "MERGEABLE" ] || pending+=("mergeable:$mergeable")
+            [ "$merge_state" = "CLEAN" ] || pending+=("mergeStateStatus:$merge_state")
+
+            if [ "$absent" -eq "${#required[@]}" ]; then
+              if [ -z "$absent_since" ]; then
+                absent_since=$SECONDS
+              elif [ $((SECONDS - absent_since)) -ge 300 ]; then
+                summary "- **不合并**：8 项必需检查 5 分钟内全部 absent（纯文档 PR 被 ci.yml 的 paths-ignore 跳过，需要 #181）"
+                exit 0
+              fi
+            else
+              absent_since=""
+            fi
+
+            if [ "${#pending[@]}" -eq 0 ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              summary "- **不合并**：30 分钟内未满足：${pending[*]}"
+              exit 0
+            fi
+            echo "等待中（剩余 $((deadline - SECONDS))s）：${pending[*]}"
+            sleep 20
+          done
+
+          current_sha=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
+          [ "$current_sha" = "$HEAD_SHA" ] || skip "head 已从 \`$HEAD_SHA\` 变为 \`$current_sha\`，等待新一轮"
+
+          state=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+            --json mergeable,mergeStateStatus --jq '"\(.mergeable) \(.mergeStateStatus)"')
+          [ "$state" = "MERGEABLE CLEAN" ] || skip "合并前状态不再是 MERGEABLE CLEAN：$state"
+
+          if ! bash scripts/ci/assert-auto-merge-guards.sh .github/workflows/auto-merge.yml; then
+            summary "- **不合并**：auto-merge 守卫断言失败"
+            exit 1
+          fi
+
+          summary "- **合并**：纯文档；8 项必需检查全部 success；mergeStateStatus=clean"
+          if ! gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+            summary "- **合并失败**：gh pr merge 返回非零（head 可能已变或被拒绝）"
+            exit 1
+          fi
+          merged=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,mergedAt --jq '"\(.state) \(.mergedAt)"')
+          summary "- 结果：\`$merged\`"
