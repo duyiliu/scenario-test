@@ -665,6 +665,19 @@ test("CLI --help 列出全部子命令与关键选项", async () => {
     }
 });
 
+test("CLI --help projects 段含子命令列表与示例", async () => {
+    const result = await runCli(["--help"]);
+    assert.equal(result.code, 0);
+    // projects 段标题存在
+    assert.match(result.stdout, /项目登记命令:/);
+    // 全部子命令出现在 help 中
+    for (const sub of ["projects list", "projects set-port", "projects set-default-port", "projects ensure", "projects remove"]) {
+        assert.match(result.stdout, new RegExp(sub.replace(/[-]/g, "\\-")), `help 应包含 ${sub}`);
+    }
+    // 至少一条 projects 示例命令
+    assert.match(result.stdout, /node scenario-test-cli\.cjs projects list/);
+});
+
 test("CLI --help 选项清单从 contract 投射：每个契约选项均出现，无孤儿选项行", async () => {
     const { contract } = await import("../src/index.js");
     const result = await runCli(["--help"]);
