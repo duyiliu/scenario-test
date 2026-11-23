@@ -2047,6 +2047,44 @@ test("onStep 回调抛错降级为步骤 ERROR，不吞掉整轮报告", async (
     assert.equal(report3.results[0].skipped, false);
 });
 
+test("beforeStep 回调抛错降级为步骤 ERROR，不向上抛也不发请求", async () => {
+    let calls = 0;
+    const engine = createEngine({
+        fetch: async () => {
+            calls += 1;
+            return jsonResponse({ code: 0 });
+        }
+    });
+    // 首个 beforeStep 抛错：该步骤按执行失败返回，runScenario 不 reject，
+    // 请求不发出（否则竞争场景会把「屏障异常」伪装成一次真实业务提交）。
+    const report = await engine.runScenario(
+        { name: "A", failurePolicy: "continue", steps: [{ name: "s1", path: "x" }, { name: "s2", path: "x" }] },
+        {
+            beforeStep: (step, index) => {
+                if (index === 0) throw new Error("barrier boom");
+            }
+        }
+    );
+    assert.equal(report.status, "FAILED");
+    assert.equal(report.results.length, 2);
+    assert.equal(report.results[0].status, "ERROR");
+    assert.equal(report.results[0].passed, false);
+    assert.match(report.results[0].error, /beforeStep 回调抛错/);
+    assert.ok(report.results[0].assertions.some((item) => item.name === "beforeStep 回调无异常" && !item.passed));
+    assert.equal(report.results[0].request, null, "回调抛错时不应发起请求");
+    assert.equal(report.results[0].response, null);
+    assert.equal(report.results[1].passed, true);
+    assert.equal(calls, 1, "只有第二步真正发出请求");
+    // failurePolicy 默认 stop：后续非 always 步骤不再执行
+    const report2 = await engine.runScenario(
+        { name: "A", steps: [{ name: "s1", path: "x" }, { name: "s2", path: "x" }] },
+        { beforeStep: () => { throw new Error("boom"); } }
+    );
+    assert.equal(report2.results.length, 2);
+    assert.equal(report2.results[0].status, "ERROR");
+    assert.equal(report2.results[1].status, "SKIPPED");
+});
+
 test("fetch 拒绝时透出 error.cause（ENOTFOUND/ECONNREFUSED 等真实原因进 CI 日志）", async () => {
     const engine = createEngine({
         fetch: async () => {

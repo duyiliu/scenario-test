@@ -4227,6 +4227,21 @@ function createEngine(engineOptions = {}) {
     });
     const results = [];
     let halted = false;
+    const emitStep = async (result, index) => {
+      result.stepNo = index + 1;
+      results.push(result);
+      try {
+        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+      } catch (hookError) {
+        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        result.passed = false;
+        result.skipped = false;
+        result.status = "ERROR";
+        result.error = message;
+        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
+      }
+      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+    };
     for (let index = 0; index < scenario.steps.length; index += 1) {
       const step = scenario.steps[index];
       if (halted && step.always !== true) {
@@ -4243,35 +4258,38 @@ function createEngine(engineOptions = {}) {
           warnings: ["\u524D\u7F6E\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\uFF0C\u975E always \u6B65\u9AA4\u672A\u6267\u884C"],
           assertions: [],
           request: null,
-          response: null,
-          stepNo: index + 1
+          response: null
         };
-        results.push(skipped2);
-        try {
-          await (runOptions.onStep ?? engineOptions.onStep)?.(skipped2, index, runtime);
-        } catch (hookError) {
-          skipped2.passed = false;
-          skipped2.skipped = false;
-          skipped2.status = "ERROR";
-          skipped2.error = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        }
+        await emitStep(skipped2, index);
         continue;
       }
-      await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
-      const result = await runStep(step, runtime, { ...runOptions, config });
-      result.stepNo = index + 1;
-      results.push(result);
+      let beforeStepError = null;
       try {
-        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+        await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
       } catch (hookError) {
-        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        result.passed = false;
-        result.skipped = false;
-        result.status = "ERROR";
-        result.error = message;
-        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
+        beforeStepError = hookError;
       }
-      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+      if (beforeStepError) {
+        const message = `beforeStep \u56DE\u8C03\u629B\u9519: ${beforeStepError?.message || beforeStepError}`;
+        await emitStep({
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: String(step.method || step.request && step.request.method || "GET").toUpperCase(),
+          path: step.path || "",
+          status: "ERROR",
+          duration: 0,
+          passed: false,
+          always: step.always === true,
+          error: message,
+          warnings: [],
+          assertions: [{ name: "beforeStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(beforeStepError?.message || beforeStepError), expected: "\u65E0\u5F02\u5E38" }],
+          request: null,
+          response: null
+        }, index);
+        if (runOptions.signal?.aborted) break;
+        continue;
+      }
+      const result = await runStep(step, runtime, { ...runOptions, config });
+      await emitStep(result, index);
       if (runOptions.signal?.aborted) break;
     }
     const skipped = results.filter((item) => item.skipped).length;

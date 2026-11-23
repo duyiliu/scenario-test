@@ -203,6 +203,124 @@ test("#191 共享请求键模式：所有 worker 使用同一 requestKey，最�
     }
 });
 
+test("#191 并发状态流转：多步场景末步竞争，记录数符合预期且冲突归因到竞争步骤", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-issue191-flow-"));
+    fs.mkdirSync(path.join(directory, "scenarios"), { recursive: true });
+    let stored = 0;
+    let transitions = 0;
+    let transitionAttempts = 0;
+    const transitionsByWorker = [];
+    const server = http.createServer((request, response) => {
+        let raw = "";
+        request.setEncoding("utf8");
+        request.on("data", (chunk) => { raw += chunk; });
+        request.on("end", () => {
+            const body = raw ? JSON.parse(raw) : {};
+            const url = new URL(request.url, "http://127.0.0.1");
+            if (request.method === "POST" && url.pathname === "/orders") {
+                // 首步是幂等创建：同键重放一律 201，所有 worker 拿到同一业务 ID，
+                // 把竞争窗口整体推到第二步（这才是本用例要覆盖的 failedStep ≠ 首步）。
+                if (!stored) stored = 1;
+                response.writeHead(201, { "Content-Type": "application/json" });
+                response.end(JSON.stringify({ worker: body.worker, businessId: "order-1", status: "created" }));
+                return;
+            }
+            if (request.method === "POST" && url.pathname === "/orders/order-1/status") {
+                // 状态流转只有一次合法：其余 worker 撞上 409——竞争窗口在第二步，
+                // 冲突必须归因到这一步，而不是场景首步。
+                transitionAttempts += 1;
+                const conflict = transitions >= 1;
+                if (!conflict) transitions += 1;
+                transitionsByWorker.push(body.worker);
+                response.writeHead(conflict ? 409 : 200, { "Content-Type": "application/json" });
+                response.end(JSON.stringify({
+                    worker: body.worker,
+                    businessId: "order-1",
+                    status: conflict ? "created" : "paid",
+                    conflict
+                }));
+                return;
+            }
+            response.writeHead(404, { "Content-Type": "application/json" });
+            response.end("{}");
+        });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+        const port = server.address().port;
+        fs.writeFileSync(
+            path.join(directory, "scenario.config.js"),
+            `ScenarioTest.registerConfig(ScenarioTest.defineConfig({
+                envs: [{ key: "mock", name: "Mock", baseUrl: "http://127.0.0.1:${port}" }],
+                scenarios: [{ id: "flow", name: "Concurrent Flow", url: "scenarios/flow.js" }]
+            }));`,
+            "utf8"
+        );
+        fs.writeFileSync(
+            path.join(directory, "scenarios/flow.js"),
+            `ScenarioTest.registerScenario("flow", ScenarioTest.defineScenario({
+                name: "Concurrent Flow",
+                steps: [
+                    {
+                        name: "create",
+                        method: "POST",
+                        path: "orders",
+                        status: 201,
+                        request: { body: { requestKey: "{{vars.sharedRequestKey}}", worker: "{{vars.worker}}" } },
+                        extract: [{ name: "orderId", path: "businessId" }]
+                    },
+                    {
+                        name: "transition",
+                        method: "POST",
+                        path: "orders/{{vars.orderId}}/status",
+                        status: 200,
+                        request: { body: { worker: "{{vars.worker}}", status: "paid" } },
+                        assertions: [{ path: "status", equals: "paid" }]
+                    }
+                ]
+            }));`,
+            "utf8"
+        );
+        const result = await runCli([
+            "--config", path.join(directory, "scenario.config.js"),
+            "--scenario", "flow",
+            "--workers", "3",
+            "--same-scenario",
+            "--shared-request-key",
+            "--json"
+        ]);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.concurrency.length, 1);
+        const summary = payload.concurrency[0];
+        assert.equal(summary.workers, 3);
+        // 首步按幂等键只落一条数据；竞争转移到第二步，仍是「恰好 1 成功 + 其余冲突」
+        assert.equal(stored, 1, "并发创建只落一条有效数据");
+        assert.equal(transitions, 1, "状态流转记录数符合预期：只有一次合法流转");
+        assert.equal(transitionAttempts, 3, "每个 worker 都应执行到竞争步骤");
+        assert.equal(summary.success, 1);
+        assert.equal(summary.conflict, 2);
+        assert.equal(summary.failed, 0);
+        assert.equal(summary.singleBusinessId, true);
+        assert.deepEqual(summary.businessIds, ["order-1"]);
+        // 冲突 worker 的失败步骤必须是第二步：failedStep 与首步不同的分支
+        assert.equal(summary.failures.length, 2);
+        for (const worker of summary.failures) {
+            assert.equal(worker.outcome, "conflict");
+            assert.equal(worker.step, "transition", "冲突应归因到竞争发生的步骤");
+            assert.equal(worker.httpStatus, 409);
+            assert.ok(worker.response, "失败明细应包含竞争步骤的响应");
+            assert.ok(worker.assertions.some((item) => !item.passed), "失败明细应包含断言差异");
+        }
+        assert.deepEqual(transitionsByWorker.sort(), [1, 2, 3]);
+        assert.match(result.stderr, /结论：同场景并发通过/);
+        assert.doesNotMatch(result.stderr, /结论：执行失败/, "预期冲突不应让结论自相矛盾");
+    } finally {
+        server.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("#191 失败时输出每个 worker 的请求/响应/断言差异，并以非零退出", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-test-issue191-fail-"));
     const server = http.createServer((request, response) => {

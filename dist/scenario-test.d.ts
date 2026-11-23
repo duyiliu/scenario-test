@@ -480,7 +480,7 @@ export interface EngineOptions {
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
     /** 引擎级重试进度回调（runOptions.onAttempt 优先） */
     onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
-    /** 引擎级步骤开始前回调（runOptions.beforeStep 优先） */
+    /** 引擎级步骤开始前回调（runOptions.beforeStep 优先；抛错时该步骤按执行失败返回，且不发起该步骤请求） */
     beforeStep?: (step: Step, index: number, runtime: Runtime) => void | Promise<void>;
 }
 
@@ -519,7 +519,7 @@ export interface RunOptions {
     /** 上传文件大小上限（字节，0/未设置不限；优先于 config/引擎级配置） */
     maxUploadBytes?: number;
     onStep?: (result: ScenarioStepResult, index: number, runtime: Runtime) => void | Promise<void>;
-    /** 步骤开始前回调（同场景并发启动屏障使用；抛错时该步骤按执行失败返回） */
+    /** 步骤开始前回调（同场景并发启动屏障使用；抛错时该步骤按执行失败返回，且不发起该步骤请求） */
     beforeStep?: (step: Step, index: number, runtime: Runtime) => void | Promise<void>;
     onAttempt?: (info: RetryAttemptInfo) => void | Promise<void>;
 }

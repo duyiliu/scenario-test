@@ -273,6 +273,7 @@ __export(node_exports, {
   buildChinaIdNumber: () => buildChinaIdNumber,
   buildUrl: () => buildUrl,
   buildUsccCode: () => buildUsccCode,
+  buildWorkerContext: () => buildWorkerContext,
   clearAdapters: () => clearAdapters,
   clearScenarios: () => clearScenarios,
   clone: () => clone,
@@ -433,10 +434,10 @@ var import_blueimp_md5 = __toESM(require_md5(), 1);
 
 // src/version.generated.js
 var VERSION = "0.15.0";
-var BUILD_ID = "9fee733d97d8599643604ae860a877ec9e4aab17ea2b6485c462b42d57f4592d-uav";
+var BUILD_ID = "db4dc0f78c98573296b67e2a9d2b9e1947be048b8e33aa25a8deca48b92fb570-uav";
 
 // src/contract.js
-var CONTRACT_VERSION = 24;
+var CONTRACT_VERSION = 25;
 var RETRY_UNTIL_KEYS = Object.freeze(["maxAttempts", "intervalMs", "maxElapsedMs", "retryOn", "intervalFactor", "maxIntervalMs"]);
 var contract = Object.freeze({
   contractVersion: CONTRACT_VERSION,
@@ -762,6 +763,9 @@ var contract = Object.freeze({
       open: { kind: "flag", prop: "open", description: "serve \u76D1\u542C\u6210\u529F\u540E\u7528\u9ED8\u8BA4\u6D4F\u89C8\u5668\u6253\u5F00\u5DE5\u4F5C\u53F0" },
       reassign: { kind: "flag", prop: "reassign", description: "projects ensure\uFF1A\u767B\u8BB0\u7AEF\u53E3\u88AB\u5360\u7528\u65F6\u81EA\u52A8\u987A\u5EF6\u5230\u7A7A\u95F2\u7AEF\u53E3\u5E76\u66F4\u65B0\u767B\u8BB0" },
       concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run \u591A\u573A\u666F\u5E76\u53D1\u6570\uFF0C\u9ED8\u8BA4 1\uFF08\u4E32\u884C\uFF09\uFF1B\u573A\u666F\u5185\u6B65\u9AA4\u59CB\u7EC8\u4FDD\u6301\u4E32\u884C" },
+      workers: { kind: "value", prop: "workers", parse: "number", description: "\u540C\u4E00\u573A\u666F\u5E76\u53D1\u6267\u884C\u7684 worker \u6570\uFF1B\u5FC5\u987B\u4E0E --same-scenario \u540C\u65F6\u4F7F\u7528" },
+      "same-scenario": { kind: "flag", prop: "sameScenario", description: "\u5C06\u9009\u5B9A\u573A\u666F\u590D\u5236\u4E3A --workers \u4E2A\u5E76\u53D1\u5B9E\u4F8B\uFF0Cworker \u901A\u8FC7\u542F\u52A8\u5C4F\u969C\u5BF9\u9F50\u9996\u4E2A\u8BF7\u6C42" },
+      "shared-request-key": { kind: "flag", prop: "sharedRequestKey", description: "\u540C\u573A\u666F\u5E76\u53D1\u65F6\u542F\u7528\u5171\u4EAB\u8BF7\u6C42\u952E\u6A21\u5F0F\uFF0C\u5E76\u6CE8\u5165 vars.sharedRequestKey=shared\uFF08\u53EF\u5728\u573A\u666F\u4E2D\u76F4\u63A5\u5F15\u7528\uFF09" },
       e2e: { kind: "flag", prop: "e2e", description: "init \u53EF\u9009\u521D\u59CB\u5316\u6D4F\u89C8\u5668 E2E \u9879\u76EE" },
       project: { kind: "value", prop: "project", description: "init \u76EE\u6807\u9879\u76EE\u6839\u76EE\u5F55" },
       dir: { kind: "value", prop: "dir", description: "init \u573A\u666F\u6D4B\u8BD5\u76EE\u5F55\u540D" },
@@ -2234,6 +2238,24 @@ function buildAssertions(step, response, runtime, context) {
   return definitions.map((definition, index) => evaluateAssertion(definition, response, runtime, { ...context || {}, assertionNo: index + 1 }));
 }
 var RESERVED_VARS = [...contract.reservedVars];
+function buildWorkerContext(workerIndex, workerTotal, sharedRequestKey = false) {
+  const index = Number(workerIndex);
+  const total = Number(workerTotal);
+  if (!Number.isInteger(index) || index < 1) throw new TypeError("workerIndex \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+  if (!Number.isInteger(total) || total < 1) throw new TypeError("workerTotal \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+  if (index > total) throw new TypeError("workerIndex \u4E0D\u80FD\u8D85\u8FC7 workerTotal");
+  return Object.freeze({
+    index,
+    total,
+    sharedRequestKey: sharedRequestKey === true,
+    vars: Object.freeze({
+      worker: index,
+      workerIndex: index,
+      workerTotal: total,
+      ...sharedRequestKey === true ? { sharedRequestKey: "shared" } : {}
+    })
+  });
+}
 function assertNotReservedVar(name, label) {
   if (RESERVED_VARS.includes(name)) {
     throw new Error(`${label || "\u53D8\u91CF"} "${name}" \u662F\u8FD0\u884C\u65F6\u81EA\u52A8\u751F\u6210\u7684\u4FDD\u7559\u53D8\u91CF\uFF0C\u7981\u6B62\u58F0\u660E\u6216\u8986\u76D6`);
@@ -3656,11 +3678,13 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
   const identifiers = createRunIdentifiers();
   const suiteVars = layers.suite || {};
   const configVars = layers.configVars || {};
+  const workerVars = options.worker?.vars || {};
   const optionVars = layers.optionVars || {};
   assertNoReservedVars(scenario.vars, "\u573A\u666F vars");
   assertNoReservedVars(configVars, "\u914D\u7F6E vars");
   assertNoReservedVars(optionVars, "\u9009\u9879 vars");
-  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...identifiers };
+  const vars = { ...suiteVars, ...scenario.vars || {}, ...configVars, ...optionVars, ...workerVars };
+  for (const [name, value2] of Object.entries(identifiers)) setRuntimeVar(vars, name, value2);
   const verboseErrors = options.verboseErrors || typeof process !== "undefined" && process.env?.SCENARIO_VERBOSE_ERRORS === "true";
   for (const [name, environmentName] of Object.entries(scenario.envVars || {})) {
     assertNotReservedVar(name, `\u573A\u666F envVars`);
@@ -3693,6 +3717,7 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
   return vars;
 }
 function createRuntime(scenario, options = {}) {
+  const worker = options.worker === void 0 ? null : options.worker === true ? buildWorkerContext(options.workerIndex || 1, options.workerTotal || 1, options.sharedRequestKey) : buildWorkerContext(options.worker.index, options.worker.total, options.worker.sharedRequestKey);
   const config = options.config || {};
   const suite = isPlainObject(options.suite) ? options.suite : isPlainObject(options.suiteVars) ? options.suiteVars : {};
   const runtime = {
@@ -3700,7 +3725,7 @@ function createRuntime(scenario, options = {}) {
       scenario,
       { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
       options.environmentVariables || {},
-      { now: options.now, clock: options.clock }
+      { now: options.now, clock: options.clock, worker }
     ),
     // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
     // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
@@ -3709,7 +3734,8 @@ function createRuntime(scenario, options = {}) {
     lastResponse: null,
     lastResponseBody: null,
     // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
-    cookieJar: []
+    cookieJar: [],
+    worker
   };
   return runtime;
 }
@@ -4435,6 +4461,12 @@ function createEngine(engineOptions = {}) {
       config,
       vars: { ...engineOptions.vars || {}, ...runOptions.vars || {} },
       environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+      worker: runOptions.worker !== void 0 ? runOptions.worker : engineOptions.worker,
+      ...runOptions.worker === true ? {
+        workerIndex: runOptions.workerIndex,
+        workerTotal: runOptions.workerTotal,
+        sharedRequestKey: runOptions.sharedRequestKey
+      } : {},
       // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
       suite: runOptions.suite !== void 0 ? runOptions.suite : runOptions.suiteVars !== void 0 ? runOptions.suiteVars : engineOptions.suite !== void 0 ? engineOptions.suite : engineOptions.suiteVars,
       // 单次运行显式覆盖优先于引擎级默认；?? 保留 now: 0 这类合法固定值
@@ -4443,6 +4475,21 @@ function createEngine(engineOptions = {}) {
     });
     const results = [];
     let halted = false;
+    const emitStep = async (result, index) => {
+      result.stepNo = index + 1;
+      results.push(result);
+      try {
+        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
+      } catch (hookError) {
+        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
+        result.passed = false;
+        result.skipped = false;
+        result.status = "ERROR";
+        result.error = message;
+        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
+      }
+      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+    };
     for (let index = 0; index < scenario.steps.length; index += 1) {
       const step = scenario.steps[index];
       if (halted && step.always !== true) {
@@ -4459,34 +4506,38 @@ function createEngine(engineOptions = {}) {
           warnings: ["\u524D\u7F6E\u6B65\u9AA4\u5931\u8D25\uFF08failurePolicy: stop\uFF09\uFF0C\u975E always \u6B65\u9AA4\u672A\u6267\u884C"],
           assertions: [],
           request: null,
-          response: null,
-          stepNo: index + 1
+          response: null
         };
-        results.push(skipped2);
-        try {
-          await (runOptions.onStep ?? engineOptions.onStep)?.(skipped2, index, runtime);
-        } catch (hookError) {
-          skipped2.passed = false;
-          skipped2.skipped = false;
-          skipped2.status = "ERROR";
-          skipped2.error = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        }
+        await emitStep(skipped2, index);
+        continue;
+      }
+      let beforeStepError = null;
+      try {
+        await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
+      } catch (hookError) {
+        beforeStepError = hookError;
+      }
+      if (beforeStepError) {
+        const message = `beforeStep \u56DE\u8C03\u629B\u9519: ${beforeStepError?.message || beforeStepError}`;
+        await emitStep({
+          name: step.name || "\u672A\u547D\u540D\u6B65\u9AA4",
+          method: String(step.method || step.request && step.request.method || "GET").toUpperCase(),
+          path: step.path || "",
+          status: "ERROR",
+          duration: 0,
+          passed: false,
+          always: step.always === true,
+          error: message,
+          warnings: [],
+          assertions: [{ name: "beforeStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(beforeStepError?.message || beforeStepError), expected: "\u65E0\u5F02\u5E38" }],
+          request: null,
+          response: null
+        }, index);
+        if (runOptions.signal?.aborted) break;
         continue;
       }
       const result = await runStep(step, runtime, { ...runOptions, config });
-      result.stepNo = index + 1;
-      results.push(result);
-      try {
-        await (runOptions.onStep ?? engineOptions.onStep)?.(result, index, runtime);
-      } catch (hookError) {
-        const message = `onStep \u56DE\u8C03\u629B\u9519: ${hookError?.message || hookError}`;
-        result.passed = false;
-        result.skipped = false;
-        result.status = "ERROR";
-        result.error = message;
-        result.assertions.push({ name: "onStep \u56DE\u8C03\u65E0\u5F02\u5E38", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "\u65E0\u5F02\u5E38" });
-      }
-      if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+      await emitStep(result, index);
       if (runOptions.signal?.aborted) break;
     }
     const skipped = results.filter((item) => item.skipped).length;
@@ -4497,6 +4548,15 @@ function createEngine(engineOptions = {}) {
     const status = cancelled ? "CANCELLED" : failed > 0 ? "FAILED" : executed === 0 ? "SKIPPED" : "PASSED";
     return {
       scenarioName: scenario.name,
+      // worker 是运行标识：报告只投影 index/total/sharedRequestKey，
+      // 不把内部 vars 容器带进输出（与 d.ts 声明形状一致）。
+      ...runtime.worker ? {
+        worker: {
+          index: runtime.worker.index,
+          total: runtime.worker.total,
+          sharedRequestKey: runtime.worker.sharedRequestKey
+        }
+      } : {},
       passed: failed === 0 && results.length === scenario.steps.length,
       status,
       planned: scenario.steps.length,
@@ -7237,6 +7297,31 @@ function buildJUnitXml(reports, options = {}) {
 ${cases.join("\n")}${cases.length ? "\n" : ""}  </testsuite>`
     );
   }
+  for (const summary of options.concurrency || []) {
+    const suiteName = `${summary.scenarioId || "scenario"}${summary.dataRow ? `#row-${summary.dataRow}` : ""}#workers`;
+    const cases = [];
+    for (const worker of summary.workerResults || []) {
+      const name2 = escapeXml(`W${worker.worker} ${worker.outcome}`);
+      const classname = escapeXml(suiteName);
+      const detail = (worker.assertions || []).filter((item) => !item.passed).map((item) => `${item.name}: expected=${safeJson(item.expected)} actual=${safeJson(item.actual)}`).join("\n");
+      if (worker.outcome === "conflict") {
+        cases.push(`    <testcase name="${name2}" classname="${classname}" time="0.000"><skipped message="\u4E1A\u52A1\u51B2\u7A81\uFF08\u5E42\u7B49/\u5E76\u53D1\u9884\u671F\uFF09">${escapeXml(detail)}</skipped></testcase>`);
+        totalTests += 1;
+        totalSkipped += 1;
+      } else if (worker.outcome === "success") {
+        cases.push(`    <testcase name="${name2}" classname="${classname}" time="0.000"/>`);
+        totalTests += 1;
+      } else {
+        cases.push(`    <testcase name="${name2}" classname="${classname}" time="0.000"><failure message="${escapeXml(worker.status || "FAILED")}">${escapeXml(detail || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25")}</failure></testcase>`);
+        totalTests += 1;
+        totalFailures += 1;
+      }
+    }
+    suites.push(
+      `  <testsuite name="${escapeXml(suiteName)}" tests="${cases.length}" failures="${(summary.workerResults || []).filter((item) => item.outcome === "failed").length}" skipped="${(summary.workerResults || []).filter((item) => item.outcome === "conflict").length}" time="0.000">
+${cases.join("\n")}${cases.length ? "\n" : ""}  </testsuite>`
+    );
+  }
   for (const skippedEntry of options.notRun || []) {
     const id = skippedEntry.id || skippedEntry.name || "scenario";
     const suiteName = skippedEntry.row ? `${id}#row-${skippedEntry.row}` : id;
@@ -7279,7 +7364,16 @@ function buildHtmlReport(reports, options = {}) {
     return `<section><h2>${value(report.scenarioId || report.name)} \xB7 ${value(report.status)}</h2>${steps}${pending ? `<ul>${pending}</ul>` : ""}</section>`;
   }).join("");
   const notRun = (options.notRun || []).map((item) => `<li>\u672A\u6267\u884C\u573A\u666F\uFF1A${value(item)}</li>`).join("");
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}.structural-diff .diff-expected{color:#b91c1c;font-weight:600}.structural-diff .diff-actual{color:#047857;font-weight:600}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
+  const concurrency = (options.concurrency || []).map((summary) => {
+    const workers = (summary.workerResults || []).map((worker) => {
+      const failures = (worker.assertions || []).filter((assertion) => !assertion.passed).map((assertion) => `<li>${value(assertion.name)}\uFF1Aexpected=${value(assertion.expected)} actual=${value(assertion.actual)}</li>`).join("");
+      const body = worker.response?.bodyText ? `<pre>${value(String(worker.response.bodyText).slice(0, 2e3))}</pre>` : "";
+      return `<li>W${value(worker.worker)} \xB7 ${value(worker.outcome)}${worker.step ? ` \xB7 ${value(worker.step)}` : ""} \xB7 HTTP ${value(worker.httpStatus)}${worker.businessId ? ` \xB7 businessId=${value(worker.businessId)}` : ""}${failures ? `<ul>${failures}</ul>` : ""}${body}</li>`;
+    }).join("");
+    const suffix = summary.dataRow ? `\uFF08\u6570\u636E\u884C ${summary.dataRow}\uFF09` : "";
+    return `<section><h2>\u540C\u573A\u666F\u5E76\u53D1 \xB7 ${value(summary.scenarioId)}${value(suffix)} \xB7 ${summary.success} \u6210\u529F / ${summary.conflict} \u51B2\u7A81 / ${summary.failed} \u5931\u8D25</h2><p>\u5C4F\u969C\u9996\u8BF7\u6C42\u504F\u5DEE\uFF1A${value(summary.barrier?.maxSkewMs)} ms \xB7 \u5171\u4EAB\u8BF7\u6C42\u952E\uFF1A${summary.sharedRequestKey ? "\u662F" : "\u5426"} \xB7 \u4E1A\u52A1 ID \u4E00\u81F4\uFF1A${summary.singleBusinessId ? "\u662F" : "\u5426"}</p><ul>${workers}</ul></section>`;
+  }).join("");
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</title><style>body{font:15px/1.6 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#172033;background:#f5f7fb}section,article{background:white;border:1px solid #dce2ec;border-radius:10px;padding:16px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:12px}summary{cursor:pointer;overflow-wrap:anywhere}h2{font-size:20px}h3{font-size:16px}.structural-diff{border-left:3px solid #d94b4b;padding-left:12px}.structural-diff .diff-expected{color:#b91c1c;font-weight:600}.structural-diff .diff-actual{color:#047857;font-weight:600}</style><h1>\u573A\u666F\u6D4B\u8BD5\u62A5\u544A</h1><p>\u573A\u666F\u6570\uFF1A${reports.length} \xB7 \u73AF\u5883\uFF1A${value(options.environment)}</p>${concurrency}${sections}${notRun ? `<ul>${notRun}</ul>` : ""}</html>`;
 }
 function writeHtmlReport(file, reports, options) {
   const target = import_node_path9.default.resolve(file);
@@ -9121,7 +9215,7 @@ function parseOptionValue(raw, spec, option) {
   return raw;
 }
 function parseArgs(argv) {
-  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: void 0, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+  const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, workers: 2, workersExplicit: false, sameScenario: false, sharedRequestKey: false, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: void 0, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
   let start = 0;
   if (contract.cli.commands.includes(argv[0])) {
     args.command = argv[0];
@@ -9151,6 +9245,7 @@ function parseArgs(argv) {
         args[valueOption.prop] = parsed;
       }
       if (item === "--port") args.portExplicit = true;
+      if (item === "--workers") args.workersExplicit = true;
       if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
       continue;
     }
@@ -9181,6 +9276,21 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
     throw new CliUsageError("--concurrency \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u8BF7\u4E3A --concurrency \u9009\u62E9 1 \u6216\u66F4\u5927\u7684\u6574\u6570\uFF1B\u9ED8\u8BA4 1 \u4FDD\u6301\u4E32\u884C\u3002");
+  }
+  if (!Number.isInteger(args.workers) || args.workers < 1) {
+    throw new CliUsageError("--workers \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570", "\u8BF7\u4E3A --workers \u9009\u62E9 1 \u6216\u66F4\u5927\u7684\u6574\u6570\u3002");
+  }
+  if ((args.workersExplicit || args.sharedRequestKey) && !args.sameScenario) {
+    throw new CliUsageError(
+      "--workers/--shared-request-key \u5FC5\u987B\u4E0E --same-scenario \u540C\u65F6\u4F7F\u7528",
+      "\u793A\u4F8B\uFF1A--workers 4 --same-scenario\uFF1B--shared-request-key \u53EF\u53E0\u52A0\u7528\u4E8E\u5E42\u7B49\u952E\u7ADE\u4E89\u3002"
+    );
+  }
+  if (args.sameScenario && args.concurrency !== 1) {
+    throw new CliUsageError(
+      "--same-scenario \u4E0E --concurrency \u4E0D\u80FD\u540C\u65F6\u4F7F\u7528",
+      "--same-scenario \u590D\u7528\u540C\u4E00\u573A\u666F\u7684 worker\uFF1B\u591A\u573A\u666F\u5E76\u53D1\u8BF7\u6539\u7528 --concurrency\u3002"
+    );
   }
   if (args.timeout !== void 0 && (!Number.isFinite(args.timeout) || args.timeout <= 0)) {
     throw new CliUsageError(
@@ -9489,7 +9599,7 @@ function selectEnvironment(config, key) {
   }
   return environment;
 }
-function configVariables(config, overrides = {}, environment = null) {
+function configVariables(config, overrides = {}, environment = null, options = {}) {
   const values = { ...config.vars || {}, ...environment?.vars || {} };
   const provided = overrides && typeof overrides === "object" ? overrides : {};
   for (const definition of config.variables || []) {
@@ -9505,7 +9615,7 @@ function configVariables(config, overrides = {}, environment = null) {
       );
     }
   }
-  return { ...values, ...provided };
+  return options.includeOverrides === false ? { ...values } : { ...values, ...provided };
 }
 async function runCommand(args) {
   const configPath = resolveConfigPath(args.config);
@@ -9554,10 +9664,17 @@ ${choices.join("\n")}${remaining > 0 ? `
       "\u8BF7\u68C0\u67E5\u914D\u7F6E\u4E2D\u7684 scenarios \u5217\u8868\uFF1B\u5982\u573A\u666F\u5747\u4E3A manual:true\uFF0C\u8BF7\u786E\u8BA4\u6570\u636E\u51C6\u5907\u5B8C\u6210\u540E\u7528 --scenario <id> \u663E\u5F0F\u9009\u62E9\u3002"
     );
   }
+  if (args.sameScenario && entries.length !== 1) {
+    throw new CliUsageError(
+      `--same-scenario \u53EA\u63A5\u53D7\u4E00\u4E2A\u573A\u666F\uFF08\u5F53\u524D ${entries.length} \u4E2A\uFF09`,
+      "\u8BF7\u7528 --scenario <id> \u6307\u5B9A\u5355\u4E2A\u573A\u666F\uFF1B--same-scenario \u4F1A\u628A\u8BE5\u573A\u666F\u590D\u5236\u4E3A\u591A\u4E2A\u5E76\u53D1 worker\u3002"
+    );
+  }
   const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
   const adapters = {};
   for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
-  const baseVars = configVariables(config, args.vars, environment);
+  const sameScenarioMode = args.sameScenario === true;
+  const baseVars = configVariables(config, args.vars, environment, { includeOverrides: !sameScenarioMode });
   const suiteContext = {};
   const baseOptions = {
     config,
@@ -9599,9 +9716,74 @@ ${choices.join("\n")}${remaining > 0 ? `
   })();
   const dataRows = dataset ? dataset.rows : [null];
   const rowResults = [];
+  const workerContexts = sameScenarioMode ? Array.from({ length: args.workers }, (_, index) => buildWorkerContext(index + 1, args.workers, args.sharedRequestKey)) : [];
+  const sameScenario = { firstStartAt: null, lastStartAt: null, maxSkewMs: null, summaries: [], sharedRequestKey: args.sharedRequestKey === true };
+  const summarizeWorker = (report, workerContext) => {
+    const first = report.results?.[0] || null;
+    const failedStep = (report.results || []).find((item) => !item.skipped && !item.passed) || null;
+    const success = Boolean(report.passed);
+    const conflict = !success && Boolean(failedStep) && [409, 422, 423].includes(Number(failedStep.status));
+    const detail = failedStep || first;
+    const parseBusinessId = (body) => body && typeof body === "object" ? body.id ?? body.businessId ?? body.orderId ?? body.data?.id ?? null : null;
+    const businessId = (report.results || []).map((item) => parseBusinessId(item.response?.body)).find((value2) => value2 !== null && value2 !== void 0) ?? null;
+    return {
+      worker: workerContext.index,
+      scenarioId: report.scenarioId,
+      status: report.status,
+      passed: report.passed,
+      outcome: success ? "success" : conflict ? "conflict" : "failed",
+      httpStatus: detail?.status ?? null,
+      step: detail?.name ?? null,
+      businessId,
+      request: detail?.request || null,
+      response: detail?.response ? { status: detail.response.status, bodyText: detail.response.bodyText ?? null, body: detail.response.body ?? null } : null,
+      assertions: (detail?.assertions || []).map((item) => ({
+        name: item.name,
+        passed: item.passed,
+        expected: item.expected,
+        actual: item.actual,
+        ...item.reason ? { reason: item.reason } : {}
+      }))
+    };
+  };
+  const summarizeSameScenario = (workerReports, workerContexts2, entry, rowIndex, barrierStats = null) => {
+    const workers = workerReports.map((report, index) => report ? summarizeWorker(report, workerContexts2[index]) : null).filter(Boolean);
+    const successful = workers.filter((item) => item.outcome === "success");
+    const conflicts = workers.filter((item) => item.outcome === "conflict");
+    const failed = workers.filter((item) => item.outcome === "failed");
+    const businessIds = successful.map((item) => item.businessId).filter((value2) => value2 !== null && value2 !== void 0);
+    const uniqueBusinessIds = [...new Set(businessIds.map((value2) => String(value2)))];
+    const singleBusinessId = successful.length > 0 && businessIds.length > 0 && uniqueBusinessIds.length === 1;
+    return {
+      scenarioId: entry.id,
+      ...rowIndex !== void 0 ? { dataRow: rowIndex + 1 } : {},
+      workers: workers.length,
+      success: successful.length,
+      conflict: conflicts.length,
+      failed: failed.length,
+      singleBusinessId,
+      outcomeCounts: workers.reduce((counts, item) => {
+        counts[item.outcome] = (counts[item.outcome] || 0) + 1;
+        return counts;
+      }, {}),
+      businessIds: uniqueBusinessIds,
+      barrier: barrierStats || {
+        firstStartAt: sameScenario.firstStartAt,
+        lastStartAt: sameScenario.lastStartAt,
+        maxSkewMs: sameScenario.maxSkewMs
+      },
+      sharedRequestKey: sameScenario.sharedRequestKey,
+      failures: workers.filter((item) => item.outcome !== "success"),
+      workerResults: workers
+    };
+  };
+  const sameScenarioPassed = (summary) => summary.failed === 0 && summary.conflict === summary.workers - summary.success && summary.success >= 1 && (summary.success === summary.workers || summary.success === 1);
   const notRun = [];
   let bailTriggered = false;
   const allSecrets = new Set(collectSecretValues(baseVars, [
+    // 同场景并发时 --vars 覆盖值不并入 baseVars（留给 worker 运行时解析），
+    // 但敏感值仍需在首个输出前进入脱敏集合。
+    ...collectSecretValues(args.vars || {}),
     baseOptions.authorization,
     ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => item.value)
   ]));
@@ -9619,13 +9801,24 @@ ${choices.join("\n")}${remaining > 0 ? `
     skippedTotal += report.skipped;
   };
   const reportSummary = (report) => `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (\u72B6\u6001 ${report.status})`;
+  const renderSameScenarioSummary = (summary) => {
+    const workerStatuses = summary.workerResults.map((item) => `W${item.worker}=${item.outcome}(${item.httpStatus ?? "ERROR"})`).join(" ");
+    return [
+      "",
+      `\u540C\u573A\u666F\u5E76\u53D1\uFF1Ascenario=${summary.scenarioId} workers=${summary.workers}`,
+      `  workers: ${workerStatuses}`,
+      `  barrier: firstStartAt=${summary.barrier.firstStartAt?.toFixed?.(3) ?? summary.barrier.firstStartAt} lastStartAt=${summary.barrier.lastStartAt?.toFixed?.(3) ?? summary.barrier.lastStartAt} maxSkewMs=${summary.barrier.maxSkewMs?.toFixed?.(1) ?? summary.barrier.maxSkewMs}`,
+      `  businessIds: ${summary.businessIds.length ? summary.businessIds.join(", ") : "(none)"}${summary.singleBusinessId ? "\uFF08\u4E00\u81F4\uFF09" : "\uFF08\u4E0D\u4E00\u81F4\uFF09"}`,
+      ...summary.failures.map((item) => `  [W${item.worker}] ${item.outcome}${item.step ? ` @${item.step}` : ""}: ${item.assertions.filter((assertion) => !assertion.passed).map((assertion) => `${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`).join(" | ") || "\u8BF7\u6C42\u6267\u884C\u5931\u8D25"}`)
+    ].join("\n");
+  };
   const markDataRow = (report, entry, rowIndex, datasetEnabled) => {
     if (!datasetEnabled || !report) return report;
     report.dataRow = rowIndex + 1;
     report.scenarioId = `${entry.id}#row-${rowIndex + 1}`;
     return report;
   };
-  const runEntry = async (entry, entryPrint) => {
+  const runEntry = async (entry, entryPrint, workerContext = null) => {
     if (!entry.url) throw new Error(`\u573A\u666F ${entry.id} \u7F3A\u5C11 url`);
     let scenarioPath;
     if (import_node_path14.default.isAbsolute(entry.url)) scenarioPath = entry.url;
@@ -9642,6 +9835,11 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     let scenario = loadScenarioFile(scenarioPath, entry.id, node_exports);
     scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
+    const workerRunOptions = workerContext ? {
+      worker: workerContext,
+      vars: { ...baseOptions.vars || {}, ...args.vars || {} },
+      ...workerContext.beforeStep ? { beforeStep: workerContext.beforeStep } : {}
+    } : {};
     let headerPrinted = false;
     const printHeader = () => {
       if (headerPrinted) return;
@@ -9655,6 +9853,9 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     const report = await createEngine(baseOptions).runScenario(scenario, {
       ...baseOptions,
       suite: entrySuite,
+      // worker 变量必须晚于 --vars 注入后才参与模板解析；这里显式放进单次运行选项，
+      // 不写回 baseOptions，避免并发 worker 之间相互污染。
+      ...workerRunOptions,
       _includeAttemptContext: true,
       // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
       // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
@@ -9737,6 +9938,10 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
     }
     rememberSecrets({ ...report.vars || {}, ...report.suite || report.suiteVars || {} }, report.results.flatMap((step) => Object.entries(step.request?.headers || {}).filter(([name]) => isSecretVarName(name)).map(([, value2]) => value2).filter((value2) => typeof value2 === "string")));
     report.scenarioId = entry.id;
+    if (workerRunOptions.worker) {
+      const { index, total: total2, sharedRequestKey } = workerRunOptions.worker;
+      report.worker = { index, total: total2, sharedRequestKey };
+    }
     report.tags = entry.tags || [];
     return report;
   };
@@ -9746,8 +9951,82 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
       continue;
     }
     const rowVars = row || {};
-    baseOptions.vars = { ...baseVars, ...rowVars, ...args.vars || {} };
+    baseOptions.vars = sameScenarioMode ? { ...baseVars, ...rowVars } : { ...baseVars, ...rowVars, ...args.vars || {} };
     const rowReports = new Array(entries.length);
+    if (sameScenarioMode) {
+      const entry = entries[0];
+      const workerReports = new Array(workerContexts.length);
+      const bufferedLinesByWorker = new Array(workerContexts.length);
+      let firstError = null;
+      let hasError = false;
+      const arrivals = [];
+      let released = false;
+      let resolveBarrier;
+      const barrier = new Promise((resolvePromise) => {
+        resolveBarrier = resolvePromise;
+      });
+      const rowBarrier = { firstStartAt: null, lastStartAt: null, maxSkewMs: null };
+      const release = () => {
+        if (released) return;
+        released = true;
+        arrivals.sort((left, right) => left - right);
+        rowBarrier.firstStartAt = arrivals[0];
+        rowBarrier.lastStartAt = arrivals.at(-1);
+        rowBarrier.maxSkewMs = rowBarrier.lastStartAt - rowBarrier.firstStartAt;
+        Object.assign(sameScenario, rowBarrier);
+        clearTimeout(barrierTimer);
+        resolveBarrier();
+      };
+      const barrierTimer = setTimeout(() => {
+        if (released) return;
+        print("\u540C\u573A\u666F\u5E76\u53D1\u542F\u52A8\u5C4F\u969C\u8D85\u65F6\uFF085 \u79D2\uFF09\uFF0C\u53EF\u80FD\u5B58\u5728\u63D2\u4EF6\u6216\u52A0\u8F7D\u5668\u963B\u585E\u3002");
+        release();
+      }, 5e3);
+      barrierTimer.unref?.();
+      const worker = async (workerIndex) => {
+        const bufferedLines = [];
+        bufferedLinesByWorker[workerIndex] = bufferedLines;
+        const bufferedPrint = (...values) => bufferedLines.push(values.map((value2) => String(value2)).join(" "));
+        try {
+          const workerContext = workerContexts[workerIndex];
+          const report = await runEntry(entry, bufferedPrint, {
+            ...workerContext,
+            beforeStep: async (step, index) => {
+              if (index !== 0) return;
+              arrivals.push(performance.now());
+              if (arrivals.length === workerContexts.length) release();
+              await barrier;
+            },
+            vars: { ...args.vars || {} }
+          });
+          markDataRow(report, entry, rowIndex, dataset);
+          report.scenarioId = dataset ? `${entry.id}#row-${rowIndex + 1}#worker-${workerContext.index}` : `${entry.id}#worker-${workerContext.index}`;
+          workerReports[workerIndex] = report;
+          accumulateReport(report);
+          bufferedPrint(reportSummary(report));
+        } catch (error) {
+          if (!hasError) {
+            hasError = true;
+            firstError = error;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: workerContexts.length }, (_, index) => worker(index)));
+      if (hasError) throw firstError;
+      for (const [index, report] of workerReports.entries()) {
+        if (report) reports.push(report);
+        else notRun.push({ id: entry.id, name: entry.name, url: entry.url, row: rowIndex + 1, worker: index + 1, reason: "barrier-error" });
+      }
+      for (const lines of bufferedLinesByWorker) for (const line of lines || []) print(line);
+      const summary = summarizeSameScenario(workerReports, workerContexts, entry, dataset ? rowIndex : void 0, rowBarrier);
+      sameScenario.summaries.push(summary);
+      print(renderSameScenarioSummary(summary));
+      const summaryPassed = sameScenarioPassed(summary);
+      if (!summaryPassed) process.exitCode = 1;
+      if (!bailTriggered && args.bail && !summaryPassed) bailTriggered = true;
+      if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: workerReports.filter(Boolean) });
+      continue;
+    }
     if (dataset) print(`
 ## \u6570\u636E\u884C ${rowIndex + 1}/${dataRows.length}${Object.keys(rowVars).length ? ` (${Object.keys(rowVars).join(", ")})` : ""}`);
     if (args.concurrency <= 1) {
@@ -9808,7 +10087,7 @@ url \u5FC5\u987B\u662F\u914D\u7F6E\u76EE\u5F55\u5185\u7684\u76F8\u5BF9\u8DEF\u5F
 Overall: ${passedTotal}/${total} passed`);
   if (bailTriggered) print(`
 --bail \u5DF2\u5F00\u542F\uFF1A${notRun.length} \u4E2A\u540E\u7EED\u573A\u666F\u672A\u6267\u884C\uFF0C\u9000\u51FA\u7801\u4FDD\u6301\u975E\u96F6\u3002`);
-  if (failedTotal) process.exitCode = 1;
+  if (failedTotal && !sameScenarioMode) process.exitCode = 1;
   if (args.failOnSkip && skippedTotal > 0) {
     print(`
 --fail-on-skip \u5DF2\u5F00\u542F\uFF0C\u5B58\u5728 ${skippedTotal} \u4E2A SKIP \u6B65\u9AA4\uFF0C\u9000\u51FA\u7801\u7F6E\u4E3A 1`);
@@ -9816,21 +10095,45 @@ Overall: ${passedTotal}/${total} passed`);
   }
   const secretList = outputSecretVariants([...allSecrets]);
   const safeReports = reports.map((report) => redactSecrets(report, secretList));
+  const safeSameScenario = sameScenario.summaries.map((summary) => redactSecrets(summary, secretList));
+  const conflictScenarioIds = new Set(sameScenario.summaries.flatMap((summary) => summary.workerResults.filter((item) => item.outcome === "conflict").map((item) => item.scenarioId)));
+  const reportableDocs = sameScenarioMode ? safeReports.filter((report) => !conflictScenarioIds.has(report.scenarioId)) : safeReports;
   if (args.junit) {
-    const target = writeJUnitReport(args.junit, safeReports, { notRun: redactSecrets(notRun, secretList) });
+    const target = writeJUnitReport(args.junit, reportableDocs, {
+      notRun: redactSecrets(notRun, secretList),
+      concurrency: safeSameScenario
+    });
     print(`
 JUnit \u62A5\u544A: ${target}`);
   }
   if (args.report) {
-    const target = writeHtmlReport(args.report, safeReports, {
+    const target = writeHtmlReport(args.report, reportableDocs, {
       notRun: redactSecrets(notRun, secretList),
+      concurrency: safeSameScenario,
       environment: redactSecrets(environment?.name || environment?.key || "\u9ED8\u8BA4", secretList)
     });
     print(`
 HTML \u62A5\u544A: ${target}`);
   }
   const countSummary = `\u901A\u8FC7 ${passedTotal} \u6B65\uFF0C\u5B9E\u9645\u5931\u8D25 ${actualFailedTotal} \u6B65\uFF0C\u6761\u4EF6\u8DF3\u8FC7 ${skippedTotal} \u6B65\uFF0C\u56E0 stop \u7B56\u7565\u672A\u6267\u884C ${stoppedUnexecutedTotal} \u6B65`;
-  if (actualFailedTotal > 0) {
+  const sameScenarioTotals = sameScenario.summaries.reduce((totals, summary) => ({
+    workers: totals.workers + summary.workers,
+    success: totals.success + summary.success,
+    conflict: totals.conflict + summary.conflict,
+    failed: totals.failed + summary.failed
+  }), { workers: 0, success: 0, conflict: 0, failed: 0 });
+  const sameScenarioFailures = sameScenario.summaries.filter((summary) => !sameScenarioPassed(summary));
+  if (sameScenarioMode) {
+    const consistency = sameScenario.summaries.every((summary) => summary.singleBusinessId) ? "\u4E1A\u52A1 ID \u4E00\u81F4" : "\u4E1A\u52A1 ID \u4E0D\u4E00\u81F4";
+    const workerSummary = `workers=${sameScenarioTotals.workers}\uFF0C\u6210\u529F ${sameScenarioTotals.success}\uFF0C\u51B2\u7A81 ${sameScenarioTotals.conflict}\uFF0C\u5931\u8D25 ${sameScenarioTotals.failed}`;
+    if (!sameScenarioFailures.length) {
+      print(`
+\u7ED3\u8BBA\uFF1A\u540C\u573A\u666F\u5E76\u53D1\u901A\u8FC7\u3002${workerSummary}\uFF1B${consistency}\uFF1B${countSummary}\u3002`);
+    } else {
+      print(`
+\u7ED3\u8BBA\uFF1A\u540C\u573A\u666F\u5E76\u53D1\u5931\u8D25\u3002${workerSummary}\uFF1B${consistency}\uFF1B${countSummary}\u3002`);
+    }
+  } else if (actualFailedTotal > 0) {
     print(`
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5931\u8D25\u3002${countSummary}\uFF1B\u672A\u6267\u884C\u6B65\u9AA4\u4E0D\u8BA1\u5165\u901A\u8FC7\u3002`);
   } else if (passedTotal === 0 && skippedTotal > 0) {
@@ -9845,6 +10148,7 @@ HTML \u62A5\u544A: ${target}`);
 \u7ED3\u8BBA\uFF1A\u6267\u884C\u5B8C\u6210\u3002${countSummary}${skippedTotal > 0 ? "\uFF1B\u6761\u4EF6\u8DF3\u8FC7\u7684\u6B65\u9AA4\u672A\u53D1\u8D77\u8BF7\u6C42" : ""}\u3002`);
   }
   if (args.json) {
+    const scenarioPayload = sameScenarioMode ? { scenarios: safeReports, ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {} } : safeReports.length === 1 && !notRun.length ? safeReports[0] : { scenarios: safeReports, ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {} };
     const payload = dataset ? {
       data: { file: dataset.file, format: dataset.format, rows: dataset.rows.length },
       results: rowResults.map((row) => ({
@@ -9852,8 +10156,9 @@ HTML \u62A5\u544A: ${target}`);
         vars: redactSecrets(row.vars, secretList),
         scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
       })),
+      ...sameScenarioMode ? { concurrency: safeSameScenario } : {},
       ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}
-    } : safeReports.length === 1 && !notRun.length ? safeReports[0] : { scenarios: safeReports, ...notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {} };
+    } : sameScenarioMode ? { concurrency: safeSameScenario, ...scenarioPayload } : scenarioPayload;
     process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
   }

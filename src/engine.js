@@ -1196,39 +1196,10 @@ export function createEngine(engineOptions = {}) {
         const results = [];
         // failurePolicy:stop 后只继续执行 always 步骤（#56）；用户取消时不补跑清理
         let halted = false;
-        for (let index = 0; index < scenario.steps.length; index += 1) {
-            const step = scenario.steps[index];
-            if (halted && step.always !== true) {
-                // 已取消时不再补跑任何步骤（包括 always）：取消语义优先
-                if (runOptions.signal?.aborted) break;
-                const skipped = {
-                    name: step.name || "未命名步骤",
-                    method: "SKIP",
-                    path: "",
-                    status: "SKIPPED",
-                    duration: 0,
-                    passed: true,
-                    skipped: true,
-                    error: "",
-                    warnings: ["前置步骤失败（failurePolicy: stop），非 always 步骤未执行"],
-                    assertions: [],
-                    request: null,
-                    response: null,
-                    stepNo: index + 1
-                };
-                results.push(skipped);
-                try {
-                    await (runOptions.onStep ?? engineOptions.onStep)?.(skipped, index, runtime);
-                } catch (hookError) {
-                    skipped.passed = false;
-                    skipped.skipped = false;
-                    skipped.status = "ERROR";
-                    skipped.error = `onStep 回调抛错: ${hookError?.message || hookError}`;
-                }
-                continue;
-            }
-            await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
-            const result = await runStep(step, runtime, { ...runOptions, config });
+        // 步骤结果统一出口：入列、编号、通知 onStep 并推进失败/取消语义。
+        // 正常执行与 beforeStep 异常（无请求可发的失败）共用，避免两条路径对
+        // onStep/failurePolicy/abort 的处理口径漂移。
+        const emitStep = async (result, index) => {
             result.stepNo = index + 1;
             results.push(result);
             // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）。
@@ -1248,6 +1219,58 @@ export function createEngine(engineOptions = {}) {
                 result.assertions.push({ name: "onStep 回调无异常", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "无异常" });
             }
             if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+        };
+        for (let index = 0; index < scenario.steps.length; index += 1) {
+            const step = scenario.steps[index];
+            if (halted && step.always !== true) {
+                // 已取消时不再补跑任何步骤（包括 always）：取消语义优先
+                if (runOptions.signal?.aborted) break;
+                const skipped = {
+                    name: step.name || "未命名步骤",
+                    method: "SKIP",
+                    path: "",
+                    status: "SKIPPED",
+                    duration: 0,
+                    passed: true,
+                    skipped: true,
+                    error: "",
+                    warnings: ["前置步骤失败（failurePolicy: stop），非 always 步骤未执行"],
+                    assertions: [],
+                    request: null,
+                    response: null
+                };
+                await emitStep(skipped, index);
+                continue;
+            }
+            // beforeStep 与 onStep 同口径：回调抛错降级为当前步骤 ERROR，
+            // 不发请求、不向上抛（否则 runScenario reject，调用方拿不到 report）。
+            let beforeStepError = null;
+            try {
+                await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
+            } catch (hookError) {
+                beforeStepError = hookError;
+            }
+            if (beforeStepError) {
+                const message = `beforeStep 回调抛错: ${beforeStepError?.message || beforeStepError}`;
+                await emitStep({
+                    name: step.name || "未命名步骤",
+                    method: String(step.method || (step.request && step.request.method) || "GET").toUpperCase(),
+                    path: step.path || "",
+                    status: "ERROR",
+                    duration: 0,
+                    passed: false,
+                    always: step.always === true,
+                    error: message,
+                    warnings: [],
+                    assertions: [{ name: "beforeStep 回调无异常", passed: false, actual: escapeInlineText(beforeStepError?.message || beforeStepError), expected: "无异常" }],
+                    request: null,
+                    response: null
+                }, index);
+                if (runOptions.signal?.aborted) break;
+                continue;
+            }
+            const result = await runStep(step, runtime, { ...runOptions, config });
+            await emitStep(result, index);
             if (runOptions.signal?.aborted) break;
         }
         // SKIP 可观测性：skipped 优先于 passed，绝不把 SKIP 计入 passedSteps/executed
