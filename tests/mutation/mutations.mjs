@@ -212,8 +212,10 @@ export const mutations = [
         id: "M19",
         description: "取消后仍补跑后续步骤（取消被降级为普通失败继续执行）",
         file: "src/engine.js",
-        find: "if (!result.passed && scenario.failurePolicy !== \"continue\") halted = true;\n            if (runOptions.signal?.aborted) break;",
-        replace: "if (!result.passed && scenario.failurePolicy !== \"continue\") halted = true;\n            if (false) break;",
+        // 取消语义的生效点是「执行完当前步骤后立刻跳出循环」：只退化这一处，
+        // 取消就会被降级为普通失败继续补跑后续步骤（含 always 清理步骤）。
+        find: "            const result = await runStep(step, runtime, { ...runOptions, config });\n            await emitStep(result, index);\n            if (runOptions.signal?.aborted) break;",
+        replace: "            const result = await runStep(step, runtime, { ...runOptions, config });\n            await emitStep(result, index);\n            if (false) break;",
         testFile: "tests/comprehensive-engine.test.js",
         testName: "B2 用户取消",
         expect: "killed"
@@ -341,8 +343,9 @@ export const mutations = [
         id: "M31",
         description: "CLI 退出码不再反映失败（失败也退 0，CI 静默假绿）",
         file: "src/cli.js",
-        find: "if (failedTotal) process.exitCode = 1;",
-        replace: "if (failedTotal) process.exitCode = 0;",
+        // 同场景并发模式（--same-scenario）走 summaryPassed 分支，这里锚定普通 run 的收尾。
+        find: "if (failedTotal && !sameScenarioMode) process.exitCode = 1;",
+        replace: "if (failedTotal && !sameScenarioMode) process.exitCode = 0;",
         testFile: "tests/comprehensive-cli.test.js",
         testName: "C1 HTTP 500 且无断言",
         expect: "killed"
@@ -401,8 +404,9 @@ export const mutations = [
         id: "M37",
         description: "数据集行变量被丢弃（--data 行值不进入模板）",
         file: "src/cli.js",
-        find: "baseOptions.vars = { ...baseVars, ...rowVars, ...(args.vars || {}) };",
-        replace: "baseOptions.vars = { ...baseVars, ...(args.vars || {}) };",
+        // 数据行变量赋值现在按 sameScenarioMode 双分支，锚定非并发分支即可丢弃行值。
+        find: ": { ...baseVars, ...rowVars, ...(args.vars || {}) };",
+        replace: ": { ...baseVars, ...(args.vars || {}) };",
         testFile: "tests/comprehensive-cli.test.js",
         testName: "C6 --data CSV",
         expect: "killed"
