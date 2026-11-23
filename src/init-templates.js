@@ -194,7 +194,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 
 本目录是当前项目的场景测试入口，与业务代码同仓维护：这里只有场景数据——环境地址、测试变量、场景文件和项目专属插件；**运行时（CLI、工作台页面、AI 规则）统一由安装方提供**（全局 Skill 或用户级安装），项目内不保留任何运行时副本。
 
-默认免 npm 接入：不安装 npm 包、不改 package.json，执行时直接调用安装方的 \`scenario-test-cli.cjs\`（仍需 Node.js 22+）。AI 编写规则在安装方 Skill 的 \`references/AI_SCENARIO_PROMPT.md\` 与 \`SCENARIO_PATTERNS.md\`，随 Skill 升级自动更新，不落项目盘。
+默认免 npm 接入：不安装 npm 包、不改 package.json，执行时直接调用安装方的 \`scenario-test-cli.cjs\`（仍需 Node.js 22+）。AI 编写规则随运行时一起安装，位于用户级 \`~/.scenario-test/runtime/<版本>/\` 的 \`AI_SCENARIO_PROMPT.md\` 与 \`SCENARIO_PATTERNS.md\`，随安装方升级自动更新，不落项目盘。
 
 ## 开始使用
 
@@ -203,7 +203,7 @@ ScenarioTest.registerConfig(ScenarioTest.defineConfig({
 如果新开了 AI 会话，只需输入：
 
 \`\`\`text
-请读取安装方 AI 规则（Skill 的 references/AI_SCENARIO_PROMPT.md），为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
+请读取安装方 AI 规则（运行时的 AI_SCENARIO_PROMPT.md），为“<业务功能名称>”设计场景测试。入口：<页面、Controller、接口或已有测试路径>。
 \`\`\`
 
 接下来：

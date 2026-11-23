@@ -2,8 +2,8 @@
 
 本文件仅供维护者了解规则结构。**业务用户不要直接复制本文件**，也不要把它作为实际生成输入。
 
-实际执行时，以安装方运行时目录内的以下文件为准（Skill 位于 `skills/scenario-test/runtime/`，
-用户级安装位于 `~/.scenario-test/runtime/`；v23 起项目内不再保留副本）：
+实际执行时，以安装方运行时目录内的以下文件为准（用户级 `~/.scenario-test/runtime/<版本>/`，
+Skill 首次使用时按需下载到该处；v23 起项目内不再保留副本）：
 
 - `AI_SCENARIO_PROMPT.md`
 - `SCENARIO_PATTERNS.md`

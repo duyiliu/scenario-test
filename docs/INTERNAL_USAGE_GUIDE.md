@@ -16,7 +16,7 @@ node <运行时目录>/scenario-test-cli.cjs init --project . --dir "scenario-te
 ```
 
 > npm Registry 不再是分发渠道（0.10.1 起 `package.json` 为 private）。v23 起执行入口
-> 是安装方运行时（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`）内的
+> 是安装方运行时（用户级 `~/.scenario-test/runtime/<版本>/`）内的
 > `scenario-test-cli.cjs`，项目内不再有运行时副本；升级按 README「快速接入」重装固定 Tag。
 
 ### 2. 编写场景

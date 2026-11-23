@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 按需安装 Skill 运行时：Skill 本身只有文本（约 26 KB），运行时在第一次真正要用
+// 按需安装 Skill 所需的运行时：Skill 本身只有文本（约 26 KB），运行时在第一次真正要用
 // CLI 时才下载，落到用户级版本目录 ~/.scenario-test/runtime/<版本>/。
 //
 // 与安装脚本共用同一份发布包和同一个落点：
@@ -8,7 +8,7 @@
 // 包里带 release.json，解压后逐文件再核一次。
 //
 // 为什么不装进 Skill 目录：skills CLI 每次 add/update 都会重建该目录，
-// 1.2 MB 会反复下载；多 Agent（Codex/Claude）各装一份就是多份。放在用户级
+// 整包会反复下载；多 Agent（Codex/Claude）各装一份就是多份。放在用户级
 // ~/.scenario-test 后，跨 Agent、跨版本共享，安装脚本也落到这里。
 //
 // 用法：
@@ -70,7 +70,7 @@ function runtimeDirFor(version) {
 }
 
 // 就绪判定：目录存在、release.json 可读且版本一致、清单里的文件全在。
-// 不校验哈希（那是安装时的一次性动作），否则每次探测都要读 1.2 MB。
+// 不校验哈希（那是安装时的一次性动作），否则每次探测都要把整包读一遍。
 export function inspectRuntime(version) {
     const dir = runtimeDirFor(version);
     const manifestPath = path.join(dir, "release.json");
@@ -151,7 +151,7 @@ export async function ensureRuntime({ version = null, source = null, check = fal
     const base = (source ?? `${DEFAULT_BASE}/v${targetVersion}`).replace(/\/+$/, "");
     const archiveName = `scenario-test-runtime-v${targetVersion}.tar.gz`;
     const report = (line) => process.stderr.write(`${line}\n`);
-    report(`ℹ 下载 scenario-test 运行时 ${targetVersion}（约 1.2 MB）…`);
+    report(`ℹ 下载 scenario-test 运行时 ${targetVersion}（约 300 KB）…`);
 
     const archive = await fetchBuffer(`${base}/${archiveName}`);
     const checksumBody = await fetchBuffer(`${base}/${archiveName}.sha256`);
