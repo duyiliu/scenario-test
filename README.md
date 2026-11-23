@@ -4,6 +4,66 @@
 
 **运行要求：Node.js 22+**（Node 18/20 已 EOL，自 0.13.0 起不再支持）。
 
+典型流程：在业务项目根目录接入 → 提供一个业务功能及其代码或接口入口 → 检查生成的场景和环境配置 → 使用工作台或 CLI 执行。执行场景会调用实际接口，可能产生业务数据，请先确认目标环境和场景内容。
+
+## 安装全局 AI Skill
+
+在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中按用户安装一次，即可在多个业务项目中使用：
+
+**官方安装（固定版本）：**
+
+```bash
+# 用户级全局安装；#v0.16.0 钉住 Git Tag，按提示选择你使用的 Agent
+npx skills add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g
+```
+
+**国内网络加速安装（第三方 `skills-cn`）：**
+
+```bash
+npx skills-cn@latest add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g -y
+```
+
+两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
+
+`#vX.Y.Z` 钉住 Git Tag，Skill 与其下载的运行时版本固定、可复现（推荐团队环境使用）；省略 `#` 部分则跟随默认分支最新提交，适合尝鲜。升级到新版本时把 Tag 换成目标版本重新安装，或对未钉版本的安装执行 `npx skills update scenario-test -g`。
+
+> 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
+
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；运行时去项目化：CLI、工作台页面与 AI 规则统一由安装方提供，落在用户级 `~/.scenario-test/runtime/<版本>/`（Skill 首次使用时按需下载一次），初始化只在业务项目写入 `scenario.config.js`、目录说明与启动入口，场景放在 `scenarios/`，不复制运行时。后续使用无需再次下载工具，执行测试仍需连接目标服务。
+
+未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。同一安装方下的项目共用该运行时；升级只需更新安装方（换 Tag 重装 Skill 或重跑安装脚本），不需要逐项目替换运行时，见[升级](#升级)。
+
+Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md) 和 [`detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。探测只检查文件是否存在；配置与运行时完整性以 `doctor` 结果为准。
+
+## 快速接入
+
+1. 如果尚未安装全局 Skill，先完成上一节；然后在业务项目根目录打开支持 Agent Skills 的 AI 助手。
+2. 告诉 AI 需要测试的业务功能，并提供页面、Controller、接口或已有测试中的任一入口。例如：`为 OrderController 生成 HTTP 场景测试`。
+3. 项目尚未接入时，Skill 会确认项目根目录和环境；运行时未安装则先按需下载对应版本（约 300 KB，只需一次），再初始化并执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
+4. AI 根据项目证据维护 `scenario.config.js` 和 `scenarios/`。生成阶段不会调用业务接口；需要执行时，请明确提出并确认目标环境和场景内容。
+
+初始场景清单为空。场景准备好后，可用[浏览器工作台](#启动浏览器工作台)或 [CLI](#执行场景)运行；工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
+
+### 固定版本安装脚本
+
+Skill 只携带文本规则与脚本；运行时按版本下载到用户级目录 `~/.scenario-test/runtime/<版本>/`，跨项目、跨 Agent 共用。以下脚本供不用 Agent、或需要预装运行时的环境使用。在业务项目根目录执行时，脚本下载固定版本的运行时整包、解压到该版本目录并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
+
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.ps1 | iex
+```
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.sh | bash -s -- . scenario-test
+```
+
+脚本从 GitHub Release 下载 `scenario-test-runtime-v<版本>.tar.gz`，先校验同名 `.sha256`，解压后再按包内 `release.json` 逐文件核对，全部通过才写入运行时目录；不会执行 `npm install`。内网与离线环境的指定方式见[自定义下载源](#自定义下载源)。
+
+> 构建产物不再入库（`dist/`、`src/**/*.generated.js`、`skills/**/runtime/`），克隆仓库后直接 `npm test` 会自动先构建一次。
+
+## 文档导航
+
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
 | 首次使用：安装全局 AI Skill | [安装全局 AI Skill](#安装全局-ai-skill) |
@@ -12,8 +72,6 @@
 | 同一工作台运行前端 E2E | [可选浏览器 E2E](#可选浏览器-e2e主分支新增) |
 | 升级已有项目 | [升级](#升级) |
 | 开发和发布本工具 | [维护者](#维护者) |
-
-典型流程：在业务项目根目录接入 → 提供一个业务功能及其代码或接口入口 → 检查生成的场景和环境配置 → 使用工作台或 CLI 执行。执行场景会调用实际接口，可能产生业务数据，请先确认目标环境和场景内容。
 
 ## CLI 用法示例
 
@@ -80,62 +138,6 @@ node <运行时目录>/scenario-test-cli.cjs serve --config scenario-test/scenar
 - 页面“服务身份”显示运行中的版本、构建摘要、PID 和工作区。磁盘文件更新后需重启服务才会加载新构建；此功能不自动终止已有服务。
 
 测试编写与认证适配说明见 [Skill E2E 指引](skills/scenario-test/references/e2e.md)，可控本地验证见 [E2E 示例](examples/e2e/README.md)。
-
-## 安装全局 AI Skill
-
-在 Codex、Claude Code、Kilo Code 等支持 Agent Skills 的工具中按用户安装一次，即可在多个业务项目中使用：
-
-**官方安装（固定版本）：**
-
-```bash
-# 用户级全局安装；#v0.16.0 钉住 Git Tag，按提示选择你使用的 Agent
-npx skills add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g
-```
-
-**国内网络加速安装（第三方 `skills-cn`）：**
-
-```bash
-npx skills-cn@latest add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g -y
-```
-
-两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
-
-`#vX.Y.Z` 钉住 Git Tag，Skill 与其下载的运行时版本固定、可复现（推荐团队环境使用）；省略 `#` 部分则跟随默认分支最新提交，适合尝鲜。升级到新版本时把 Tag 换成目标版本重新安装，或对未钉版本的安装执行 `npx skills update scenario-test -g`。
-
-> 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
-
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；运行时去项目化：CLI、工作台页面与 AI 规则统一由安装方提供，落在用户级 `~/.scenario-test/runtime/<版本>/`（Skill 首次使用时按需下载一次），初始化只在业务项目写入 `scenario.config.js`、目录说明与启动入口，场景放在 `scenarios/`，不复制运行时。后续使用无需再次下载工具，执行测试仍需连接目标服务。
-
-未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。同一安装方下的项目共用该运行时；升级只需更新安装方（换 Tag 重装 Skill 或重跑安装脚本），不需要逐项目替换运行时，见[升级](#升级)。
-
-Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md) 和 [`detect-project.mjs`](skills/scenario-test/scripts/detect-project.mjs)。探测只检查文件是否存在；配置与运行时完整性以 `doctor` 结果为准。
-
-## 快速接入
-
-1. 如果尚未安装全局 Skill，先完成上一节；然后在业务项目根目录打开支持 Agent Skills 的 AI 助手。
-2. 告诉 AI 需要测试的业务功能，并提供页面、Controller、接口或已有测试中的任一入口。例如：`为 OrderController 生成 HTTP 场景测试`。
-3. 项目尚未接入时，Skill 会确认项目根目录和环境；运行时未安装则先按需下载对应版本（约 300 KB，只需一次），再初始化并执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
-4. AI 根据项目证据维护 `scenario.config.js` 和 `scenarios/`。生成阶段不会调用业务接口；需要执行时，请明确提出并确认目标环境和场景内容。
-
-初始场景清单为空。场景准备好后，可用[浏览器工作台](#启动浏览器工作台)或 [CLI](#执行场景)运行；工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
-
-### 固定版本安装脚本
-
-Skill 只携带文本规则与脚本；运行时按版本下载到用户级目录 `~/.scenario-test/runtime/<版本>/`，跨项目、跨 Agent 共用。以下脚本供不用 Agent、或需要预装运行时的环境使用。在业务项目根目录执行时，脚本下载固定版本的运行时整包、解压到该版本目录并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
-
-```powershell
-# Windows PowerShell
-irm https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.ps1 | iex
-```
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.sh | bash -s -- . scenario-test
-```
-
-脚本从 GitHub Release 下载 `scenario-test-runtime-v<版本>.tar.gz`，先校验同名 `.sha256`，解压后再按包内 `release.json` 逐文件核对，全部通过才写入运行时目录；不会执行 `npm install`。内网与离线环境的指定方式见[自定义下载源](#自定义下载源)。
-
-> 构建产物不再入库（`dist/`、`src/**/*.generated.js`、`skills/**/runtime/`），克隆仓库后直接 `npm test` 会自动先构建一次。
 
 ## 常用操作
 
