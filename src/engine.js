@@ -6,6 +6,7 @@ import {
     assertNoReservedVars,
     assertNotReservedVar,
     buildAssertions,
+    buildWorkerContext,
     buildUrl,
     collectMissingTemplateVars,
     completeProtocolRelativeUrl,
@@ -212,13 +213,18 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
     const identifiers = createRunIdentifiers();
     const suiteVars = layers.suite || {};
     const configVars = layers.configVars || {};
+    const workerVars = options.worker?.vars || {};
     const optionVars = layers.optionVars || {};
     // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
     assertNoReservedVars(scenario.vars, "场景 vars");
     assertNoReservedVars(configVars, "配置 vars");
     assertNoReservedVars(optionVars, "选项 vars");
-    // 优先级（低 → 高）：suite 提取值 < 场景 vars < 配置 vars < 选项 vars
-    const vars = { ...suiteVars, ...(scenario.vars || {}), ...configVars, ...optionVars, ...identifiers };
+    // 同场景并发的 worker 变量作为运行标识进入运行时：--vars 里的模板
+    // （如 requestKey=order-{{vars.worker}}）保持原样，使用处仍按 resolveString
+    // 递归解析，既有「模板值引用后续提取变量」的延迟解析语义不变。
+    // worker 键放在最后：它是本次运行的标识，配置里同名变量不得静默覆盖它。
+    const vars = { ...suiteVars, ...(scenario.vars || {}), ...configVars, ...optionVars, ...workerVars };
+    for (const [name, value] of Object.entries(identifiers)) setRuntimeVar(vars, name, value);
 
     // ✅ 是否在错误消息中显示详细信息（仅开发模式）
     // 浏览器产物（UMD/ESM）无 process 全局，必须先探测再读取，否则 runScenario 调用即崩
@@ -262,6 +268,11 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
 }
 
 export function createRuntime(scenario, options = {}) {
+    const worker = options.worker === undefined
+        ? null
+        : (options.worker === true
+            ? buildWorkerContext(options.workerIndex || 1, options.workerTotal || 1, options.sharedRequestKey)
+            : buildWorkerContext(options.worker.index, options.worker.total, options.worker.sharedRequestKey));
     const config = options.config || {};
     // run 级共享命名空间（#69）：suite 提取产物作为最低优先级基底并入 vars，
     // 兼容 v16 的 {{vars.<name>}} 写法；场景/配置/选项 vars 同名时一律优先于 suite（#113）。
@@ -273,7 +284,7 @@ export function createRuntime(scenario, options = {}) {
             scenario,
             { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
             options.environmentVariables || {},
-            { now: options.now, clock: options.clock }
+            { now: options.now, clock: options.clock, worker }
         ),
         // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
         // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
@@ -282,7 +293,8 @@ export function createRuntime(scenario, options = {}) {
         lastResponse: null,
         lastResponseBody: null,
         // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
-        cookieJar: []
+        cookieJar: [],
+        worker
     };
     return runtime;
 }
@@ -1167,6 +1179,12 @@ export function createEngine(engineOptions = {}) {
             config,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+            worker: runOptions.worker !== undefined ? runOptions.worker : engineOptions.worker,
+            ...(runOptions.worker === true ? {
+                workerIndex: runOptions.workerIndex,
+                workerTotal: runOptions.workerTotal,
+                sharedRequestKey: runOptions.sharedRequestKey
+            } : {}),
             // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
             suite: runOptions.suite !== undefined ? runOptions.suite
                 : (runOptions.suiteVars !== undefined ? runOptions.suiteVars
@@ -1209,6 +1227,7 @@ export function createEngine(engineOptions = {}) {
                 }
                 continue;
             }
+            await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
             const result = await runStep(step, runtime, { ...runOptions, config });
             result.stepNo = index + 1;
             results.push(result);
@@ -1245,6 +1264,15 @@ export function createEngine(engineOptions = {}) {
             : (executed === 0 ? "SKIPPED" : "PASSED");
         return {
             scenarioName: scenario.name,
+            // worker 是运行标识：报告只投影 index/total/sharedRequestKey，
+            // 不把内部 vars 容器带进输出（与 d.ts 声明形状一致）。
+            ...(runtime.worker ? {
+                worker: {
+                    index: runtime.worker.index,
+                    total: runtime.worker.total,
+                    sharedRequestKey: runtime.worker.sharedRequestKey
+                }
+            } : {}),
             passed: failed === 0 && results.length === scenario.steps.length,
             status,
             planned: scenario.steps.length,

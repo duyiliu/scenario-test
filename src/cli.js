@@ -12,7 +12,7 @@ import { buildCapabilities, renderCapabilitiesText } from "./capabilities.js";
 import { buildDoctorReport, buildE2eCommandHints, renderDoctorText } from "./doctor.js";
 import { VERSION } from "./version.generated.js";
 import { validatePath, isRealPathWithinRoot } from "./utils/path-validator.js";
-import { collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveClone, resolveString, SAVED_RESPONSE } from "./core.js";
+import { buildWorkerContext, collectSecretValues, isSecretVarName, mergeGlobals, normalizeGlobalParam, redactSecrets, resolveClone, resolveString, SAVED_RESPONSE } from "./core.js";
 import { collectRequestSecretValues, outputSecretVariants } from "./utils/output-secrets.js";
 import { loadDataset } from "./utils/data-file.js";
 import { writeHtmlReport } from "./utils/html-report.js";
@@ -123,7 +123,7 @@ function parseOptionValue(raw, spec, option) {
 }
 
 function parseArgs(argv) {
-    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: undefined, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
+    const args = { command: "run", all: false, config: "", scenario: "", env: "", baseUrl: "", authorization: "", vars: {}, port: null, portExplicit: false, concurrency: 1, workers: 2, workersExplicit: false, sameScenario: false, sharedRequestKey: false, project: "", dir: "", force: false, noInput: false, allowExternalPlugins: false, failOnSkip: false, json: false, help: false, tags: [], bail: false, cookieJar: false, dataFile: "", junit: "", report: "", proxyTimeout: undefined, insecure: false, open: false, reassign: false, positionals: [], har: "", curl: "", output: "", host: "", maxEntries: DEFAULT_MAX_IMPORT_ENTRIES };
     let start = 0;
     // 命令名单来自 contract.cli.commands
     if (contract.cli.commands.includes(argv[0])) { args.command = argv[0]; start = 1; }
@@ -153,6 +153,7 @@ function parseArgs(argv) {
             }
             // 区分「用户显式指定端口」与「未指定时的默认值」：只有显式值才更新项目登记
             if (item === "--port") args.portExplicit = true;
+            if (item === "--workers") args.workersExplicit = true;
             if (item === "--token" || item === "--authorization") deprecatedAuthUsed = true;
             continue;
         }
@@ -187,6 +188,21 @@ function parseArgs(argv) {
     }
     if (!Number.isInteger(args.concurrency) || args.concurrency < 1) {
         throw new CliUsageError("--concurrency 必须是大于等于 1 的整数", "请为 --concurrency 选择 1 或更大的整数；默认 1 保持串行。");
+    }
+    if (!Number.isInteger(args.workers) || args.workers < 1) {
+        throw new CliUsageError("--workers 必须是大于等于 1 的整数", "请为 --workers 选择 1 或更大的整数。");
+    }
+    if ((args.workersExplicit || args.sharedRequestKey) && !args.sameScenario) {
+        throw new CliUsageError(
+            "--workers/--shared-request-key 必须与 --same-scenario 同时使用",
+            "示例：--workers 4 --same-scenario；--shared-request-key 可叠加用于幂等键竞争。"
+        );
+    }
+    if (args.sameScenario && args.concurrency !== 1) {
+        throw new CliUsageError(
+            "--same-scenario 与 --concurrency 不能同时使用",
+            "--same-scenario 复用同一场景的 worker；多场景并发请改用 --concurrency。"
+        );
     }
     if (args.timeout !== undefined && (!Number.isFinite(args.timeout) || args.timeout <= 0)) {
         throw new CliUsageError(
@@ -536,7 +552,7 @@ function selectEnvironment(config, key) {
     return environment;
 }
 
-function configVariables(config, overrides = {}, environment = null) {
+function configVariables(config, overrides = {}, environment = null, options = {}) {
     // 优先级：config.vars < 选中环境 env.vars < variables[].env 系统变量 < --vars
     const values = { ...(config.vars || {}), ...(environment?.vars || {}) };
     const provided = overrides && typeof overrides === "object" ? overrides : {};
@@ -557,7 +573,7 @@ function configVariables(config, overrides = {}, environment = null) {
             );
         }
     }
-    return { ...values, ...provided };
+    return options.includeOverrides === false ? { ...values } : { ...values, ...provided };
 }
 
 async function runCommand(args) {
@@ -620,10 +636,19 @@ async function runCommand(args) {
             "请检查配置中的 scenarios 列表；如场景均为 manual:true，请确认数据准备完成后用 --scenario <id> 显式选择。"
         );
     }
+    if (args.sameScenario && entries.length !== 1) {
+        throw new CliUsageError(
+            `--same-scenario 只接受一个场景（当前 ${entries.length} 个）`,
+            "请用 --scenario <id> 指定单个场景；--same-scenario 会把该场景复制为多个并发 worker。"
+        );
+    }
     const plugins = await loadPlugins(config, configDir, { allowExternalPlugins: args.allowExternalPlugins });
     const adapters = {};
     for (const plugin of plugins) Object.assign(adapters, plugin?.adapters || {});
-    const baseVars = configVariables(config, args.vars, environment);
+    // 同场景并发时 --vars 可能引用 {{vars.worker}}，必须在各 worker 运行时内解析；
+    // 这里只校验变量定义（required），不把模板值提前展开成空串。
+    const sameScenarioMode = args.sameScenario === true;
+    const baseVars = configVariables(config, args.vars, environment, { includeOverrides: !sameScenarioMode });
     // 跨场景共享上下文：一次 run 内维护 suite 汇总对象。每个场景启动时取快照、
     // 结束时整体合并（见 runEntry），避免并发场景读到另一个场景写到一半的 suite：
     // 默认串行（--concurrency 1）写序即配置清单顺序；并发时写序为完成顺序，同名键
@@ -672,10 +697,95 @@ async function runCommand(args) {
     })();
     const dataRows = dataset ? dataset.rows : [null];
     const rowResults = [];
+    const workerContexts = sameScenarioMode
+        ? Array.from({ length: args.workers }, (_, index) => buildWorkerContext(index + 1, args.workers, args.sharedRequestKey))
+        : [];
+    const sameScenario = { firstStartAt: null, lastStartAt: null, maxSkewMs: null, summaries: [], sharedRequestKey: args.sharedRequestKey === true };
+    // 同场景并发汇总（#191）：每个 worker 的最终业务结果、首个失败步骤响应与一致性检查。
+    // 冲突判定看首个真实失败步骤（而非固定首步）：场景可能在创建后继续流转，
+    // 竞争窗口出现在哪一步，409/422/423 就应归因到那一步。
+    const summarizeWorker = (report, workerContext) => {
+        const first = report.results?.[0] || null;
+        const failedStep = (report.results || []).find((item) => !item.skipped && !item.passed) || null;
+        const success = Boolean(report.passed);
+        const conflict = !success && Boolean(failedStep) && [409, 422, 423].includes(Number(failedStep.status));
+        const detail = failedStep || first;
+        // 业务 ID 从响应体里向下找：创建/幂等重放可能返回 id/businessId/orderId，
+        // 场景多步时以首个带 ID 的步骤为准（首步无 ID 不应让一致性检查退化为「无数据」）。
+        const parseBusinessId = (body) => body && typeof body === "object"
+            ? (body.id ?? body.businessId ?? body.orderId ?? body.data?.id ?? null)
+            : null;
+        const businessId = (report.results || [])
+            .map((item) => parseBusinessId(item.response?.body))
+            .find((value) => value !== null && value !== undefined) ?? null;
+        return {
+            worker: workerContext.index,
+            scenarioId: report.scenarioId,
+            status: report.status,
+            passed: report.passed,
+            outcome: success ? "success" : (conflict ? "conflict" : "failed"),
+            httpStatus: detail?.status ?? null,
+            step: detail?.name ?? null,
+            businessId,
+            request: detail?.request || null,
+            response: detail?.response ? { status: detail.response.status, bodyText: detail.response.bodyText ?? null, body: detail.response.body ?? null } : null,
+            assertions: (detail?.assertions || []).map((item) => ({
+                name: item.name,
+                passed: item.passed,
+                expected: item.expected,
+                actual: item.actual,
+                ...(item.reason ? { reason: item.reason } : {})
+            }))
+        };
+    };
+    const summarizeSameScenario = (workerReports, workerContexts, entry, rowIndex, barrierStats = null) => {
+        const workers = workerReports
+            .map((report, index) => (report ? summarizeWorker(report, workerContexts[index]) : null))
+            .filter(Boolean);
+        const successful = workers.filter((item) => item.outcome === "success");
+        const conflicts = workers.filter((item) => item.outcome === "conflict");
+        const failed = workers.filter((item) => item.outcome === "failed");
+        const businessIds = successful.map((item) => item.businessId).filter((value) => value !== null && value !== undefined);
+        const uniqueBusinessIds = [...new Set(businessIds.map((value) => String(value)))];
+        // 必须至少有一个真实业务 ID 才谈得上「一致」：缺失 ID 不算一致，
+        // 否则无法区分「幂等重放返回同一 ID」与「响应根本没带 ID」。
+        const singleBusinessId = successful.length > 0 && businessIds.length > 0 && uniqueBusinessIds.length === 1;
+        return {
+            scenarioId: entry.id,
+            ...(rowIndex !== undefined ? { dataRow: rowIndex + 1 } : {}),
+            workers: workers.length,
+            success: successful.length,
+            conflict: conflicts.length,
+            failed: failed.length,
+            singleBusinessId,
+            outcomeCounts: workers.reduce((counts, item) => {
+                counts[item.outcome] = (counts[item.outcome] || 0) + 1;
+                return counts;
+            }, {}),
+            businessIds: uniqueBusinessIds,
+            barrier: barrierStats || {
+                firstStartAt: sameScenario.firstStartAt,
+                lastStartAt: sameScenario.lastStartAt,
+                maxSkewMs: sameScenario.maxSkewMs
+            },
+            sharedRequestKey: sameScenario.sharedRequestKey,
+            failures: workers.filter((item) => item.outcome !== "success"),
+            workerResults: workers
+        };
+    };
+    // 同场景并发的通过口径：允许「恰好 1 个成功 + 其余 409/422/423 业务冲突」；
+    // 冲突 worker 的断言失败进入汇总明细，但不把整轮判为失败（验证幂等/竞争正是预期）。
+    const sameScenarioPassed = (summary) => summary.failed === 0
+        && summary.conflict === summary.workers - summary.success
+        && summary.success >= 1
+        && (summary.success === summary.workers || summary.success === 1);
     const notRun = [];
     let bailTriggered = false;
     // 输出层脱敏（#90）：所有已知敏感值在运行时逐步积累，文本与 --json 共用
     const allSecrets = new Set(collectSecretValues(baseVars, [
+        // 同场景并发时 --vars 覆盖值不并入 baseVars（留给 worker 运行时解析），
+        // 但敏感值仍需在首个输出前进入脱敏集合。
+        ...collectSecretValues(args.vars || {}),
         baseOptions.authorization,
         ...baseOptions.globals.filter((item) => isSecretVarName(item.name)).map((item) => item.value)
     ]));
@@ -695,6 +805,25 @@ async function runCommand(args) {
     };
     const reportSummary = (report) =>
         `Summary: passed=${report.passedSteps} failed=${report.failed} skipped=${report.skipped} executed=${report.executed}/${report.planned} planned (状态 ${report.status})`;
+    const renderSameScenarioSummary = (summary) => {
+        const workerStatuses = summary.workerResults
+            .map((item) => `W${item.worker}=${item.outcome}(${item.httpStatus ?? "ERROR"})`)
+            .join(" ");
+        return [
+            "",
+            `同场景并发：scenario=${summary.scenarioId} workers=${summary.workers}`,
+            `  workers: ${workerStatuses}`,
+            `  barrier: firstStartAt=${summary.barrier.firstStartAt?.toFixed?.(3) ?? summary.barrier.firstStartAt} `
+                + `lastStartAt=${summary.barrier.lastStartAt?.toFixed?.(3) ?? summary.barrier.lastStartAt} `
+                + `maxSkewMs=${summary.barrier.maxSkewMs?.toFixed?.(1) ?? summary.barrier.maxSkewMs}`,
+            `  businessIds: ${summary.businessIds.length ? summary.businessIds.join(", ") : "(none)"}${summary.singleBusinessId ? "（一致）" : "（不一致）"}`,
+            ...summary.failures.map((item) =>
+                `  [W${item.worker}] ${item.outcome}${item.step ? ` @${item.step}` : ""}: ${item.assertions
+                    .filter((assertion) => !assertion.passed)
+                    .map((assertion) => `${assertion.name}: expected=${formatFailureValue(assertion.expected)} actual=${formatFailureValue(assertion.actual)}`)
+                    .join(" | ") || "请求执行失败"}`)
+        ].join("\n");
+    };
     // 数据驱动执行时给报告打数据行标记：JUnit/JSON 需要区分同一场景的不同数据行
     const markDataRow = (report, entry, rowIndex, datasetEnabled) => {
         if (!datasetEnabled || !report) return report;
@@ -705,7 +834,7 @@ async function runCommand(args) {
     // 单场景执行抽成可复用单元：并发模式下 entryPrint 指向场景私有缓冲，
     // 场景结束时一次性 flush，避免多个场景的 [PASS]/[FAIL]/[RETRY] 行交错。
     // 顺序模式下 entryPrint 就是全局 print，行为与历史串行输出完全一致。
-    const runEntry = async (entry, entryPrint) => {
+    const runEntry = async (entry, entryPrint, workerContext = null) => {
         if (!entry.url) throw new Error(`场景 ${entry.id} 缺少 url`);
         // 与 doctor 一致：相对路径必须位于配置目录内（防路径遍历），绝对路径保持兼容
         let scenarioPath;
@@ -723,6 +852,13 @@ async function runCommand(args) {
         }
         let scenario = ScenarioTest.loadScenarioFile(scenarioPath, entry.id, ScenarioTest);
         scenario = await transformScenario(scenario, { config, configDir, entry, environment }, plugins);
+        const workerRunOptions = workerContext
+            ? {
+                worker: workerContext,
+                vars: { ...(baseOptions.vars || {}), ...(args.vars || {}) },
+                ...(workerContext.beforeStep ? { beforeStep: workerContext.beforeStep } : {})
+            }
+            : {};
         // 服务端可控值（resolve 后的 path/method、warning 文本可混入响应提取值）
         // 一律过 escapeInlineText：换行折成字面量防注入新行，CI 命令标记打散
         let headerPrinted = false;
@@ -739,6 +875,9 @@ async function runCommand(args) {
         const report = await ScenarioTest.createEngine(baseOptions).runScenario(scenario, {
             ...baseOptions,
             suite: entrySuite,
+            // worker 变量必须晚于 --vars 注入后才参与模板解析；这里显式放进单次运行选项，
+            // 不写回 baseOptions，避免并发 worker 之间相互污染。
+            ...workerRunOptions,
             _includeAttemptContext: true,
             // 重试进度：retryUntil 轮询在间隔内长时间静默，输出每次失败重试防「挂死」观感；
             // 带步骤名——同场景多个轮询步骤（等订单→等发货）时进度行需能归属
@@ -852,6 +991,10 @@ async function runCommand(args) {
                 .map(([, value]) => value)
                 .filter((value) => typeof value === "string")));
         report.scenarioId = entry.id;
+        if (workerRunOptions.worker) {
+            const { index, total, sharedRequestKey } = workerRunOptions.worker;
+            report.worker = { index, total, sharedRequestKey };
+        }
         report.tags = entry.tags || [];
         return report;
     };
@@ -864,8 +1007,87 @@ async function runCommand(args) {
         }
         const rowVars = row || {};
         // 数据行变量优先级介于配置 vars 与 --vars 之间：--vars 是本次 run 的临时覆盖
-        baseOptions.vars = { ...baseVars, ...rowVars, ...(args.vars || {}) };
+        // --vars 值支持模板：必须按 worker 运行时解析，不能在各场景启动前用空 runtime 提前展开；
+        // 未启用同场景并发时保持历史行为（启动前的 baseVars 已解析）。
+        baseOptions.vars = sameScenarioMode
+            ? { ...baseVars, ...rowVars }
+            : { ...baseVars, ...rowVars, ...(args.vars || {}) };
         const rowReports = new Array(entries.length);
+        if (sameScenarioMode) {
+            const entry = entries[0];
+            const workerReports = new Array(workerContexts.length);
+            const bufferedLinesByWorker = new Array(workerContexts.length);
+            let firstError = null;
+            let hasError = false;
+            const arrivals = [];
+            let released = false;
+            let resolveBarrier;
+            const barrier = new Promise((resolvePromise) => { resolveBarrier = resolvePromise; });
+            // 屏障统计按数据行独立：多行 --data 时每行是一次新的竞争，
+            // 不能把上一行的首请求时间带到下一行的汇总里。
+            const rowBarrier = { firstStartAt: null, lastStartAt: null, maxSkewMs: null };
+            const release = () => {
+                if (released) return;
+                released = true;
+                arrivals.sort((left, right) => left - right);
+                rowBarrier.firstStartAt = arrivals[0];
+                rowBarrier.lastStartAt = arrivals.at(-1);
+                rowBarrier.maxSkewMs = rowBarrier.lastStartAt - rowBarrier.firstStartAt;
+                Object.assign(sameScenario, rowBarrier);
+                clearTimeout(barrierTimer);
+                resolveBarrier();
+            };
+            const barrierTimer = setTimeout(() => {
+                if (released) return;
+                print("同场景并发启动屏障超时（5 秒），可能存在插件或加载器阻塞。");
+                release();
+            }, 5000);
+            barrierTimer.unref?.();
+            const worker = async (workerIndex) => {
+                const bufferedLines = [];
+                bufferedLinesByWorker[workerIndex] = bufferedLines;
+                const bufferedPrint = (...values) => bufferedLines.push(values.map((value) => String(value)).join(" "));
+                try {
+                    const workerContext = workerContexts[workerIndex];
+                    const report = await runEntry(entry, bufferedPrint, {
+                        ...workerContext,
+                        beforeStep: async (step, index) => {
+                            if (index !== 0) return;
+                            arrivals.push(performance.now());
+                            if (arrivals.length === workerContexts.length) release();
+                            await barrier;
+                        },
+                        vars: { ...(args.vars || {}) }
+                    });
+                    markDataRow(report, entry, rowIndex, dataset);
+                    // 数据行 + worker 双标记：同一场景跨数据行并发时报告 ID 不能互相覆盖，
+                    // JUnit/HTML 才能把失败定位到「第几行的第几个 worker」。
+                    report.scenarioId = dataset
+                        ? `${entry.id}#row-${rowIndex + 1}#worker-${workerContext.index}`
+                        : `${entry.id}#worker-${workerContext.index}`;
+                    workerReports[workerIndex] = report;
+                    accumulateReport(report);
+                    bufferedPrint(reportSummary(report));
+                } catch (error) {
+                    if (!hasError) { hasError = true; firstError = error; }
+                }
+            };
+            await Promise.all(Array.from({ length: workerContexts.length }, (_, index) => worker(index)));
+            if (hasError) throw firstError;
+            for (const [index, report] of workerReports.entries()) {
+                if (report) reports.push(report);
+                else notRun.push({ id: entry.id, name: entry.name, url: entry.url, row: rowIndex + 1, worker: index + 1, reason: "barrier-error" });
+            }
+            for (const lines of bufferedLinesByWorker) for (const line of lines || []) print(line);
+            const summary = summarizeSameScenario(workerReports, workerContexts, entry, dataset ? rowIndex : undefined, rowBarrier);
+            sameScenario.summaries.push(summary);
+            print(renderSameScenarioSummary(summary));
+            const summaryPassed = sameScenarioPassed(summary);
+            if (!summaryPassed) process.exitCode = 1;
+            if (!bailTriggered && args.bail && !summaryPassed) bailTriggered = true;
+            if (dataset) rowResults.push({ index: rowIndex + 1, vars: rowVars, scenarios: workerReports.filter(Boolean) });
+            continue;
+        }
         if (dataset) print(`\n## 数据行 ${rowIndex + 1}/${dataRows.length}${Object.keys(rowVars).length ? ` (${Object.keys(rowVars).join(", ")})` : ""}`);
         if (args.concurrency <= 1) {
             // 默认串行：保持历史输出顺序与逐场景即时进度（含出错立即中断）
@@ -933,7 +1155,7 @@ async function runCommand(args) {
     }
     print(`\nOverall: ${passedTotal}/${total} passed`);
     if (bailTriggered) print(`\n--bail 已开启：${notRun.length} 个后续场景未执行，退出码保持非零。`);
-    if (failedTotal) process.exitCode = 1;
+    if (failedTotal && !sameScenarioMode) process.exitCode = 1;
     if (args.failOnSkip && skippedTotal > 0) {
         print(`\n--fail-on-skip 已开启，存在 ${skippedTotal} 个 SKIP 步骤，退出码置为 1`);
         process.exitCode = 1;
@@ -942,21 +1164,54 @@ async function runCommand(args) {
     // #57 JUnit：与 stdout 人类输出/退出码正交；报告先脱敏再落盘（#90）
     const secretList = outputSecretVariants([...allSecrets]);
     const safeReports = reports.map((report) => redactSecrets(report, secretList));
+    const safeSameScenario = sameScenario.summaries.map((summary) => redactSecrets(summary, secretList));
+    // 同场景并发的预期冲突 worker 在报告里会显示 FAILED 步骤；它们的「失败」正是
+    // 竞争结论的一部分，不能同时以场景失败的形式落进 JUnit/HTML（会与通过口径矛盾）。
+    // 冲突 worker 只经 concurrency 汇总呈现（skipped/冲突计数），其余报告保持原样。
+    // 直接用报告上的 scenarioId（数据行会把行号并入 ID），避免拼串与真实 ID 不一致。
+    const conflictScenarioIds = new Set(sameScenario.summaries.flatMap((summary) =>
+        summary.workerResults
+            .filter((item) => item.outcome === "conflict")
+            .map((item) => item.scenarioId)));
+    const reportableDocs = sameScenarioMode
+        ? safeReports.filter((report) => !conflictScenarioIds.has(report.scenarioId))
+        : safeReports;
     if (args.junit) {
-        const target = writeJUnitReport(args.junit, safeReports, { notRun: redactSecrets(notRun, secretList) });
+        const target = writeJUnitReport(args.junit, reportableDocs, {
+            notRun: redactSecrets(notRun, secretList),
+            concurrency: safeSameScenario
+        });
         print(`\nJUnit 报告: ${target}`);
     }
 
     if (args.report) {
-        const target = writeHtmlReport(args.report, safeReports, {
+        const target = writeHtmlReport(args.report, reportableDocs, {
             notRun: redactSecrets(notRun, secretList),
+            concurrency: safeSameScenario,
             environment: redactSecrets(environment?.name || environment?.key || "默认", secretList)
         });
         print(`\nHTML 报告: ${target}`);
     }
 
     const countSummary = `通过 ${passedTotal} 步，实际失败 ${actualFailedTotal} 步，条件跳过 ${skippedTotal} 步，因 stop 策略未执行 ${stoppedUnexecutedTotal} 步`;
-    if (actualFailedTotal > 0) {
+    // 同场景并发的判定口径与普通执行不同：预期冲突 worker 的步骤断言会「失败」，
+    // 但它们正是并发竞争的验证目标，不能用 actualFailedTotal 下「执行失败」的结论。
+    const sameScenarioTotals = sameScenario.summaries.reduce((totals, summary) => ({
+        workers: totals.workers + summary.workers,
+        success: totals.success + summary.success,
+        conflict: totals.conflict + summary.conflict,
+        failed: totals.failed + summary.failed
+    }), { workers: 0, success: 0, conflict: 0, failed: 0 });
+    const sameScenarioFailures = sameScenario.summaries.filter((summary) => !sameScenarioPassed(summary));
+    if (sameScenarioMode) {
+        const consistency = sameScenario.summaries.every((summary) => summary.singleBusinessId) ? "业务 ID 一致" : "业务 ID 不一致";
+        const workerSummary = `workers=${sameScenarioTotals.workers}，成功 ${sameScenarioTotals.success}，冲突 ${sameScenarioTotals.conflict}，失败 ${sameScenarioTotals.failed}`;
+        if (!sameScenarioFailures.length) {
+            print(`\n结论：同场景并发通过。${workerSummary}；${consistency}；${countSummary}。`);
+        } else {
+            print(`\n结论：同场景并发失败。${workerSummary}；${consistency}；${countSummary}。`);
+        }
+    } else if (actualFailedTotal > 0) {
         print(`\n结论：执行失败。${countSummary}；未执行步骤不计入通过。`);
     } else if (passedTotal === 0 && skippedTotal > 0) {
         const exitText = args.failOnSkip ? "因 --fail-on-skip 开启，退出码为 1" : "按默认策略退出码为 0";
@@ -970,6 +1225,13 @@ async function runCommand(args) {
         // 直接序列化 runScenario report（编程接口的稳定形状，不另造易漂移子集）；
         // 单场景输出 report 本身，多场景顶层包 { scenarios: [...] }。
         // 数据驱动时按行聚合；退出码与 JSON 正交：失败场景同样输出完整 JSON，仅置非零退出码。
+        // 同场景并发固定输出 { concurrency, scenarios }：worker 数可能是 1，
+        // 形状不能随 worker 数漂移（调用方无需分支判断是单报告还是列表）。
+        const scenarioPayload = sameScenarioMode
+            ? { scenarios: safeReports, ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}) }
+            : (safeReports.length === 1 && !notRun.length
+                ? safeReports[0]
+                : { scenarios: safeReports, ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}) });
         const payload = dataset
             ? {
                 data: { file: dataset.file, format: dataset.format, rows: dataset.rows.length },
@@ -978,11 +1240,10 @@ async function runCommand(args) {
                     vars: redactSecrets(row.vars, secretList),
                     scenarios: row.scenarios.map((report) => redactSecrets(report, secretList))
                 })),
+                ...(sameScenarioMode ? { concurrency: safeSameScenario } : {}),
                 ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {})
             }
-            : (safeReports.length === 1 && !notRun.length
-                ? safeReports[0]
-                : { scenarios: safeReports, ...(notRun.length ? { notRun: redactSecrets(notRun, secretList) } : {}) });
+            : (sameScenarioMode ? { concurrency: safeSameScenario, ...scenarioPayload } : scenarioPayload);
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     }
 }
