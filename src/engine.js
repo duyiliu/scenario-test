@@ -6,6 +6,7 @@ import {
     assertNoReservedVars,
     assertNotReservedVar,
     buildAssertions,
+    buildWorkerContext,
     buildUrl,
     collectMissingTemplateVars,
     completeProtocolRelativeUrl,
@@ -212,13 +213,18 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
     const identifiers = createRunIdentifiers();
     const suiteVars = layers.suite || {};
     const configVars = layers.configVars || {};
+    const workerVars = options.worker?.vars || {};
     const optionVars = layers.optionVars || {};
     // 保留变量冲突在使用前尽早报错：config/options vars 不得声明 runId/runNo
     assertNoReservedVars(scenario.vars, "场景 vars");
     assertNoReservedVars(configVars, "配置 vars");
     assertNoReservedVars(optionVars, "选项 vars");
-    // 优先级（低 → 高）：suite 提取值 < 场景 vars < 配置 vars < 选项 vars
-    const vars = { ...suiteVars, ...(scenario.vars || {}), ...configVars, ...optionVars, ...identifiers };
+    // 同场景并发的 worker 变量作为运行标识进入运行时：--vars 里的模板
+    // （如 requestKey=order-{{vars.worker}}）保持原样，使用处仍按 resolveString
+    // 递归解析，既有「模板值引用后续提取变量」的延迟解析语义不变。
+    // worker 键放在最后：它是本次运行的标识，配置里同名变量不得静默覆盖它。
+    const vars = { ...suiteVars, ...(scenario.vars || {}), ...configVars, ...optionVars, ...workerVars };
+    for (const [name, value] of Object.entries(identifiers)) setRuntimeVar(vars, name, value);
 
     // ✅ 是否在错误消息中显示详细信息（仅开发模式）
     // 浏览器产物（UMD/ESM）无 process 全局，必须先探测再读取，否则 runScenario 调用即崩
@@ -262,6 +268,11 @@ function buildGeneratedVars(scenario, layers, environmentVariables, options = {}
 }
 
 export function createRuntime(scenario, options = {}) {
+    const worker = options.worker === undefined
+        ? null
+        : (options.worker === true
+            ? buildWorkerContext(options.workerIndex || 1, options.workerTotal || 1, options.sharedRequestKey)
+            : buildWorkerContext(options.worker.index, options.worker.total, options.worker.sharedRequestKey));
     const config = options.config || {};
     // run 级共享命名空间（#69）：suite 提取产物作为最低优先级基底并入 vars，
     // 兼容 v16 的 {{vars.<name>}} 写法；场景/配置/选项 vars 同名时一律优先于 suite（#113）。
@@ -273,7 +284,7 @@ export function createRuntime(scenario, options = {}) {
             scenario,
             { suite, configVars: config.vars || {}, optionVars: options.vars || {} },
             options.environmentVariables || {},
-            { now: options.now, clock: options.clock }
+            { now: options.now, clock: options.clock, worker }
         ),
         // suite 是本次 run 跨场景共享命名空间：同一对象引用会传给后续场景，写入顺序即场景执行顺序。
         // suiteVars 为 v16 兼容别名，指向同一容器（{{vars.<name>}} 仍可读到底层的 suite 提取值）。
@@ -282,7 +293,8 @@ export function createRuntime(scenario, options = {}) {
         lastResponse: null,
         lastResponseBody: null,
         // 每个运行时独立 Cookie Jar（#65）：不落盘、不跨场景共享；未开启时不会写入
-        cookieJar: []
+        cookieJar: [],
+        worker
     };
     return runtime;
 }
@@ -1167,6 +1179,12 @@ export function createEngine(engineOptions = {}) {
             config,
             vars: { ...(engineOptions.vars || {}), ...(runOptions.vars || {}) },
             environmentVariables: runOptions.environmentVariables || engineOptions.environmentVariables,
+            worker: runOptions.worker !== undefined ? runOptions.worker : engineOptions.worker,
+            ...(runOptions.worker === true ? {
+                workerIndex: runOptions.workerIndex,
+                workerTotal: runOptions.workerTotal,
+                sharedRequestKey: runOptions.sharedRequestKey
+            } : {}),
             // suite（别名 suiteVars）：runOptions 显式传入优先，未传时回落引擎级默认
             suite: runOptions.suite !== undefined ? runOptions.suite
                 : (runOptions.suiteVars !== undefined ? runOptions.suiteVars
@@ -1178,38 +1196,10 @@ export function createEngine(engineOptions = {}) {
         const results = [];
         // failurePolicy:stop 后只继续执行 always 步骤（#56）；用户取消时不补跑清理
         let halted = false;
-        for (let index = 0; index < scenario.steps.length; index += 1) {
-            const step = scenario.steps[index];
-            if (halted && step.always !== true) {
-                // 已取消时不再补跑任何步骤（包括 always）：取消语义优先
-                if (runOptions.signal?.aborted) break;
-                const skipped = {
-                    name: step.name || "未命名步骤",
-                    method: "SKIP",
-                    path: "",
-                    status: "SKIPPED",
-                    duration: 0,
-                    passed: true,
-                    skipped: true,
-                    error: "",
-                    warnings: ["前置步骤失败（failurePolicy: stop），非 always 步骤未执行"],
-                    assertions: [],
-                    request: null,
-                    response: null,
-                    stepNo: index + 1
-                };
-                results.push(skipped);
-                try {
-                    await (runOptions.onStep ?? engineOptions.onStep)?.(skipped, index, runtime);
-                } catch (hookError) {
-                    skipped.passed = false;
-                    skipped.skipped = false;
-                    skipped.status = "ERROR";
-                    skipped.error = `onStep 回调抛错: ${hookError?.message || hookError}`;
-                }
-                continue;
-            }
-            const result = await runStep(step, runtime, { ...runOptions, config });
+        // 步骤结果统一出口：入列、编号、通知 onStep 并推进失败/取消语义。
+        // 正常执行与 beforeStep 异常（无请求可发的失败）共用，避免两条路径对
+        // onStep/failurePolicy/abort 的处理口径漂移。
+        const emitStep = async (result, index) => {
             result.stepNo = index + 1;
             results.push(result);
             // onStep 支持引擎级默认（与 runStep 内 onAttempt 的 {...engineOptions, ...runOptions} 合并对齐）。
@@ -1229,6 +1219,58 @@ export function createEngine(engineOptions = {}) {
                 result.assertions.push({ name: "onStep 回调无异常", passed: false, actual: escapeInlineText(hookError?.message || hookError), expected: "无异常" });
             }
             if (!result.passed && scenario.failurePolicy !== "continue") halted = true;
+        };
+        for (let index = 0; index < scenario.steps.length; index += 1) {
+            const step = scenario.steps[index];
+            if (halted && step.always !== true) {
+                // 已取消时不再补跑任何步骤（包括 always）：取消语义优先
+                if (runOptions.signal?.aborted) break;
+                const skipped = {
+                    name: step.name || "未命名步骤",
+                    method: "SKIP",
+                    path: "",
+                    status: "SKIPPED",
+                    duration: 0,
+                    passed: true,
+                    skipped: true,
+                    error: "",
+                    warnings: ["前置步骤失败（failurePolicy: stop），非 always 步骤未执行"],
+                    assertions: [],
+                    request: null,
+                    response: null
+                };
+                await emitStep(skipped, index);
+                continue;
+            }
+            // beforeStep 与 onStep 同口径：回调抛错降级为当前步骤 ERROR，
+            // 不发请求、不向上抛（否则 runScenario reject，调用方拿不到 report）。
+            let beforeStepError = null;
+            try {
+                await (runOptions.beforeStep ?? engineOptions.beforeStep)?.(step, index, runtime);
+            } catch (hookError) {
+                beforeStepError = hookError;
+            }
+            if (beforeStepError) {
+                const message = `beforeStep 回调抛错: ${beforeStepError?.message || beforeStepError}`;
+                await emitStep({
+                    name: step.name || "未命名步骤",
+                    method: String(step.method || (step.request && step.request.method) || "GET").toUpperCase(),
+                    path: step.path || "",
+                    status: "ERROR",
+                    duration: 0,
+                    passed: false,
+                    always: step.always === true,
+                    error: message,
+                    warnings: [],
+                    assertions: [{ name: "beforeStep 回调无异常", passed: false, actual: escapeInlineText(beforeStepError?.message || beforeStepError), expected: "无异常" }],
+                    request: null,
+                    response: null
+                }, index);
+                if (runOptions.signal?.aborted) break;
+                continue;
+            }
+            const result = await runStep(step, runtime, { ...runOptions, config });
+            await emitStep(result, index);
             if (runOptions.signal?.aborted) break;
         }
         // SKIP 可观测性：skipped 优先于 passed，绝不把 SKIP 计入 passedSteps/executed
@@ -1245,6 +1287,15 @@ export function createEngine(engineOptions = {}) {
             : (executed === 0 ? "SKIPPED" : "PASSED");
         return {
             scenarioName: scenario.name,
+            // worker 是运行标识：报告只投影 index/total/sharedRequestKey，
+            // 不把内部 vars 容器带进输出（与 d.ts 声明形状一致）。
+            ...(runtime.worker ? {
+                worker: {
+                    index: runtime.worker.index,
+                    total: runtime.worker.total,
+                    sharedRequestKey: runtime.worker.sharedRequestKey
+                }
+            } : {}),
             passed: failed === 0 && results.length === scenario.steps.length,
             status,
             planned: scenario.steps.length,
