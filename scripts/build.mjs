@@ -56,6 +56,14 @@ const capabilities = buildCapabilities(contract);
 const capabilitiesJson = `${JSON.stringify(capabilities, null, 2)}\n`;
 fs.writeFileSync(path.join(staging, "scenario-test-capabilities.json"), capabilitiesJson, "utf8");
 
+// AI 规则文件与运行时同源同版本：此前它们只存在于已提交的 Skill runtime/ 副本里，
+// 安装脚本却按 dist/ 下载，导致 v0.15.0 起这两个文件 404、安装链断开。
+// 现在由 init-templates.js（唯一事实来源）投影进构建产物，发布包内 7 个文件齐平。
+const { AUTHORING_PROMPT, SCENARIO_PATTERNS } = await import(pathToFileURL(path.join(root, "src/init-templates.js")).href);
+const patternsText = Array.isArray(SCENARIO_PATTERNS) ? SCENARIO_PATTERNS.join("\n") : SCENARIO_PATTERNS;
+fs.writeFileSync(path.join(staging, "AI_SCENARIO_PROMPT.md"), `${AUTHORING_PROMPT.trimEnd()}\n`, "utf8");
+fs.writeFileSync(path.join(staging, "SCENARIO_PATTERNS.md"), `${patternsText.trimEnd()}\n`, "utf8");
+
 process.argv.push("--out", staging);
 await import(pathToFileURL(path.join(root, "scripts/generate-dts.mjs")).href);
 

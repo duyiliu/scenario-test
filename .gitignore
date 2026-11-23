@@ -1,4 +1,8 @@
 node_modules/
+release/
+dist/
+skills/scenario-test/runtime/
+src/**/*.generated.js
 dist/*.map
 dist/**/*.map
 test-results/

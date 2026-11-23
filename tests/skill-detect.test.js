@@ -35,7 +35,7 @@ test('未接入：识别工作树 .git 文件标记，不扫描其它目录', ()
   assert.equal(data.detectedBy, 'project-marker');
 }));
 
-test('已接入：从嵌套目录发现项目，cli/规则统一指向 Skill 运行时', () => fixture((root) => {
+test('已接入：从嵌套目录发现项目，cli/规则统一指向用户级版本化运行时', () => fixture((root) => {
   createInstall(root);
   const nested = path.join(root, 'src', 'controllers');
   fs.mkdirSync(nested, { recursive: true });
@@ -44,12 +44,16 @@ test('已接入：从嵌套目录发现项目，cli/规则统一指向 Skill 运
   assert.equal(result.status, 0);
   assert.equal(data.status, 'installed');
   assert.equal(data.projectRoot, root);
-  const skillRuntime = data.skillRuntime.replace(/[/\\]$/, '');
-  assert.equal(data.cli, path.join(skillRuntime, 'scenario-test-cli.cjs'));
+  // 运行时不再内嵌在 Skill 里，而是按 SKILL.md 版本落在用户级目录；
+  // 本机没装过时应报 missing 并给出安装脚本路径。
+  assert.match(data.skillRuntime, /[\\/]\.scenario-test[\\/]runtime[\\/][\d.]+$/);
+  assert.equal(data.cli, path.join(data.skillRuntime, 'scenario-test-cli.cjs'));
   assert.equal(data.skillCli, data.cli);
-  assert.equal(data.authoringPrompt, path.join(skillRuntime, 'AI_SCENARIO_PROMPT.md'));
-  assert.equal(data.patterns, path.join(skillRuntime, 'SCENARIO_PATTERNS.md'));
-  assert.equal(data.capabilities, path.join(skillRuntime, 'scenario-test-capabilities.json'));
+  assert.equal(data.authoringPrompt, path.join(data.skillRuntime, 'AI_SCENARIO_PROMPT.md'));
+  assert.equal(data.patterns, path.join(data.skillRuntime, 'SCENARIO_PATTERNS.md'));
+  assert.equal(data.capabilities, path.join(data.skillRuntime, 'scenario-test-capabilities.json'));
+  assert.ok(['ready', 'missing', 'corrupt'].includes(data.runtime.status));
+  assert.match(data.runtime.install, /ensure-runtime\.mjs$/);
   assert.equal(data.missing.length, 0);
   assert.deepEqual(data.legacy, []);
   assert.match(data.note, /安装方|doctor/);

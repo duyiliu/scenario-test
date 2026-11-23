@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-`@yc_yzkj/scenario-test` 是一个可复用的 HTTP 场景测试库。它提供声明式 DSL 来描述 HTTP 场景（变量、提取、断言、条件、重试），并附带浏览器工作台和一个 Node.js CLI，二者运行同一套场景。消费方通常**不经 npm 集成**：Skill 自带发布版运行时，安装脚本按固定 GitHub Tag 经 jsDelivr 下载 `dist/` 运行时文件，并在各项目内初始化一个包含运行时副本的 `scenario-test/` 目录，因此本仓库的 `dist/` 才是业务项目真正消费的产物。
+`@yc_yzkj/scenario-test` 是一个可复用的 HTTP 场景测试库。它提供声明式 DSL 来描述 HTTP 场景（变量、提取、断言、条件、重试），并附带浏览器工作台和一个 Node.js CLI，二者运行同一套场景。消费方通常**不经 npm 集成**：Skill 只携带文本规则与脚本，运行时按版本落在用户级 `~/.scenario-test/runtime/<版本>/`，由 Skill 首次使用时按需下载或由安装脚本预装；**构建产物不入库**，发版时由 CI 打包成 GitHub Release 资产。
 
 本仓库的注释、文档和用户可见消息大多使用**中文**。编写代码注释或 CLI/UI 文案时请保持一致。
 
@@ -14,6 +14,8 @@
 
 ```bash
 npm run build          # 重建 dist/ 与生成文件（esbuild + generate-dts + tailwind v4）
+npm run build:runtime  # 把 dist/ 打成发布包 release/*.tar.gz + .sha256（发版与内网分发用）
+npm run verify:release # 按真实下载路径自检发布包（CI 与发版前必跑）
 npm run dev            # 监听 src/，自动重建 dist/，并在 http://127.0.0.1:4300/ 提供示例页面
 npm test               # 单元/集成测试（node --test tests/*.test.js，与 test:unit 等价）
 npm run test:browser   # Playwright 浏览器测试（tests/browser.test.mjs）
@@ -25,14 +27,16 @@ npm run check:all      # check + ui-style + e2e + 行尾审计
 npm run check:eol      # 行尾审计：检测索引/工作区 CRLF 幻影改动（只读）
 ```
 
-行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制；
-`dist/` 与 `*.generated.js` 显式锁定 LF。若 `git status` 显示 M 而 `git diff` 为空，先跑 `npm run check:eol`，
+行尾策略由 `.gitattributes` 统一：文本文件一律 LF 入库与检出，`*.ps1` 保留 CRLF，图片/字体按二进制。
+构建产物（`dist/`、`src/**/*.generated.js`、`skills/**/runtime/`、`release/`）全部不入库，因此不需要生成物行尾规则。
+若 `git status` 显示 M 而 `git diff` 为空，先跑 `npm run check:eol`，
 按提示用 `git checkout -- <路径>`（工作区漂移）或 `git add --renormalize .`（索引漂移）修复。
 
 测试使用 Node 内置的 `node:test` 运行器，从 `src/`（源码，而非 `dist/`）导入。运行单个文件或单个用例：
 
 ```bash
-node --test tests/engine.test.js
+npm test -- tests/engine.test.js              # 自动确保产物就绪后再跑
+node --test tests/engine.test.js              # 已构建过时可直接跑
 node --test --test-name-pattern="默认失败停止" tests/engine.test.js
 ```
 
@@ -93,11 +97,16 @@ node tests/fixtures/scenario-design/summarize.mjs tests/fixtures/scenario-design
 
 - `src/version.generated.js`（来自 `package.json` 的版本号）
 - `src/browser/tailwind.generated.js`
-- `dist/*`（umd/esm/cjs/cli/d.ts/capabilities.json）——`dist/` 已提交并随 GitHub Tag 分发
-- `dist/scenario-test-capabilities.json` 与 `dist/scenario-test.d.ts`（`contract.js` 的投射）
+- `src/e2e/ui/app.generated.js`、`src/e2e/ui/style.generated.js`（E2E 面板打包）
+- `dist/*`（umd/esm/cjs/cli/d.ts/capabilities.json + 两份 AI 规则 md）
+- `dist/scenario-test-capabilities.json`、`dist/scenario-test.d.ts`、`dist/AI_SCENARIO_PROMPT.md`、`dist/SCENARIO_PATTERNS.md`（`contract.js` / `init-templates.js` 的投射）
+
+**以上全部在 `.gitignore` 中，不进版本库**。`npm test` 检测到产物缺失或比源码旧时会自动先构建一次，因此克隆后无需手动 build。
 
 若修改了 `package.json` 的版本号或 DSL，请运行 `npm run build` 以一致地重新生成。
 
 ## 发版
 
-`master` 只保留可发布的代码；`dist/` 已提交，**GitHub Tag 就是分发产物**（jsDelivr 按 Tag 取 `dist/`）。npm Registry 不再是分发渠道：`package.json` 为 `private`，不执行 `npm publish`。发版意味着更新 `package.json`/`package-lock.json`/`CHANGELOG.md`/`scripts/install.ps1`/`install.sh`/`README.md` 中的版本号与 jsDelivr Tag URL，同步 `skills/scenario-test/runtime/` 并重算 `release.json` 哈希与 `SKILL.md` 的 `metadata.version`，`npm run build` 后执行 `npm run check:all`，提交、打 tag `vX.Y.Z`、推送，最后 `gh release create`。完整步骤见 `docs/RELEASING.md`。
+`master` 只保留源码，**GitHub Release 才是分发产物**：推 tag `vX.Y.Z` 触发 `.github/workflows/release.yml`，CI 构建 → 打包 `scenario-test-runtime-vX.Y.Z.tar.gz` + `.sha256` → 自检 → 建 Release 挂资产。npm Registry 不再是分发渠道：`package.json` 为 `private`，不执行 `npm publish`。
+
+发版只需：更新 `package.json`/`package-lock.json`/`CHANGELOG.md` 版本号，同步 `scripts/install.ps1`/`install.sh` 的 `$ScenarioTestVersion`（两者是发布包版本的唯一字面量）、`SKILL.md` 的 `metadata.version` 与 README 的固定 Tag，`npm run check:all`，提交，打 tag 推送后由 CI 发布。完整步骤见 `docs/RELEASING.md`。

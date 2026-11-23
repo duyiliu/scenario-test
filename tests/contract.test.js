@@ -109,12 +109,14 @@ test("init 模板（AI Prompt/Patterns/README）能力名单从 contract 投影�
         assert.ok(prompt.includes(`from: "${source}"`), `AI Prompt 缺少 when 来源 ${source}`);
         assert.ok(patterns.includes(`from: '${source}'`), `SCENARIO_PATTERNS 缺少 when 来源 ${source}`);
     }
-    // Skill 运行时副本必须与源码投影一致（不落项目盘）
-    const runtimeDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills/scenario-test/runtime");
-    const promptMd = fs.readFileSync(path.join(runtimeDir, "AI_SCENARIO_PROMPT.md"), "utf8");
-    const patternsMd = fs.readFileSync(path.join(runtimeDir, "SCENARIO_PATTERNS.md"), "utf8");
-    assert.equal(promptMd, `${prompt.trimEnd()}\n`, "runtime/AI_SCENARIO_PROMPT.md 与源码投影不一致");
-    assert.equal(patternsMd, `${patterns.trimEnd()}\n`, "runtime/SCENARIO_PATTERNS.md 与源码投影不一致");
+    // 规则文件不再随仓库提交副本：构建时由 build.mjs 投影进 dist/，再随发布包分发。
+    // 这里校验构建产物的投影一致性（未构建时先构建，与 npm test 的自愈口径一致）。
+    const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
+    assert.equal(fs.existsSync(path.join(distDir, "AI_SCENARIO_PROMPT.md")), true, "请先执行 npm run build 生成 dist/AI_SCENARIO_PROMPT.md");
+    const promptMd = fs.readFileSync(path.join(distDir, "AI_SCENARIO_PROMPT.md"), "utf8");
+    const patternsMd = fs.readFileSync(path.join(distDir, "SCENARIO_PATTERNS.md"), "utf8");
+    assert.equal(promptMd, `${prompt.trimEnd()}\n`, "dist/AI_SCENARIO_PROMPT.md 与源码投影不一致");
+    assert.equal(patternsMd, `${patterns.trimEnd()}\n`, "dist/SCENARIO_PATTERNS.md 与源码投影不一致");
 });
 
 test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
@@ -134,9 +136,11 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     assert.match(skill, new RegExp(`version: "${VERSION.replaceAll(".", "\\.")}"`), "SKILL.md metadata.version 须与运行时版本一致");
     assert.match(quickInstall, /Skill/);
     assert.match(quickInstall, /doctor/);
-    assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.ps1`));
-    assert.match(quickInstall, new RegExp(`scenario-test@v${VERSION}/scripts/install\\.sh`));
-    assert.match(skill, /诊断、执行与工作台统一使用 Skill 运行时 CLI/);
+    // v0.16.0 起安装脚本从 raw.githubusercontent 的 tag 路径取（不再走 jsDelivr，
+    // 因为产物在 Release 资产里，仓库内只需脚本本身）。
+    assert.match(quickInstall, new RegExp(`scenario-test/v${VERSION}/scripts/install\\.ps1`));
+    assert.match(quickInstall, new RegExp(`scenario-test/v${VERSION}/scripts/install\\.sh`));
+    assert.match(skill, /诊断、执行与工作台统一使用运行时 CLI/);
     assert.match(readme, /默认.*免 npm|免 npm.*默认/);
     assert.match(readme, /scenario-test-cli\.cjs/);
     assert.match(readme, /SCENARIO_TEST_SOURCE/);
@@ -151,13 +155,15 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
     assert.match(quickStart, /无需复制/);
     assert.doesNotMatch(examplesIndex, /两次 Prompt/);
 
-    // 一键安装脚本锁定免 npm 单一路径：按固定 GitHub Tag 经 jsDelivr 下载发布版 dist/
-    // 四个运行时文件后初始化；npm 已不再是分发渠道，脚本不得再出现 npm 安装分支。
+    // 一键安装脚本锁定免 npm 单一路径：按固定版本从 GitHub Release 下载整包运行时
+    // 后解压到版本目录；npm 已不再是分发渠道，脚本不得再出现 npm 安装分支。
     const installSh = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../scripts/install.sh"), "utf8");
     const installPs1 = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../scripts/install.ps1"), "utf8");
     for (const script of [installSh, installPs1]) {
         assert.match(script, /scenario-test-cli\.cjs/);
-        assert.match(script, /cdn\.jsdelivr\.net\/gh\/duyiliu\/scenario-test@v/, "默认下载源应固定到 GitHub Tag 的 jsDelivr dist");
+        assert.match(script, /github\.com\/duyiliu\/scenario-test\/releases\/download\/v/, "默认下载源应指向 GitHub Release 资产");
+        assert.match(script, /scenario-test-runtime-v/, "下载物应是整包运行时 tar.gz");
+        assert.match(script, /\.sha256/, "应校验整包 sidecar 哈希");
         assert.match(script, new RegExp(VERSION.replaceAll(".", "\\.")), "默认版本应固定到当前版本");
         assert.doesNotMatch(script, /api\.github\.com/);
         assert.doesNotMatch(script, /registry\.npmjs\.org/);
@@ -165,5 +171,7 @@ test("对外接入文档使用 Skill 和当前版本的安装脚本", () => {
         assert.doesNotMatch(script, /SCENARIO_TEST_USE_NPM|-UseNpm/);
         assert.doesNotMatch(script, /npm install/);
         assert.doesNotMatch(script, /npx @yc_yzkj\/scenario-test/);
+        // 产物不入库后，脚本不得再按 Tag 逐文件下载
+        assert.doesNotMatch(script, /cdn\.jsdelivr\.net/, "不再从仓库内目录逐文件下载");
     }
 });

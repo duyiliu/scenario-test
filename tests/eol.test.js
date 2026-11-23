@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
@@ -22,10 +23,13 @@ test(".gitattributes 声明仓库级行尾策略：文本 LF、脚本 CRLF、生
     const rules = attributeRules();
     assert.ok(rules.includes("* text=auto eol=lf"), "缺少全局文本 LF 规则");
     assert.ok(rules.includes("*.ps1 text eol=crlf"), "PowerShell 脚本须保留 CRLF");
-    // 生成物显式口径（与构建脚本写入的 \n 对齐），避免被全局规则之外的改动漂移
-    assert.ok(rules.includes("dist/** text=auto eol=lf"), "dist/ 生成物须显式锁定 LF");
-    assert.ok(rules.includes("src/version.generated.js text=auto eol=lf"), "version.generated.js 须显式锁定 LF");
-    assert.ok(rules.includes("src/browser/tailwind.generated.js text=auto eol=lf"), "tailwind.generated.js 须显式锁定 LF");
+    // v24 起构建产物不入库（dist/、src/**/*.generated.js 均在 .gitignore），
+    // 因此 .gitattributes 不再需要为它们声明行尾口径；这里改为守住"产物确实没被跟踪"。
+    const tracked = spawnSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).stdout.split(/\r?\n/);
+    for (const prefix of ["dist/", "skills/scenario-test/runtime/"]) {
+        assert.deepEqual(tracked.filter((file) => file.startsWith(prefix)), [], `${prefix} 不应再被 Git 跟踪`);
+    }
+    assert.deepEqual(tracked.filter((file) => file.endsWith(".generated.js")), [], "*.generated.js 不应再被 Git 跟踪");
     for (const ext of ["png", "jpg", "jpeg", "gif", "ico"]) {
         assert.ok(rules.includes(`*.${ext} binary`), `图片 *.${ext} 须按二进制处理`);
     }

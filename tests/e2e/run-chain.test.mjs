@@ -54,10 +54,10 @@ after(async () => {
 async function installProject(home, project) {
     fs.mkdirSync(project, { recursive: true });
     const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: source.baseUrl });
-    const env = installEnv(installer, { home, manifestUrl: source.manifestUrl });
+    const env = installEnv(installer, { home });
     const res = await run(installer.command, args, { env, cwd: project });
     assert.equal(res.code, 0, `安装应成功。\n${res.stdout}\n${res.stderr}`);
-    const cli = path.join(home, ".scenario-test", "runtime", "scenario-test-cli.cjs");
+    const cli = path.join(home, ".scenario-test", "runtime", source.version, "scenario-test-cli.cjs");
     return { target: path.join(project, "scenario-test"), env, cli };
 }
 

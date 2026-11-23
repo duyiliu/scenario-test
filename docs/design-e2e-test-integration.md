@@ -13,7 +13,7 @@
 
 ### 背景
 
-- 本仓库的分发模型是「GitHub Tag = 产物」：业务项目经 `scripts/install.sh` / `scripts/install.ps1` 按固定 Tag 从 jsDelivr 下载 `dist/` 4 个运行时文件，对 `skills/scenario-test/runtime/release.json` 的 SHA-256 校验后由 CLI `init` 落盘，最后 `doctor` 闸门。
+> **v0.16.0 起分发模型已变**：产物不入库，发版由 CI 打包成 GitHub Release 资产。业务项目经 `scripts/install.sh` / `scripts/install.ps1` 按固定版本下载 `scenario-test-runtime-v<版本>.tar.gz`，先校验整包 sidecar，再按包内 `release.json` 逐文件校验，解压到 `~/.scenario-test/runtime/<版本>/` 后由 CLI `init` 落盘，最后 `doctor` 闸门。本文其余部分描述的 E2E 设计原则（黑盒边界、本地源、清单动态生成）仍然适用；涉及具体文件路径的段落以本节为准。
 - 现有测试金字塔：单元/集成（`tests/*.test.js`，CI ✅）、Playwright 工作台三层（CI ✅）、变异（CI ✅）。**真实消费链没有任何 CI 证据**：`init.test.js` 测的是 CLI init 函数与 mock 下载分支，`issue-120` 测校验逻辑，`skill-runtime.test.js` 测 Skill 离线 init——但两个安装脚本本体从未在 CI 被端到端执行；LLM 驱动的 `tests/skill-e2e/` 仅在 192.168.1.214 手动跑（coverage-matrix 记为缺口 G8「未验证」）。
 - 同类项目参照（GitHub 调研结论）：tsz/slice/nub 等以独立 `install-test` workflow 在各 OS 上跑真实安装脚本；gh cli 用 `acceptance/` + build tag 把真机验收与单测隔离；gotit 对每个用例做 temp HOME/工作区隔离；yarnpkg e2e 直接「消费自家工具」做集成。共同模式：**E2E 在本仓、独立入口、真跑脚本、临时隔离、OS 矩阵**。
 
@@ -56,7 +56,7 @@
 tests/e2e/
   README.md                 # 定位、运行方式、与 skill-e2e 的分工
   helpers/
-    static-source.mjs       # 本地"CDN"：serve dist/ + 动态生成 release.json
+    static-source.mjs       # 本地发布源：现场打包 dist/ → tar.gz + .sha256
     fixture-api.mjs         # 零依赖业务 API（login/users/orders，同 java 夹具契约）
     proc.mjs                # spawn 封装：超时、输出采集、平台脚本选择
   project/                  # 消费者工程夹具：场景文件（run 阶段拷入已初始化工程）
@@ -69,15 +69,15 @@ scripts/run-e2e.mjs         # 枚举 tests/e2e/*.test.mjs → node --test
 链路时序（每个测试进程内）：
 
 ```
-static-source (http://127.0.0.1:PORT/dist + /release.json)
-        │  release.json = 对当前 checkout 构建出的 dist/ 4 文件实时算 SHA-256 生成；
+static-source (http://127.0.0.1:PORT/<tar.gz> + /<tar.gz>.sha256)
+        │  包由当前 checkout 的 dist/ 现场打出，manifest 由 build-runtime.mjs 生成；
         │  version 字段取「被执行安装脚本内钉死的版本」（sh 解析 SCENARIO_TEST_VERSION 默认值，
         │  ps1 解析 $ScenarioTestVersion 字面量），保证版本闸门的正向匹配
         ▼
 mktemp 消费工程目录（os.tmpdir，全链只写临时区）
         │
         ▼ 平台分发：linux/macos → bash install.sh；windows → pwsh(优先)/powershell install.ps1
-        │  两个脚本都必须显式注入 SCENARIO_TEST_RELEASE_JSON=http://127.0.0.1:PORT/release.json
+        │  两个脚本都通过 -Source / 第三参数指向 http://127.0.0.1:PORT
         │  （sh 缺省时会"警告+跳过校验"，ps1 缺省时会先打真实 jsDelivr——不注入则
         │   SHA-256 闸门没被测到，甚至触网）
 install（下载 → 清单校验 → CLI init → doctor → 文件清单自检）
@@ -99,7 +99,7 @@ fixture-api（127.0.0.1 随机端口：login 200/401、users 鉴权、orders 建
 
 - **黑盒边界**：E2E 只通过「子进程退出码 + 文件系统 + HTTP」断言，不 `import` `src/` 或 `dist/` 内部模块，不与被测物共享实现（防同向漂移造成双份假绿）。
 - **被测产物来源**：必须是当前 checkout `npm run build` 的 `dist/`。CI 顺序固定 build → e2e；测试启动时 dist 缺失则明确报错，不在测试内重建。
-- **清单动态生成**：`release.json` 由 static-source 对当前 dist 实时算哈希生成。committed `release.json` 是发布产物、开发期与 dist 存在合理时差（发布流程重算），**不得**被 E2E 当作新鲜度断言对象；E2E 验证的是"脚本的校验逻辑"，清单新鲜度归发布流程管。
+- **清单一并现场生成**：发布包与包内 `release.json` 都由 `scripts/build-runtime.mjs` 对当前 `dist/` 现场生成，E2E 因此覆盖了真实打包路径，而不是另外拼一份"测试版"文件集合。E2E 验证的是"脚本的校验逻辑"，发布产物是否已上传归发布流程管。
 - **隔离**：一切写入限 `os.tmpdir`；不得污染 git 工作区（与同流水线 dist 新鲜度闸门兼容）；进程级清理（退出杀 fixture/server/临时目录）。
 - **确定性**：无外网（全走 127.0.0.1）、随机端口（listen 0）、单链有界超时（目标单 job ≤ ~3min）、无 LLM/Docker 依赖。
 - **平台分发**：unix→`install.sh`（bash），windows→`install.ps1`（`pwsh` 优先、缺失回退 `powershell` 5.1）。脚本执行器选择是 E2E 自身的平台契约，新增平台需显式登记。

@@ -2,16 +2,17 @@
 name: scenario-test
 description: 为当前业务项目接入、设计、维护、诊断或执行 scenario-test HTTP 场景及其浏览器 E2E 测试。普通单元测试、代码审查和无关 E2E 测试不要触发。
 metadata:
-  version: "0.15.0"
+  version: "0.16.0"
 ---
 
 # scenario-test：全局入口，多业务项目独立使用
 
-本 Skill 安装在 Agent 的**用户级**目录，一次安装后可处理当前工作区内的多个业务项目。**禁止在每个业务项目复制或维护本 Skill**；各项目只保留自己的 `scenario-test/` 场景数据（`scenario.config.js` 与 `scenarios/`，可选 `e2e/`），**运行时统一使用本 Skill 的 `runtime/`**（v23 起项目不再落 `.scenario-test/` 副本）。Skill 不维护全局项目注册表，也不要扫描磁盘寻找其它项目；`serve` 的用户级端口登记由运行时 CLI 管理（见下）。
+本 Skill 安装在 Agent 的**用户级**目录，一次安装后可处理当前工作区内的多个业务项目。**禁止在每个业务项目复制或维护本 Skill**；各项目只保留自己的 `scenario-test/` 场景数据（`scenario.config.js` 与 `scenarios/`，可选 `e2e/`）。Skill 本身只含文本规则与脚本，**不内嵌运行时**：运行时按版本落在用户级 `~/.scenario-test/runtime/<版本>/`，跨项目、跨 Agent 共用（v23 起项目内不再落 `.scenario-test/` 副本）。Skill 不维护全局项目注册表，也不要扫描磁盘寻找其它项目；`serve` 的用户级端口登记由运行时 CLI 管理（见下）。
 
 ## 路由（先判断意图，再动作）
 
-1. 先执行只读探测（需要 Node.js 22+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。环境检查（`node -v`、目录可写、Skill 运行时完整）只在需要初始化时按 [init.md](references/init.md) 执行；`status=installed` 时不要重复检查或重新初始化。
+1. 先执行只读探测（需要 Node.js 22+）：`node <本Skill目录>/scripts/detect-project.mjs --cwd <当前工作目录>`。该脚本只向上查找最近的项目边界或安装目录。已明确给出业务项目根目录时用 `--project <路径>`；自定义场景目录用 `--dir <相对路径>`。不要猜测缺失的项目路径。环境检查（`node -v`、目录可写、运行时完整）只在需要初始化时按 [init.md](references/init.md) 执行；`status=installed` 时不要重复检查或重新初始化。
+   - 探测结果含 `runtime.status`。为 `ready` 时直接使用返回的 `cli`。为 `missing`/`corrupt` 且本次请求需要初始化、执行或启动工作台时，**先运行** `node <本Skill目录>/scripts/ensure-runtime.mjs` 按版本安装运行时（先用一行说明即将下载约 1.2 MB），完成后再探测一次并继续。仅询问能力、文档或做只读评估时不要下载。
 2. `status=installed`：只证明文件存在，**不代表 doctor PASS**。使用脚本返回的 `projectRoot`、`scenarioDir`、`config` 与 `cli`/`skillCli`（统一指向 Skill 运行时）。不同项目不可混用规则/配置；不要自动执行 `init` 或升级。
 3. `status=not-initialized`：阅读 [初始化工作流](references/init.md)。当本次请求是生成/补充/执行场景测试（或用户明确要求接入）时，**自动初始化**：在确认的项目根目录使用 Skill 自带的发布版 CLI 初始化（见 [init.md](references/init.md)，免 npm），随后重新探测并运行 `doctor`；安装前用一行说明将执行什么。用户明确拒绝或设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 时改为先征询；仅询问能力/文档时不安装。
 4. `status=incomplete`：报告 `missing`，阅读 [初始化工作流](references/init.md)，在用户授权后修复；不要将不完整状态当成可用。
@@ -25,10 +26,10 @@ metadata:
 
 ## 不变约束
 
-- DSL 的事实来源是安装方运行时的 `scenario-test-capabilities.json`（由库中 `src/contract.js` 生成）；场景编写规则以同一来源的 `AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 为准（均在 `runtime/`）。**不要依据本 Skill 自行发明操作符、字段、CLI 参数或接口响应**。
+- DSL 的事实来源是运行时目录的 `scenario-test-capabilities.json`（由库中 `src/contract.js` 生成，随发布包分发）；场景编写规则以同一来源的 `AI_SCENARIO_PROMPT.md` 和 `SCENARIO_PATTERNS.md` 为准。**不要依据本 Skill 自行发明操作符、字段、CLI 参数或接口响应**。
 - 默认免 npm 接入，不修改业务应用源码、`package.json` 或构建配置；不克隆公共库源码；不覆盖已有配置/场景。自动初始化只针对未接入项目；更新运行时=更新安装方（本 Skill 或用户级安装），需要用户明确要求，不可自动 `--force`。
 - 只分析用户指定的业务功能及直接证据，不扫描整个项目批量生成。
 - **生成场景 ≠ 执行测试**。编写阶段绝不调用 HTTP 接口、启动服务或写入实际业务数据；运行阶段需要用户明确提出，写操作/非本地环境遵守 [execute.md](references/execute.md) 的安全闸门。
-- **诊断、执行与工作台统一使用 Skill 运行时 CLI**：`node <cli> doctor|run|serve|capabilities`，其中 `<cli>` 是探测结果中的 `cli`/`skillCli`（指向本 Skill `runtime/`）。项目内不再有运行时副本；`doctor` 会在场景用到高于当前 contract 的能力时提示升级安装方。禁止直接 `require`/`import` 运行时（UMD、内部模块），也禁止自写脚本或临时 HTTP 请求复现场景执行；命令与参数以 `capabilities --json` 和 `--help` 为准。工作台端口由用户级项目登记固定：`serve` 缺省复用登记端口，查看或修改用 `node <cli> projects list|set-port <端口>`。登记文件默认在 `~/.scenario-test/projects.json`。
+- **诊断、执行与工作台统一使用运行时 CLI**：`node <cli> doctor|run|serve|capabilities`，其中 `<cli>` 是探测结果中的 `cli`/`skillCli`（指向 `~/.scenario-test/runtime/<版本>/`）。项目内不再有运行时副本；`doctor` 会在场景用到高于当前 contract 的能力时提示升级安装方。禁止直接 `require`/`import` 运行时（UMD、内部模块），也禁止自写脚本或临时 HTTP 请求复现场景执行；命令与参数以 `capabilities --json` 和 `--help` 为准。工作台端口由用户级项目登记固定：`serve` 缺省复用登记端口，查看或修改用 `node <cli> projects list|set-port <端口>`。登记文件默认在 `~/.scenario-test/projects.json`。
 - 禁止将 Token、Secret、个人数据或生产环境地址写死在场景与提交内容中。
 - 每个项目独立检查，工作树（`.git` 为文件）和多项目并行同样适用；Skill 更新即全部项目运行时更新，无需逐项目同步。
