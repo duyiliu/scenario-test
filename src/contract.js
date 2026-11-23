@@ -16,7 +16,8 @@ import { VERSION } from "./version.generated.js";
 // v23：运行时去项目化——项目不再落 .scenario-test 运行时副本，执行/工作台统一使用安装方运行时；
 //       init 移除 --library-url、新增 --clean 清理旧副本
 // v24：contains 操作符（includes 同口径别名）与 jsonSchema 结构化深校验（shape 完整版）
-export const CONTRACT_VERSION = 24;
+// v25：同一场景并发执行（--workers/--same-scenario），支持启动屏障、worker 变量与共享请求键
+export const CONTRACT_VERSION = 25;
 
 // retryUntil 允许的键：字段定义与 scenario.retryUntilKeys 共用同一冻结数组，
 // 避免两份名单只改一处（v18 起消除重复列表）
@@ -284,6 +285,9 @@ export const contract = Object.freeze({
             open: { kind: "flag", prop: "open", description: "serve 监听成功后用默认浏览器打开工作台" },
             reassign: { kind: "flag", prop: "reassign", description: "projects ensure：登记端口被占用时自动顺延到空闲端口并更新登记" },
             concurrency: { kind: "value", prop: "concurrency", parse: "number", description: "run 多场景并发数，默认 1（串行）；场景内步骤始终保持串行" },
+            workers: { kind: "value", prop: "workers", parse: "number", description: "同一场景并发执行的 worker 数；必须与 --same-scenario 同时使用" },
+            "same-scenario": { kind: "flag", prop: "sameScenario", description: "将选定场景复制为 --workers 个并发实例，worker 通过启动屏障对齐首个请求" },
+            "shared-request-key": { kind: "flag", prop: "sharedRequestKey", description: "同场景并发时启用共享请求键模式，并注入 vars.sharedRequestKey=shared（可在场景中直接引用）" },
             e2e: { kind: "flag", prop: "e2e", description: "init 可选初始化浏览器 E2E 项目" },
             project: { kind: "value", prop: "project", description: "init 目标项目根目录" },
             dir: { kind: "value", prop: "dir", description: "init 场景测试目录名" },
