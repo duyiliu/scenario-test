@@ -8,6 +8,8 @@ nodes:
       type: agent
       name: Implement
       runner: codex
+      model: magpie/group/fast
+      reasoningEffort: max
       prompt: |
         {{task}}
 
@@ -39,6 +41,8 @@ nodes:
       type: agent
       name: Fix from failing tests or CI
       runner: codex
+      model: magpie/group/fast
+      reasoningEffort: max
       prompt: |
         测试或 CI 失败。读取失败信息，做最小改动修复，不改变任务范围；不得修改 README.md 或 docs/ 下的规则文档，不得合并、不得部署。
         修好后运行 npm test 确认，并以 CEZ:VERDICT fixed 结束；无法定位根因时以 CEZ:VERDICT stuck 结束。
@@ -46,7 +50,9 @@ nodes:
     - id: review
       type: agent
       name: Independent review
-      runner: claude
+      runner: codex
+      model: magpie/group/fast
+      reasoningEffort: max
       prompt: |
         独立审查当前任务分支相对 master 的全部改动。只评审，不实现，不修改文件。
 
@@ -78,6 +84,8 @@ nodes:
       type: agent
       name: Read gate verdict
       runner: codex
+      model: magpie/group/fast
+      reasoningEffort: max
       prompt: |
         自动合并门禁已经运行完毕，结果写在当前工作目录的 .ai/cezar/auto-merge-verdict.md。
 
