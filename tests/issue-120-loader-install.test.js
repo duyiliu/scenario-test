@@ -41,21 +41,22 @@ test("#120：场景/配置文件死循环在超时后退出，不再永久挂住
     }
 });
 
-test("#120：安装脚本按发布版 release.json 校验 SHA-256，不再直接执行下载文件", () => {
+test("#120：安装脚本先校验整包 sidecar，再用包内 release.json 逐文件核对", () => {
     const installSh = fs.readFileSync(path.join(root, "scripts", "install.sh"), "utf8");
     const installPs1 = fs.readFileSync(path.join(root, "scripts", "install.ps1"), "utf8");
     for (const [name, script] of [["install.sh", installSh], ["install.ps1", installPs1]]) {
-        assert.match(script, /release\.json/, `${name} 应获取发布版 release.json`);
+        assert.match(script, /release\.json/, `${name} 应核对包内 release.json`);
         assert.match(script, /sha256/i, `${name} 应校验 SHA-256`);
-        assert.match(script, /SCENARIO_TEST_RELEASE_JSON/, `${name} 应支持自定义清单（内网源）`);
+        assert.match(script, /\.tar\.gz/, `${name} 应下载整包运行时`);
+        assert.match(script, /\.sha256/, `${name} 应校验整包 sidecar`);
         // 校验必须在 init 之前执行，否则篡改文件已经被用来写项目
-        const verifyIndex = script.indexOf("release.json");
+        const verifyIndex = script.indexOf(".sha256");
         const initIndex = script.indexOf("init --project");
         assert.ok(verifyIndex > 0 && initIndex > verifyIndex, `${name} 的哈希校验必须早于 init`);
     }
     // 脚本要求 hash 不匹配时直接中止
-    assert.match(installSh, /运行时文件校验失败[\s\S]{0,200}exit 1/);
-    assert.match(installPs1, /运行时文件校验失败/);
+    assert.match(installSh, /运行时(发布包|文件)校验失败[\s\S]{0,200}exit 1/);
+    assert.match(installPs1, /运行时(发布包|文件)校验失败/);
     assert.match(installPs1, /throw/);
 });
 
@@ -70,7 +71,9 @@ test("#120：install.sh 带 shebang，且仓库索引标记为可执行", () => 
 
 test("#120：install.sh 内联 Node 校验脚本可被解析（防字符串换行导致发布版校验直接失败）", () => {
     const installSh = fs.readFileSync(path.join(root, "scripts", "install.sh"), "utf8");
-    const start = installSh.indexOf("node -e '");
+    // 脚本里有两处 node -e：整包哈希（单行）与包内逐文件校验（多行）。
+    // 这里要校验的是后者——它跨行，正是历史上被裸换行写成语法错误的那段。
+    const start = installSh.lastIndexOf("node -e '");
     assert.ok(start > 0, "install.sh 应使用 node -e 内联校验脚本");
     const NL = String.fromCharCode(10);
     const bodyStart = installSh.indexOf(NL, start) + 1;

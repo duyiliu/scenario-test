@@ -5,11 +5,6 @@
 # 审计：`npm run check:eol`（只读，检测索引/工作区行尾漂移）已被 `npm test` 覆盖。
 * text=auto eol=lf
 
-# 生成物口径：dist/ 与 *.generated.js 由构建脚本以 \n 写出，显式锁定 LF，避免与源码策略漂移。
-dist/** text=auto eol=lf
-src/version.generated.js text=auto eol=lf
-src/browser/tailwind.generated.js text=auto eol=lf
-
 # Windows PowerShell 5.1 对 LF-only 脚本的解析存在边角问题，脚本保留 CRLF（入库仍归一为 LF）。
 *.ps1 text eol=crlf
 

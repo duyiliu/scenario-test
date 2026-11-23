@@ -1,5 +1,6 @@
 // E2E 安装链：真实执行安装脚本（install.sh / install.ps1），
-// 验证「下载 → SHA-256 校验 → 用户级运行时落盘 → init → doctor → 文件清单」全链。
+// 验证「下载整包 → 校验 sidecar → 解压 → 包内逐文件校验 → 用户级版本目录 →
+// init → doctor → 文件清单」全链。
 // 只走 127.0.0.1 本地静态源与临时目录，无外网、无污染真实用户目录。
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -36,7 +37,7 @@ test("install 正例：自定义源 + 清单校验 → init → doctor PASS → 
     fs.mkdirSync(project, { recursive: true });
 
     const args = installArgs(installer, { projectDir: project, targetDir, source: source.baseUrl });
-    const env = installEnv(installer, { home, manifestUrl: source.manifestUrl });
+    const env = installEnv(installer, { home });
     const result = await run(installer.command, args, { env, cwd: project });
     const combined = result.stdout + result.stderr;
 
@@ -51,9 +52,9 @@ test("install 正例：自定义源 + 清单校验 → init → doctor PASS → 
     }
     assert.ok(!fs.existsSync(path.join(target, ".scenario-test")), "v23 项目内不应有 .scenario-test 运行时副本");
 
-    // 用户级运行时目录落在隔离 home 下
-    const runtimeDir = path.join(home, ".scenario-test", "runtime");
-    for (const f of ["scenario-test-cli.cjs", "scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-capabilities.json"]) {
+    // 用户级运行时目录落在隔离 home 下，按版本分目录（与 Skill ensure-runtime 同一落点）
+    const runtimeDir = path.join(home, ".scenario-test", "runtime", source.version);
+    for (const f of ["scenario-test-cli.cjs", "scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-capabilities.json", "AI_SCENARIO_PROMPT.md", "SCENARIO_PATTERNS.md", "release.json"]) {
         assert.ok(fs.existsSync(path.join(runtimeDir, f)), `用户级运行时应含 ${f}`);
     }
 
@@ -71,13 +72,13 @@ test("install 反例：下载内容被篡改 → SHA-256 校验失败、exit 非
         fs.mkdirSync(project, { recursive: true });
 
         const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: badSource.baseUrl });
-        const env = installEnv(installer, { home, manifestUrl: badSource.manifestUrl });
+        const env = installEnv(installer, { home });
         const result = await run(installer.command, args, { env, cwd: project });
 
         assert.notEqual(result.code, 0, `篡改应使安装失败。\nstdout:\n${result.stdout}`);
         assert.match(result.stdout + result.stderr, /校验失败|校验|SHA-256/i, "应报校验失败语义");
         // 校验失败在替换用户级目录之前：隔离 home 下不应有运行时文件
-        const runtimeDir = path.join(home, ".scenario-test", "runtime");
+        const runtimeDir = path.join(home, ".scenario-test", "runtime", badSource.version);
         assert.ok(!fs.existsSync(path.join(runtimeDir, "scenario-test-cli.cjs")), "校验失败不应落用户级运行时");
     } finally {
         await badSource.close();
@@ -91,7 +92,7 @@ test("install 反例：源不可达 → exit 非零且错误可定位", { skip: 
     const deadSource = "http://127.0.0.1:1"; // 保留端口，连接被拒
 
     const args = installArgs(installer, { projectDir: project, targetDir: "scenario-test", source: deadSource });
-    const env = installEnv(installer, { home, manifestUrl: `${deadSource}/release.json` });
+    const env = installEnv(installer, { home });
     const result = await run(installer.command, args, { env, cwd: project, timeoutMs: 60000 });
 
     assert.notEqual(result.code, 0, "源不可达应失败");

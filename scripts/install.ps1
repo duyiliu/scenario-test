@@ -4,10 +4,11 @@
     一键安装 scenario-test 到业务项目
 
 .DESCRIPTION
-    免 npm 安装：按固定 GitHub Tag 从 jsDelivr 下载发布版运行时文件到
-    用户级目录 %USERPROFILE%.scenario-test\runtime；业务项目只落场景数据
+    免 npm 安装：按固定版本从 GitHub Release 下载整包运行时
+    （scenario-test-runtime-v<版本>.tar.gz）到用户级版本目录
+    %USERPROFILE%.scenario-test\runtime\<版本>\；业务项目只落场景数据
     （config/README/cmd），不安装 npm 包、不改 package.json、不留运行时副本。
-    指定 -Source 时改用内网运行时目录（GitLab Raw 或制品目录）。
+    指定 -Source 时改用内网目录（需含同名 tar.gz 与 .sha256）。
 
 .PARAMETER ProjectDir
     业务项目根目录，默认为当前目录
@@ -19,16 +20,16 @@
     跳过健康检查
 
 .PARAMETER Source
-    可选的内网运行时目录（GitLab Raw 或制品目录，需包含全部运行时文件）。
-    不指定时按固定 GitHub Tag 从 jsDelivr 下载发布版 dist/。
-    指定后若该目录没有 release.json，安装脚本会跳过 SHA-256 校验并给出警告；
-    需要强制校验时用 SCENARIO_TEST_RELEASE_JSON 指向可信清单。
+    可选的内网制品目录，需包含 scenario-test-runtime-v<版本>.tar.gz 及同名
+    .sha256。不指定时从 GitHub Release 下载。
+    指定后若该目录没有 .sha256，安装脚本会跳过整包校验并给出警告（包内
+    release.json 的逐文件校验仍会执行）。
 
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -ProjectDir D:\myproject -TargetDir "dev/场景测试"
-    .\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.15.0/dist"
-    irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.ps1 | iex
+    .\install.ps1 -Source "https://nexus.example.com/repository/scenario-test/v0.16.0"
+    irm https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.ps1 | iex
 #>
 
 param(
@@ -39,16 +40,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScenarioTestVersion = "0.15.0"
-$DefaultSource = "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/dist"
-$RuntimeFiles = @(
-    "scenario-test-cli.cjs",
-    "scenario-test.umd.js",
-    "scenario-test.d.ts",
-    "scenario-test-capabilities.json",
-    "AI_SCENARIO_PROMPT.md",
-    "SCENARIO_PATTERNS.md"
-)
+$ScenarioTestVersion = "0.16.0"
+$ArchiveName = "scenario-test-runtime-v$ScenarioTestVersion.tar.gz"
+$DefaultSource = "https://github.com/duyiliu/scenario-test/releases/download/v$ScenarioTestVersion"
 
 # 颜色输出函数
 function Write-Success { param([string]$Message) Write-Host "✓ $Message" -ForegroundColor Green }
@@ -111,75 +105,80 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 Push-Location $ProjectDir
 try {
-    # v23 起运行时去项目化：下载到暂存区校验后原子落用户级目录，项目内不留副本
-    $stageDir = Join-Path $tempRoot "runtime"
-    New-Item -ItemType Directory -Path $stageDir | Out-Null
-    $runtimeDir = Join-Path $env:USERPROFILE ".scenario-test\runtime"
+    # v24 起发布物是整包：下载 tar.gz → 校验 sidecar → 解压到版本目录。
+    # 同一份包也被 Skill 的 ensure-runtime.mjs 消费，两个入口落到同一个 <版本>/ 目录。
+    $runtimeRoot = Join-Path $env:USERPROFILE ".scenario-test\runtime"
+    $runtimeDir = Join-Path $runtimeRoot $ScenarioTestVersion
 
     $downloadSource = if ($Source) { $Source.TrimEnd('/') } else { $DefaultSource }
-    Write-Info "免 npm 安装模式，下载源：$downloadSource ..."
-    foreach ($fileName in $RuntimeFiles) {
-        $fileUrl = "$downloadSource/$fileName"
-        try {
-            Invoke-WebRequest -Uri $fileUrl -OutFile (Join-Path $stageDir $fileName) -UseBasicParsing
-        } catch {
-            throw "运行时文件下载失败: $fileUrl`n$_"
-        }
+    $archiveUrl = "$downloadSource/$ArchiveName"
+    Write-Info "下载运行时发布包：$archiveUrl ..."
+    $archivePath = Join-Path $tempRoot $ArchiveName
+    try {
+        Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing
+    } catch {
+        throw "运行时发布包下载失败: $archiveUrl`n$_`n可改用 -Source 指向内网制品目录，或手动放置该包后重试。"
     }
 
-    foreach ($fileName in $RuntimeFiles) {
+    # 整包完整性（#120 升级）：先核对 sidecar 里的 SHA-256。这层挡住传输损坏与
+    # 伪造字节；解压后再用包内 release.json 逐文件核对（挡住包内被替换的情形）。
+    $checksumUrl = "$archiveUrl.sha256"
+    $expectedArchiveHash = $null
+    try {
+        $checksumText = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+        if ($checksumText -is [byte[]]) { $checksumText = [Text.Encoding]::UTF8.GetString($checksumText) }
+        $expectedArchiveHash = ($checksumText -split '\s+')[0].Trim().ToLower()
+    } catch {
+        if ($Source) {
+            Write-Warning-Custom "未获取到 $ArchiveName.sha256，跳过整包校验（自定义源：$Source）"
+        } else {
+            throw "无法获取发布包校验文件：$checksumUrl（请检查网络后重试）"
+        }
+    }
+    if ($expectedArchiveHash) {
+        $actualArchiveHash = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
+        if ($actualArchiveHash -ne $expectedArchiveHash) {
+            throw "运行时发布包校验失败`n期望 $expectedArchiveHash`n实际 $actualArchiveHash"
+        }
+        Write-Success "发布包 SHA-256 校验通过"
+    }
+
+    $stageDir = Join-Path $tempRoot "runtime"
+    New-Item -ItemType Directory -Path $stageDir | Out-Null
+    try {
+        tar -xzf "$archivePath" -C "$stageDir"
+        if ($LASTEXITCODE -ne 0) { throw "tar 解压退出码 $LASTEXITCODE" }
+    } catch {
+        throw "运行时发布包解压失败：$_"
+    }
+
+    # 包内 release.json 是逐文件的发布清单，与包一起签名（sidecar 覆盖整包）。
+    $manifestPath = Join-Path $stageDir "release.json"
+    if (-not (Test-Path $manifestPath -PathType Leaf)) {
+        throw "运行时发布包缺少 release.json，拒绝安装"
+    }
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.version -and $manifest.version -ne $ScenarioTestVersion) {
+        throw "release.json 版本不匹配: $($manifest.version) != $ScenarioTestVersion"
+    }
+    foreach ($fileName in @("scenario-test-cli.cjs", "scenario-test.umd.js", "scenario-test.d.ts", "scenario-test-capabilities.json", "AI_SCENARIO_PROMPT.md", "SCENARIO_PATTERNS.md")) {
+        $property = $manifest.sha256.PSObject.Properties[$fileName]
+        $want = if ($property) { [string]$property.Value } else { "" }
+        if (-not $want) { throw "release.json 缺少 $fileName 的 SHA256" }
         if (-not (Test-Path (Join-Path $stageDir $fileName) -PathType Leaf)) {
-            throw "下载内容不完整，缺少运行时文件：$fileName"
+            throw "运行时发布包缺少文件：$fileName"
+        }
+        $actual = (Get-FileHash -Path (Join-Path $stageDir $fileName) -Algorithm SHA256).Hash
+        if ($actual.ToLower() -ne $want.ToLower()) {
+            throw "运行时文件校验失败: $fileName`n期望 $want`n实际 $actual"
         }
     }
+    Write-Success "包内 6 个运行时文件 SHA-256 校验通过"
 
-    # 完整性校验（#120）：下载文件必须与发布版 release.json 的 SHA-256 一致，
-    # 否则 init 写入的版本锁只能证明"文件没变"，不能证明"文件就是发布产物"。
-    # 清单默认取同一 Tag 的 Skill 运行时目录；内网源可用 -ReleaseManifest 或
-    # 环境变量 SCENARIO_TEST_RELEASE_JSON 覆盖。
-    $manifestCandidates = @()
-    if ($env:SCENARIO_TEST_RELEASE_JSON) { $manifestCandidates += $env:SCENARIO_TEST_RELEASE_JSON }
-    $manifestCandidates += "https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v$ScenarioTestVersion/skills/scenario-test/runtime/release.json"
-    if ($Source) { $manifestCandidates += "$downloadSource/release.json" }
-    $manifest = $null
-    $manifestUsed = ""
-    foreach ($candidate in $manifestCandidates) {
-        try {
-            $manifest = Invoke-RestMethod -Uri $candidate -UseBasicParsing
-            $manifestUsed = $candidate
-            break
-        } catch {
-            $manifest = $null
-        }
-    }
-    if ($null -ne $manifest) {
-        if ($manifest.version -and $manifest.version -ne $ScenarioTestVersion) {
-            throw "release.json 版本不匹配: $($manifest.version) != $ScenarioTestVersion（$manifestUsed）"
-        }
-        foreach ($fileName in $RuntimeFiles) {
-            $property = $manifest.sha256.PSObject.Properties[$fileName]
-            $want = if ($property) { [string]$property.Value } else { "" }
-            if (-not $want) {
-                throw "release.json 缺少 $fileName 的 SHA256（$manifestUsed）"
-            }
-            $actual = (Get-FileHash -Path (Join-Path $stageDir $fileName) -Algorithm SHA256).Hash
-            if ($actual.ToLower() -ne $want.ToLower()) {
-                throw "运行时文件校验失败: $fileName`n期望 $want`n实际 $actual"
-            }
-        }
-        Write-Success "运行时文件 SHA-256 校验通过"
-    } elseif ($Source) {
-        Write-Warning-Custom "未获取到 release.json，跳过哈希校验（自定义源：$Source）"
-    } else {
-        throw "无法获取发布版 release.json（$($manifestCandidates[0])），请检查网络后重试"
-    }
-    Write-Success "固定版本运行时下载成功"
-
-    # 校验通过后才替换用户级运行时目录，失败不影响在用安装
+    # 校验通过后才写入版本目录：失败不影响在用安装，半成品不会留在目标位置。
+    if (Test-Path $runtimeDir) { Remove-Item $runtimeDir -Recurse -Force }
     New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
-    foreach ($fileName in $RuntimeFiles) {
-        Copy-Item (Join-Path $stageDir $fileName) (Join-Path $runtimeDir $fileName) -Force
-    }
+    Get-ChildItem $stageDir -File | Copy-Item -Destination $runtimeDir -Force
     Write-Success "运行时就绪：$runtimeDir"
 
     Write-Info "初始化场景测试目录：$fullTargetPath ..."

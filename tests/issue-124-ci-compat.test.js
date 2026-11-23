@@ -59,11 +59,17 @@ test("#124：浏览器测试端口不写死、默认用 Playwright 内置 chromi
     }
 });
 
-test("#124：CI 覆盖 dist 新鲜度、d.ts 自编译与 Node 22/24 矩阵", () => {
+test("#124：CI 覆盖构建产物完整性、d.ts 自编译与 Node 22/24 矩阵", () => {
     const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
     assert.match(workflow, /node: \[22, 24\]/);
-    assert.match(workflow, /dist 新鲜度/);
-    assert.match(workflow, /git diff --exit-code -- dist\//);
+    // v0.16.0 起产物不入库，没有"新鲜度"可查；改为断言产物完整性闸门仍在，
+    // 且含两份 AI 规则文件（历史上曾因它们缺失导致安装链 404）。
+    assert.match(workflow, /构建产物完整性/);
+    assert.match(workflow, /AI_SCENARIO_PROMPT\.md/);
+    assert.match(workflow, /SCENARIO_PATTERNS\.md/);
     assert.match(workflow, /tsc --noEmit/);
     assert.match(workflow, /node --test tests\/dts\.test\.js/);
+    // 发布包构建与自检必须在 CI 中被覆盖，否则打包坏了要到发版才发现
+    assert.match(workflow, /npm run build:runtime/);
+    assert.match(workflow, /npm run verify:release/);
 });

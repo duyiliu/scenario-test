@@ -39,7 +39,9 @@ test("#47 CI：push master / PR 触发，覆盖 unit 矩阵、类型自检与浏
     assert.match(workflow, /npm run test:browser/);
     assert.match(workflow, /npm run check:eol/);
     assert.match(workflow, /playwright install/);
-    // #124：dist 新鲜度与 d.ts 自编译必须进 CI，否则 stale dist / P0 类型错误能漏网
-    assert.match(workflow, /git diff --exit-code -- dist\//);
+    // #124：产物完整性与 d.ts 自编译必须进 CI。v0.16.0 起产物不入库，
+    // "stale dist" 不存在了，改为断言构建产物齐全（含两份 AI 规则）+ d.ts 可编译。
+    assert.match(workflow, /构建产物完整性/);
+    assert.match(workflow, /AI_SCENARIO_PROMPT\.md/);
     assert.match(workflow, /tsc --noEmit[\s\S]*dist\/scenario-test\.d\.ts/);
 });

@@ -16,7 +16,7 @@ npm run test:e2e     # 枚举 tests/e2e/*.test.mjs
 
 ## 结构
 
-- `helpers/static-source.mjs` — 本地"CDN"：serve `dist/` + `skills/.../runtime/` 的 6 个运行时文件，实时算 SHA-256 动态生成 `release.json`；支持按文件篡改（负向用例）。
+- `helpers/static-source.mjs` — 本地发布源：调用 `scripts/build-runtime.mjs` 把当前 `dist/` 打成与真实发布一致的 `scenario-test-runtime-v<版本>.tar.gz` + `.sha256`，经 HTTP 提供；`tamperFiles` 用于把整包哈希改错以覆盖校验失败路径。
 - `helpers/fixture-api.mjs` — 零依赖业务 API（login/orders 建查删），行为对齐 `tests/skill-e2e/java-springboot` 契约。
 - `helpers/proc.mjs` — spawn 封装（超时/输出采集）、平台脚本选择（unix→`bash install.sh`，windows→`pwsh/powershell install.ps1`）、`HOME`/`USERPROFILE` 隔离。
 - `project/scenarios/` — 消费工程场景夹具；`scenario.config.js` 由 `run-chain` 按 fixture 实际端口生成。

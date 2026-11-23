@@ -56,9 +56,8 @@ node "<运行时目录>/scenario-test-cli.cjs" capabilities
 
 HTTP 场景和前端 E2E 共用本地 Node 服务与工作台入口，分别使用 HTTP 引擎和 Playwright 执行。默认 HTTP 接入仍免 npm；仅启用 E2E 后，在独立的 `scenario-test/e2e/` 内安装浏览器测试依赖。
 
-以下命令要求使用包含本功能的本地构建或后续发布版；上方固定的 `v0.15.0` Tag 尚不包含这些新增能力。
-CLI 路径以安装方运行时为准（Skill `runtime/` 或用户级 `~/.scenario-test/runtime/`，
-v23 起项目内不再有运行时副本）。
+以下命令要求使用包含本功能的本地构建或后续发布版；上方固定的 `v0.16.0` Tag 尚不包含这些新增能力。
+CLI 路径以安装方运行时为准（用户级 `~/.scenario-test/runtime/<版本>/`，v23 起项目内不再有运行时副本）。
 
 ```powershell
 # 在业务项目根目录，使用支持 --e2e 的 CLI 显式初始化
@@ -89,14 +88,14 @@ node <运行时目录>/scenario-test-cli.cjs serve --config scenario-test/scenar
 **官方安装（固定版本）：**
 
 ```bash
-# 用户级全局安装；#v0.15.0 钉住 Git Tag，按提示选择你使用的 Agent
-npx skills add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g
+# 用户级全局安装；#v0.16.0 钉住 Git Tag，按提示选择你使用的 Agent
+npx skills add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g
 ```
 
 **国内网络加速安装（第三方 `skills-cn`）：**
 
 ```bash
-npx skills-cn@latest add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g -y
+npx skills-cn@latest add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g -y
 ```
 
 两种方式均从本仓库安装 `scenario-test` Skill。`skills-cn` 为第三方 CLI，其自身版本不保证与官方同步；`-g` 表示用户级安装，`-y` 跳过交互确认。
@@ -115,26 +114,28 @@ Skill 入口和探测脚本分别见 [`SKILL.md`](skills/scenario-test/SKILL.md)
 
 1. 如果尚未安装全局 Skill，先完成上一节；然后在业务项目根目录打开支持 Agent Skills 的 AI 助手。
 2. 告诉 AI 需要测试的业务功能，并提供页面、Controller、接口或已有测试中的任一入口。例如：`为 OrderController 生成 HTTP 场景测试`。
-3. 项目尚未接入时，Skill 会确认项目根目录和环境，使用 Skill 自带的发布版初始化，再执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
+3. 项目尚未接入时，Skill 会确认项目根目录和环境；运行时未安装则先按需下载对应版本（约 1.2 MB，只需一次），再初始化并执行 `doctor`。已接入项目不会自动升级；体检失败时先处理问题。
 4. AI 根据项目证据维护 `scenario.config.js` 和 `scenarios/`。生成阶段不会调用业务接口；需要执行时，请明确提出并确认目标环境和场景内容。
 
 初始场景清单为空。场景准备好后，可用[浏览器工作台](#启动浏览器工作台)或 [CLI](#执行场景)运行；工作台通过本地 `serve` 代理访问所选环境，无需后端额外放行 CORS。
 
-### Skill 使用的固定版本安装脚本
+### 固定版本安装脚本
 
-Skill 初始化时使用自身携带的发布版运行时。以下脚本供需要手动接入的用户使用。在业务项目根目录执行时，脚本下载固定版本运行时并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
+Skill 只携带文本规则与脚本；运行时按版本下载到用户级目录 `~/.scenario-test/runtime/<版本>/`，跨项目、跨 Agent 共用。以下脚本供不用 Agent、或需要预装运行时的环境使用。在业务项目根目录执行时，脚本下载固定版本的运行时整包、解压到该版本目录并初始化 `scenario-test/`，不修改业务项目依赖；安装后会自动执行 `doctor`。
 
 ```powershell
 # Windows PowerShell
-irm https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.sh | bash -s -- . scenario-test
+curl -fsSL https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.sh | bash -s -- . scenario-test
 ```
 
-默认脚本按固定 GitHub Tag 经 jsDelivr 下载发布版 `dist/` 运行时文件，在临时目录就位后由 CLI 初始化；不会执行 `npm install` 或访问 GitHub API。内网下载源的指定方式和文件要求见[自定义下载源](#自定义下载源)。
+脚本从 GitHub Release 下载 `scenario-test-runtime-v<版本>.tar.gz`，先校验同名 `.sha256`，解压后再按包内 `release.json` 逐文件核对，全部通过才写入运行时目录；不会执行 `npm install`。内网与离线环境的指定方式见[自定义下载源](#自定义下载源)。
+
+> 构建产物不再入库（`dist/`、`src/**/*.generated.js`、`skills/**/runtime/`），克隆仓库后直接 `npm test` 会自动先构建一次。
 
 ## 常用操作
 
@@ -294,16 +295,12 @@ ScenarioTest.registerScenario("health-check", ScenarioTest.defineScenario({
 
 ## 自定义下载源
 
-安装脚本的 `-Source` / `SCENARIO_TEST_SOURCE` 使用可通过 HTTP(S) 访问的 URL 前缀，需提供以下 6 个运行时文件：
+安装脚本的 `-Source` / `SCENARIO_TEST_SOURCE` 使用可通过 HTTP(S) 访问的 URL 前缀，需提供两个文件（与 GitHub Release 上的资产同名）：
 
-- `scenario-test-cli.cjs`
-- `scenario-test.umd.js`
-- `scenario-test.d.ts`
-- `scenario-test-capabilities.json`
-- `AI_SCENARIO_PROMPT.md`
-- `SCENARIO_PATTERNS.md`
+- `scenario-test-runtime-v<版本>.tar.gz`：运行时整包（6 个运行时文件 + `release.json`）
+- `scenario-test-runtime-v<版本>.tar.gz.sha256`：整包 SHA-256（同 `sha256sum` 输出格式）
 
-运行时由安装脚本下载到用户级目录（`~/.scenario-test/runtime/`），业务项目不再持有副本。
+内网目录缺 `.sha256` 时脚本会警告并跳过整包校验，但包内 `release.json` 的逐文件校验仍会执行。运行时落到用户级目录 `~/.scenario-test/runtime/<版本>/`，业务项目不持有副本。制作内网包可在任意 checkout 上执行 `npm run build && npm run build:runtime`，产物在 `release/`。
 
 ## 项目目录
 
@@ -396,7 +393,7 @@ ScenarioTest.registerScenario("member-join", ScenarioTest.defineScenario({
 Skill 按 Git Tag 钉版本安装，升级时**把 Tag 换成目标版本重新安装**即可（覆盖同名 Skill）：
 
 ```bash
-npx skills add duyiliu/scenario-test#v0.15.0 --skill scenario-test -g
+npx skills add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g
 ```
 
 未钉版本（安装时省略 `#`）的安装可执行 `npx skills update scenario-test -g` 跟随默认分支。其他安装方式按所用工具的更新流程操作；更新后建议开启新会话，再检查工具是否加载了新版 Skill。当前内置运行时版本可查看 `<Skill目录>/runtime/release.json` 的 `version`。
@@ -416,12 +413,12 @@ Skill 会先确认当前项目、目标发布版本和安装来源，再更新�
 
 ### 手动升级与内网备用
 
-需要手动操作时，先核对目标发布版本，在业务项目根目录重跑[固定版本安装脚本](#skill-使用的固定版本安装脚本)：脚本更新用户级运行时（含 AI 规则），`--no-input` 不覆盖项目已有配置与场景。存量 `package.json` 中若有 `@yc_yzkj/scenario-test` 依赖，那是旧的 npm 接入方式——npm 包已冻结不再更新，请改用安装脚本并移除该依赖。
+需要手动操作时，先核对目标发布版本，在业务项目根目录重跑[固定版本安装脚本](#固定版本安装脚本)：脚本更新用户级运行时（含 AI 规则），`--no-input` 不覆盖项目已有配置与场景。存量 `package.json` 中若有 `@yc_yzkj/scenario-test` 依赖，那是旧的 npm 接入方式——npm 包已冻结不再更新，请改用安装脚本并移除该依赖。
 
 无外网时，先准备对应版本的安装脚本及[内网运行时文件](#自定义下载源)，例如：
 
 ```powershell
-.\install.ps1 -Source "https://gitlab.example.com/group/project/-/raw/v0.15.0/dist"
+.\install.ps1 -Source "https://nexus.example.com/repository/scenario-test/v0.16.0"
 ```
 
 升级完成后执行：

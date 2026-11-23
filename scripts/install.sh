@@ -5,13 +5,14 @@
 # 使用方法：
 #   ./install.sh
 #   ./install.sh /path/to/project scenario-test
-#   ./install.sh /path/to/project scenario-test "https://gitlab.example.com/group/project/-/raw/v0.15.0/dist"
-#   curl -fsSL https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v0.15.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
+#   ./install.sh /path/to/project scenario-test "https://nexus.example.com/repository/scenario-test/v0.16.0"
+#   curl -fsSL https://raw.githubusercontent.com/duyiliu/scenario-test/v0.16.0/scripts/install.sh | bash -s -- /path/to/project scenario-test
 #
-# 原理：免 npm 安装 —— 按固定 GitHub Tag 从 jsDelivr 下载发布版运行时文件到
-#       用户级目录 ~/.scenario-test/runtime/，业务项目只落场景数据（config/README/cmd），
-#       不安装 npm 包、不改 package.json，也不访问 GitHub API，项目内不留运行时副本。
-#       SCENARIO_TEST_SOURCE 或第三个参数可改用内网运行时目录（需包含全部运行时文件）。
+# 原理：免 npm 安装 —— 按固定版本从 GitHub Release 下载整包运行时
+#       scenario-test-runtime-v<版本>.tar.gz 到用户级版本目录
+#       ~/.scenario-test/runtime/<版本>/，业务项目只落场景数据（config/README/cmd），
+#       不安装 npm 包、不改 package.json、项目内不留运行时副本。
+#       SCENARIO_TEST_SOURCE 或第三个参数可改用内网制品目录（需含同名 tar.gz 与 .sha256）。
 #
 
 set -eo pipefail
@@ -24,16 +25,9 @@ PROJECT_DIR="${1:-.}"
 TARGET_DIR="${2:-scenario-test}"
 SOURCE="${3:-${SCENARIO_TEST_SOURCE:-}}"
 SKIP_DOCTOR="${SKIP_DOCTOR:-false}"
-SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.15.0}"
-DEFAULT_SOURCE="https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${SCENARIO_TEST_VERSION}/dist"
-RUNTIME_FILES=(
-    "scenario-test-cli.cjs"
-    "scenario-test.umd.js"
-    "scenario-test.d.ts"
-    "scenario-test-capabilities.json"
-    "AI_SCENARIO_PROMPT.md"
-    "SCENARIO_PATTERNS.md"
-)
+SCENARIO_TEST_VERSION="${SCENARIO_TEST_VERSION:-0.16.0}"
+ARCHIVE_NAME="scenario-test-runtime-v${SCENARIO_TEST_VERSION}.tar.gz"
+DEFAULT_SOURCE="https://github.com/duyiliu/scenario-test/releases/download/v${SCENARIO_TEST_VERSION}"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -87,37 +81,61 @@ print_success "项目目录：$PROJECT_DIR"
 
 FULL_TARGET_PATH="$PROJECT_DIR/$TARGET_DIR"
 
-# v23 起运行时去项目化：CLI/UMD/AI 规则统一落用户级运行时目录，项目内只留场景数据
-RUNTIME_DIR="$HOME/.scenario-test/runtime"
-mkdir -p "$RUNTIME_DIR"
+# v24 起发布物是整包：下载 tar.gz → 校验 sidecar → 解压到版本目录。
+# 同一份包也被 Skill 的 ensure-runtime.mjs 消费，两个入口落到同一个 <版本>/ 目录。
+RUNTIME_ROOT="$HOME/.scenario-test/runtime"
+RUNTIME_DIR="$RUNTIME_ROOT/$SCENARIO_TEST_VERSION"
+mkdir -p "$RUNTIME_ROOT"
 STAGE_DIR="$LOG_DIR/runtime"
 mkdir -p "$STAGE_DIR"
 
 DOWNLOAD_SOURCE="${SOURCE:-$DEFAULT_SOURCE}"
 DOWNLOAD_SOURCE="$(echo "$DOWNLOAD_SOURCE" | sed 's:/*$::')"
-print_info "免 npm 安装模式，下载源：$DOWNLOAD_SOURCE ..."
-for file in "${RUNTIME_FILES[@]}"; do
-    FILE_URL="$DOWNLOAD_SOURCE/$file"
-    if ! curl -fsSL "$FILE_URL" -o "$STAGE_DIR/$file"; then
-        print_error "运行时文件下载失败：$FILE_URL"
+ARCHIVE_URL="$DOWNLOAD_SOURCE/$ARCHIVE_NAME"
+ARCHIVE_PATH="$LOG_DIR/$ARCHIVE_NAME"
+print_info "下载运行时发布包：$ARCHIVE_URL ..."
+if ! curl -fsSL "$ARCHIVE_URL" -o "$ARCHIVE_PATH"; then
+    print_error "运行时发布包下载失败：$ARCHIVE_URL"
+    print_info "可改用第三个参数或 SCENARIO_TEST_SOURCE 指向内网制品目录，或手动放置该包后重试"
+    exit 1
+fi
+
+# 整包完整性（#120 升级）：先核对 sidecar 的 SHA-256，挡住传输损坏与伪造字节；
+# 解压后再用包内 release.json 逐文件核对，挡住包内被替换的情形。
+EXPECTED_ARCHIVE_HASH=""
+if curl -fsSL "$ARCHIVE_URL.sha256" -o "$LOG_DIR/$ARCHIVE_NAME.sha256" 2>/dev/null; then
+    EXPECTED_ARCHIVE_HASH=$(awk 'NR==1{print $1}' "$LOG_DIR/$ARCHIVE_NAME.sha256" | tr 'A-F' 'a-f')
+elif [ -n "$SOURCE" ]; then
+    print_warning "未获取到 $ARCHIVE_NAME.sha256，跳过整包校验（自定义源：$SOURCE）"
+else
+    print_error "无法获取发布包校验文件：$ARCHIVE_URL.sha256"
+    print_info "请检查网络后重试，或用 SCENARIO_TEST_SOURCE 指向内网制品目录"
+    exit 1
+fi
+if [ -n "$EXPECTED_ARCHIVE_HASH" ]; then
+    ACTUAL_ARCHIVE_HASH=$(node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$ARCHIVE_PATH")
+    if [ "$ACTUAL_ARCHIVE_HASH" != "$EXPECTED_ARCHIVE_HASH" ]; then
+        print_error "运行时发布包校验失败"
+        print_error "  期望 $EXPECTED_ARCHIVE_HASH"
+        print_error "  实际 $ACTUAL_ARCHIVE_HASH"
         exit 1
     fi
-done
+    print_success "发布包 SHA-256 校验通过"
+fi
 
-for file in "${RUNTIME_FILES[@]}"; do
-    if [ ! -f "$STAGE_DIR/$file" ]; then
-        print_error "下载内容不完整，缺少运行时文件：$file"
-        exit 1
-    fi
-done
+if ! tar -xzf "$ARCHIVE_PATH" -C "$STAGE_DIR"; then
+    print_error "运行时发布包解压失败：$ARCHIVE_PATH"
+    exit 1
+fi
 
-# 完整性校验（#120）：下载文件必须与发布版 release.json 的 SHA-256 一致，
-# 否则 init 写入的版本锁只能证明"文件没变"，不能证明"文件就是发布产物"。
-# 清单默认取同一 Tag 的 Skill 运行时目录；内网源可用 SCENARIO_TEST_RELEASE_JSON 覆盖。
-MANIFEST_FILE="$LOG_DIR/release.json"
-MANIFEST_URL="${SCENARIO_TEST_RELEASE_JSON:-https://cdn.jsdelivr.net/gh/duyiliu/scenario-test@v${SCENARIO_TEST_VERSION}/skills/scenario-test/runtime/release.json}"
-if curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_FILE" 2>/dev/null; then
-    if SCENARIO_TEST_VERSION="$SCENARIO_TEST_VERSION" node -e '
+# 包内 release.json 是逐文件发布清单，与整包 sidecar 互为两层：sidecar 护传输，
+# 清单护内容，任何一层对不上都中止，绝不把半成品写进在用目录。
+MANIFEST_FILE="$STAGE_DIR/release.json"
+if [ ! -f "$MANIFEST_FILE" ]; then
+    print_error "运行时发布包缺少 release.json，拒绝安装"
+    exit 1
+fi
+if SCENARIO_TEST_VERSION="$SCENARIO_TEST_VERSION" node -e '
 const fs = require("fs"), path = require("path"), crypto = require("crypto");
 const args = process.argv.slice(1);
 const manifest = JSON.parse(fs.readFileSync(args[0], "utf8"));
@@ -130,33 +148,25 @@ if (expectedVersion && manifest.version && manifest.version !== expectedVersion)
 for (const file of args.slice(2)) {
     const want = String((manifest.sha256 || {})[file] || "").toLowerCase();
     if (!want) { console.error("release.json 缺少 " + file + " 的 SHA256"); process.exit(1); }
-    const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, file))).digest("hex");
+    const target = path.join(dir, file);
+    if (!fs.existsSync(target)) { console.error("运行时发布包缺少文件: " + file); process.exit(1); }
+    const actual = crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex");
     if (actual !== want) {
         console.error("运行时文件校验失败: " + file + "\n期望 " + want + "\n实际 " + actual);
         process.exit(1);
     }
 }
-' "$MANIFEST_FILE" "$STAGE_DIR" "${RUNTIME_FILES[@]}"; then
-        print_success "运行时文件 SHA-256 校验通过"
-    else
-        print_error "运行时文件校验失败：下载内容与发布版 release.json 不一致，已中止安装"
-        exit 1
-    fi
+' "$MANIFEST_FILE" "$STAGE_DIR" "scenario-test-cli.cjs" "scenario-test.umd.js" "scenario-test.d.ts" "scenario-test-capabilities.json" "AI_SCENARIO_PROMPT.md" "SCENARIO_PATTERNS.md"; then
+    print_success "包内 6 个运行时文件 SHA-256 校验通过"
 else
-    if [ -n "$SOURCE" ]; then
-        print_warning "未获取到 release.json，跳过哈希校验（自定义源：$SOURCE）"
-    else
-        print_error "无法获取发布版 release.json（$MANIFEST_URL）"
-        print_info "请检查网络，或用 SCENARIO_TEST_RELEASE_JSON 指向可信清单后重试"
-        exit 1
-    fi
+    print_error "运行时文件校验失败：包内容与 release.json 不一致，已中止安装"
+    exit 1
 fi
-print_success "固定版本运行时下载成功"
 
-# 校验通过后才替换用户级运行时目录，失败不影响在用安装
-for file in "${RUNTIME_FILES[@]}"; do
-    cp "$STAGE_DIR/$file" "$RUNTIME_DIR/$file"
-done
+# 校验通过后才写入版本目录：失败不影响在用安装，半成品不会留在目标位置。
+rm -rf "$RUNTIME_DIR"
+mkdir -p "$RUNTIME_DIR"
+cp -R "$STAGE_DIR"/. "$RUNTIME_DIR"/
 print_success "运行时就绪：$RUNTIME_DIR"
 
 print_info "初始化场景测试目录：$FULL_TARGET_PATH ..."

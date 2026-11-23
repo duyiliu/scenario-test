@@ -27,12 +27,19 @@ jobs:
       - run: npm ci
       # 构建链要求 Node 22+（Tailwind CSS 4 的 oxide + engines 下限）
       - run: npm run build
-      # dist/ 已提交且按 Tag 分发：构建必须无差异，防止 stale dist 通过 CI
-      - name: dist 新鲜度
+      # v24 起构建产物不入库：没有"stale dist"可查，改为查产物完整性——
+      # 8 个文件（含两份 AI 规则，历史上曾因缺失导致安装链 404）齐了才算过。
+      - name: 构建产物完整性
         shell: bash
         run: |
-          git diff --exit-code -- dist/
-          test -z "$(git status --porcelain dist/)" || { git status --porcelain dist/; exit 1; }
+          missing=0
+          for f in scenario-test-cli.cjs scenario-test.umd.js scenario-test.cjs \
+                   scenario-test.esm.js scenario-test.d.ts \
+                   scenario-test-capabilities.json \
+                   AI_SCENARIO_PROMPT.md SCENARIO_PATTERNS.md; do
+            [ -f "dist/$f" ] || { echo "缺少 dist/$f"; missing=1; }
+          done
+          exit "$missing"
       - run: npm run test:unit
       - name: 行尾审计
         shell: bash
@@ -52,6 +59,27 @@ jobs:
       # 发布物 d.ts 必须可编译（#110/#124：重复成员曾让 TS 消费方直接报错）
       - run: npx tsc --noEmit --strict --target es2020 --module esnext --moduleResolution bundler --lib es2020,dom dist/scenario-test.d.ts
       - run: node --test tests/dts.test.js
+
+  package:
+    name: 运行时发布包
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # 打包与自检：确认发布包可被安装脚本按真实路径拉取并校验。
+      # 这一步在每次 PR 都跑，避免"改坏了打包才发现，而那时已经在发版"。
+      - run: npm run build:runtime
+      - run: npm run verify:release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-package
+          path: release/
+          retention-days: 7
 
   browser:
     name: browser (playwright)

@@ -1,0 +1,89 @@
+name: Release
+
+# 发版即打 tag：CI 构建 → 打包运行时 → 建 Release 并挂资产。
+# 产物不入库（dist/、src/**/*.generated.js、skills/**/runtime/ 都在 .gitignore），
+# 所以"能不能装"取决于这个工作流是否成功，tag 与资产一一对应。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已存在且已推送的 tag（如 v0.16.0）
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布运行时资产
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          # release.json 需要完整历史来核对 tag 与版本号一致？不需要；
+          # 但 build 的 BUILD_ID 与源码相关，浅克隆足够。
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+        # 构建产物不入库，所以没有"新鲜度"可查；改为查产物完整性：
+        # 8 个文件（含两份 AI 规则）齐了才允许发版。
+      - name: 校验构建产物
+        shell: bash
+        run: |
+          missing=0
+          for f in scenario-test-cli.cjs scenario-test.umd.js scenario-test.cjs \
+                   scenario-test.esm.js scenario-test.d.ts \
+                   scenario-test-capabilities.json \
+                   AI_SCENARIO_PROMPT.md SCENARIO_PATTERNS.md; do
+            if [ ! -f "dist/$f" ]; then echo "缺少 dist/$f"; missing=1; fi
+          done
+          exit "$missing"
+
+      # 版本一致性：tag 必须与 package.json 一致，否则用户装到的是错版本。
+      - name: 校验 tag 与版本号
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "tag $TAG 与 package.json 版本 v$VERSION 不一致"; exit 1
+          fi
+
+      - name: 运行测试
+        run: npm test
+
+      - name: 打包运行时
+        run: npm run build:runtime
+
+      # 发布前先按真实下载路径自检：把包从一个本地 HTTP 服务拉下来再解一遍，
+      # 与安装脚本、ensure-runtime.mjs 用的是同一套校验语义。
+      - name: 发布包自检
+        shell: bash
+        run: node scripts/verify-release.mjs
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          NOTES="RELEASE_NOTES.md"
+          # 按 "## [" 切段取本版本说明，不用正则（避免转义层层嵌套出错）
+          VERSION="$VERSION" NOTES="$NOTES" node scripts/release-notes.mjs
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file "$NOTES" \
+            "release/scenario-test-runtime-v$VERSION.tar.gz" \
+            "release/scenario-test-runtime-v$VERSION.tar.gz.sha256"

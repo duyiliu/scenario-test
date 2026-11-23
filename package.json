@@ -1,6 +1,6 @@
 {
   "name": "@yc_yzkj/scenario-test",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "Reusable browser and Node.js scenario testing library",
   "type": "module",
@@ -28,6 +28,8 @@
     "test:e2e-fixture": "node tests/e2e-fixture.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "build": "node scripts/build.mjs",
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "dev": "node scripts/dev.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:unit": "node scripts/run-tests.mjs",

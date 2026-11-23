@@ -1,6 +1,6 @@
 // 子进程封装：spawn 带硬超时与输出采集；平台脚本选择器；
 // 安装脚本的用户级运行时目录经 HOME / USERPROFILE 隔离到临时目录，
-// 绝不污染真实用户目录（v23 运行时就落在 ~/.scenario-test/runtime）。
+// 绝不污染真实用户目录（运行时落在 ~/.scenario-test/runtime/<版本>/）。
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -79,10 +79,9 @@ export function installerForPlatform() {
 }
 
 // 组装一次安装调用的 env：隔离 HOME/USERPROFILE 到临时 home，
-// 注入自定义源与清单 URL；SCENARIO_TEST_VERSION 仅在 sh 上可覆盖。
-export function installEnv(installer, { home, manifestUrl, version }) {
+// 自定义源经第三个参数或 SCENARIO_TEST_SOURCE 传入；也能强制指定版本。
+export function installEnv(installer, { home, version }) {
     const env = { [installer.homeEnvKey]: home };
-    if (manifestUrl) env.SCENARIO_TEST_RELEASE_JSON = manifestUrl;
     if (version) env.SCENARIO_TEST_VERSION = version;
     return env;
 }
