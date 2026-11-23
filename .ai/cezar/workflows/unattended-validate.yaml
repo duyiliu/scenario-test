@@ -1,6 +1,6 @@
 name: unattended-validate
-description: 无人值守开发验证：实现→自测→提交→草稿 PR→等 CI→失败自修→独立审查→回修→PR 评论→人工终审（不自动合并）。
-version: 2
+description: 无人值守开发验证：实现→自测→提交→草稿 PR→等 CI→失败自修→独立审查→回修→PR 评论→确定性门禁；通过即自动合并，阻止则转人工。
+version: 3
 nodes:
   - id: start
     type: start
@@ -72,8 +72,8 @@ nodes:
     body: "独立审查：{{nodes.review.verdict}}\n\n{{nodes.review.summary}}"
   - id: merge-gate
     type: check
-    name: Auto-merge gate (shadow)
-    command: "node scripts/auto-merge-gate.mjs --base master > /dev/null 2>&1"
+    name: Auto-merge gate
+    command: "node scripts/auto-merge-gate.mjs --base master --merge > /dev/null 2>&1"
   - id: merge-gate-report
     type: agent
     name: Read gate verdict
