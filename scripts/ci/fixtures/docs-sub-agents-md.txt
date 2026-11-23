@@ -1,0 +1,2 @@
+docs/sub/AGENTS.md
+docs/guide/notes.md
