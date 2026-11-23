@@ -104,7 +104,7 @@ npx skills-cn@latest add duyiliu/scenario-test#v0.16.0 --skill scenario-test -g 
 
 > 该命令安装用户级 Skill，不会在业务项目中安装 npm 依赖。Windows 原生与 WSL 的用户目录各自独立，需在使用的环境分别安装。
 
-Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；v23 起运行时去项目化：CLI、工作台页面与 AI 规则统一由安装方提供（Skill 的 `runtime/`），初始化只在业务项目写入 `scenario.config.js`、目录说明与启动入口，场景放在 `scenarios/`，不复制运行时。后续使用无需再次下载工具，执行测试仍需连接目标服务。
+Skill 会在当前工作区定位业务项目，读取该项目自己的规则与能力清单。首次接入需要 Node.js 22+；运行时去项目化：CLI、工作台页面与 AI 规则统一由安装方提供，落在用户级 `~/.scenario-test/runtime/<版本>/`（Skill 首次使用时按需下载一次），初始化只在业务项目写入 `scenario.config.js`、目录说明与启动入口，场景放在 `scenarios/`，不复制运行时。后续使用无需再次下载工具，执行测试仍需连接目标服务。
 
 未接入项目会按[快速接入](#快速接入)自动初始化；设置 `SCENARIO_TEST_NO_AUTO_INIT=1` 或明确拒绝时，Skill 会先征询。项目不完整时不会自动修复。同一安装方下的项目共用该运行时；升级只需更新安装方（换 Tag 重装 Skill 或重跑安装脚本），不需要逐项目替换运行时，见[升级](#升级)。
 
