@@ -8,7 +8,7 @@ nodes:
       type: agent
       name: Implement
       runner: codex
-      model: group/fast
+      model: magpie/group/fast
       reasoningEffort: max
       prompt: |
         {{task}}
@@ -41,7 +41,7 @@ nodes:
       type: agent
       name: Fix from failing tests or CI
       runner: codex
-      model: group/fast
+      model: magpie/group/fast
       reasoningEffort: max
       prompt: |
         测试或 CI 失败。读取失败信息，做最小改动修复，不改变任务范围；不得修改 README.md 或 docs/ 下的规则文档，不得合并、不得部署。
@@ -51,7 +51,7 @@ nodes:
       type: agent
       name: Independent review
       runner: codex
-      model: group/fast
+      model: magpie/group/fast
       reasoningEffort: max
       prompt: |
         独立审查当前任务分支相对 master 的全部改动。只评审，不实现，不修改文件。
@@ -84,7 +84,7 @@ nodes:
       type: agent
       name: Read gate verdict
       runner: codex
-      model: group/fast
+      model: magpie/group/fast
       reasoningEffort: max
       prompt: |
         自动合并门禁已经运行完毕，结果写在当前工作目录的 .ai/cezar/auto-merge-verdict.md。
