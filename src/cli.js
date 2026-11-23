@@ -290,6 +290,18 @@ ${optionHelp}
   --output <file>       自定义输出文件；默认 scenarios/imported-<ts>.js
   --host <host,...>     只导入指定主机的请求；--max-entries 限制导入条数（默认 50）
 
+项目登记命令:
+  projects              列出登记的项目（等价于 projects list；--json 输出
+                        schemaVersion/defaultPort/projects 机器可读 JSON）
+  projects list         同上，列出所有登记项目及其端口与配置路径
+  projects set-port <端口>     固定当前项目的登记端口（1-65535）
+  projects set-default-port <端口>
+                        固定未登记项目首次启动时的起始分配端口
+  projects ensure       确保当前项目已登记；--port 显式指定端口，
+                        --reassign 登记端口被占用时自动顺延到空闲端口
+  projects remove       从登记中移除当前项目
+  --config <file>       指定项目配置；默认从当前目录向上发现 scenario.config.js
+
 认证选项:
   环境变量 SCENARIO_AUTH       推荐方式，设置授权令牌；避免令牌进入进程参数。
 
@@ -307,7 +319,11 @@ ${optionHelp}
 
   # PowerShell
   $env:SCENARIO_AUTH = "Bearer your-token"
-  node scenario-test-cli.cjs --config "./scenario.config.js" --all`);
+  node scenario-test-cli.cjs --config "./scenario.config.js" --all
+
+  # 项目登记：查看已登记项目、固定当前项目端口
+  node scenario-test-cli.cjs projects list
+  node scenario-test-cli.cjs projects set-port 4301`);
 }
 
 function writeProjectFile(projectRoot, relativePath, content, force) {
